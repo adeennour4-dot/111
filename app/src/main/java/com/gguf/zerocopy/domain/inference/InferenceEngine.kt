@@ -43,3 +43,10 @@ interface InferenceEngine {
   suspend fun benchmark(ppTokens: Int, tgTokens: Int): BenchmarkResult
   fun supportsFormat(path: String): Boolean
 }
+
+
+
+
+
+
+

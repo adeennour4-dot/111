@@ -81,345 +81,352 @@ fun ChatScreen(
   var attachmentUri by remember { mutableStateOf<Uri?>(null) }
 
   val chatId = remember {
-  app.chatRepository.createSession("Chat - $modelName").id
+    app.chatRepository.createSession("Chat - $modelName").id
   }
 
   LaunchedEffect(chatId) {
-  messages = app.chatRepository.getMessages(chatId)
+    messages = app.chatRepository.getMessages(chatId)
   }
 
   LaunchedEffect(isInferring) {
-  if (!isInferring) return@LaunchedEffect
-  val start = System.currentTimeMillis()
-  var firstSeen = false
-  isProcessing = true
-  while (isInferring) {
-  delay(30)
-  val text = when {
-  llamaEngine != null && llamaEngine.isModelLoaded -> llamaEngine.readPartialStream()
-  mnnEngine != null && mnnEngine.isModelLoaded -> mnnEngine.readPartialStream()
-  else -> ""
-  }
-  if (text.isNotEmpty()) {
-  streamedText = if (streamedText.isEmpty() || isProcessing) text else streamedText + text
-  if (!firstSeen) { firstSeen = true; isProcessing = false }
-  }
-  val elapsed = (System.currentTimeMillis() - start) / 1000f
-  val tok = when {
-  llamaEngine != null -> llamaEngine.getTokensGenerated()
-  mnnEngine != null -> mnnEngine.getTokensGenerated()
-  else -> 0
-  }
-  if (elapsed > 0) tps = tok / elapsed
-  kvUsage = when {
-  llamaEngine != null -> llamaEngine.getKvUsage()
-  mnnEngine != null -> mnnEngine.getKvUsage()
-  else -> 0
-  }
+    if (!isInferring) return@LaunchedEffect
+    val start = System.currentTimeMillis()
+    var firstSeen = false
+    isProcessing = true
+    while (isInferring) {
+      delay(30)
+      val text = when {
+        llamaEngine != null && llamaEngine.isModelLoaded -> llamaEngine.readPartialStream()
+        mnnEngine != null && mnnEngine.isModelLoaded -> mnnEngine.readPartialStream()
+        else -> ""
+      }
+      if (text.isNotEmpty()) {
+        streamedText = if (streamedText.isEmpty() || isProcessing) text else streamedText + text
+        if (!firstSeen) { firstSeen = true; isProcessing = false }
+      }
+      val elapsed = (System.currentTimeMillis() - start) / 1000f
+      val tok = when {
+        llamaEngine != null -> llamaEngine.getTokensGenerated()
+        mnnEngine != null -> mnnEngine.getTokensGenerated()
+        else -> 0
+      }
+      if (elapsed > 0) tps = tok / elapsed
+      kvUsage = when {
+        llamaEngine != null -> llamaEngine.getKvUsage()
+        mnnEngine != null -> mnnEngine.getKvUsage()
+        else -> 0
+      }
 
-  val done = when {
-  llamaEngine != null -> llamaEngine.isInferenceDone()
-  mnnEngine != null -> mnnEngine.isInferenceDone()
-  else -> true
-  }
-  if (done) {
-  delay(60)
-  val final = when {
-  llamaEngine != null -> llamaEngine.readTokenStream()
-  mnnEngine != null -> mnnEngine.readTokenStream()
-  else -> ""
-  }
-  val ft = when {
-  llamaEngine != null -> llamaEngine.getTokensGenerated()
-  mnnEngine != null -> mnnEngine.getTokensGenerated()
-  else -> 0
-  }
-  if (final.isNotEmpty()) {
-  val msg = ChatMessage(MessageRole.ASSISTANT, final, tps = if (elapsed > 0) ft / elapsed else 0f, tokens = ft)
-  messages = messages + msg
-  app.chatRepository.addMessage(chatId, msg)
-  }
-  streamedText = ""
-  isInferring = false
-  isProcessing = false
-  }
-  }
+      val done = when {
+        llamaEngine != null -> llamaEngine.isInferenceDone()
+        mnnEngine != null -> mnnEngine.isInferenceDone()
+        else -> true
+      }
+      if (done) {
+        delay(60)
+        val final = when {
+          llamaEngine != null -> llamaEngine.readTokenStream()
+          mnnEngine != null -> mnnEngine.readTokenStream()
+          else -> ""
+        }
+        val ft = when {
+          llamaEngine != null -> llamaEngine.getTokensGenerated()
+          mnnEngine != null -> mnnEngine.getTokensGenerated()
+          else -> 0
+        }
+        if (final.isNotEmpty()) {
+          val msg = ChatMessage(MessageRole.ASSISTANT, final, tps = if (elapsed > 0) ft / elapsed else 0f, tokens = ft)
+          messages = messages + msg
+          app.chatRepository.addMessage(chatId, msg)
+        }
+        streamedText = ""
+        isInferring = false
+        isProcessing = false
+      }
+    }
   }
 
   LaunchedEffect(messages.size, isInferring) {
-  if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
   }
 
   val imagePicker = rememberLauncherForActivityResult(
-  ActivityResultContracts.StartActivityForResult()
+    ActivityResultContracts.StartActivityForResult()
   ) { result ->
-  if (result.resultCode == Activity.RESULT_OK) {
-  attachmentUri = result.data?.data
-  }
+    if (result.resultCode == Activity.RESULT_OK) {
+      attachmentUri = result.data?.data
+    }
   }
 
   Scaffold(
-  topBar = {
-  TopAppBar(
-  title = {
-  Column {
-    Text("ZeroCopy", fontWeight = FontWeight.Black, fontSize = 16.sp, fontFamily = FontFamily.Monospace, color = ZcColors.Accent)
-    Text(statusText, fontSize = 10.sp, color = if (engine?.isModelLoaded == true) ZcColors.Accent2 else ZcColors.Text3, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-  }
-  },
-  navigationIcon = {
-  IconButton(onClick = {
-    engine?.unloadModel()
-    onBack()
-  }) { Icon(Icons.Outlined.ArrowBack, "Back", tint = ZcColors.Text2) }
-  },
-  actions = {
-  if (engine?.isModelLoaded == true) {
-    if (isInferring) {
-        AssistChip(
-            onClick = { engine.abortInference() },
-            label = { Text("Stop", fontSize = 11.sp) },
-            colors = AssistChipDefaults.assistChipColors(containerColor = ZcColors.Red.copy(alpha = 0.2f), labelColor = ZcColors.Red)
-        )
-    }
-    AssistChip(
-        onClick = {},
-        label = { Text("${kvUsage}%", fontSize = 11.sp) },
-        colors = AssistChipDefaults.assistChipColors(
-            containerColor = if (kvUsage > 80) ZcColors.Red.copy(alpha = 0.2f) else ZcColors.Accent2.copy(alpha = 0.15f),
-            labelColor = if (kvUsage > 80) ZcColors.Red else ZcColors.Accent2
-        )
-    )
-  }
-  IconButton(onClick = onModels) { Icon(Icons.Filled.List, "Models", tint = ZcColors.Text2) }
-  IconButton(onClick = onSettings) { Icon(Icons.Outlined.Tune, "Settings", tint = ZcColors.Text2) }
-  },
-  colors = TopAppBarDefaults.topAppBarColors(containerColor = ZcColors.Bg)
-  )
-  },
-  containerColor = ZcColors.Bg
-  ) { pad ->
-  Column(modifier = Modifier.padding(pad).fillMaxSize()) {
-  Box(modifier = Modifier.weight(1f)) {
-  if (!engine?.isModelLoaded == true) {
-  Column(modifier = Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-    Icon(Icons.Outlined.SmartToy, null, modifier = Modifier.size(48.dp), tint = ZcColors.Text3)
-    Spacer(Modifier.height(16.dp))
-    Text("No model loaded", color = ZcColors.Text3, fontSize = 16.sp)
-    Text("Go back and select a model", color = ZcColors.Text3, fontSize = 13.sp)
-  }
-  } else {
-  LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp), contentPadding = PaddingValues(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-    items(messages) { msg -> ChatBubble(msg, clip) }
-    if (isInferring && streamedText.isNotEmpty()) {
-        item { StreamingBubble(streamedText, false) }
-    } else if (isInferring && isProcessing) {
-        item { StreamingBubble("", true) }
-    }
-  }
-  }
-  }
-
-  if (engine?.isModelLoaded == true) {
-  InputBar(
-  prompt = prompt,
-  onPromptChange = { prompt = it },
-  isInferring = isInferring,
-  attachmentFileName = attachmentUri?.lastPathSegment?.substringAfterLast('/'),
-  onSend = {
-    if (prompt.isNotBlank()) {
-        val msg = prompt
-        val attach = attachmentUri
-        prompt = ""
-        streamedText = ""
-        isInferring = true
-        val userMsg = if (attach != null) {
-            val fileName = attach.lastPathSegment?.substringAfterLast('/') ?: "attachment"
-            ChatMessage(MessageRole.USER, msg, attachmentPath = fileName, attachmentType = AttachmentType.IMAGE)
-        } else {
-            ChatMessage(MessageRole.USER, msg)
-        }
-        messages = messages + userMsg
-        app.chatRepository.addMessage(chatId, userMsg)
-        attachmentUri = null
-
-        scope.launch(Dispatchers.IO) {
-            val cb = object : TokenCallback {
-                override fun onToken(token: String) {}
-                override fun onDone() {}
-                override fun onError(error: String) {}
-                override fun onKvUsage(percent: Int) {}
-                override fun onTokensGenerated(count: Int) {}
+    topBar = {
+      TopAppBar(
+        title = {
+          Column {
+            Text("ZeroCopy", fontWeight = FontWeight.Black, fontSize = 16.sp, fontFamily = FontFamily.Monospace, color = ZcColors.Accent)
+            Text(statusText, fontSize = 10.sp, color = if (engine?.isModelLoaded == true) ZcColors.Accent2 else ZcColors.Text3, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+          }
+        },
+        navigationIcon = {
+          IconButton(onClick = {
+              engine?.unloadModel()
+              onBack()
+            }) { Icon(Icons.Outlined.ArrowBack, "Back", tint = ZcColors.Text2) }
+          },
+          actions = {
+            if (engine?.isModelLoaded == true) {
+              if (isInferring) {
+                AssistChip(
+                  onClick = { engine.abortInference() },
+                  label = { Text("Stop", fontSize = 11.sp) },
+                  colors = AssistChipDefaults.assistChipColors(containerColor = ZcColors.Red.copy(alpha = 0.2f), labelColor = ZcColors.Red)
+                )
+              }
+              AssistChip(
+                onClick = {},
+                label = { Text("${kvUsage}%", fontSize = 11.sp) },
+                colors = AssistChipDefaults.assistChipColors(
+                  containerColor = if (kvUsage > 80) ZcColors.Red.copy(alpha = 0.2f) else ZcColors.Accent2.copy(alpha = 0.15f),
+                  labelColor = if (kvUsage > 80) ZcColors.Red else ZcColors.Accent2
+                )
+              )
             }
-            var fullPrompt = msg
-            if (attach != null) {
-                fullPrompt = "[Image attached: $fileName]\n$msg"
+            IconButton(onClick = onModels) { Icon(Icons.Filled.List, "Models", tint = ZcColors.Text2) }
+            IconButton(onClick = onSettings) { Icon(Icons.Outlined.Tune, "Settings", tint = ZcColors.Text2) }
+          },
+          colors = TopAppBarDefaults.topAppBarColors(containerColor = ZcColors.Bg)
+        )
+      },
+      containerColor = ZcColors.Bg
+    ) { pad ->
+      Column(modifier = Modifier.padding(pad).fillMaxSize()) {
+        Box(modifier = Modifier.weight(1f)) {
+          if (!engine?.isModelLoaded == true) {
+            Column(modifier = Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+              Icon(Icons.Outlined.SmartToy, null, modifier = Modifier.size(48.dp), tint = ZcColors.Text3)
+              Spacer(Modifier.height(16.dp))
+              Text("No model loaded", color = ZcColors.Text3, fontSize = 16.sp)
+              Text("Go back and select a model", color = ZcColors.Text3, fontSize = 13.sp)
             }
-            engine.executeInference(fullPrompt, cb)
+          } else {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp), contentPadding = PaddingValues(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+              items(messages) { msg -> ChatBubble(msg, clip) }
+              if (isInferring && streamedText.isNotEmpty()) {
+                item { StreamingBubble(streamedText, false) }
+              } else if (isInferring && isProcessing) {
+                item { StreamingBubble("", true) }
+              }
+            }
+          }
         }
+
+        if (engine?.isModelLoaded == true) {
+          InputBar(
+            prompt = prompt,
+            onPromptChange = { prompt = it },
+            isInferring = isInferring,
+            attachmentFileName = attachmentUri?.lastPathSegment?.substringAfterLast('/'),
+            onSend = {
+              if (prompt.isNotBlank()) {
+                val msg = prompt
+                val attach = attachmentUri
+                prompt = ""
+                streamedText = ""
+                isInferring = true
+                val userMsg = if (attach != null) {
+                  val fileName = attach.lastPathSegment?.substringAfterLast('/') ?: "attachment"
+                  ChatMessage(MessageRole.USER, msg, attachmentPath = fileName, attachmentType = AttachmentType.IMAGE)
+                } else {
+                  ChatMessage(MessageRole.USER, msg)
+                }
+                messages = messages + userMsg
+                app.chatRepository.addMessage(chatId, userMsg)
+                attachmentUri = null
+
+                scope.launch(Dispatchers.IO) {
+                  val cb = object : TokenCallback {
+                    override fun onToken(token: String) {}
+                    override fun onDone() {}
+                    override fun onError(error: String) {}
+                    override fun onKvUsage(percent: Int) {}
+                    override fun onTokensGenerated(count: Int) {}
+                  }
+                  var fullPrompt = msg
+                  if (attach != null) {
+                    fullPrompt = "[Image attached: $fileName]\n$msg"
+                  }
+                  engine.executeInference(fullPrompt, cb)
+                }
+              }
+            },
+            onStop = { engine.abortInference() },
+            onImage = {
+              val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "image/*"
+              }
+              imagePicker.launch(intent)
+            }
+          )
+        }
+      }
     }
-  },
-  onStop = { engine.abortInference() },
-  onImage = {
-    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-        addCategory(Intent.CATEGORY_OPENABLE)
-        type = "image/*"
+  }
+
+  @Composable
+  fun ChatBubble(msg: ChatMessage, clip: ClipboardManager) {
+    val isUser = msg.role == MessageRole.USER
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Bottom) {
+      if (!isUser) {
+        Box(modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(ZcColors.Accent), contentAlignment = Alignment.Center) {
+          Text("Z", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+        }
+        Spacer(Modifier.width(8.dp))
+      }
+      Column(modifier = Modifier.widthIn(max = 300.dp)) {
+        Surface(modifier = Modifier.clip(RoundedCornerShape(topStart = if (isUser) 18.dp else 6.dp, topEnd = if (isUser) 6.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)).clickable { clip.setPrimaryClip(ClipData.newPlainText("msg", msg.content)) }, color = if (isUser) ZcColors.UserBg else ZcColors.Card) {
+          Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            if (msg.attachmentPath != null) {
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Image, null, modifier = Modifier.size(16.dp), tint = ZcColors.Purple)
+                Spacer(Modifier.width(4.dp))
+                Text(msg.attachmentPath, fontSize = 11.sp, color = ZcColors.Purple, fontFamily = FontFamily.Monospace)
+              }
+              Spacer(Modifier.height(4.dp))
+            }
+            if (!isUser) ThinkingContent(msg.content)
+            else Text(msg.content, color = ZcColors.Text, fontSize = 14.sp, lineHeight = 20.sp)
+          }
+        }
+        if (!isUser && msg.tps > 0) {
+          Text("%.1f t/s · %d tok".format(msg.tps, msg.tokens), modifier = Modifier.padding(start = 4.dp, top = 2.dp), fontSize = 9.sp, color = ZcColors.Text3, fontFamily = FontFamily.Monospace)
+        }
+      }
+      if (isUser) {
+        Spacer(Modifier.width(8.dp))
+        Box(modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(ZcColors.Accent2), contentAlignment = Alignment.Center) {
+          Text("U", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+        }
+      }
     }
-    imagePicker.launch(intent)
   }
-  )
-  }
-  }
-  }
-}
 
-@Composable
-fun ChatBubble(msg: ChatMessage, clip: ClipboardManager) {
-  val isUser = msg.role == MessageRole.USER
-  Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Bottom) {
-  if (!isUser) {
-  Box(modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(ZcColors.Accent), contentAlignment = Alignment.Center) {
-  Text("Z", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
-  }
-  Spacer(Modifier.width(8.dp))
-  }
-  Column(modifier = Modifier.widthIn(max = 300.dp)) {
-  Surface(modifier = Modifier.clip(RoundedCornerShape(topStart = if (isUser) 18.dp else 6.dp, topEnd = if (isUser) 6.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp)).clickable { clip.setPrimaryClip(ClipData.newPlainText("msg", msg.content)) }, color = if (isUser) ZcColors.UserBg else ZcColors.Card) {
-  Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-  if (msg.attachmentPath != null) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Outlined.Image, null, modifier = Modifier.size(16.dp), tint = ZcColors.Purple)
-        Spacer(Modifier.width(4.dp))
-        Text(msg.attachmentPath, fontSize = 11.sp, color = ZcColors.Purple, fontFamily = FontFamily.Monospace)
+  @Composable
+  fun ThinkingContent(content: String) {
+    val pattern = remember { Regex("(?:<think>|<think>\\n?)(.*?)(?:</think>|</think>\\n?)", RegexOption.DOT_MATCHES_ALL) }
+    val match = remember(content) { pattern.find(content) }
+    if (match != null) {
+      val think = match.groupValues[1].trim()
+      val rest = content.substring(match.range.last + 1).trim()
+      var open by remember { mutableStateOf(false) }
+      Column {
+        Surface(onClick = { open = !open }, shape = RoundedCornerShape(8.dp), color = ZcColors.ThinkBg, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+          Column(modifier = Modifier.padding(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Icon(Icons.Outlined.Lightbulb, null, modifier = Modifier.size(12.dp), tint = ZcColors.Purple)
+              Spacer(Modifier.width(4.dp))
+              Text(if (open) "Thinking" else "Thinking...", fontSize = 10.sp, color = ZcColors.Purple, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+            }
+            AnimatedVisibility(open) { Text(think, modifier = Modifier.padding(top = 4.dp), fontSize = 11.sp, color = ZcColors.Text3, lineHeight = 15.sp) }
+          }
+        }
+        if (rest.isNotEmpty()) Text(rest, color = ZcColors.Text, fontSize = 14.sp, lineHeight = 20.sp)
+      }
+    } else {
+      Text(content, color = ZcColors.Text, fontSize = 14.sp, lineHeight = 20.sp)
     }
-    Spacer(Modifier.height(4.dp))
   }
-  if (!isUser) ThinkingContent(msg.content)
-  else Text(msg.content, color = ZcColors.Text, fontSize = 14.sp, lineHeight = 20.sp)
-  }
-  }
-  if (!isUser && msg.tps > 0) {
-  Text("%.1f t/s · %d tok".format(msg.tps, msg.tokens), modifier = Modifier.padding(start = 4.dp, top = 2.dp), fontSize = 9.sp, color = ZcColors.Text3, fontFamily = FontFamily.Monospace)
-  }
-  }
-  if (isUser) {
-  Spacer(Modifier.width(8.dp))
-  Box(modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(ZcColors.Accent2), contentAlignment = Alignment.Center) {
-  Text("U", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
-  }
-  }
-  }
-}
 
-@Composable
-fun ThinkingContent(content: String) {
-  val pattern = remember { Regex("(?:<think>|<think>\\n?)(.*?)(?:</think>|</think>\\n?)", RegexOption.DOT_MATCHES_ALL) }
-  val match = remember(content) { pattern.find(content) }
-  if (match != null) {
-  val think = match.groupValues[1].trim()
-  val rest = content.substring(match.range.last + 1).trim()
-  var open by remember { mutableStateOf(false) }
-  Column {
-  Surface(onClick = { open = !open }, shape = RoundedCornerShape(8.dp), color = ZcColors.ThinkBg, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
-  Column(modifier = Modifier.padding(8.dp)) {
-  Row(verticalAlignment = Alignment.CenterVertically) {
-    Icon(Icons.Outlined.Lightbulb, null, modifier = Modifier.size(12.dp), tint = ZcColors.Purple)
-    Spacer(Modifier.width(4.dp))
-    Text(if (open) "Thinking" else "Thinking...", fontSize = 10.sp, color = ZcColors.Purple, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+  @Composable
+  fun StreamingBubble(text: String, processing: Boolean) {
+    if (processing) {
+      Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.Bottom) {
+        Box(modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(ZcColors.Accent), contentAlignment = Alignment.Center) {
+          Text("Z", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+        }
+        Spacer(Modifier.width(8.dp))
+        Surface(modifier = Modifier.clip(RoundedCornerShape(6.dp, 18.dp, 18.dp, 18.dp)), color = ZcColors.Card) {
+          Row(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(modifier = Modifier.size(14.dp), color = ZcColors.Accent2, strokeWidth = 2.dp)
+            Spacer(Modifier.width(8.dp))
+            Text("Processing prompt...", fontSize = 12.sp, color = ZcColors.Text2)
+          }
+        }
+      }
+      return
+    }
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.Bottom) {
+      Box(modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(ZcColors.Accent), contentAlignment = Alignment.Center) {
+        Text("Z", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+      }
+      Spacer(Modifier.width(8.dp))
+      Surface(modifier = Modifier.clip(RoundedCornerShape(6.dp, 18.dp, 18.dp, 18.dp)), color = ZcColors.Card) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+          Text(text, color = ZcColors.Text, fontSize = 14.sp, lineHeight = 20.sp)
+        }
+      }
+    }
   }
-  AnimatedVisibility(open) { Text(think, modifier = Modifier.padding(top = 4.dp), fontSize = 11.sp, color = ZcColors.Text3, lineHeight = 15.sp) }
-  }
-  }
-  if (rest.isNotEmpty()) Text(rest, color = ZcColors.Text, fontSize = 14.sp, lineHeight = 20.sp)
-  }
-  } else {
-  Text(content, color = ZcColors.Text, fontSize = 14.sp, lineHeight = 20.sp)
-  }
-}
 
-@Composable
-fun StreamingBubble(text: String, processing: Boolean) {
-  if (processing) {
-  Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.Bottom) {
-  Box(modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(ZcColors.Accent), contentAlignment = Alignment.Center) {
-  Text("Z", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
-  }
-  Spacer(Modifier.width(8.dp))
-  Surface(modifier = Modifier.clip(RoundedCornerShape(6.dp, 18.dp, 18.dp, 18.dp)), color = ZcColors.Card) {
-  Row(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-  CircularProgressIndicator(modifier = Modifier.size(14.dp), color = ZcColors.Accent2, strokeWidth = 2.dp)
-  Spacer(Modifier.width(8.dp))
-  Text("Processing prompt...", fontSize = 12.sp, color = ZcColors.Text2)
-  }
-  }
-  }
-  return
-  }
-  Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.Bottom) {
-  Box(modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(ZcColors.Accent), contentAlignment = Alignment.Center) {
-  Text("Z", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
-  }
-  Spacer(Modifier.width(8.dp))
-  Surface(modifier = Modifier.clip(RoundedCornerShape(6.dp, 18.dp, 18.dp, 18.dp)), color = ZcColors.Card) {
-  Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-  Text(text, color = ZcColors.Text, fontSize = 14.sp, lineHeight = 20.sp)
-  }
-  }
-  }
-}
-
-@Composable
-fun InputBar(
-  prompt: String, onPromptChange: (String) -> Unit, isInferring: Boolean,
-  attachmentFileName: String?,
-  onSend: () -> Unit, onStop: () -> Unit, onImage: () -> Unit
-) {
-  Surface(color = ZcColors.Surface, shadowElevation = 8.dp) {
-  Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-  if (attachmentFileName != null) {
-  Surface(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp), shape = RoundedCornerShape(8.dp), color = ZcColors.CardLight) {
-  Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-    Icon(Icons.Outlined.Image, null, modifier = Modifier.size(14.dp), tint = ZcColors.Purple)
-    Spacer(Modifier.width(4.dp))
-    Text(attachmentFileName, fontSize = 11.sp, color = ZcColors.Purple, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
-  }
-  }
-  }
-  OutlinedTextField(
-  value = prompt, onValueChange = onPromptChange,
-  modifier = Modifier.fillMaxWidth(),
-  placeholder = { Text("Message...", color = ZcColors.Text3, fontSize = 14.sp) },
-  enabled = !isInferring, maxLines = 5,
-  shape = RoundedCornerShape(14.dp),
-  keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-  keyboardActions = KeyboardActions(onSend = { if (!isInferring && prompt.isNotBlank()) onSend() }),
-  colors = OutlinedTextFieldDefaults.colors(
-  focusedBorderColor = ZcColors.Accent.copy(alpha = 0.5f), unfocusedBorderColor = ZcColors.Border,
-  focusedContainerColor = ZcColors.Card, unfocusedContainerColor = ZcColors.Card,
-  focusedTextColor = ZcColors.Text, unfocusedTextColor = ZcColors.Text, cursorColor = ZcColors.Accent
-  ),
-  textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
-  )
-  Spacer(Modifier.height(6.dp))
-  Row(verticalAlignment = Alignment.CenterVertically) {
-  IconButton(onClick = onImage, modifier = Modifier.size(36.dp)) {
-  Icon(Icons.Outlined.Image, "Attach Image", tint = ZcColors.Purple, modifier = Modifier.size(18.dp))
-  }
-  Spacer(Modifier.weight(1f))
-  val enabled = prompt.isNotBlank() && !isInferring
-  FilledIconButton(
-  onClick = if (isInferring) onStop else onSend,
-  enabled = enabled || isInferring,
-  modifier = Modifier.size(40.dp), shape = CircleShape,
-  colors = IconButtonDefaults.filledIconButtonColors(
-    containerColor = if (isInferring) ZcColors.Red else ZcColors.Accent,
-    disabledContainerColor = ZcColors.Card
-  )
+  @Composable
+  fun InputBar(
+    prompt: String, onPromptChange: (String) -> Unit, isInferring: Boolean,
+    attachmentFileName: String?,
+    onSend: () -> Unit, onStop: () -> Unit, onImage: () -> Unit
   ) {
-  if (isInferring) Icon(Icons.Filled.Stop, "Stop", tint = Color.White, modifier = Modifier.size(18.dp))
-  else Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = if (enabled) Color.White else ZcColors.Text3, modifier = Modifier.size(18.dp))
+    Surface(color = ZcColors.Surface, shadowElevation = 8.dp) {
+      Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+        if (attachmentFileName != null) {
+          Surface(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp), shape = RoundedCornerShape(8.dp), color = ZcColors.CardLight) {
+            Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+              Icon(Icons.Outlined.Image, null, modifier = Modifier.size(14.dp), tint = ZcColors.Purple)
+              Spacer(Modifier.width(4.dp))
+              Text(attachmentFileName, fontSize = 11.sp, color = ZcColors.Purple, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+            }
+          }
+        }
+        OutlinedTextField(
+          value = prompt, onValueChange = onPromptChange,
+          modifier = Modifier.fillMaxWidth(),
+          placeholder = { Text("Message...", color = ZcColors.Text3, fontSize = 14.sp) },
+          enabled = !isInferring, maxLines = 5,
+          shape = RoundedCornerShape(14.dp),
+          keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+          keyboardActions = KeyboardActions(onSend = { if (!isInferring && prompt.isNotBlank()) onSend() }),
+          colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = ZcColors.Accent.copy(alpha = 0.5f), unfocusedBorderColor = ZcColors.Border,
+            focusedContainerColor = ZcColors.Card, unfocusedContainerColor = ZcColors.Card,
+            focusedTextColor = ZcColors.Text, unfocusedTextColor = ZcColors.Text, cursorColor = ZcColors.Accent
+          ),
+          textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          IconButton(onClick = onImage, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Outlined.Image, "Attach Image", tint = ZcColors.Purple, modifier = Modifier.size(18.dp))
+          }
+          Spacer(Modifier.weight(1f))
+          val enabled = prompt.isNotBlank() && !isInferring
+          FilledIconButton(
+            onClick = if (isInferring) onStop else onSend,
+            enabled = enabled || isInferring,
+            modifier = Modifier.size(40.dp), shape = CircleShape,
+            colors = IconButtonDefaults.filledIconButtonColors(
+              containerColor = if (isInferring) ZcColors.Red else ZcColors.Accent,
+              disabledContainerColor = ZcColors.Card
+            )
+          ) {
+            if (isInferring) Icon(Icons.Filled.Stop, "Stop", tint = Color.White, modifier = Modifier.size(18.dp))
+            else Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = if (enabled) Color.White else ZcColors.Text3, modifier = Modifier.size(18.dp))
+          }
+        }
+      }
+    }
   }
-  }
-  }
-  }
-}
+
+
+
+
+
+
+

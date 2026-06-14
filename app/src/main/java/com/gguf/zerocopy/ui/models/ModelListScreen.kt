@@ -39,127 +39,134 @@ fun ModelListScreen(
   var loading by remember { mutableStateOf(false) }
 
   val filePicker = rememberLauncherForActivityResult(
-  ActivityResultContracts.StartActivityForResult()
+    ActivityResultContracts.StartActivityForResult()
   ) { result ->
-  if (result.resultCode == Activity.RESULT_OK) {
-  result.data?.data?.let { uri ->
-  val name = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "model.gguf"
-  loading = true
-  scope.launch {
-  val result = app.modelRepository.importUri(uri, name)
-  if (result.isSuccess) {
-    val model = result.getOrThrow()
-    app.engineManager.selectEngineForFormat(model.path)
-    val loadResult = app.engineManager.getActiveEngine()?.loadModel(model.path)
-    withContext(Dispatchers.Main) {
-        loading = false
-        if (loadResult?.isSuccess == true) {
-            app.modelRepository.markUsed(model.id)
-            onModelSelected(model.path, model.name)
+    if (result.resultCode == Activity.RESULT_OK) {
+      result.data?.data?.let { uri ->
+        val name = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "model.gguf"
+        loading = true
+        scope.launch {
+          val result = app.modelRepository.importUri(uri, name)
+          if (result.isSuccess) {
+            val model = result.getOrThrow()
+            app.engineManager.selectEngineForFormat(model.path)
+            val loadResult = app.engineManager.getActiveEngine()?.loadModel(model.path)
+            withContext(Dispatchers.Main) {
+              loading = false
+              if (loadResult?.isSuccess == true) {
+                app.modelRepository.markUsed(model.id)
+                onModelSelected(model.path, model.name)
+              }
+            }
+          } else {
+            loading = false
+          }
         }
+      }
     }
-  } else {
-    loading = false
-  }
-  }
-  }
-  }
   }
 
   Scaffold(
-  topBar = {
-  TopAppBar(
-  title = { Text("Your Models", fontWeight = FontWeight.Bold, color = ZcColors.Text) },
-  navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back", tint = ZcColors.Text2) } },
-  actions = {
-  IconButton(onClick = {
-    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-        addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
-        putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/octet-stream", "*/*"))
-    }
-    filePicker.launch(intent)
-  }) {
-    Icon(Icons.Filled.Add, "Import", tint = ZcColors.Accent)
-  }
-  },
-  colors = TopAppBarDefaults.topAppBarColors(containerColor = ZcColors.Bg)
-  )
-  },
-  containerColor = ZcColors.Bg
-  ) { pad ->
-  Box(modifier = Modifier.padding(pad).fillMaxSize()) {
-  if (models.isEmpty() && !loading) {
-  Column(modifier = Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-  Icon(Icons.Outlined.ModelTraining, null, modifier = Modifier.size(48.dp), tint = ZcColors.Text3)
-  Spacer(Modifier.height(16.dp))
-  Text("No models imported", color = ZcColors.Text3, fontSize = 16.sp)
-  Text("Tap + to add a model file", color = ZcColors.Text3, fontSize = 13.sp)
-  }
-  } else {
-  LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-  items(models, key = { it.id }) { model ->
-    ModelCard(
-        model = model,
-        onClick = {
-            scope.launch {
-                app.engineManager.selectEngineForFormat(model.path)
-                val loadResult = app.engineManager.getActiveEngine()?.loadModel(model.path)
-                if (loadResult?.isSuccess == true) {
-                    app.modelRepository.markUsed(model.id)
-                    onModelSelected(model.path, model.name)
-                }
+    topBar = {
+      TopAppBar(
+        title = { Text("Your Models", fontWeight = FontWeight.Bold, color = ZcColors.Text) },
+        navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "Back", tint = ZcColors.Text2) } },
+        actions = {
+          IconButton(onClick = {
+              val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/octet-stream", "*/*"))
+              }
+              filePicker.launch(intent)
+            }) {
+              Icon(Icons.Filled.Add, "Import", tint = ZcColors.Accent)
             }
-        },
-        onDelete = { app.modelRepository.deleteModel(model.id) }
-    )
-  }
-  }
+          },
+          colors = TopAppBarDefaults.topAppBarColors(containerColor = ZcColors.Bg)
+        )
+      },
+      containerColor = ZcColors.Bg
+    ) { pad ->
+      Box(modifier = Modifier.padding(pad).fillMaxSize()) {
+        if (models.isEmpty() && !loading) {
+          Column(modifier = Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Outlined.ModelTraining, null, modifier = Modifier.size(48.dp), tint = ZcColors.Text3)
+            Spacer(Modifier.height(16.dp))
+            Text("No models imported", color = ZcColors.Text3, fontSize = 16.sp)
+            Text("Tap + to add a model file", color = ZcColors.Text3, fontSize = 13.sp)
+          }
+        } else {
+          LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(models, key = { it.id }) { model ->
+              ModelCard(
+                model = model,
+                onClick = {
+                  scope.launch {
+                    app.engineManager.selectEngineForFormat(model.path)
+                    val loadResult = app.engineManager.getActiveEngine()?.loadModel(model.path)
+                    if (loadResult?.isSuccess == true) {
+                      app.modelRepository.markUsed(model.id)
+                      onModelSelected(model.path, model.name)
+                    }
+                  }
+                },
+                onDelete = { app.modelRepository.deleteModel(model.id) }
+              )
+            }
+          }
+        }
+
+        if (loading) {
+          CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = ZcColors.Accent)
+        }
+      }
+    }
   }
 
-  if (loading) {
-  CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = ZcColors.Accent)
-  }
-  }
-  }
-}
-
-@Composable
-fun ModelCard(
-  model: com.gguf.zerocopy.data.repository.LocalModel,
-  onClick: () -> Unit,
-  onDelete: () -> Unit
-) {
-  var showDeleteConfirm by remember { mutableStateOf(false) }
-
-  Surface(
-  modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-  shape = RoundedCornerShape(12.dp), color = ZcColors.CardLight
+  @Composable
+  fun ModelCard(
+    model: com.gguf.zerocopy.data.repository.LocalModel,
+    onClick: () -> Unit,
+    onDelete: () -> Unit
   ) {
-  Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-  Column(Modifier.weight(1f)) {
-  Text(model.name, color = ZcColors.Text, fontSize = 14.sp, maxLines = 1)
-  Row {
-  Text(model.format.uppercase(), fontSize = 10.sp, color = ZcColors.Accent, fontFamily = FontFamily.Monospace)
-  Spacer(Modifier.width(8.dp))
-  Text(model.sizeFormatted, fontSize = 10.sp, color = ZcColors.Text3, fontFamily = FontFamily.Monospace)
-  Spacer(Modifier.width(8.dp))
-  Text(model.engine.id, fontSize = 10.sp, color = ZcColors.Accent2, fontFamily = FontFamily.Monospace)
-  }
-  }
-  IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(32.dp)) {
-  Icon(Icons.Filled.Delete, "Delete", tint = ZcColors.Red, modifier = Modifier.size(18.dp))
-  }
-  }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    Surface(
+      modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+      shape = RoundedCornerShape(12.dp), color = ZcColors.CardLight
+    ) {
+      Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+          Text(model.name, color = ZcColors.Text, fontSize = 14.sp, maxLines = 1)
+          Row {
+            Text(model.format.uppercase(), fontSize = 10.sp, color = ZcColors.Accent, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.width(8.dp))
+            Text(model.sizeFormatted, fontSize = 10.sp, color = ZcColors.Text3, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.width(8.dp))
+            Text(model.engine.id, fontSize = 10.sp, color = ZcColors.Accent2, fontFamily = FontFamily.Monospace)
+          }
+        }
+        IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(32.dp)) {
+          Icon(Icons.Filled.Delete, "Delete", tint = ZcColors.Red, modifier = Modifier.size(18.dp))
+        }
+      }
+    }
+
+    if (showDeleteConfirm) {
+      AlertDialog(
+        onDismissRequest = { showDeleteConfirm = false },
+        containerColor = ZcColors.Card,
+        title = { Text("Delete Model?", color = ZcColors.Text, fontSize = 16.sp) },
+        text = { Text("Remove ${model.name} from device?", color = ZcColors.Text2, fontSize = 14.sp) },
+        confirmButton = { TextButton(onClick = { showDeleteConfirm = false; onDelete() }) { Text("Delete", color = ZcColors.Red) } },
+        dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel", color = ZcColors.Text2) } }
+      )
+    }
   }
 
-  if (showDeleteConfirm) {
-  AlertDialog(
-  onDismissRequest = { showDeleteConfirm = false },
-  containerColor = ZcColors.Card,
-  title = { Text("Delete Model?", color = ZcColors.Text, fontSize = 16.sp) },
-  text = { Text("Remove ${model.name} from device?", color = ZcColors.Text2, fontSize = 14.sp) },
-  confirmButton = { TextButton(onClick = { showDeleteConfirm = false; onDelete() }) { Text("Delete", color = ZcColors.Red) } },
-  dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel", color = ZcColors.Text2) } }
-  )
-  }
-}
+
+
+
+
+
+

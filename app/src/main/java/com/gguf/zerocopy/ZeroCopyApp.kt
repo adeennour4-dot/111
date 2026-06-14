@@ -18,23 +18,30 @@ class ZeroCopyApp : Application() {
   private set
 
   override fun onCreate() {
-  super.onCreate()
-  instance = this
+    super.onCreate()
+    instance = this
 
-  SettingsManager.init(this)
-  deviceUtils = DeviceUtils(this)
-  engineManager = EngineManager(this)
-  modelRepository = ModelRepository(this)
-  chatRepository = ChatRepository(this)
+    SettingsManager.init(this)
+    deviceUtils = DeviceUtils(this)
+    engineManager = EngineManager(this)
+    modelRepository = ModelRepository(this)
+    chatRepository = ChatRepository(this)
 
-  if (SettingsManager.autoDetectDevice) {
-  val info = deviceUtils.detect()
-  SettingsManager.applyDeviceDefaults(info)
-  }
+    if (SettingsManager.autoDetectDevice) {
+      val info = deviceUtils.detect()
+      SettingsManager.applyDeviceDefaults(info)
+    }
   }
 
   companion object {
-  lateinit var instance: ZeroCopyApp
-  private set
+    lateinit var instance: ZeroCopyApp
+    private set
   }
 }
+
+
+
+
+
+
+

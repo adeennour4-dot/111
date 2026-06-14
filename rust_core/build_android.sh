@@ -5,7 +5,7 @@
 # Setup:
 #   rustup target add aarch64-linux-android
 #   cargo install cargo-ndk
-#   export ANDROID_NDK_HOME=$HOME/Android/Sdk/ndk/29.0.14206865
+#   export ANDROID_NDK_HOME=$HOME/Android/Sdk/ndk/27.0.12077973
 #
 # Run from rust_core/ directory
 

@@ -12,22 +12,22 @@ class EngineManager(context: Context) {
   val liteRt: LiteRtEngine
 
   init {
-  llamaCpp = LlamaCppEngine()
-  mnn = MnnEngine()
-  liteRt = LiteRtEngine()
-  engines[EngineType.LLAMA_CPP] = llamaCpp
-  engines[EngineType.MNN] = mnn
-  engines[EngineType.LITER_T] = liteRt
+    llamaCpp = LlamaCppEngine()
+    mnn = MnnEngine()
+    liteRt = LiteRtEngine()
+    engines[EngineType.LLAMA_CPP] = llamaCpp
+    engines[EngineType.MNN] = mnn
+    engines[EngineType.LITER_T] = liteRt
   }
 
   fun selectEngine(type: EngineType): InferenceEngine {
-  activeEngine = engines[type]
-  return activeEngine!!
+    activeEngine = engines[type]
+    return activeEngine!!
   }
 
   fun selectEngineForFormat(path: String): InferenceEngine {
-  val type = EngineType.fromFormat(path)
-  return selectEngine(type)
+    val type = EngineType.fromFormat(path)
+    return selectEngine(type)
   }
 
   fun getActiveEngine(): InferenceEngine? = activeEngine
@@ -37,7 +37,14 @@ class EngineManager(context: Context) {
   fun getSupportedExtensions(): Set<String> = setOf("gguf", "mnn", "tflite", "litertlm")
 
   fun unloadAll() {
-  engines.values.forEach { it.unloadModel() }
-  activeEngine = null
+    engines.values.forEach { it.unloadModel() }
+    activeEngine = null
   }
 }
+
+
+
+
+
+
+

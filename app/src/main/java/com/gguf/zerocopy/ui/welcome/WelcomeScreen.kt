@@ -38,94 +38,101 @@ fun WelcomeScreen(onLoadModel: (String, String) -> Unit, onDownload: () -> Unit)
   var status by remember { mutableStateOf("") }
 
   val filePicker = rememberLauncherForActivityResult(
-  ActivityResultContracts.StartActivityForResult()
+    ActivityResultContracts.StartActivityForResult()
   ) { result ->
-  if (result.resultCode == Activity.RESULT_OK) {
-  result.data?.data?.let { uri ->
-  val name = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':')
-  ?.let { if (it.contains('.')) it else null } ?: "model.gguf"
-  loading = true
-  status = "Importing..."
-  scope.launch {
-  val result = app.modelRepository.importUri(uri, name)
-  if (result.isSuccess) {
-    val model = result.getOrThrow()
-    status = "Loading..."
-    val engine = app.engineManager.selectEngineForFormat(model.path)
-    val loadResult = engine.loadModel(model.path)
-    withContext(Dispatchers.Main) {
-        loading = false
-        if (loadResult.isSuccess) {
-            app.modelRepository.markUsed(model.id)
-            onLoadModel(model.path, model.name)
-        } else {
-            status = "Failed: ${loadResult.exceptionOrNull()?.message}"
+    if (result.resultCode == Activity.RESULT_OK) {
+      result.data?.data?.let { uri ->
+        val name = uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':')
+        ?.let { if (it.contains('.')) it else null } ?: "model.gguf"
+        loading = true
+        status = "Importing..."
+        scope.launch {
+          val result = app.modelRepository.importUri(uri, name)
+          if (result.isSuccess) {
+            val model = result.getOrThrow()
+            status = "Loading..."
+            val engine = app.engineManager.selectEngineForFormat(model.path)
+            val loadResult = engine.loadModel(model.path)
+            withContext(Dispatchers.Main) {
+              loading = false
+              if (loadResult.isSuccess) {
+                app.modelRepository.markUsed(model.id)
+                onLoadModel(model.path, model.name)
+              } else {
+                status = "Failed: ${loadResult.exceptionOrNull()?.message}"
+              }
+            }
+          } else {
+            loading = false
+            status = "Import failed"
+          }
         }
+      }
     }
-  } else {
-    loading = false
-    status = "Import failed"
-  }
-  }
-  }
-  }
   }
 
   Column(
-  modifier = Modifier.fillMaxSize().padding(32.dp),
-  verticalArrangement = Arrangement.Center,
-  horizontalAlignment = Alignment.CenterHorizontally
+    modifier = Modifier.fillMaxSize().padding(32.dp),
+    verticalArrangement = Arrangement.Center,
+    horizontalAlignment = Alignment.CenterHorizontally
   ) {
-  Box(
-  modifier = Modifier.size(80.dp).clip(RoundedCornerShape(20.dp))
-  .background(Brush.linearGradient(listOf(ZcColors.GradientStart, ZcColors.GradientEnd))),
-  contentAlignment = Alignment.Center
-  ) {
-  Text("ZC", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color.White, fontFamily = FontFamily.Monospace)
-  }
-  Spacer(Modifier.height(24.dp))
-  Text("ZeroCopy", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = ZcColors.Text, fontFamily = FontFamily.Monospace)
-  Text("Private on-device LLM", fontSize = 13.sp, color = ZcColors.Text2)
-  Spacer(Modifier.height(8.dp))
-  Text("llama.cpp · MNN · LiteRT-LM", fontSize = 11.sp, color = ZcColors.Text3, fontFamily = FontFamily.Monospace)
-  Spacer(Modifier.height(40.dp))
+    Box(
+      modifier = Modifier.size(80.dp).clip(RoundedCornerShape(20.dp))
+      .background(Brush.linearGradient(listOf(ZcColors.GradientStart, ZcColors.GradientEnd))),
+      contentAlignment = Alignment.Center
+    ) {
+      Text("ZC", fontSize = 28.sp, fontWeight = FontWeight.Black, color = Color.White, fontFamily = FontFamily.Monospace)
+    }
+    Spacer(Modifier.height(24.dp))
+    Text("ZeroCopy", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = ZcColors.Text, fontFamily = FontFamily.Monospace)
+    Text("Private on-device LLM", fontSize = 13.sp, color = ZcColors.Text2)
+    Spacer(Modifier.height(8.dp))
+    Text("llama.cpp · MNN · LiteRT-LM", fontSize = 11.sp, color = ZcColors.Text3, fontFamily = FontFamily.Monospace)
+    Spacer(Modifier.height(40.dp))
 
-  Button(
-  onClick = {
-  val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-  addCategory(Intent.CATEGORY_OPENABLE)
-  type = "*/*"
-  putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/octet-stream", "*/*"))
-  }
-  filePicker.launch(intent)
-  },
-  modifier = Modifier.fillMaxWidth().height(52.dp),
-  shape = RoundedCornerShape(14.dp),
-  colors = ButtonDefaults.buttonColors(containerColor = ZcColors.Accent)
-  ) {
-  Icon(Icons.Outlined.FolderOpen, null, modifier = Modifier.size(20.dp))
-  Spacer(Modifier.width(8.dp))
-  Text("Load Model", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.White)
-  }
+    Button(
+      onClick = {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+          addCategory(Intent.CATEGORY_OPENABLE)
+          type = "*/*"
+          putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/octet-stream", "*/*"))
+        }
+        filePicker.launch(intent)
+      },
+      modifier = Modifier.fillMaxWidth().height(52.dp),
+      shape = RoundedCornerShape(14.dp),
+      colors = ButtonDefaults.buttonColors(containerColor = ZcColors.Accent)
+    ) {
+      Icon(Icons.Outlined.FolderOpen, null, modifier = Modifier.size(20.dp))
+      Spacer(Modifier.width(8.dp))
+      Text("Load Model", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.White)
+    }
 
-  Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(12.dp))
 
-  OutlinedButton(
-  onClick = onDownload,
-  modifier = Modifier.fillMaxWidth().height(52.dp),
-  shape = RoundedCornerShape(14.dp),
-  colors = ButtonDefaults.outlinedButtonColors(contentColor = ZcColors.Accent2)
-  ) {
-  Icon(Icons.Outlined.CloudDownload, null, modifier = Modifier.size(20.dp))
-  Spacer(Modifier.width(8.dp))
-  Text("Download Model", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = ZcColors.Accent2)
-  }
+    OutlinedButton(
+      onClick = onDownload,
+      modifier = Modifier.fillMaxWidth().height(52.dp),
+      shape = RoundedCornerShape(14.dp),
+      colors = ButtonDefaults.outlinedButtonColors(contentColor = ZcColors.Accent2)
+    ) {
+      Icon(Icons.Outlined.CloudDownload, null, modifier = Modifier.size(20.dp))
+      Spacer(Modifier.width(8.dp))
+      Text("Download Model", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = ZcColors.Accent2)
+    }
 
-  if (loading) {
-  Spacer(Modifier.height(16.dp))
-  CircularProgressIndicator(color = ZcColors.Accent, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-  Spacer(Modifier.height(8.dp))
-  Text(status, fontSize = 11.sp, color = ZcColors.Text3, fontFamily = FontFamily.Monospace)
-  }
+    if (loading) {
+      Spacer(Modifier.height(16.dp))
+      CircularProgressIndicator(color = ZcColors.Accent, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+      Spacer(Modifier.height(8.dp))
+      Text(status, fontSize = 11.sp, color = ZcColors.Text3, fontFamily = FontFamily.Monospace)
+    }
   }
 }
+
+
+
+
+
+
+

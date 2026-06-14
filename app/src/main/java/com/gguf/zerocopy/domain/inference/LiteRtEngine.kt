@@ -28,90 +28,90 @@ class LiteRtEngine : InferenceEngine {
   private val fullResponse = StringBuilder()
 
   override suspend fun loadModel(path: String): Result<Unit> = withContext(Dispatchers.IO) {
-  try {
-  currentModelPath = path
-  val extConfig = EngineConfig(path, preferredBackend, null, null, null, null, null)
-  engine = Engine(extConfig)
-  engine!!.initialize()
-  isModelLoaded = true
-  modelInfo = ModelInfo(
-  arch = "litert-lm",
-  engineType = EngineType.LITER_T
-  )
-  Result.success(Unit)
-  } catch (e: Exception) {
-  tryFallbackLoad(path)
-  }
+    try {
+      currentModelPath = path
+      val extConfig = EngineConfig(path, preferredBackend, null, null, null, null, null)
+      engine = Engine(extConfig)
+      engine!!.initialize()
+      isModelLoaded = true
+      modelInfo = ModelInfo(
+        arch = "litert-lm",
+        engineType = EngineType.LITER_T
+      )
+      Result.success(Unit)
+    } catch (e: Exception) {
+      tryFallbackLoad(path)
+    }
   }
 
   private fun tryFallbackLoad(path: String): Result<Unit> {
-  return try {
-  val legacyConfig = EngineConfig(path, Backend.CPU(null), null, null, null, null, null)
-  engine = Engine(legacyConfig)
-  engine!!.initialize()
-  isModelLoaded = true
-  modelInfo = ModelInfo(engineType = EngineType.LITER_T)
-  Result.success(Unit)
-  } catch (e: Exception) {
-  Result.failure(Exception("LiteRT-LM load failed: ${e.message}"))
-  }
+    return try {
+      val legacyConfig = EngineConfig(path, Backend.CPU(null), null, null, null, null, null)
+      engine = Engine(legacyConfig)
+      engine!!.initialize()
+      isModelLoaded = true
+      modelInfo = ModelInfo(engineType = EngineType.LITER_T)
+      Result.success(Unit)
+    } catch (e: Exception) {
+      Result.failure(Exception("LiteRT-LM load failed: ${e.message}"))
+    }
   }
 
   override fun unloadModel() {
-  try { conversation?.close() } catch (_: Exception) {}
-  try { engine?.close() } catch (_: Exception) {}
-  engine = null; conversation = null
-  isModelLoaded = false; modelInfo = null; currentModelPath = ""
+    try { conversation?.close() } catch (_: Exception) {}
+    try { engine?.close() } catch (_: Exception) {}
+    engine = null; conversation = null
+    isModelLoaded = false; modelInfo = null; currentModelPath = ""
   }
 
   override suspend fun executeInference(prompt: String, callback: TokenCallback) {
-  withContext(Dispatchers.IO) {
-  synchronized(partialStream) { partialStream.clear(); fullResponse.clear() }
-  inferenceDone.set(false)
-  tokensGenerated.set(0)
+    withContext(Dispatchers.IO) {
+      synchronized(partialStream) { partialStream.clear(); fullResponse.clear() }
+      inferenceDone.set(false)
+      tokensGenerated.set(0)
 
-  try {
-  if (conversation == null) {
-  conversation = engine?.createConversation()
-  if (systemPrompt.isNotEmpty()) {
-    try {
-        conversation?.sendMessage(Message.system(Contents.of(systemPrompt)), emptyMap())
-    } catch (_: Exception) {}
-  }
-  }
+      try {
+        if (conversation == null) {
+          conversation = engine?.createConversation()
+          if (systemPrompt.isNotEmpty()) {
+            try {
+              conversation?.sendMessage(Message.system(Contents.of(systemPrompt)), emptyMap())
+            } catch (_: Exception) {}
+          }
+        }
 
-  val msgCallback = object : MessageCallback {
-  override fun onMessage(message: Message) {
-    val text = message.toString()
-    synchronized(partialStream) { partialStream.clear(); partialStream.append(text); fullResponse.append(text) }
-    tokensGenerated.incrementAndGet()
-  }
-  override fun onDone() { inferenceDone.set(true) }
-  override fun onError(t: Throwable) { inferenceDone.set(true) }
-  }
+        val msgCallback = object : MessageCallback {
+          override fun onMessage(message: Message) {
+            val text = message.toString()
+            synchronized(partialStream) { partialStream.clear(); partialStream.append(text); fullResponse.append(text) }
+            tokensGenerated.incrementAndGet()
+          }
+          override fun onDone() { inferenceDone.set(true) }
+          override fun onError(t: Throwable) { inferenceDone.set(true) }
+        }
 
-  conversation?.sendMessageAsync(prompt, msgCallback, emptyMap())
-  } catch (e: Exception) {
-  inferenceDone.set(true)
-  }
-  }
+        conversation?.sendMessageAsync(prompt, msgCallback, emptyMap())
+      } catch (e: Exception) {
+        inferenceDone.set(true)
+      }
+    }
   }
 
   override fun abortInference() {
-  inferenceDone.set(true)
-  try { conversation?.cancelProcess() } catch (_: Exception) {}
+    inferenceDone.set(true)
+    try { conversation?.cancelProcess() } catch (_: Exception) {}
   }
 
   override fun resetContext() {
-  try { conversation?.close() } catch (_: Exception) {}
-  conversation = null
-  synchronized(partialStream) { partialStream.clear(); fullResponse.clear() }
-  inferenceDone.set(true)
-  tokensGenerated.set(0)
+    try { conversation?.close() } catch (_: Exception) {}
+    conversation = null
+    synchronized(partialStream) { partialStream.clear(); fullResponse.clear() }
+    inferenceDone.set(true)
+    tokensGenerated.set(0)
   }
 
   override suspend fun benchmark(ppTokens: Int, tgTokens: Int): BenchmarkResult {
-  return BenchmarkResult(engine = engineName)
+    return BenchmarkResult(engine = engineName)
   }
 
   override fun supportsFormat(path: String): Boolean =
@@ -123,3 +123,10 @@ class LiteRtEngine : InferenceEngine {
   fun getTokensGenerated(): Int = tokensGenerated.get()
   fun getKvUsage(): Int = 0
 }
+
+
+
+
+
+
+

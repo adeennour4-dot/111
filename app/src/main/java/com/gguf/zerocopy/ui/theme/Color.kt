@@ -21,3 +21,10 @@ object ZcColors {
   val GradientStart = Color(0xFF6C63FF)
   val GradientEnd   = Color(0xFF00D9A6)
 }
+
+
+
+
+
+
+
