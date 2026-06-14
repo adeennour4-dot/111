@@ -76,7 +76,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
 
-    implementation("com.google.ai.edge.litertlm:litertlm-android:1.1.0")
+    implementation("com.google.ai.edge.litertlm:litertlm-android:latest.release")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
