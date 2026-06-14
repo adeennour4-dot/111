@@ -54,10 +54,3 @@ object RustCore {
 
   private external fun nativeShouldReduceContext(): Boolean
 }
-
-
-
-
-
-
-

@@ -30,7 +30,7 @@ class LiteRtEngine : InferenceEngine {
   override suspend fun loadModel(path: String): Result<Unit> = withContext(Dispatchers.IO) {
     try {
       currentModelPath = path
-      val extConfig = EngineConfig(path, preferredBackend, null, null, null, null, null)
+      val extConfig = EngineConfig(modelPath = path, backend = preferredBackend)
       engine = Engine(extConfig)
       engine!!.initialize()
       isModelLoaded = true
@@ -46,7 +46,7 @@ class LiteRtEngine : InferenceEngine {
 
   private fun tryFallbackLoad(path: String): Result<Unit> {
     return try {
-      val legacyConfig = EngineConfig(path, Backend.CPU(null), null, null, null, null, null)
+      val legacyConfig = EngineConfig(modelPath = path, backend = Backend.CPU())
       engine = Engine(legacyConfig)
       engine!!.initialize()
       isModelLoaded = true

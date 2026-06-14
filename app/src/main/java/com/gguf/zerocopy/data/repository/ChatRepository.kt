@@ -143,33 +143,32 @@ class ChatRepository(context: Context) {
     val json = JSONArray()
     messages.forEach { msg ->
       json.put(JSONObject().apply {
-          put("role", msg.role.name.lowercase())
-          put("content", msg.content)
-          put("timestamp", msg.timestamp)
-          put("tps", msg.tps.toDouble())
-          put("tokens", msg.tokens)
-          if (msg.attachmentPath != null) put("attachment", msg.attachmentPath)
-          if (msg.attachmentType != null) put("attachmentType", msg.attachmentType.name)
-        })
-      }
-      File(sessionsDir, "${sessionId}_messages.json").writeText(json.toString())
+        put("role", msg.role.name.lowercase())
+        put("content", msg.content)
+        put("timestamp", msg.timestamp)
+        put("tps", msg.tps.toDouble())
+        put("tokens", msg.tokens)
+        if (msg.attachmentPath != null) put("attachment", msg.attachmentPath)
+        if (msg.attachmentType != null) put("attachmentType", msg.attachmentType.name)
+      })
     }
+    File(sessionsDir, "${sessionId}_messages.json").writeText(json.toString())
+  }
 
-    private fun saveSessionMeta(session: ChatSession) {
-      File(sessionsDir, "${session.id}_meta.json").writeText(JSONObject().apply {
-          put("id", session.id)
-          put("name", session.name)
-          put("createdAt", session.createdAt)
-          put("lastMessageAt", session.lastMessageAt)
-          put("messageCount", session.messageCount)
-        }.toString())
-      }
+  private fun saveSessionMeta(session: ChatSession) {
+    File(sessionsDir, "${session.id}_meta.json").writeText(JSONObject().apply {
+      put("id", session.id)
+      put("name", session.name)
+      put("createdAt", session.createdAt)
+      put("lastMessageAt", session.lastMessageAt)
+      put("messageCount", session.messageCount)
+    }.toString())
+  }
 
-      private fun generateSessionName(): String {
-        val sdf = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault())
-        return "Chat ${sdf.format(Date())}"
-      }
-    }
+  private fun generateSessionName(): String {
+    val sdf = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault())
+    return "Chat ${sdf.format(Date())}"
+  }
 
 
 

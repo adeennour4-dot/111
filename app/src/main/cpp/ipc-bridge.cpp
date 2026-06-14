@@ -307,7 +307,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
     llama_context_params cparams = llama_context_default_params();
     cparams.n_ctx           = n_ctx;
     cparams.n_batch         = g_cfg.n_batch;
-    cparams.n_ubatch        = g_cfg.n_batch;
+    cparams.n_ubatch        = 512;
     cparams.n_threads       = n_threads;
     cparams.n_threads_batch = n_threads;
     cparams.flash_attn      = g_cfg.flash_attn;

@@ -24,18 +24,23 @@ data class RepeatPenaltyConfig(
   val presPenalty: Float = 0.0f,
 )
 
-enum class EngineType(val id: String, val formats: List<String>) {
+enum class EngineType(
+  val id: String,
+  val formats: List<String>,
+) {
   LLAMA_CPP("llama.cpp", listOf("gguf")),
   MNN("MNN", listOf("mnn")),
-  LITER_T("LiteRT-LM", listOf("tflite", "litertlm"));
+  LITER_T("LiteRT-LM", listOf("tflite", "litertlm")),
+  ;
 
   companion object {
-    fun fromFormat(path: String): EngineType = when {
-      path.endsWith(".gguf", true) -> LLAMA_CPP
-      path.endsWith(".mnn", true) -> MNN
-      path.endsWith(".tflite", true) || path.endsWith(".litertlm", true) -> LITER_T
-      else -> LLAMA_CPP
-    }
+    fun fromFormat(path: String): EngineType =
+      when {
+        path.endsWith(".gguf", true) -> LLAMA_CPP
+        path.endsWith(".mnn", true) -> MNN
+        path.endsWith(".tflite", true) || path.endsWith(".litertlm", true) -> LITER_T
+        else -> LLAMA_CPP
+      }
   }
 }
 
@@ -49,10 +54,3 @@ data class BenchmarkResult(
   val prefillTokens: Int = 0,
   val decodeTokens: Int = 0,
 )
-
-
-
-
-
-
-

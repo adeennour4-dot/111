@@ -31,8 +31,8 @@ pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_init(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_optimizeThreadConfig(
-    _env: JNIEnv, _class: JClass,
+pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_optimizeThreadConfig<'local>(
+    mut env: JNIEnv<'local>, _class: JClass<'local>,
     model_size_mb: jint, gpu_layers: jint
 ) -> jstring {
     let sched = SCHEDULER.lock().unwrap();
@@ -40,15 +40,21 @@ pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_optimize
         .map(|s| s.optimize_threads(model_size_mb as u64, gpu_layers as u32))
         .unwrap_or_default();
     let json = serde_json::to_string(&config).unwrap_or_default();
-    // Return as JString - but simpler: just return nothing for now
-    std::ptr::null_mut()
+    let output = env.new_string(&json).unwrap();
+    output.into_raw()
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_getMemoryAdvice(
-    _env: JNIEnv, _class: JClass
+pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_getMemoryAdvice<'local>(
+    mut env: JNIEnv<'local>, _class: JClass<'local>
 ) -> jstring {
-    std::ptr::null_mut()
+    let mem = MEMORY.lock().unwrap();
+    let advice = mem.as_ref()
+        .map(|m| m.get_advice())
+        .unwrap_or_default();
+    let json = serde_json::to_string(&advice).unwrap_or_default();
+    let output = env.new_string(&json).unwrap();
+    output.into_raw()
 }
 
 #[no_mangle]

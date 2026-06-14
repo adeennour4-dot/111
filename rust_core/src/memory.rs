@@ -1,9 +1,26 @@
+use serde::{Serialize, Deserialize};
 use std::collections::VecDeque;
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MemoryAdvice {
+    pub under_pressure: bool,
+    pub pressure_percent: f64,
+    pub available_mb: u64,
+    pub recommend_kv_quant: String,
+    pub recommend_offload: bool,
+    pub should_reduce_context: bool,
+}
 
 pub struct MemoryMonitor {
     total_ram_mb: u64,
     pressure_samples: VecDeque<f64>,
     sample_count: usize,
+}
+
+impl Default for MemoryMonitor {
+    fn default() -> Self {
+        Self::new(4096)
+    }
 }
 
 impl MemoryMonitor {
@@ -48,5 +65,16 @@ impl MemoryMonitor {
 
     pub fn recommend_model_to_offload(&self) -> bool {
         self.is_under_pressure()
+    }
+
+    pub fn get_advice(&self) -> MemoryAdvice {
+        MemoryAdvice {
+            under_pressure: self.is_under_pressure(),
+            pressure_percent: self.avg_pressure() * 100.0,
+            available_mb: self.available_mb(),
+            recommend_kv_quant: self.recommend_kv_cache_quant().to_string(),
+            recommend_offload: self.recommend_model_to_offload(),
+            should_reduce_context: self.is_under_pressure(),
+        }
     }
 }
