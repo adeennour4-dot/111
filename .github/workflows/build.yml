@@ -150,6 +150,9 @@ jobs:
       # -----------------------------------------------------------------------
       # Build APK
       # -----------------------------------------------------------------------
+      - name: Make gradlew executable         
+        run: chmod +x gradlew                 
+                   
       - name: Build debug APK
         if: ${{ github.event.inputs.build_type != 'release' && github.ref_type != 'tag' }}
         run: |
