@@ -12,7 +12,7 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ARM_ARCH_FLAGS}")
 endif()
 
-option(GGML_VULKAN "Enable Vulkan" ON)
+option(GGML_VULKAN "Enable Vulkan" OFF)
 option(GGML_OPENCL "Enable OpenCL" OFF)
 set(GGML_OPENMP        OFF CACHE BOOL "" FORCE)
 set(GGML_LLAMAFILE     OFF CACHE BOOL "" FORCE)

@@ -348,7 +348,7 @@ class ModelRepository(private val context: Context) {
         Result.success(model)
       } catch (e: Exception) {
         if (e.message == "Download cancelled") throw e
-        Result.failure(e)
+        return Result.failure(e)
       }
     }
   }

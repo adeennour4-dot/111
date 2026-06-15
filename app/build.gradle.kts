@@ -22,7 +22,7 @@ android {
                 cFlags  ("-O3 -flto=thin -march=armv8.6-a+dotprod+i8mm+fp16 -fno-stack-protector")
                 arguments(
                     "-DANDROID_STL=c++_shared",
-                    "-DGGML_VULKAN=ON",
+                    "-DGGML_VULKAN=OFF",
                     "-DGGML_OPENMP=OFF",
                     "-DGGML_LLAMAFILE=OFF",
                     "-DLLAMA_BUILD_TESTS=OFF",
