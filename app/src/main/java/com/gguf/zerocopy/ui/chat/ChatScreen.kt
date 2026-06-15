@@ -55,7 +55,6 @@ import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -318,41 +317,54 @@ fun ChatScreen(
               )
             )
           }
-          var showExportMenu by remember { mutableStateOf(false) }
-          IconButton(onClick = { showExportMenu = true }) {
+          var showExportDialog by remember { mutableStateOf(false) }
+          IconButton(onClick = { showExportDialog = true }) {
             Icon(Icons.Filled.Share, "Export", tint = ZcColors.Text2)
           }
-          DropdownMenu(expanded = showExportMenu, onDismissRequest = { showExportMenu = false }) {
-            DropdownMenuItem(
-              text = { Text("Export as Text", fontSize = 13.sp) },
-              onClick = {
-                showExportMenu = false
-                val exportText = app.chatRepository.exportSession(chatId)
-                Intent(Intent.ACTION_SEND).apply {
-                  type = "text/plain"
-                  putExtra(Intent.EXTRA_TEXT, exportText)
-                }.let { context.startActivity(Intent.createChooser(it, "Export Chat")) }
-              }
-            )
-            DropdownMenuItem(
-              text = { Text("Export as JSON", fontSize = 13.sp) },
-              onClick = {
-                showExportMenu = false
-                val msgs = app.chatRepository.getMessages(chatId)
-                val jsonArr = org.json.JSONArray()
-                msgs.forEach { m ->
-                  jsonArr.put(org.json.JSONObject().apply {
-                    put("role", m.role.name.lowercase())
-                    put("content", m.content)
-                    put("timestamp", m.timestamp)
-                    if (m.tps > 0f) put("tps", m.tps.toDouble())
-                    if (m.tokens > 0) put("tokens", m.tokens)
-                  })
+          if (showExportDialog) {
+            androidx.compose.material3.AlertDialog(
+              onDismissRequest = { showExportDialog = false },
+              title = { Text("Export Chat", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+              text = {
+                Column {
+                  androidx.compose.material3.TextButton(
+                    onClick = {
+                      showExportDialog = false
+                      val exportText = app.chatRepository.exportSession(chatId)
+                      Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, exportText)
+                      }.let { context.startActivity(Intent.createChooser(it, "Share as Text")) }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                  ) { Text("Export as Text", fontSize = 14.sp) }
+                  androidx.compose.material3.TextButton(
+                    onClick = {
+                      showExportDialog = false
+                      val msgs = app.chatRepository.getMessages(chatId)
+                      val jsonArr = org.json.JSONArray()
+                      msgs.forEach { m ->
+                        jsonArr.put(org.json.JSONObject().apply {
+                          put("role", m.role.name.lowercase())
+                          put("content", m.content)
+                          put("timestamp", m.timestamp)
+                          if (m.tps > 0f) put("tps", m.tps.toDouble())
+                          if (m.tokens > 0) put("tokens", m.tokens)
+                        })
+                      }
+                      Intent(Intent.ACTION_SEND).apply {
+                        type = "application/json"
+                        putExtra(Intent.EXTRA_TEXT, jsonArr.toString(2))
+                      }.let { context.startActivity(Intent.createChooser(it, "Export JSON")) }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                  ) { Text("Export as JSON", fontSize = 14.sp) }
                 }
-                Intent(Intent.ACTION_SEND).apply {
-                  type = "application/json"
-                  putExtra(Intent.EXTRA_TEXT, jsonArr.toString(2))
-                }.let { context.startActivity(Intent.createChooser(it, "Export JSON")) }
+              },
+              confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { showExportDialog = false }) {
+                  Text("Cancel")
+                }
               }
             )
           }
@@ -711,23 +723,35 @@ fun ChatBubble(
         }
       }
       if (showMenu) {
-        androidx.compose.material3.DropdownMenu(
-          expanded = true,
-          onDismissRequest = { showMenu = false }
-        ) {
-          androidx.compose.material3.DropdownMenuItem(
-            text = { Text("Copy", fontSize = 13.sp) },
-            onClick = { clip.setPrimaryClip(ClipData.newPlainText("msg", msg.content)); showMenu = false },
-            leadingIcon = { Icon(Icons.Outlined.ContentCopy, null, modifier = Modifier.size(16.dp)) }
-          )
-          if (onDelete != null) {
-            androidx.compose.material3.DropdownMenuItem(
-              text = { Text("Delete", fontSize = 13.sp, color = ZcColors.Red) },
-              onClick = { showMenu = false; onDelete() },
-              leadingIcon = { Icon(Icons.Outlined.Delete, null, tint = ZcColors.Red, modifier = Modifier.size(16.dp)) }
-            )
+        androidx.compose.material3.AlertDialog(
+          onDismissRequest = { showMenu = false },
+          title = { Text("Message", fontWeight = FontWeight.Bold, fontSize = 14.sp) },
+          text = {
+            Column {
+              androidx.compose.material3.TextButton(
+                onClick = { clip.setPrimaryClip(ClipData.newPlainText("msg", msg.content)); showMenu = false },
+                modifier = Modifier.fillMaxWidth()
+              ) {
+                Icon(Icons.Outlined.ContentCopy, null, modifier = Modifier.size(18.dp), tint = ZcColors.Text2)
+                Spacer(Modifier.width(8.dp))
+                Text("Copy", fontSize = 14.sp, modifier = Modifier.weight(1f))
+              }
+              if (onDelete != null) {
+                androidx.compose.material3.TextButton(
+                  onClick = { showMenu = false; onDelete() },
+                  modifier = Modifier.fillMaxWidth()
+                ) {
+                  Icon(Icons.Outlined.Delete, null, modifier = Modifier.size(18.dp), tint = ZcColors.Red)
+                  Spacer(Modifier.width(8.dp))
+                  Text("Delete", fontSize = 14.sp, color = ZcColors.Red, modifier = Modifier.weight(1f))
+                }
+              }
+            }
+          },
+          confirmButton = {
+            androidx.compose.material3.TextButton(onClick = { showMenu = false }) { Text("Cancel") }
           }
-        }
+        )
       }
     }
     if (isUser) {
