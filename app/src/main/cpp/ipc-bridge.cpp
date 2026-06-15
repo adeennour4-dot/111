@@ -310,8 +310,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
     cparams.n_ubatch        = 512;
     cparams.n_threads       = n_threads;
     cparams.n_threads_batch = n_threads;
-    cparams.flash_attn      = g_cfg.flash_attn;
-    cparams.rms_norm_eps    = 1e-5f;
+    cparams.flash_attn_type = g_cfg.flash_attn ? LLAMA_FLASH_ATTN_TYPE_ENABLED : LLAMA_FLASH_ATTN_TYPE_DISABLED;
 
     g_ctx = llama_init_from_model(g_model, cparams);
     if (!g_ctx) {

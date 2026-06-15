@@ -216,8 +216,8 @@ Java_com_gguf_zerocopy_domain_inference_MnnEngine_mnnExecuteInference(
         g_tokens_generated = tokens_generated;
 
         auto* ctx = g_llm->getContext();
-        if (ctx != nullptr && ctx->output_str && strlen(ctx->output_str) > 0) {
-            std::string piece(ctx->output_str);
+        if (ctx != nullptr && ctx->current_token > 0) {
+            std::string piece = g_llm->tokenizer_decode(ctx->current_token);
             response += piece;
             {
                 std::lock_guard<std::mutex> lock(g_mutex);
