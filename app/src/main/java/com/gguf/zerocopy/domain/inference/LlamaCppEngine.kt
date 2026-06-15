@@ -1,19 +1,19 @@
 package com.gguf.zerocopy.domain.inference
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 class LlamaCppEngine : InferenceEngine {
   override val engineType = EngineType.LLAMA_CPP
   override val engineName = "llama.cpp"
   override var isModelLoaded = false
-  private set
+    private set
   override var modelInfo: ModelInfo? = null
-  private set
+    private set
   override var config = InferenceConfig()
   override var repeatPenalty = RepeatPenaltyConfig()
   override var systemPrompt = ""
@@ -29,13 +29,22 @@ class LlamaCppEngine : InferenceEngine {
     try {
       currentModelPath = path
       NativeBridge.setEngineConfigNative(
-        config.nCtx, config.nBatch, config.maxNewTokens,
-        config.temperature, config.topP, config.minP,
-        config.nGpuLayers, config.nThreads, config.seed,
-        config.lowRamMode, config.flashAttention
+        config.nCtx,
+        config.nBatch,
+        config.maxNewTokens,
+        config.temperature,
+        config.topP,
+        config.minP,
+        config.nGpuLayers,
+        config.nThreads,
+        config.seed,
+        config.lowRamMode,
+        config.flashAttention
       )
       NativeBridge.setRepeatPenaltyNative(
-        repeatPenalty.repeatPenalty, repeatPenalty.freqPenalty, repeatPenalty.presPenalty
+        repeatPenalty.repeatPenalty,
+        repeatPenalty.freqPenalty,
+        repeatPenalty.presPenalty
       )
       if (systemPrompt.isNotEmpty()) {
         NativeBridge.setSystemPromptNative(systemPrompt)
@@ -67,16 +76,29 @@ class LlamaCppEngine : InferenceEngine {
       inferenceDone.set(false)
       tokensGenerated.set(0)
 
-      val cb = object : NativeBridge.TokenCallback {
-        override fun onToken(token: String) {
-          partialStream.get().append(token)
-          fullResponse.get().append(token)
+      val cb =
+        object : NativeBridge.TokenCallback {
+          override fun onToken(token: String) {
+            partialStream.get().append(token)
+            fullResponse.get().append(token)
+          }
+
+          override fun onDone() {
+            inferenceDone.set(true)
+          }
+
+          override fun onError(error: String) {
+            inferenceDone.set(true)
+          }
+
+          override fun onKvCacheUsage(percent: Int) {
+            kvUsage = percent
+          }
+
+          override fun onTokensGenerated(count: Int) {
+            tokensGenerated.set(count)
+          }
         }
-        override fun onDone() { inferenceDone.set(true) }
-        override fun onError(error: String) { inferenceDone.set(true) }
-        override fun onKvCacheUsage(percent: Int) { kvUsage = percent }
-        override fun onTokensGenerated(count: Int) { tokensGenerated.set(count) }
-      }
 
       try {
         NativeBridge.executeWithCallbackNative(prompt, cb)
@@ -99,29 +121,34 @@ class LlamaCppEngine : InferenceEngine {
     kvUsage = 0
   }
 
-  override suspend fun benchmark(ppTokens: Int, tgTokens: Int): BenchmarkResult = withContext(Dispatchers.IO) {
-    try {
-      val json = JSONObject(NativeBridge.benchmarkNative(ppTokens, tgTokens))
-      BenchmarkResult(
-        engine = engineName,
-        prefillTps = json.optDouble("pp_tps", 0.0).toFloat(),
-        decodeTps = json.optDouble("tg_tps", 0.0).toFloat(),
-        prefillMs = json.optDouble("pp_ms", 0.0).toFloat(),
-        decodeMs = json.optDouble("tg_ms", 0.0).toFloat(),
-        prefillTokens = ppTokens,
-        decodeTokens = tgTokens
-      )
-    } catch (e: Exception) {
-      BenchmarkResult(engine = engineName)
+  override suspend fun benchmark(ppTokens: Int, tgTokens: Int): BenchmarkResult =
+    withContext(Dispatchers.IO) {
+      try {
+        val json = JSONObject(NativeBridge.benchmarkNative(ppTokens, tgTokens))
+        BenchmarkResult(
+          engine = engineName,
+          prefillTps = json.optDouble("pp_tps", 0.0).toFloat(),
+          decodeTps = json.optDouble("tg_tps", 0.0).toFloat(),
+          prefillMs = json.optDouble("pp_ms", 0.0).toFloat(),
+          decodeMs = json.optDouble("tg_ms", 0.0).toFloat(),
+          prefillTokens = ppTokens,
+          decodeTokens = tgTokens
+        )
+      } catch (e: Exception) {
+        BenchmarkResult(engine = engineName)
+      }
     }
-  }
 
   override fun supportsFormat(path: String): Boolean = path.endsWith(".gguf", true)
 
   fun getTokensGenerated(): Int = tokensGenerated.get()
+
   fun getKvUsage(): Int = kvUsage
+
   fun isInferenceDone(): Boolean = inferenceDone.get()
+
   fun readPartialStream(): String = partialStream.getAndSet(StringBuilder()).toString()
+
   fun readTokenStream(): String = fullResponse.get().toString()
 
   private fun parseModelInfo(jsonStr: String): ModelInfo? = try {
@@ -136,12 +163,7 @@ class LlamaCppEngine : InferenceEngine {
       quantization = j.optString("quantization", ""),
       engineType = EngineType.LLAMA_CPP
     )
-  } catch (_: Exception) { null }
+  } catch (_: Exception) {
+    null
+  }
 }
-
-
-
-
-
-
-

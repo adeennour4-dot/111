@@ -1,7 +1,6 @@
 package com.gguf.zerocopy.domain.inference
 
 import android.content.Context
-import com.gguf.zerocopy.domain.device.DeviceUtils
 
 class EngineManager(context: Context) {
   private val engines = mutableMapOf<EngineType, InferenceEngine>()
@@ -31,7 +30,9 @@ class EngineManager(context: Context) {
   }
 
   fun getActiveEngine(): InferenceEngine? = activeEngine
+
   fun getEngine(type: EngineType): InferenceEngine = engines[type]!!
+
   fun isAnyModelLoaded(): Boolean = engines.values.any { it.isModelLoaded }
 
   fun getSupportedExtensions(): Set<String> = setOf("gguf", "mnn", "tflite", "litertlm")
@@ -41,10 +42,3 @@ class EngineManager(context: Context) {
     activeEngine = null
   }
 }
-
-
-
-
-
-
-

@@ -1,13 +1,14 @@
 package com.gguf.zerocopy.data.repository
 
 import android.content.Context
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.*
 
 data class ChatSession(
   val id: String = "session_${System.currentTimeMillis()}",
@@ -28,6 +29,7 @@ data class ChatMessage(
 )
 
 enum class MessageRole { USER, ASSISTANT, SYSTEM }
+
 enum class AttachmentType { IMAGE, AUDIO, DOCUMENT }
 
 class ChatRepository(context: Context) {
@@ -35,26 +37,30 @@ class ChatRepository(context: Context) {
   private val _sessions = MutableStateFlow<List<ChatSession>>(emptyList())
   val sessions = _sessions.asStateFlow()
   var currentSessionId: String? = null
-  private set
+    private set
 
-  init { loadSessions() }
+  init {
+    loadSessions()
+  }
 
   private fun loadSessions() {
-    _sessions.value = (sessionsDir.listFiles() ?: emptyArray())
-    .filter { it.name.endsWith("_meta.json") }
-    .mapNotNull { file ->
-      try {
-        val j = JSONObject(file.readText())
-        ChatSession(
-          id = j.getString("id"),
-          name = j.getString("name"),
-          createdAt = j.getLong("createdAt"),
-          lastMessageAt = j.getLong("lastMessageAt"),
-          messageCount = j.optInt("messageCount", 0)
-        )
-      } catch (_: Exception) { null }
-    }
-    .sortedByDescending { it.lastMessageAt }
+    _sessions.value =
+      (sessionsDir.listFiles() ?: emptyArray())
+        .filter { it.name.endsWith("_meta.json") }
+        .mapNotNull { file ->
+          try {
+            val j = JSONObject(file.readText())
+            ChatSession(
+              id = j.getString("id"),
+              name = j.getString("name"),
+              createdAt = j.getLong("createdAt"),
+              lastMessageAt = j.getLong("lastMessageAt"),
+              messageCount = j.optInt("messageCount", 0)
+            )
+          } catch (_: Exception) {
+            null
+          }
+        }.sortedByDescending { it.lastMessageAt }
   }
 
   fun createSession(name: String? = null): ChatSession {
@@ -65,7 +71,9 @@ class ChatRepository(context: Context) {
     return session
   }
 
-  fun selectSession(id: String) { currentSessionId = id }
+  fun selectSession(id: String) {
+    currentSessionId = id
+  }
 
   fun getMessages(sessionId: String): List<ChatMessage> {
     val file = File(sessionsDir, "${sessionId}_messages.json")
@@ -80,11 +88,22 @@ class ChatRepository(context: Context) {
           timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
           tps = obj.optDouble("tps", 0.0).toFloat(),
           tokens = obj.optInt("tokens", 0),
-          attachmentPath = obj.optString("attachment", null).takeIf { it != "null" && it.isNotEmpty() },
-          attachmentType = obj.optString("attachmentType", null).takeIf { it != "null" && it.isNotEmpty() }?.let { AttachmentType.valueOf(it) }
+          attachmentPath = obj.optString("attachment", null).takeIf {
+            it != "null" &&
+              it.isNotEmpty()
+          },
+          attachmentType =
+          obj
+            .optString(
+              "attachmentType",
+              null
+            ).takeIf { it != "null" && it.isNotEmpty() }
+            ?.let { AttachmentType.valueOf(it) }
         )
       }
-    } catch (_: Exception) { emptyList() }
+    } catch (_: Exception) {
+      emptyList()
+    }
   }
 
   fun addMessage(sessionId: String, message: ChatMessage) {
@@ -98,7 +117,8 @@ class ChatRepository(context: Context) {
         j.put("lastMessageAt", message.timestamp)
         j.put("messageCount", messages.size)
         metaFile.writeText(j.toString())
-      } catch (_: Exception) {}
+      } catch (_: Exception) {
+      }
     }
     loadSessions()
   }
@@ -111,7 +131,8 @@ class ChatRepository(context: Context) {
         j.put("name", name)
         file.writeText(j.toString())
         loadSessions()
-      } catch (_: Exception) {}
+      } catch (_: Exception) {
+      }
     }
   }
 
@@ -142,37 +163,36 @@ class ChatRepository(context: Context) {
   private fun saveMessages(sessionId: String, messages: List<ChatMessage>) {
     val json = JSONArray()
     messages.forEach { msg ->
-      json.put(JSONObject().apply {
-        put("role", msg.role.name.lowercase())
-        put("content", msg.content)
-        put("timestamp", msg.timestamp)
-        put("tps", msg.tps.toDouble())
-        put("tokens", msg.tokens)
-        if (msg.attachmentPath != null) put("attachment", msg.attachmentPath)
-        if (msg.attachmentType != null) put("attachmentType", msg.attachmentType.name)
-      })
+      json.put(
+        JSONObject().apply {
+          put("role", msg.role.name.lowercase())
+          put("content", msg.content)
+          put("timestamp", msg.timestamp)
+          put("tps", msg.tps.toDouble())
+          put("tokens", msg.tokens)
+          if (msg.attachmentPath != null) put("attachment", msg.attachmentPath)
+          if (msg.attachmentType != null) put("attachmentType", msg.attachmentType.name)
+        }
+      )
     }
     File(sessionsDir, "${sessionId}_messages.json").writeText(json.toString())
   }
 
   private fun saveSessionMeta(session: ChatSession) {
-    File(sessionsDir, "${session.id}_meta.json").writeText(JSONObject().apply {
-      put("id", session.id)
-      put("name", session.name)
-      put("createdAt", session.createdAt)
-      put("lastMessageAt", session.lastMessageAt)
-      put("messageCount", session.messageCount)
-    }.toString())
+    File(sessionsDir, "${session.id}_meta.json").writeText(
+      JSONObject()
+        .apply {
+          put("id", session.id)
+          put("name", session.name)
+          put("createdAt", session.createdAt)
+          put("lastMessageAt", session.lastMessageAt)
+          put("messageCount", session.messageCount)
+        }.toString()
+    )
   }
 
   private fun generateSessionName(): String {
     val sdf = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault())
     return "Chat ${sdf.format(Date())}"
   }
-
-
-
-
-
-
-
+}

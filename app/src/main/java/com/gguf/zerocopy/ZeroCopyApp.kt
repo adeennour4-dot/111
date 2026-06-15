@@ -9,13 +9,13 @@ import com.gguf.zerocopy.domain.inference.EngineManager
 
 class ZeroCopyApp : Application() {
   lateinit var engineManager: EngineManager
-  private set
+    private set
   lateinit var modelRepository: ModelRepository
-  private set
+    private set
   lateinit var chatRepository: ChatRepository
-  private set
+    private set
   lateinit var deviceUtils: DeviceUtils
-  private set
+    private set
 
   override fun onCreate() {
     super.onCreate()
@@ -35,13 +35,6 @@ class ZeroCopyApp : Application() {
 
   companion object {
     lateinit var instance: ZeroCopyApp
-    private set
+      private set
   }
 }
-
-
-
-
-
-
-

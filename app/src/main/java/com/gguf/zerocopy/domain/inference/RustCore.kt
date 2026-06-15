@@ -20,15 +20,12 @@ object RustCore {
     val promptThreads: Int = 4,
     val decodeThreads: Int = 2,
     val useBigCores: Boolean = true,
-    val gpuOffload: Boolean = true,
+    val gpuOffload: Boolean = true
   )
 
   fun isAvailable(): Boolean = available
 
-  fun init(
-    totalRamMB: Long,
-    cpuCores: Int,
-  ) {
+  fun init(totalRamMB: Long, cpuCores: Int) {
     if (available) {
       try {
         nativeInit(totalRamMB.toInt(), cpuCores)
@@ -47,10 +44,7 @@ object RustCore {
     }
   }
 
-  private external fun nativeInit(
-    totalRamMB: Int,
-    cpuCores: Int,
-  )
+  private external fun nativeInit(totalRamMB: Int, cpuCores: Int)
 
   private external fun nativeShouldReduceContext(): Boolean
 }

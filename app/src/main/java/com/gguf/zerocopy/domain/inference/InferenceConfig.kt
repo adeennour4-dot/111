@@ -14,33 +14,29 @@ data class InferenceConfig(
   val nThreads: Int = 0,
   val seed: Int = -1,
   val lowRamMode: Boolean = false,
-  val flashAttention: Boolean = true,
+  val flashAttention: Boolean = true
 )
 
 @Serializable
 data class RepeatPenaltyConfig(
   val repeatPenalty: Float = 1.1f,
   val freqPenalty: Float = 0.0f,
-  val presPenalty: Float = 0.0f,
+  val presPenalty: Float = 0.0f
 )
 
-enum class EngineType(
-  val id: String,
-  val formats: List<String>,
-) {
+enum class EngineType(val id: String, val formats: List<String>) {
   LLAMA_CPP("llama.cpp", listOf("gguf")),
   MNN("MNN", listOf("mnn")),
-  LITER_T("LiteRT-LM", listOf("tflite", "litertlm")),
+  LITER_T("LiteRT-LM", listOf("tflite", "litertlm"))
   ;
 
   companion object {
-    fun fromFormat(path: String): EngineType =
-      when {
-        path.endsWith(".gguf", true) -> LLAMA_CPP
-        path.endsWith(".mnn", true) -> MNN
-        path.endsWith(".tflite", true) || path.endsWith(".litertlm", true) -> LITER_T
-        else -> LLAMA_CPP
-      }
+    fun fromFormat(path: String): EngineType = when {
+      path.endsWith(".gguf", true) -> LLAMA_CPP
+      path.endsWith(".mnn", true) -> MNN
+      path.endsWith(".tflite", true) || path.endsWith(".litertlm", true) -> LITER_T
+      else -> LLAMA_CPP
+    }
   }
 }
 
@@ -52,5 +48,5 @@ data class BenchmarkResult(
   val prefillMs: Float = 0f,
   val decodeMs: Float = 0f,
   val prefillTokens: Int = 0,
-  val decodeTokens: Int = 0,
+  val decodeTokens: Int = 0
 )

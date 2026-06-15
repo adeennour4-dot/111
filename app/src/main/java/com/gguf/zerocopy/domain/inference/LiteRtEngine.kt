@@ -1,19 +1,24 @@
 package com.gguf.zerocopy.domain.inference
 
-import android.util.Log
-import com.google.ai.edge.litertlm.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.Contents
+import com.google.ai.edge.litertlm.Conversation
+import com.google.ai.edge.litertlm.Engine
+import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.Message
+import com.google.ai.edge.litertlm.MessageCallback
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class LiteRtEngine : InferenceEngine {
   override val engineType = EngineType.LITER_T
   override val engineName = "LiteRT-LM"
   override var isModelLoaded = false
-  private set
+    private set
   override var modelInfo: ModelInfo? = null
-  private set
+    private set
   override var config = InferenceConfig()
   override var repeatPenalty = RepeatPenaltyConfig()
   override var systemPrompt = ""
@@ -34,39 +39,50 @@ class LiteRtEngine : InferenceEngine {
       engine = Engine(extConfig)
       engine!!.initialize()
       isModelLoaded = true
-      modelInfo = ModelInfo(
-        arch = "litert-lm",
-        engineType = EngineType.LITER_T
-      )
+      modelInfo =
+        ModelInfo(
+          arch = "litert-lm",
+          engineType = EngineType.LITER_T
+        )
       Result.success(Unit)
     } catch (e: Exception) {
       tryFallbackLoad(path)
     }
   }
 
-  private fun tryFallbackLoad(path: String): Result<Unit> {
-    return try {
-      val legacyConfig = EngineConfig(modelPath = path, backend = Backend.CPU())
-      engine = Engine(legacyConfig)
-      engine!!.initialize()
-      isModelLoaded = true
-      modelInfo = ModelInfo(engineType = EngineType.LITER_T)
-      Result.success(Unit)
-    } catch (e: Exception) {
-      Result.failure(Exception("LiteRT-LM load failed: ${e.message}"))
-    }
+  private fun tryFallbackLoad(path: String): Result<Unit> = try {
+    val legacyConfig = EngineConfig(modelPath = path, backend = Backend.CPU())
+    engine = Engine(legacyConfig)
+    engine!!.initialize()
+    isModelLoaded = true
+    modelInfo = ModelInfo(engineType = EngineType.LITER_T)
+    Result.success(Unit)
+  } catch (e: Exception) {
+    Result.failure(Exception("LiteRT-LM load failed: ${e.message}"))
   }
 
   override fun unloadModel() {
-    try { conversation?.close() } catch (_: Exception) {}
-    try { engine?.close() } catch (_: Exception) {}
-    engine = null; conversation = null
-    isModelLoaded = false; modelInfo = null; currentModelPath = ""
+    try {
+      conversation?.close()
+    } catch (_: Exception) {
+    }
+    try {
+      engine?.close()
+    } catch (_: Exception) {
+    }
+    engine = null
+    conversation = null
+    isModelLoaded = false
+    modelInfo = null
+    currentModelPath = ""
   }
 
   override suspend fun executeInference(prompt: String, callback: TokenCallback) {
     withContext(Dispatchers.IO) {
-      synchronized(partialStream) { partialStream.clear(); fullResponse.clear() }
+      synchronized(partialStream) {
+        partialStream.clear()
+        fullResponse.clear()
+      }
       inferenceDone.set(false)
       tokensGenerated.set(0)
 
@@ -76,19 +92,31 @@ class LiteRtEngine : InferenceEngine {
           if (systemPrompt.isNotEmpty()) {
             try {
               conversation?.sendMessage(Message.system(Contents.of(systemPrompt)), emptyMap())
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            }
           }
         }
 
-        val msgCallback = object : MessageCallback {
-          override fun onMessage(message: Message) {
-            val text = message.toString()
-            synchronized(partialStream) { partialStream.clear(); partialStream.append(text); fullResponse.append(text) }
-            tokensGenerated.incrementAndGet()
+        val msgCallback =
+          object : MessageCallback {
+            override fun onMessage(message: Message) {
+              val text = message.toString()
+              synchronized(partialStream) {
+                partialStream.clear()
+                partialStream.append(text)
+                fullResponse.append(text)
+              }
+              tokensGenerated.incrementAndGet()
+            }
+
+            override fun onDone() {
+              inferenceDone.set(true)
+            }
+
+            override fun onError(t: Throwable) {
+              inferenceDone.set(true)
+            }
           }
-          override fun onDone() { inferenceDone.set(true) }
-          override fun onError(t: Throwable) { inferenceDone.set(true) }
-        }
 
         conversation?.sendMessageAsync(prompt, msgCallback, emptyMap())
       } catch (e: Exception) {
@@ -99,34 +127,41 @@ class LiteRtEngine : InferenceEngine {
 
   override fun abortInference() {
     inferenceDone.set(true)
-    try { conversation?.cancelProcess() } catch (_: Exception) {}
+    try {
+      conversation?.cancelProcess()
+    } catch (_: Exception) {
+    }
   }
 
   override fun resetContext() {
-    try { conversation?.close() } catch (_: Exception) {}
+    try {
+      conversation?.close()
+    } catch (_: Exception) {
+    }
     conversation = null
-    synchronized(partialStream) { partialStream.clear(); fullResponse.clear() }
+    synchronized(partialStream) {
+      partialStream.clear()
+      fullResponse.clear()
+    }
     inferenceDone.set(true)
     tokensGenerated.set(0)
   }
 
-  override suspend fun benchmark(ppTokens: Int, tgTokens: Int): BenchmarkResult {
-    return BenchmarkResult(engine = engineName)
-  }
+  override suspend fun benchmark(ppTokens: Int, tgTokens: Int): BenchmarkResult =
+    BenchmarkResult(engine = engineName)
 
   override fun supportsFormat(path: String): Boolean =
-  path.endsWith(".tflite", true) || path.endsWith(".litertlm", true)
+    path.endsWith(".tflite", true) || path.endsWith(".litertlm", true)
 
-  fun readPartialStream(): String = synchronized(partialStream) { partialStream.toString().also { partialStream.clear() } }
+  fun readPartialStream(): String = synchronized(partialStream) {
+    partialStream.toString().also { partialStream.clear() }
+  }
+
   fun readTokenStream(): String = synchronized(partialStream) { fullResponse.toString() }
+
   fun isInferenceDone(): Boolean = inferenceDone.get()
+
   fun getTokensGenerated(): Int = tokensGenerated.get()
+
   fun getKvUsage(): Int = 0
 }
-
-
-
-
-
-
-

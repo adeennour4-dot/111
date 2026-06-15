@@ -22,25 +22,30 @@ data class DeviceInfo(
   val hasOpenCL: Boolean = false
 ) {
   fun suggestConfig(modelSizeB: Float = 7f): InferenceConfig {
-    val suggestedThreads = if (bigCores.isNotEmpty()) {
-      bigCores.size.coerceIn(1, 4)
-    } else (cpuCores / 2).coerceIn(1, 4)
+    val suggestedThreads =
+      if (bigCores.isNotEmpty()) {
+        bigCores.size.coerceIn(1, 4)
+      } else {
+        (cpuCores / 2).coerceIn(1, 4)
+      }
 
-    val suggestedGpuLayers = when {
-      isSnapdragon -> 99
-      isMediaTek -> 0
-      isExynos -> 99
-      else -> 0
-    }
+    val suggestedGpuLayers =
+      when {
+        isSnapdragon -> 99
+        isMediaTek -> 0
+        isExynos -> 99
+        else -> 0
+      }
 
     val estimatedModelRAM = modelSizeB * 1024 * 0.6f
     val availableForContext = (availableRamMB - estimatedModelRAM).coerceAtLeast(512f)
-    val suggestedCtx = when {
-      modelSizeB <= 1f -> 8192
-      modelSizeB <= 3f -> 4096
-      modelSizeB <= 7f -> 2048
-      else -> 1024
-    }.coerceAtMost((availableForContext * 2).toInt()).coerceAtLeast(2048)
+    val suggestedCtx =
+      when {
+        modelSizeB <= 1f -> 8192
+        modelSizeB <= 3f -> 4096
+        modelSizeB <= 7f -> 2048
+        else -> 1024
+      }.coerceAtMost((availableForContext * 2).toInt()).coerceAtLeast(2048)
 
     return InferenceConfig(
       nCtx = suggestedCtx,
@@ -73,7 +78,11 @@ class DeviceUtils(private val context: Context) {
     val cpuCores = Runtime.getRuntime().availableProcessors()
     val cpuMaxFreq = readCpuMaxFreq()
     val bigCores = detectBigCores()
-    val socModel = Build.SOC_MODEL.ifEmpty { Build.HARDWARE }.ifEmpty { "unknown" }.lowercase()
+    val socModel =
+      Build.SOC_MODEL
+        .ifEmpty { Build.HARDWARE }
+        .ifEmpty { "unknown" }
+        .lowercase()
 
     return DeviceInfo(
       socModel = socModel,
@@ -82,9 +91,15 @@ class DeviceUtils(private val context: Context) {
       bigCores = bigCores,
       totalRamMB = totalRamMB,
       availableRamMB = availableRamMB,
-      isSnapdragon = socModel.contains("snapdragon") || socModel.contains("qcom") || Build.MANUFACTURER.lowercase().contains("qualcomm"),
+      isSnapdragon =
+      socModel.contains("snapdragon") ||
+        socModel.contains("qcom") ||
+        Build.MANUFACTURER.lowercase().contains("qualcomm"),
       isExynos = socModel.contains("exynos") || Build.MANUFACTURER.lowercase().contains("samsung"),
-      isMediaTek = socModel.contains("mt") || socModel.contains("dimensity") || Build.MANUFACTURER.lowercase().contains("mediatek"),
+      isMediaTek =
+      socModel.contains("mt") ||
+        socModel.contains("dimensity") ||
+        Build.MANUFACTURER.lowercase().contains("mediatek"),
       isTensor = socModel.contains("tensor") || Build.MANUFACTURER.lowercase().contains("google"),
       hasVulkan = hasVulkanDevice(),
       hasOpenCL = hasOpenCLDevice()
@@ -93,8 +108,12 @@ class DeviceUtils(private val context: Context) {
 
   fun readCpuFreq(cpu: Int): Int = try {
     File("/sys/devices/system/cpu/cpu$cpu/cpufreq/cpuinfo_max_freq")
-    .readText().trim().toIntOrNull() ?: 0
-  } catch (_: Exception) { 0 }
+      .readText()
+      .trim()
+      .toIntOrNull() ?: 0
+  } catch (_: Exception) {
+    0
+  }
 
   private fun readCpuMaxFreq(): Int {
     var max = 0
@@ -127,21 +146,16 @@ class DeviceUtils(private val context: Context) {
         val field = clazz.getDeclaredField("SUPPORTED_64_BIT_ABIS")
         val abis = field.get(null) as? Array<*> ?: return false
         true
-      } catch (_: Exception) { false }
+      } catch (_: Exception) {
+        false
+      }
     }
   }
 
-  private fun hasOpenCLDevice(): Boolean {
-    return try {
-      System.loadLibrary("OpenCL")
-      true
-    } catch (_: UnsatisfiedLinkError) { false }
+  private fun hasOpenCLDevice(): Boolean = try {
+    System.loadLibrary("OpenCL")
+    true
+  } catch (_: UnsatisfiedLinkError) {
+    false
   }
 }
-
-
-
-
-
-
-
