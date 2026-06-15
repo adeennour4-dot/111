@@ -42,4 +42,6 @@ object ZcLightColors : ZcPalette {
   override val ThinkBg = Color(0xFFF0EEF8)
   override val GradientStart = Color(0xFF5B52E0)
   override val GradientEnd = Color(0xFF00B88A)
+  override val GlowAccent = Color(0x205B52E0)
+  override val GlowAccent2 = Color(0x2000B88A)
 }
