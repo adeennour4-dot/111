@@ -143,6 +143,24 @@ class ChatRepository(context: Context) {
     loadSessions()
   }
 
+  fun sessionExists(sessionId: String): Boolean =
+    File(sessionsDir, "${sessionId}_meta.json").exists()
+
+  fun deleteMessage(sessionId: String, index: Int) {
+    val messages = getMessages(sessionId).toMutableList()
+    if (index < 0 || index >= messages.size) return
+    messages.removeAt(index)
+    saveMessages(sessionId, messages)
+    loadSessions()
+  }
+
+  fun updateMessage(sessionId: String, index: Int, message: ChatMessage) {
+    val messages = getMessages(sessionId).toMutableList()
+    if (index < 0 || index >= messages.size) return
+    messages[index] = message
+    saveMessages(sessionId, messages)
+  }
+
   fun exportSession(sessionId: String): String {
     val messages = getMessages(sessionId)
     val session = _sessions.value.find { it.id == sessionId }

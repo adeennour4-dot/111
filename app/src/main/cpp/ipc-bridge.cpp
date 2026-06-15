@@ -161,6 +161,27 @@ static std::string build_chat_prompt() {
     return std::string(buf.data(), n > 0 ? n : 0);
 }
 
+// Stop sequences — chat template markers that signal the model is starting
+// a new turn (should stop generation and truncate at this point).
+static const std::vector<std::string> g_stop_sequences = {
+    "\n<|im_start|>user",
+    "\n<|im_start|>assistant",
+    "\n<|im_start|>system",
+    "\n<start_of_turn>user",
+    "\n<start_of_turn>model",
+    "\n<start_of_turn>assistant",
+    "\n<|user|>",
+    "\n<|assistant|>",
+};
+
+// Check if any stop sequence appears in the accumulated response
+static bool contains_stop_sequence(const std::string& text) {
+    for (const auto& seq : g_stop_sequences) {
+        if (text.find(seq) != std::string::npos) return true;
+    }
+    return false;
+}
+
 static void call_callback_on_token(const std::string& piece) {
     if (!g_callback || !g_jvm) return;
     JNIEnv* env = nullptr; bool need_detach = false;
@@ -562,6 +583,18 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
             call_callback_on_tokens_generated(tokens_generated);
         }
 
+        // Stop if model starts generating a new chat turn
+        if (contains_stop_sequence(response)) {
+            for (const auto& seq : g_stop_sequences) {
+                auto pos = response.find(seq);
+                if (pos != std::string::npos) {
+                    response = response.substr(0, pos);
+                    break;
+                }
+            }
+            break;
+        }
+
         llama_batch nb = llama_batch_get_one(&tok, 1);
         if (llama_decode(g_ctx, nb) != 0) break;
 
@@ -708,6 +741,18 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
             }
             tokens_generated = i + 1;
             call_callback_on_tokens_generated(tokens_generated);
+        }
+
+        // Stop if model starts generating a new chat turn
+        if (contains_stop_sequence(response)) {
+            for (const auto& seq : g_stop_sequences) {
+                auto pos = response.find(seq);
+                if (pos != std::string::npos) {
+                    response = response.substr(0, pos);
+                    break;
+                }
+            }
+            break;
         }
 
         llama_batch nb = llama_batch_get_one(&tok, 1);

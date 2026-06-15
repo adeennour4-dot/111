@@ -12,8 +12,10 @@ import android.speech.tts.TextToSpeech
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,9 +38,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Chat
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Mic
@@ -131,6 +136,8 @@ fun ChatScreen(
   var isListening by remember { mutableStateOf(false) }
   var isSpeaking by remember { mutableStateOf(false) }
   var showPromptSuggestions by remember { mutableStateOf(false) }
+  var showModelInfoDialog by remember { mutableStateOf(false) }
+  var deleteConfirmMsg by remember { mutableStateOf<ChatMessage?>(null) }
   val tts = remember {
     mutableStateOf<TextToSpeech?>(null)
   }
@@ -153,10 +160,27 @@ fun ChatScreen(
     isListening = false
   }
 
-  val chatId = sessionId ?: remember { app.chatRepository.createSession("Chat - $modelName").id }
+  val chatId = remember {
+    if (sessionId != null) {
+      SettingsManager.currentSessionId = sessionId
+      sessionId
+    } else {
+      val savedId = SettingsManager.currentSessionId
+      if (savedId.isNotEmpty() && app.chatRepository.sessionExists(savedId)) {
+        savedId
+      } else {
+        val newSession = app.chatRepository.createSession("Chat - $modelName")
+        SettingsManager.currentSessionId = newSession.id
+        newSession.id
+      }
+    }
+  }
 
   LaunchedEffect(chatId) {
-    if (sessionId != null) app.chatRepository.selectSession(sessionId)
+    if (sessionId != null) {
+      app.chatRepository.selectSession(sessionId)
+      SettingsManager.currentSessionId = sessionId
+    }
     messages = app.chatRepository.getMessages(chatId)
   }
 
@@ -261,7 +285,10 @@ fun ChatScreen(
               color = if (engine?.isModelLoaded == true) ZcColors.Accent2 else ZcColors.Amber,
               fontFamily = FontFamily.Monospace,
               maxLines = 1,
-              overflow = TextOverflow.Ellipsis
+              overflow = TextOverflow.Ellipsis,
+              modifier = Modifier.clickable {
+                if (engine?.modelInfo != null) showModelInfoDialog = true
+              }
             )
           }
         },
@@ -291,15 +318,43 @@ fun ChatScreen(
               )
             )
           }
-          IconButton(onClick = {
-            val exportText = app.chatRepository.exportSession(chatId)
-            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-              type = "text/plain"
-              putExtra(Intent.EXTRA_TEXT, exportText)
-            }
-            context.startActivity(Intent.createChooser(shareIntent, "Export Chat"))
-          }) {
+          var showExportMenu by remember { mutableStateOf(false) }
+          IconButton(onClick = { showExportMenu = true }) {
             Icon(Icons.Filled.Share, "Export", tint = ZcColors.Text2)
+          }
+          DropdownMenu(expanded = showExportMenu, onDismissRequest = { showExportMenu = false }) {
+            DropdownMenuItem(
+              text = { Text("Export as Text", fontSize = 13.sp) },
+              onClick = {
+                showExportMenu = false
+                val exportText = app.chatRepository.exportSession(chatId)
+                Intent(Intent.ACTION_SEND).apply {
+                  type = "text/plain"
+                  putExtra(Intent.EXTRA_TEXT, exportText)
+                }.let { context.startActivity(Intent.createChooser(it, "Export Chat")) }
+              }
+            )
+            DropdownMenuItem(
+              text = { Text("Export as JSON", fontSize = 13.sp) },
+              onClick = {
+                showExportMenu = false
+                val msgs = app.chatRepository.getMessages(chatId)
+                val jsonArr = org.json.JSONArray()
+                msgs.forEach { m ->
+                  jsonArr.put(org.json.JSONObject().apply {
+                    put("role", m.role.name.lowercase())
+                    put("content", m.content)
+                    put("timestamp", m.timestamp)
+                    if (m.tps > 0f) put("tps", m.tps.toDouble())
+                    if (m.tokens > 0) put("tokens", m.tokens)
+                  })
+                }
+                Intent(Intent.ACTION_SEND).apply {
+                  type = "application/json"
+                  putExtra(Intent.EXTRA_TEXT, jsonArr.toString(2))
+                }.let { context.startActivity(Intent.createChooser(it, "Export JSON")) }
+              }
+            )
           }
           IconButton(onClick = onSessions) {
             Icon(Icons.Outlined.Chat, "Sessions", tint = ZcColors.Text2)
@@ -350,9 +405,41 @@ fun ChatScreen(
             contentPadding = PaddingValues(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
           ) {
-            items(messages) { msg -> ChatBubble(msg, clip) { text ->
-              tts.value?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
-            } }
+            items(messages) { msg ->
+              val idx = messages.indexOf(msg)
+              val isLastAssistant = !isInferring && msg.role == MessageRole.ASSISTANT && idx == messages.size - 1
+              val isRegenerateAllowed = isLastAssistant && idx > 0 && messages[idx - 1].role == MessageRole.USER
+              ChatBubble(
+                msg, clip,
+                onSpeak = { text -> tts.value?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null) },
+                onRegenerate = if (isRegenerateAllowed) {{
+
+                  val userMsg = messages[idx - 1]
+                  messages = messages.toMutableList().also { it.removeAt(idx) }
+                  app.chatRepository.deleteMessage(chatId, idx)
+
+                  streamedText = ""
+                  isInferring = true
+                  scope.launch(Dispatchers.IO) {
+                    val cb = object : TokenCallback {
+                      override fun onToken(token: String) {}
+                      override fun onDone() {}
+                      override fun onError(error: String) {}
+                      override fun onKvUsage(percent: Int) {}
+                      override fun onTokensGenerated(count: Int) {}
+                    }
+                    engine?.let {
+                      var prompt = userMsg.content
+                      if (userMsg.attachmentPath != null) {
+                        prompt = "[Image attached: ${userMsg.attachmentPath}]\n$prompt"
+                      }
+                      it.executeInference(prompt, cb)
+                    }
+                  }
+                }} else null,
+                onDelete = { deleteConfirmMsg = msg }
+              )
+            }
             if (isInferring && streamedText.isNotEmpty()) {
               item { StreamingBubble(streamedText, false) }
             } else if (isInferring && isProcessing) {
@@ -458,6 +545,63 @@ fun ChatScreen(
       }
     )
   }
+
+  deleteConfirmMsg?.let { msg ->
+    val idx = messages.indexOf(msg)
+    androidx.compose.material3.AlertDialog(
+      onDismissRequest = { deleteConfirmMsg = null },
+      title = { Text("Delete message?", fontSize = 16.sp) },
+      text = { Text("This cannot be undone.", fontSize = 14.sp, color = ZcColors.Text2) },
+      confirmButton = {
+        androidx.compose.material3.TextButton(onClick = {
+          if (idx >= 0) {
+            messages = messages.toMutableList().also { it.removeAt(idx) }
+            app.chatRepository.deleteMessage(chatId, idx)
+          }
+          deleteConfirmMsg = null
+        }) { Text("Delete", color = ZcColors.Red) }
+      },
+      dismissButton = {
+        androidx.compose.material3.TextButton(onClick = { deleteConfirmMsg = null }) { Text("Cancel") }
+      }
+    )
+  }
+
+  if (showModelInfoDialog && engine?.modelInfo != null) {
+    val info = engine.modelInfo!!
+    val params = when {
+      info.nParams >= 1_000_000_000 -> "%.1fB".format(info.nParams / 1e9)
+      info.nParams >= 1_000_000 -> "%.0fM".format(info.nParams / 1e6)
+      else -> "${info.nParams}"
+    }
+    androidx.compose.material3.AlertDialog(
+      onDismissRequest = { showModelInfoDialog = false },
+      title = { Text(engine.engineName, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+      text = {
+        Column {
+          listOf(
+            "Architecture" to info.arch,
+            "Parameters" to params,
+            "Quantization" to info.quantization,
+            "Context Length" to info.contextLength.toString(),
+            "Embedding Size" to info.nEmbeds.toString(),
+            "Layers" to info.nLayers.toString(),
+            "Vocabulary" to info.vocabSize.toString()
+          ).forEach { (label, value) ->
+            if (value.isNotEmpty() && value != "0") {
+              Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                Text("$label: ", fontSize = 13.sp, color = ZcColors.Text2, modifier = Modifier.weight(1f))
+                Text(value, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+              }
+            }
+          }
+        }
+      },
+      confirmButton = {
+        androidx.compose.material3.TextButton(onClick = { showModelInfoDialog = false }) { Text("OK") }
+      }
+    )
+  }
 }
 
 private fun saveImageToAppStorage(context: Context, uri: Uri): String? {
@@ -492,9 +636,18 @@ private fun getFileName(context: Context, uri: Uri): String {
   return name
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ChatBubble(msg: ChatMessage, clip: ClipboardManager, onSpeak: (String) -> Unit = {}) {
+fun ChatBubble(
+  msg: ChatMessage,
+  clip: ClipboardManager,
+  onSpeak: (String) -> Unit = {},
+  onRegenerate: (() -> Unit)? = null,
+  onDelete: (() -> Unit)? = null
+) {
   val isUser = msg.role == MessageRole.USER
+  val isLatestAssistant = !isUser && onRegenerate != null
+  var showMenu by remember { mutableStateOf(false) }
   Row(
     modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
     horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
@@ -513,7 +666,10 @@ fun ChatBubble(msg: ChatMessage, clip: ClipboardManager, onSpeak: (String) -> Un
       Surface(
         modifier = Modifier
           .clip(RoundedCornerShape(topStart = if (isUser) 18.dp else 6.dp, topEnd = if (isUser) 6.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp))
-          .clickable { clip.setPrimaryClip(ClipData.newPlainText("msg", msg.content)) },
+          .combinedClickable(
+            onClick = { clip.setPrimaryClip(ClipData.newPlainText("msg", msg.content)) },
+            onLongClick = { showMenu = true }
+          ),
         color = if (isUser) ZcColors.UserBg else ZcColors.Card
       ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
@@ -543,6 +699,33 @@ fun ChatBubble(msg: ChatMessage, clip: ClipboardManager, onSpeak: (String) -> Un
           }
           IconButton(onClick = { onSpeak(msg.content) }, modifier = Modifier.size(20.dp)) {
             Icon(Icons.Outlined.VolumeUp, "Speak", tint = ZcColors.Text3, modifier = Modifier.size(14.dp))
+          }
+          if (isLatestAssistant) {
+            IconButton(onClick = onRegenerate, modifier = Modifier.size(20.dp)) {
+              Icon(Icons.Filled.Refresh, "Regenerate", tint = ZcColors.Accent, modifier = Modifier.size(14.dp))
+            }
+          }
+          IconButton(onClick = { clip.setPrimaryClip(ClipData.newPlainText("msg", msg.content)) }, modifier = Modifier.size(20.dp)) {
+            Icon(Icons.Outlined.ContentCopy, "Copy", tint = ZcColors.Text3, modifier = Modifier.size(12.dp))
+          }
+        }
+      }
+      if (showMenu) {
+        androidx.compose.material3.DropdownMenu(
+          expanded = true,
+          onDismissRequest = { showMenu = false }
+        ) {
+          androidx.compose.material3.DropdownMenuItem(
+            text = { Text("Copy", fontSize = 13.sp) },
+            onClick = { clip.setPrimaryClip(ClipData.newPlainText("msg", msg.content)); showMenu = false },
+            leadingIcon = { Icon(Icons.Outlined.ContentCopy, null, modifier = Modifier.size(16.dp)) }
+          )
+          if (onDelete != null) {
+            androidx.compose.material3.DropdownMenuItem(
+              text = { Text("Delete", fontSize = 13.sp, color = ZcColors.Red) },
+              onClick = { showMenu = false; onDelete() },
+              leadingIcon = { Icon(Icons.Outlined.Delete, null, tint = ZcColors.Red, modifier = Modifier.size(16.dp)) }
+            )
           }
         }
       }

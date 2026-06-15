@@ -104,6 +104,12 @@ object SettingsManager {
       prefs?.edit()?.putString("mmproj_path", v)?.apply()
     }
 
+  var currentSessionId: String
+    get() = prefs?.getString("current_session_id", "") ?: ""
+    set(v) {
+      prefs?.edit()?.putString("current_session_id", v)?.apply()
+    }
+
   var isDarkTheme: Boolean
     get() = prefs?.getBoolean("dark_theme", true) ?: true
     set(v) {
