@@ -90,32 +90,43 @@ set(CMAKE_SOURCE_DIR "${PROJECT_SOURCE_DIR}")
 find_library(log-lib     log)
 find_library(android-lib android)
 
-# Build CLIP for multimodal support (from llama.cpp examples)
-if(EXISTS ${llama_SOURCE_DIR}/examples/llava/clip.cpp)
-    add_library(clip STATIC
-        ${llama_SOURCE_DIR}/examples/llava/clip.cpp
-        ${llama_SOURCE_DIR}/examples/llava/llava.cpp
-    )
-    target_include_directories(clip PRIVATE
-        ${llama_SOURCE_DIR}/include
-        ${llama_SOURCE_DIR}/ggml/include
-        ${llama_SOURCE_DIR}/examples/llava
-    )
-    target_link_libraries(clip PRIVATE llama ggml)
-    set(CLIP_FOUND TRUE)
+# Build CLIP for multimodal support (from llama.cpp examples/llava)
+# Requires examples/llava/clip.cpp, clip.h, and stb headers to be present.
+set(CLIP_FOUND FALSE)
+if(EXISTS ${llama_SOURCE_DIR}/examples/llava/clip.cpp AND EXISTS ${llama_SOURCE_DIR}/examples/llava/clip.h)
+    # Check for stb availability (header-only library in examples/llava/stb)
+    if(EXISTS ${llama_SOURCE_DIR}/examples/llava/stb/stb_image.h)
+        add_library(stb INTERFACE)
+        target_include_directories(stb INTERFACE ${llama_SOURCE_DIR}/examples/llava/stb)
+
+        add_library(clip STATIC
+            ${llama_SOURCE_DIR}/examples/llava/clip.cpp
+            ${llama_SOURCE_DIR}/examples/llava/llava.cpp
+        )
+        target_include_directories(clip PRIVATE
+            ${llama_SOURCE_DIR}/include
+            ${llama_SOURCE_DIR}/ggml/include
+            ${llama_SOURCE_DIR}/examples/llava
+        )
+        target_link_libraries(clip PUBLIC llama ggml stb)
+        set_property(TARGET clip PROPERTY POSITION_INDEPENDENT_CODE ON)
+        set(CLIP_FOUND TRUE)
+        message(STATUS "CLIP/llava found, building with vision support")
+    else()
+        message(WARNING "stb_image.h not found, CLIP/llava disabled")
+    endif()
 else()
-    set(CLIP_FOUND FALSE)
-    message(WARNING "CLIP not found, vision support disabled")
+    message(WARNING "CLIP/llava not found (examples/llava missing), vision support disabled")
 endif()
 
 add_library(ipc-bridge SHARED ipc-bridge.cpp)
 target_include_directories(ipc-bridge PRIVATE
     ${llama_SOURCE_DIR}/include
     ${llama_SOURCE_DIR}/ggml/include
-    ${llama_SOURCE_DIR}/examples/llava
 )
 if(CLIP_FOUND)
-    target_link_libraries(ipc-bridge PRIVATE llama ggml clip stb ${log-lib} ${android-lib})
+    target_include_directories(ipc-bridge PRIVATE ${llama_SOURCE_DIR}/examples/llava)
+    target_link_libraries(ipc-bridge PRIVATE llama ggml clip ${log-lib} ${android-lib})
 else()
     target_link_libraries(ipc-bridge PRIVATE llama ggml ${log-lib} ${android-lib})
 endif()

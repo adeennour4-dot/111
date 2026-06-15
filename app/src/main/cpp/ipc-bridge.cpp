@@ -19,7 +19,12 @@
 #endif
 
 #include "llama.h"
-#include "clip.h"
+
+// CLIP vision support (requires llava/clip to be built)
+#if __has_include("clip.h")
+  #include "clip.h"
+  #define ZC_HAS_CLIP
+#endif
 
 #define LOG_TAG "ZeroCopy_v8"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
@@ -63,7 +68,11 @@ static bool           g_backend_initialized = false;
 static jobject        g_callback    = nullptr;
 
 // Multimodal (vision) support
+#ifdef ZC_HAS_CLIP
 static struct clip_ctx* g_clip = nullptr;
+#else
+static void* g_clip = nullptr;
+#endif
 static std::string g_current_image_path = "";
 
 struct Message { std::string role; std::string content; };
@@ -287,7 +296,9 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
 
     if (!g_backend_initialized) { llama_backend_init(); g_backend_initialized = true; }
 
+#ifdef ZC_HAS_CLIP
     if (g_clip)   { clip_free(g_clip);              g_clip   = nullptr; }
+#endif
     if (g_sampler) { llama_sampler_free(g_sampler); g_sampler = nullptr; }
     if (g_ctx)     { llama_free(g_ctx);              g_ctx     = nullptr; }
     if (g_model)   { llama_model_free(g_model);      g_model   = nullptr; }
@@ -340,20 +351,26 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadMmprojNative(
         JNIEnv* env, jobject, jstring path) {
     const char* mmproj_path = env->GetStringUTFChars(path, nullptr);
     if (!mmproj_path) return JNI_FALSE;
+    std::string path_copy(mmproj_path);
+    env->ReleaseStringUTFChars(path, mmproj_path);
 
+#ifdef ZC_HAS_CLIP
     if (g_clip) { clip_free(g_clip); g_clip = nullptr; }
 
-    g_clip = clip_model_load(mmproj_path, /*verbosity=*/1);
-    env->ReleaseStringUTFChars(path, mmproj_path);
+    g_clip = clip_model_load(path_copy.c_str(), /*verbosity=*/1);
 
     if (!g_clip) {
         LOGE("Failed to load mmproj");
         return JNI_FALSE;
     }
 
-    g_cfg.mmproj_path = std::string(mmproj_path);
+    g_cfg.mmproj_path = path_copy;
     LOGI("mmproj loaded successfully");
     return JNI_TRUE;
+#else
+    LOGE("mmproj loading not available - rebuild with CLIP support");
+    return JNI_FALSE;
+#endif
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -609,6 +626,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
     // Process image through CLIP if available
     std::vector<float> image_embeds;
     int n_image_tokens = 0;
+#ifdef ZC_HAS_CLIP
     if (g_clip) {
         float* embeds = clip_image_encode(g_clip, g_current_image_path.c_str(), &n_image_tokens);
         if (embeds && n_image_tokens > 0) {
@@ -620,6 +638,9 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
     } else {
         LOGW("No mmproj loaded, skipping image processing");
     }
+#else
+    LOGW("CLIP not available in this build, skipping image processing");
+#endif
 
     // Context shift if needed
     llama_pos cur_max = llama_memory_seq_pos_max(get_mem(), 0);
