@@ -1,9 +1,13 @@
-[*]
-indent_style=space
-indent_size=2
-end_of_line=lf
-insert_final_newline=true
-trim_trailing_whitespace=true
+root = true
 
-[*.{kt,kts}]
-ktlint_android=true
+[*]
+indent_style = space
+indent_size = 2
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.kt]
+ktlint_code_style = android_studio
+ktlint_standard_function-naming = disabled
