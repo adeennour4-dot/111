@@ -58,7 +58,9 @@ class LiteRtEngine : InferenceEngine {
     modelInfo = ModelInfo(engineType = EngineType.LITER_T)
     Result.success(Unit)
   } catch (e: Exception) {
-    Result.failure(Exception("LiteRT-LM load failed (primary: ${originalError.message}, fallback: ${e.message})"))
+    Result.failure(
+      Exception("LiteRT-LM load failed (primary: ${originalError.message}, fallback: ${e.message})")
+    )
   }
 
   override fun unloadModel() {

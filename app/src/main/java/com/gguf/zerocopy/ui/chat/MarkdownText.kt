@@ -7,7 +7,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.ParagraphStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -19,7 +18,6 @@ import androidx.compose.ui.text.withAnnotation
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ui.theme.ZcColors
-import java.net.URI
 
 @Composable
 fun MarkdownText(
@@ -38,7 +36,10 @@ fun MarkdownText(
     onClick = { offset ->
       annotated.getStringAnnotations("url", offset, offset).firstOrNull()?.let {
         try {
-          val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(it.item))
+          val intent = android.content.Intent(
+            android.content.Intent.ACTION_VIEW,
+            android.net.Uri.parse(it.item)
+          )
           androidx.compose.ui.platform.LocalContext.current.startActivity(intent)
         } catch (_: Exception) {}
       }
@@ -60,7 +61,9 @@ private fun parseMarkdown(
         val end = text.indexOf("```", i + 3)
         if (end >= 0) {
           val code = text.substring(i + 3, end).trimStart('\n', '\r').trimEnd('\n', '\r')
-          withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = codeColor)) {
+          withStyle(
+            SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = codeColor)
+          ) {
             append("\n")
             append(code)
             append("\n")
@@ -76,7 +79,14 @@ private fun parseMarkdown(
         val end = text.indexOf('`', i + 1)
         if (end >= 0) {
           val code = text.substring(i + 1, end)
-          withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = codeColor, background = Color(0x33FFFFFF))) {
+          withStyle(
+            SpanStyle(
+              fontFamily = FontFamily.Monospace,
+              fontSize = 12.sp,
+              color = codeColor,
+              background = Color(0x33FFFFFF)
+            )
+          ) {
             append(code)
           }
           i = end + 1
@@ -125,7 +135,8 @@ private fun parseMarkdown(
           }
           i = end + 2
         } else {
-          append(text[i]); i++
+          append(text[i])
+          i++
         }
       }
       // Italic *text*
@@ -137,7 +148,8 @@ private fun parseMarkdown(
           }
           i = end + 1
         } else {
-          append(text[i]); i++
+          append(text[i])
+          i++
         }
       }
       // Bold __text__
@@ -149,7 +161,8 @@ private fun parseMarkdown(
           }
           i = end + 2
         } else {
-          append(text[i]); i++
+          append(text[i])
+          i++
         }
       }
       // Strikethrough ~~text~~
@@ -161,7 +174,8 @@ private fun parseMarkdown(
           }
           i = end + 2
         } else {
-          append(text[i]); i++
+          append(text[i])
+          i++
         }
       }
       // Header # through ######
@@ -170,20 +184,37 @@ private fun parseMarkdown(
         while (i + level < text.length && text[i + level] == '#') level++
         if (level <= 6 && i + level < text.length && text[i + level] == ' ') {
           val lineEnd = text.indexOf('\n', i)
-          val headerText = text.substring(i + level + 1, if (lineEnd >= 0) lineEnd else text.length).trim()
-          val size = when (level) { 1 -> 20.sp; 2 -> 17.sp; 3 -> 15.sp; else -> 14.sp }
+          val headerText = text.substring(
+            i + level + 1,
+            if (lineEnd >=
+              0
+            ) {
+              lineEnd
+            } else {
+              text.length
+            }
+          ).trim()
+          val size = when (level) {
+            1 -> 20.sp
+            2 -> 17.sp
+            3 -> 15.sp
+            else -> 14.sp
+          }
           withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontSize = size)) {
             append(headerText)
           }
           append("\n")
           i = if (lineEnd >= 0) lineEnd + 1 else text.length
         } else {
-          append(text[i]); i++
+          append(text[i])
+          i++
         }
       }
       // Bullet list - or *
-      (text[i] == '-' || text[i] == '*') && (i == 0 || text[i - 1] == '\n') &&
-        i + 1 < text.length && text[i + 1] == ' ' -> {
+      (text[i] == '-' || text[i] == '*') &&
+        (i == 0 || text[i - 1] == '\n') &&
+        i + 1 < text.length &&
+        text[i + 1] == ' ' -> {
         append("  \u2022  ")
         i += 2
       }
@@ -197,11 +228,19 @@ private fun parseMarkdown(
           append(" ")
           i = j + 2
         } else {
-          append(text[i]); i++
+          append(text[i])
+          i++
         }
       }
       // Horizontal rule --- or ***
-      (text.startsWith("---", i) || text.startsWith("***", i)) && (i == 0 || text[i - 1] == '\n') -> {
+      (
+        text.startsWith(
+          "---",
+          i
+        ) ||
+          text.startsWith("***", i)
+        ) &&
+        (i == 0 || text[i - 1] == '\n') -> {
         val lineEnd = text.indexOf('\n', i)
         val line = text.substring(i, if (lineEnd >= 0) lineEnd else text.length).trim()
         if (line.matches(Regex("^[-*]{3,}$"))) {
@@ -209,7 +248,8 @@ private fun parseMarkdown(
           append("\n")
           i = if (lineEnd >= 0) lineEnd + 1 else text.length
         } else {
-          append(text[i]); i++
+          append(text[i])
+          i++
         }
       }
       else -> {

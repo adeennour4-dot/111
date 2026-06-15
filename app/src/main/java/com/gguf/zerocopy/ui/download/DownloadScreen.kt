@@ -17,8 +17,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.outlined.Downloading
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -234,7 +234,12 @@ fun DownloadCard(
               modifier = Modifier.weight(1f)
             )
             IconButton(onClick = onCancel, modifier = Modifier.size(24.dp)) {
-              Icon(Icons.Filled.Close, "Cancel", tint = ZcColors.Red, modifier = Modifier.size(16.dp))
+              Icon(
+                Icons.Filled.Close,
+                "Cancel",
+                tint = ZcColors.Red,
+                modifier = Modifier.size(16.dp)
+              )
             }
           }
         }

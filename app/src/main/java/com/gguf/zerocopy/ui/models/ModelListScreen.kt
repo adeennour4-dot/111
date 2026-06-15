@@ -6,7 +6,6 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,7 +30,6 @@ import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -188,9 +186,21 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
               DetailRow("Format", model.format.uppercase())
               DetailRow("Engine", model.engine.id)
               DetailRow("Size", model.sizeFormatted)
-              DetailRow("Added", java.text.SimpleDateFormat("MMM d, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(model.addedAt)))
+              DetailRow(
+                "Added",
+                java.text.SimpleDateFormat(
+                  "MMM d, HH:mm",
+                  java.util.Locale.getDefault()
+                ).format(java.util.Date(model.addedAt))
+              )
               if (model.lastUsed > 0) {
-                DetailRow("Last used", java.text.SimpleDateFormat("MMM d, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(model.lastUsed)))
+                DetailRow(
+                  "Last used",
+                  java.text.SimpleDateFormat(
+                    "MMM d, HH:mm",
+                    java.util.Locale.getDefault()
+                  ).format(java.util.Date(model.lastUsed))
+                )
               }
               DetailRow("Path", model.path)
             }

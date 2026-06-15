@@ -33,8 +33,10 @@ fun isValidModelFile(file: File): Boolean {
     RandomAccessFile(file, "r").use { raf ->
       val header = ByteArray(4)
       raf.readFully(header)
-      header.contentEquals(GGUF_MAGIC) || header.contentEquals(GGML_MAGIC) ||
-        header.contentEquals(TFLITE1_MAGIC) || header.contentEquals(TFLITE2_MAGIC) ||
+      header.contentEquals(GGUF_MAGIC) ||
+        header.contentEquals(GGML_MAGIC) ||
+        header.contentEquals(TFLITE1_MAGIC) ||
+        header.contentEquals(TFLITE2_MAGIC) ||
         file.extension.lowercase() == "litertlm"
     }
   } catch (_: Exception) {
@@ -178,13 +180,19 @@ class ModelRepository(private val context: Context) {
   fun scanModels() {
     val files = modelsDir.listFiles() ?: emptyArray()
     _models.value =
-      (files.filter { it.isFile && it.extension.lowercase() in VALID_EXTENSIONS && isValidModelFile(it) } +
-        files.filter { it.isDirectory && File(it, "config.json").exists() }
-          .map { dir ->
-            val entries = dir.listFiles() ?: emptyArray()
-            val dataFile = entries.find { it.extension.lowercase() in VALID_EXTENSIONS }
-            dataFile ?: dir
-          })
+      (
+        files.filter {
+          it.isFile &&
+            it.extension.lowercase() in VALID_EXTENSIONS &&
+            isValidModelFile(it)
+        } +
+          files.filter { it.isDirectory && File(it, "config.json").exists() }
+            .map { dir ->
+              val entries = dir.listFiles() ?: emptyArray()
+              val dataFile = entries.find { it.extension.lowercase() in VALID_EXTENSIONS }
+              dataFile ?: dir
+            }
+        )
         .map { file ->
           val ext = if (file.isDirectory) "mnn" else file.extension.lowercase()
           LocalModel(
@@ -252,11 +260,12 @@ class ModelRepository(private val context: Context) {
     @Volatile
     var isRunning = false
       private set
+
     @Volatile
     var result: Result<LocalModel>? = null
       private set
 
-    private val partFile: File get() = File(modelsDir, "${filename}.part")
+    private val partFile: File get() = File(modelsDir, "$filename.part")
 
     fun start() {
       isRunning = true

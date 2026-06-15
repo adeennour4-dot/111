@@ -54,10 +54,7 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SessionListScreen(
-  onSessionSelected: (String) -> Unit,
-  onBack: () -> Unit
-) {
+fun SessionListScreen(onSessionSelected: (String) -> Unit, onBack: () -> Unit) {
   val app = ZeroCopyApp.instance
   val sessions by app.chatRepository.sessions.collectAsState(initial = emptyList())
   var showNewDialog by remember { mutableStateOf(false) }
@@ -212,7 +209,10 @@ private fun SessionCard(
   onRename: () -> Unit,
   onDelete: () -> Unit
 ) {
-  val dateStr = SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(session.lastMessageAt))
+  val dateStr = SimpleDateFormat(
+    "MMM d, HH:mm",
+    Locale.getDefault()
+  ).format(Date(session.lastMessageAt))
 
   Surface(
     modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
@@ -228,11 +228,22 @@ private fun SessionCard(
       )
       Spacer(Modifier.width(12.dp))
       Column(Modifier.weight(1f)) {
-        Text(session.name, color = ZcColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(
+          session.name,
+          color = ZcColors.Text,
+          fontSize = 14.sp,
+          fontWeight = FontWeight.SemiBold,
+          maxLines = 1
+        )
         Row {
           Text(dateStr, fontSize = 10.sp, color = ZcColors.Text3, fontFamily = FontFamily.Monospace)
           Text(" · ", fontSize = 10.sp, color = ZcColors.Text3)
-          Text("${session.messageCount} msgs", fontSize = 10.sp, color = ZcColors.Text3, fontFamily = FontFamily.Monospace)
+          Text(
+            "${session.messageCount} msgs",
+            fontSize = 10.sp,
+            color = ZcColors.Text3,
+            fontFamily = FontFamily.Monospace
+          )
         }
       }
       IconButton(onClick = onRename, modifier = Modifier.size(32.dp)) {
