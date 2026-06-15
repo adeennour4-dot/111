@@ -345,7 +345,7 @@ class ModelRepository(private val context: Context) {
           sizeBytes = finalFile.length()
         )
         onComplete()
-        Result.success(model)
+        return Result.success(model)
       } catch (e: Exception) {
         if (e.message == "Download cancelled") throw e
         return Result.failure(e)
