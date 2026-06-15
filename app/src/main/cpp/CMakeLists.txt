@@ -25,8 +25,7 @@ set(LLAMA_FLASH_ATTN ON CACHE BOOL "" FORCE)
 if(GGML_VULKAN)
     find_path(VULKAN_HEADERS_INCLUDE_DIR
         NAMES vulkan/vulkan.h
-        PATHS ${ANDROID_NDK}/sources/third_party/vulkan/include
-        NO_DEFAULT_PATH
+        PATHS ${CMAKE_ANDROID_NDK}/sources/third_party/vulkan/include
     )
     if(VULKAN_HEADERS_INCLUDE_DIR)
         message(STATUS "Vulkan headers found: ${VULKAN_HEADERS_INCLUDE_DIR}")
@@ -111,7 +110,7 @@ target_include_directories(mnn-bridge PRIVATE
 target_link_libraries(mnn-bridge PRIVATE MNN ${log-lib} ${android-lib})
 
 if(GGML_VULKAN)
-    find_library(Vulkan_LIB vulkan PATHS ${ANDROID_NDK}/platforms/android-27/arch-arm64/usr/lib NO_DEFAULT_PATH)
+    find_library(Vulkan_LIB vulkan PATHS ${CMAKE_ANDROID_NDK}/platforms/android-27/arch-arm64/usr/lib)
     if(Vulkan_LIB)
         target_include_directories(ipc-bridge PRIVATE ${VULKAN_HEADERS_INCLUDE_DIR})
         target_link_libraries(ipc-bridge PRIVATE ${Vulkan_LIB})

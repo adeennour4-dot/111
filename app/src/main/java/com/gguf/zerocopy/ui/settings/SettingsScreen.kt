@@ -80,11 +80,6 @@ fun SettingsScreen(onBack: () -> Unit) {
   var benchResult by remember { mutableStateOf("") }
   var isBenchmarking by remember { mutableStateOf(false) }
 
-  BackHandler(onBack = {
-    applySettings()
-    onBack()
-  })
-
   fun applySettings() {
     val cfg =
       InferenceConfig(
@@ -114,6 +109,11 @@ fun SettingsScreen(onBack: () -> Unit) {
       it.systemPrompt = sysPrompt
     }
   }
+
+  BackHandler(onBack = {
+    applySettings()
+    onBack()
+  })
 
   Scaffold(
     topBar = {

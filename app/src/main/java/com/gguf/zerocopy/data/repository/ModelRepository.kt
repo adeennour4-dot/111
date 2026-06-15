@@ -245,7 +245,7 @@ class ModelRepository(private val context: Context) {
     onProgress: (Float) -> Unit,
     onCancel: () -> Boolean = { false }
   ): DownloadTask {
-    val task = DownloadTask(modelsDir, repo, filename, onProgress, onCancel)
+    val task = DownloadTask(modelsDir, repo, filename, onProgress, onCancel, ::scanModels)
     task.start()
     return task
   }
@@ -255,7 +255,8 @@ class ModelRepository(private val context: Context) {
     private val repo: String,
     private val filename: String,
     private val onProgress: (Float) -> Unit,
-    private val onCancel: () -> Boolean
+    private val onCancel: () -> Boolean,
+    private val onComplete: () -> Unit
   ) {
     @Volatile
     var isRunning = false
@@ -343,7 +344,7 @@ class ModelRepository(private val context: Context) {
           engine = engineForExt(ext),
           sizeBytes = finalFile.length()
         )
-        scanModels()
+        onComplete()
         Result.success(model)
       } catch (e: Exception) {
         if (e.message == "Download cancelled") throw e

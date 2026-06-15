@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -28,6 +29,7 @@ fun MarkdownText(
   codeColor: Color = ZcColors.Accent2,
   textColor: Color = ZcColors.Text
 ) {
+  val context = LocalContext.current
   val annotated = remember(markdown) { parseMarkdown(markdown, textColor, linkColor, codeColor) }
   ClickableText(
     text = annotated,
@@ -36,11 +38,12 @@ fun MarkdownText(
     onClick = { offset ->
       annotated.getStringAnnotations("url", offset, offset).firstOrNull()?.let {
         try {
-          val intent = android.content.Intent(
-            android.content.Intent.ACTION_VIEW,
-            android.net.Uri.parse(it.item)
+          context.startActivity(
+            android.content.Intent(
+              android.content.Intent.ACTION_VIEW,
+              android.net.Uri.parse(it.item)
+            )
           )
-          androidx.compose.ui.platform.LocalContext.current.startActivity(intent)
         } catch (_: Exception) {}
       }
     }

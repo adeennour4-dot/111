@@ -46,7 +46,9 @@ import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.data.repository.DownloadableModel
 import com.gguf.zerocopy.data.repository.ModelDownloads
+import com.gguf.zerocopy.data.repository.ModelRepository
 import com.gguf.zerocopy.ui.theme.ZcColors
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,6 +62,7 @@ fun DownloadScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Unit
   var downloadTask by remember { mutableStateOf<ModelRepository.DownloadTask?>(null) }
   var downloadProgress by remember { mutableFloatStateOf(0f) }
   var statusText by remember { mutableStateOf("") }
+  var cancelled by remember { mutableStateOf(false) }
 
   Scaffold(
     topBar = {
@@ -116,11 +119,12 @@ fun DownloadScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Unit
             onClick = {
               if (downloadTask?.isRunning == true) return@DownloadCard
               statusText = "Downloading ${model.name}..."
+              cancelled = false
               val task = app.modelRepository.downloadFromHf(
                 repo = model.hfRepo,
                 filename = model.hfFile,
                 onProgress = { progress -> downloadProgress = progress },
-                onCancel = { downloadTask?.isRunning == false }
+                onCancel = { cancelled }
               )
               downloadTask = task
               scope.launch(Dispatchers.IO) {
@@ -151,7 +155,10 @@ fun DownloadScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Unit
                 downloadTask = null
               }
             },
-            onCancel = { downloadTask?.cancel() }
+            onCancel = {
+              cancelled = true
+              downloadTask?.cancel()
+            }
           )
         }
       }
