@@ -353,10 +353,16 @@ class ModelRepository(private val context: Context) {
     }
   }
 
-  fun deleteModel(id: String) {
-    val model = _models.value.find { it.id == id } ?: return
-    File(model.path).delete()
-    scanModels()
+  fun deleteModel(id: String): Boolean {
+    val model = _models.value.find { it.id == id } ?: return false
+    val file = File(model.path)
+    val deleted = if (file.isDirectory) {
+      file.deleteRecursively()
+    } else {
+      file.delete()
+    }
+    if (deleted) scanModels()
+    return deleted
   }
 
   fun markUsed(id: String) {

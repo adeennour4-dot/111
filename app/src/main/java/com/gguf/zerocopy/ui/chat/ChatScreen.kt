@@ -7,6 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.speech.RecognizerIntent
+import android.speech.tts.TextToSpeech
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -34,17 +36,21 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -57,6 +63,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -84,6 +91,9 @@ import com.gguf.zerocopy.data.repository.MessageRole
 import com.gguf.zerocopy.domain.inference.TokenCallback
 import com.gguf.zerocopy.ui.models.ModelSelectionSheet
 import com.gguf.zerocopy.ui.theme.ZcColors
+import java.io.File
+import java.io.FileOutputStream
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -118,6 +128,30 @@ fun ChatScreen(
   var statusText by remember { mutableStateOf(modelName.ifEmpty { "No model" }) }
   var attachmentUri by remember { mutableStateOf<Uri?>(null) }
   var showModelSheet by remember { mutableStateOf(false) }
+  var isListening by remember { mutableStateOf(false) }
+  var isSpeaking by remember { mutableStateOf(false) }
+  var showPromptSuggestions by remember { mutableStateOf(false) }
+  val tts = remember {
+    mutableStateOf<TextToSpeech?>(null)
+  }
+
+  DisposableEffect(Unit) {
+    val ttsInstance = TextToSpeech(context) { status ->
+      if (status == TextToSpeech.SUCCESS) tts.value?.language = Locale.getDefault()
+    }
+    tts.value = ttsInstance
+    onDispose { ttsInstance.stop(); ttsInstance.shutdown() }
+  }
+
+  val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+    if (result.resultCode == Activity.RESULT_OK) {
+      val results = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+      if (!results.isNullOrEmpty()) {
+        prompt = results[0]
+      }
+    }
+    isListening = false
+  }
 
   val chatId = sessionId ?: remember { app.chatRepository.createSession("Chat - $modelName").id }
 
@@ -257,6 +291,16 @@ fun ChatScreen(
               )
             )
           }
+          IconButton(onClick = {
+            val exportText = app.chatRepository.exportSession(chatId)
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+              type = "text/plain"
+              putExtra(Intent.EXTRA_TEXT, exportText)
+            }
+            context.startActivity(Intent.createChooser(shareIntent, "Export Chat"))
+          }) {
+            Icon(Icons.Filled.Share, "Export", tint = ZcColors.Text2)
+          }
           IconButton(onClick = onSessions) {
             Icon(Icons.Outlined.Chat, "Sessions", tint = ZcColors.Text2)
           }
@@ -306,7 +350,9 @@ fun ChatScreen(
             contentPadding = PaddingValues(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
           ) {
-            items(messages) { msg -> ChatBubble(msg, clip) }
+            items(messages) { msg -> ChatBubble(msg, clip) { text ->
+              tts.value?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+            } }
             if (isInferring && streamedText.isNotEmpty()) {
               item { StreamingBubble(streamedText, false) }
             } else if (isInferring && isProcessing) {
@@ -317,11 +363,18 @@ fun ChatScreen(
       }
 
       if (engine?.isModelLoaded == true) {
+        PromptSuggestions(
+          expanded = showPromptSuggestions,
+          onToggle = { showPromptSuggestions = !showPromptSuggestions },
+          onSelect = { prompt = it }
+        )
         InputBar(
           prompt = prompt,
           onPromptChange = { prompt = it },
           isInferring = isInferring,
           attachmentFileName = attachmentUri?.lastPathSegment?.substringAfterLast('/'),
+          isListening = isListening,
+          isSpeaking = isSpeaking,
           onSend = {
             if (prompt.isNotBlank()) {
               val msg = prompt
@@ -348,8 +401,16 @@ fun ChatScreen(
                   override fun onTokensGenerated(count: Int) {}
                 }
                 var fullPrompt = msg
-                if (attach != null) fullPrompt = "[Image attached: $attachmentName]\n$msg"
-                engine.executeInference(fullPrompt, cb)
+                if (attach != null) {
+                  val savedPath = saveImageToAppStorage(context, attach)
+                  if (savedPath != null && engine.mmprojPath.isNotEmpty()) {
+                    engine.executeInferenceWithImage(fullPrompt, savedPath, cb)
+                  } else {
+                    engine.executeInference("[Image attached: $attachmentName]\n$msg", cb)
+                  }
+                } else {
+                  engine.executeInference(fullPrompt, cb)
+                }
               }
             }
           },
@@ -360,6 +421,23 @@ fun ChatScreen(
               type = "image/*"
             }
             imagePicker.launch(intent)
+          },
+          onVoice = {
+            isListening = true
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+              putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+              putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak your message...")
+            }
+            try { speechLauncher.launch(intent) }
+            catch (_: Exception) { isListening = false }
+          },
+          onSpeak = { text ->
+            tts.value?.let { t ->
+              if (!isSpeaking) {
+                t.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+                isSpeaking = true
+              }
+            }
           }
         )
       }
@@ -380,6 +458,18 @@ fun ChatScreen(
       }
     )
   }
+}
+
+private fun saveImageToAppStorage(context: Context, uri: Uri): String? {
+  return try {
+    val dir = File(context.filesDir, "images").also { it.mkdirs() }
+    val name = "img_${System.currentTimeMillis()}.jpg"
+    val file = File(dir, name)
+    context.contentResolver.openInputStream(uri)?.use { input ->
+      FileOutputStream(file).use { output -> input.copyTo(output) }
+    }
+    file.absolutePath
+  } catch (_: Exception) { null }
 }
 
 private fun getFileName(context: Context, uri: Uri): String {
@@ -403,7 +493,7 @@ private fun getFileName(context: Context, uri: Uri): String {
 }
 
 @Composable
-fun ChatBubble(msg: ChatMessage, clip: ClipboardManager) {
+fun ChatBubble(msg: ChatMessage, clip: ClipboardManager, onSpeak: (String) -> Unit = {}) {
   val isUser = msg.role == MessageRole.USER
   Row(
     modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
@@ -438,14 +528,23 @@ fun ChatBubble(msg: ChatMessage, clip: ClipboardManager) {
           if (!isUser) ThinkingContent(msg.content) else MarkdownText(msg.content)
         }
       }
-      if (!isUser && msg.tps > 0) {
-        Text(
-          "%.1f t/s · %d tok".format(msg.tps, msg.tokens),
-          modifier = Modifier.padding(start = 4.dp, top = 2.dp),
-          fontSize = 9.sp,
-          color = ZcColors.Text3,
-          fontFamily = FontFamily.Monospace
-        )
+      if (!isUser) {
+        Row(modifier = Modifier.padding(start = 4.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+          if (msg.tps > 0) {
+            Text(
+              "%.1f t/s · %d tok".format(msg.tps, msg.tokens),
+              fontSize = 9.sp,
+              color = ZcColors.Text3,
+              fontFamily = FontFamily.Monospace,
+              modifier = Modifier.weight(1f)
+            )
+          } else {
+            Spacer(Modifier.weight(1f))
+          }
+          IconButton(onClick = { onSpeak(msg.content) }, modifier = Modifier.size(20.dp)) {
+            Icon(Icons.Outlined.VolumeUp, "Speak", tint = ZcColors.Text3, modifier = Modifier.size(14.dp))
+          }
+        }
       }
     }
     if (isUser) {
@@ -553,9 +652,13 @@ fun InputBar(
   onPromptChange: (String) -> Unit,
   isInferring: Boolean,
   attachmentFileName: String?,
+  isListening: Boolean,
+  isSpeaking: Boolean,
   onSend: () -> Unit,
   onStop: () -> Unit,
-  onImage: () -> Unit
+  onImage: () -> Unit,
+  onVoice: () -> Unit,
+  onSpeak: (String) -> Unit
 ) {
   Surface(color = ZcColors.Surface, shadowElevation = 8.dp) {
     Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -579,15 +682,15 @@ fun InputBar(
         value = prompt,
         onValueChange = onPromptChange,
         modifier = Modifier.fillMaxWidth(),
-        placeholder = { Text("Message...", color = ZcColors.Text3, fontSize = 14.sp) },
-        enabled = !isInferring,
+        placeholder = { Text(if (isListening) "Listening..." else "Message...", color = ZcColors.Text3, fontSize = 14.sp) },
+        enabled = !isInferring && !isListening,
         maxLines = 5,
         shape = RoundedCornerShape(14.dp),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
         keyboardActions = KeyboardActions(onSend = { if (!isInferring && prompt.isNotBlank()) onSend() }),
         colors = OutlinedTextFieldDefaults.colors(
           focusedBorderColor = ZcColors.Accent.copy(alpha = 0.5f),
-          unfocusedBorderColor = ZcColors.Border,
+          unfocusedBorderColor = if (isListening) ZcColors.Purple.copy(alpha = 0.5f) else ZcColors.Border,
           focusedContainerColor = ZcColors.Card,
           unfocusedContainerColor = ZcColors.Card,
           focusedTextColor = ZcColors.Text,
@@ -600,6 +703,14 @@ fun InputBar(
       Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onImage, modifier = Modifier.size(36.dp)) {
           Icon(Icons.Outlined.Image, "Attach Image", tint = ZcColors.Purple, modifier = Modifier.size(18.dp))
+        }
+        IconButton(onClick = onVoice, modifier = Modifier.size(36.dp)) {
+          Icon(Icons.Outlined.Mic, "Voice Input", tint = if (isListening) ZcColors.Purple else ZcColors.Text2, modifier = Modifier.size(18.dp))
+        }
+        if (isSpeaking) {
+          IconButton(onClick = {}, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Outlined.VolumeUp, "Speaking", tint = ZcColors.Accent2, modifier = Modifier.size(18.dp))
+          }
         }
         Spacer(Modifier.weight(1f))
         val enabled = prompt.isNotBlank() && !isInferring
@@ -621,6 +732,42 @@ fun InputBar(
               "Send",
               tint = if (enabled) Color.White else ZcColors.Text3,
               modifier = Modifier.size(18.dp)
+            )
+          }
+        }
+      }
+    }
+  }
+}
+
+@Composable
+fun PromptSuggestions(expanded: Boolean, onToggle: () -> Unit, onSelect: (String) -> Unit) {
+  val suggestions = listOf(
+    "Summarize this thread so far",
+    "Explain like I'm 5",
+    "Write a poem about AI",
+    "Give me 5 project ideas"
+  )
+  AnimatedVisibility(visible = expanded) {
+    Surface(
+      modifier = Modifier.fillMaxWidth(),
+      color = ZcColors.Surface,
+      shadowElevation = 4.dp
+    ) {
+      Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+          suggestions.take(3).forEach { s ->
+            AssistChip(
+              onClick = { onSelect(s) },
+              label = { Text(s, maxLines = 1, fontSize = 10.sp) },
+              colors = AssistChipDefaults.assistChipColors(
+                containerColor = ZcColors.CardLight,
+                labelColor = ZcColors.Text2
+              ),
+              shape = RoundedCornerShape(16.dp)
             )
           }
         }

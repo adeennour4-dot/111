@@ -90,12 +90,35 @@ set(CMAKE_SOURCE_DIR "${PROJECT_SOURCE_DIR}")
 find_library(log-lib     log)
 find_library(android-lib android)
 
+# Build CLIP for multimodal support (from llama.cpp examples)
+if(EXISTS ${llama_SOURCE_DIR}/examples/llava/clip.cpp)
+    add_library(clip STATIC
+        ${llama_SOURCE_DIR}/examples/llava/clip.cpp
+        ${llama_SOURCE_DIR}/examples/llava/llava.cpp
+    )
+    target_include_directories(clip PRIVATE
+        ${llama_SOURCE_DIR}/include
+        ${llama_SOURCE_DIR}/ggml/include
+        ${llama_SOURCE_DIR}/examples/llava
+    )
+    target_link_libraries(clip PRIVATE llama ggml)
+    set(CLIP_FOUND TRUE)
+else()
+    set(CLIP_FOUND FALSE)
+    message(WARNING "CLIP not found, vision support disabled")
+endif()
+
 add_library(ipc-bridge SHARED ipc-bridge.cpp)
 target_include_directories(ipc-bridge PRIVATE
     ${llama_SOURCE_DIR}/include
     ${llama_SOURCE_DIR}/ggml/include
+    ${llama_SOURCE_DIR}/examples/llava
 )
-target_link_libraries(ipc-bridge PRIVATE llama ggml ${log-lib} ${android-lib})
+if(CLIP_FOUND)
+    target_link_libraries(ipc-bridge PRIVATE llama ggml clip stb ${log-lib} ${android-lib})
+else()
+    target_link_libraries(ipc-bridge PRIVATE llama ggml ${log-lib} ${android-lib})
+endif()
 
 add_library(mnn-bridge SHARED mnn-bridge.cpp)
 target_include_directories(mnn-bridge PRIVATE

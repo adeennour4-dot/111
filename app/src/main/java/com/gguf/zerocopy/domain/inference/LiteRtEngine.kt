@@ -22,6 +22,7 @@ class LiteRtEngine : InferenceEngine {
   override var config = InferenceConfig()
   override var repeatPenalty = RepeatPenaltyConfig()
   override var systemPrompt = ""
+  override var mmprojPath: String = ""
 
   private var engine: Engine? = null
   private var conversation: Conversation? = null
@@ -77,6 +78,10 @@ class LiteRtEngine : InferenceEngine {
     isModelLoaded = false
     modelInfo = null
     currentModelPath = ""
+  }
+
+  override suspend fun executeInferenceWithImage(prompt: String, imagePath: String, callback: TokenCallback) {
+    executeInference("[Image: $imagePath]\n$prompt", callback)
   }
 
   override suspend fun executeInference(prompt: String, callback: TokenCallback) {

@@ -19,7 +19,11 @@ object NativeBridge {
 
   external fun loadGgufModelNative(filePath: String): Boolean
 
+  external fun loadMmprojNative(mmprojPath: String): Boolean
+
   external fun executeWithCallbackNative(prompt: String, callback: TokenCallback)
+
+  external fun executeWithImageNative(prompt: String, imagePath: String, callback: TokenCallback)
 
   external fun abortInferenceNative()
 

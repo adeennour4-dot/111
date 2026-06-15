@@ -16,6 +16,7 @@ class LlamaCppEngine : InferenceEngine {
   override var config = InferenceConfig()
   override var repeatPenalty = RepeatPenaltyConfig()
   override var systemPrompt = ""
+  override var mmprojPath: String = ""
 
   private val lock = Any()
   private var partialStream = StringBuilder()
@@ -53,6 +54,11 @@ class LlamaCppEngine : InferenceEngine {
       if (ok) {
         isModelLoaded = true
         modelInfo = parseModelInfo(NativeBridge.getModelInfoNative())
+        if (mmprojPath.isNotEmpty()) {
+          try {
+            NativeBridge.loadMmprojNative(mmprojPath)
+          } catch (_: Exception) { }
+        }
         Result.success(Unit)
       } else {
         Result.failure(Exception("Failed to load GGUF model"))
@@ -67,6 +73,15 @@ class LlamaCppEngine : InferenceEngine {
     isModelLoaded = false
     modelInfo = null
     currentModelPath = ""
+  }
+
+  override fun loadMmproj(path: String): Boolean {
+    mmprojPath = path
+    return try {
+      NativeBridge.loadMmprojNative(path)
+    } catch (_: Exception) {
+      false
+    }
   }
 
   override suspend fun executeInference(prompt: String, callback: TokenCallback) {
@@ -106,6 +121,49 @@ class LlamaCppEngine : InferenceEngine {
 
       try {
         NativeBridge.executeWithCallbackNative(prompt, cb)
+      } catch (e: Exception) {
+        inferenceDone.set(true)
+      }
+    }
+  }
+
+  override suspend fun executeInferenceWithImage(prompt: String, imagePath: String, callback: TokenCallback) {
+    withContext(Dispatchers.IO) {
+      synchronized(lock) {
+        partialStream.clear()
+        fullResponse.clear()
+      }
+      inferenceDone.set(false)
+      tokensGenerated.set(0)
+
+      val cb =
+        object : NativeBridge.TokenCallback {
+          override fun onToken(token: String) {
+            synchronized(lock) {
+              partialStream.append(token)
+              fullResponse.append(token)
+            }
+          }
+
+          override fun onDone() {
+            inferenceDone.set(true)
+          }
+
+          override fun onError(error: String) {
+            inferenceDone.set(true)
+          }
+
+          override fun onKvCacheUsage(percent: Int) {
+            kvUsage = percent
+          }
+
+          override fun onTokensGenerated(count: Int) {
+            tokensGenerated.set(count)
+          }
+        }
+
+      try {
+        NativeBridge.executeWithImageNative(prompt, imagePath, cb)
       } catch (e: Exception) {
         inferenceDone.set(true)
       }

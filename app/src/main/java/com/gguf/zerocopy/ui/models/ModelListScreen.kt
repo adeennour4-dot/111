@@ -59,6 +59,7 @@ import com.gguf.zerocopy.ui.theme.ZcColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.widget.Toast
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -170,7 +171,10 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
                 }
               },
               onInfo = { infoModel = model },
-              onDelete = { app.modelRepository.deleteModel(model.id) }
+              onDelete = {
+                val ok = app.modelRepository.deleteModel(model.id)
+                if (!ok) Toast.makeText(context, "Failed to delete ${model.name}", Toast.LENGTH_SHORT).show()
+              }
             )
           }
         }

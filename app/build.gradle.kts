@@ -13,8 +13,8 @@ android {
         applicationId = "com.gguf.zerocopy"
         minSdk        = 27
         targetSdk     = 36
-        versionCode   = 8
-        versionName   = "8.0.0"
+        versionCode   = 9
+        versionName   = "8.1.0"
 
         externalNativeBuild {
             cmake {
@@ -27,14 +27,15 @@ android {
                     "-DGGML_LLAMAFILE=OFF",
                     "-DLLAMA_BUILD_TESTS=OFF",
                     "-DLLAMA_BUILD_EXAMPLES=OFF",
-                    "-DGGML_BACKEND_DL=OFF"
+                    "-DGGML_BACKEND_DL=OFF",
+                    "-DLLAMA_BUILD_LLAVA=ON"
                 )
                 abiFilters += "arm64-v8a"
             }
         }
 
-        buildConfigField("String", "VERSION_NAME", "\"8.0.0\"")
-        buildConfigField("int", "VERSION_CODE", "8")
+        buildConfigField("String", "VERSION_NAME", "\"8.1.0\"")
+        buildConfigField("int", "VERSION_CODE", "9")
     }
 
     compileOptions {

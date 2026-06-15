@@ -41,12 +41,15 @@ interface InferenceEngine {
   var config: InferenceConfig
   var repeatPenalty: RepeatPenaltyConfig
   var systemPrompt: String
+  var mmprojPath: String
 
   suspend fun loadModel(path: String): Result<Unit>
 
   fun unloadModel()
 
   suspend fun executeInference(prompt: String, callback: TokenCallback)
+
+  suspend fun executeInferenceWithImage(prompt: String, imagePath: String, callback: TokenCallback)
 
   fun abortInference()
 
@@ -55,6 +58,8 @@ interface InferenceEngine {
   suspend fun benchmark(ppTokens: Int, tgTokens: Int): BenchmarkResult
 
   fun supportsFormat(path: String): Boolean
+
+  fun loadMmproj(path: String): Boolean = false
 
   fun readPartialStream(): String = ""
   fun readTokenStream(): String = ""

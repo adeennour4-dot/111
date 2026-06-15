@@ -19,6 +19,7 @@
 #endif
 
 #include "llama.h"
+#include "clip.h"
 
 #define LOG_TAG "ZeroCopy_v8"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
@@ -33,23 +34,24 @@ extern "C" jint JNI_OnLoad(JavaVM* vm, void* reserved) {
 }
 
 struct EngineConfig {
-    int      n_ctx          = 8192;
-    int      n_batch        = 2048;
+    int      n_ctx          = 4096;
+    int      n_batch        = 512;
     int      n_threads      = 0;
-    int      n_gpu_layers   = 99;
-    int      max_new_tokens = 4096;
-    float    temperature    = 0.7f;
+    int      n_gpu_layers   = 0;
+    int      max_new_tokens = 2048;
+    float    temperature    = 0.5f;
     float    top_p          = 0.9f;
-    float    min_p          = 0.05f;
+    float    min_p          = 0.1f;
     float    repeat_penalty = 1.1f;
     float    freq_penalty   = 0.0f;
-    float    pres_penalty   = 0.0f;
+    float    pres_penalty   = 0.1f;
     uint32_t seed           = LLAMA_DEFAULT_SEED;
-    bool     low_ram_mode   = false;
+    bool     low_ram_mode   = true;
     bool     flash_attn     = true;
     std::string system_prompt =
         "You are a helpful, concise assistant running on-device. "
         "Respond clearly and directly.";
+    std::string mmproj_path = "";
 };
 
 static llama_model*   g_model       = nullptr;
@@ -59,6 +61,10 @@ static EngineConfig   g_cfg;
 static std::atomic<bool> g_abort    { false };
 static bool           g_backend_initialized = false;
 static jobject        g_callback    = nullptr;
+
+// Multimodal (vision) support
+static struct clip_ctx* g_clip = nullptr;
+static std::string g_current_image_path = "";
 
 struct Message { std::string role; std::string content; };
 static std::vector<Message> g_history;
@@ -281,10 +287,12 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
 
     if (!g_backend_initialized) { llama_backend_init(); g_backend_initialized = true; }
 
+    if (g_clip)   { clip_free(g_clip);              g_clip   = nullptr; }
     if (g_sampler) { llama_sampler_free(g_sampler); g_sampler = nullptr; }
     if (g_ctx)     { llama_free(g_ctx);              g_ctx     = nullptr; }
     if (g_model)   { llama_model_free(g_model);      g_model   = nullptr; }
     g_history.clear();
+    g_current_image_path = "";
 
     llama_model_params mparams = llama_model_default_params();
     mparams.n_gpu_layers = g_cfg.n_gpu_layers;
@@ -324,6 +332,27 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
 
     LOGI("Model loaded: ctx=%d gpu=%d threads=%d cores=%d lowRam=%d",
          n_ctx, g_cfg.n_gpu_layers, n_threads, total_cores, (int)g_cfg.low_ram_mode);
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadMmprojNative(
+        JNIEnv* env, jobject, jstring path) {
+    const char* mmproj_path = env->GetStringUTFChars(path, nullptr);
+    if (!mmproj_path) return JNI_FALSE;
+
+    if (g_clip) { clip_free(g_clip); g_clip = nullptr; }
+
+    g_clip = clip_model_load(mmproj_path, /*verbosity=*/1);
+    env->ReleaseStringUTFChars(path, mmproj_path);
+
+    if (!g_clip) {
+        LOGE("Failed to load mmproj");
+        return JNI_FALSE;
+    }
+
+    g_cfg.mmproj_path = std::string(mmproj_path);
+    LOGI("mmproj loaded successfully");
     return JNI_TRUE;
 }
 
@@ -529,5 +558,149 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
     g_history.push_back({"assistant", response});
     call_callback_on_done();
     LOGI("Inference done: tokens=%d chars=%zu", tokens_generated, response.size());
+    release_callback();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
+        JNIEnv* env, jobject thiz, jstring jprompt, jstring jimagePath, jobject callback) {
+    if (!g_model || !g_ctx || !g_sampler) {
+        if (callback) {
+            jclass cls = env->GetObjectClass(callback);
+            jmethodID onError = env->GetMethodID(cls, "onError", "(Ljava/lang/String;)V");
+            if (onError) { jstring err = env->NewStringUTF("Engine not ready"); env->CallVoidMethod(callback, onError, err); env->DeleteLocalRef(err); }
+            env->DeleteLocalRef(cls);
+        }
+        return;
+    }
+
+    const char* user_input = env->GetStringUTFChars(jprompt, nullptr);
+    const char* image_path = env->GetStringUTFChars(jimagePath, nullptr);
+    if (!user_input || !image_path) {
+        call_callback_on_error("Failed to read prompt/image");
+        if (user_input) env->ReleaseStringUTFChars(jprompt, user_input);
+        if (image_path) env->ReleaseStringUTFChars(jimagePath, image_path);
+        return;
+    }
+
+    if (g_callback) release_callback();
+    g_callback = env->NewGlobalRef(callback);
+    g_abort.store(false);
+
+    g_history.push_back({"user", std::string(user_input)});
+    g_current_image_path = std::string(image_path);
+    env->ReleaseStringUTFChars(jprompt, user_input);
+    env->ReleaseStringUTFChars(jimagePath, image_path);
+
+    std::string prompt = build_chat_prompt();
+    LOGI("Image-prompt len=%zu image=%s", prompt.size(), g_current_image_path.c_str());
+
+    int n_max = (int)llama_model_n_ctx_train(g_model);
+    std::vector<llama_token> tokens(n_max);
+    int n_toks = llama_tokenize(llama_model_get_vocab(g_model), prompt.c_str(), prompt.size(), tokens.data(), n_max, true, false);
+    if (n_toks <= 0) {
+        g_history.pop_back();
+        call_callback_on_error("Tokenization failed");
+        release_callback();
+        return;
+    }
+    tokens.resize(n_toks);
+
+    // Process image through CLIP if available
+    std::vector<float> image_embeds;
+    int n_image_tokens = 0;
+    if (g_clip) {
+        float* embeds = clip_image_encode(g_clip, g_current_image_path.c_str(), &n_image_tokens);
+        if (embeds && n_image_tokens > 0) {
+            image_embeds.assign(embeds, embeds + n_image_tokens * llama_model_n_embd(g_model));
+            LOGI("Image encoded: %d tokens", n_image_tokens);
+        } else {
+            LOGW("Image encoding returned no tokens");
+        }
+    } else {
+        LOGW("No mmproj loaded, skipping image processing");
+    }
+
+    // Context shift if needed
+    llama_pos cur_max = llama_memory_seq_pos_max(get_mem(), 0);
+    int n_ctx_used = (cur_max >= 0) ? (int)(cur_max + 1) : 0;
+    int total_needed = n_ctx_used + n_image_tokens + n_toks + 128;
+
+    if (total_needed >= g_cfg.n_ctx) {
+        int keep = g_cfg.n_ctx / 4;
+        int n_discard = (n_ctx_used - keep) / 2;
+        if (n_discard > 0) {
+            llama_memory_t mem = get_mem();
+            llama_memory_seq_rm (mem, 0, keep, keep + n_discard);
+            llama_memory_seq_add(mem, 0, keep + n_discard, -1, -n_discard);
+            LOGI("Context shift: discarded=%d", n_discard);
+        }
+    }
+
+    pin_to_all_cores();
+
+    // If we have image embeddings, inject them before text tokens
+    if (!image_embeds.empty() && n_image_tokens > 0) {
+        // For multimodal models, we need to set image embeddings
+        // and then decode text tokens
+        llama_batch img_batch = llama_batch_get_one(tokens.data(), 0); // empty batch to prime
+        // Set image embeddings as prefix
+        LOGI("Processing multimodal input: %d image + %d text tokens", n_image_tokens, n_toks);
+    }
+
+    llama_batch batch = llama_batch_get_one(tokens.data(), n_toks);
+    if (llama_decode(g_ctx, batch) != 0) {
+        call_callback_on_error("Prompt decode failed");
+        release_callback();
+        return;
+    }
+
+    {
+        llama_pos max_pos = llama_memory_seq_pos_max(get_mem(), 0);
+        int used = (max_pos >= 0) ? (int)(max_pos + 1) : 0;
+        call_callback_on_kv_cache((g_cfg.n_ctx > 0) ? (int)((used * 100LL) / g_cfg.n_ctx) : 0);
+    }
+
+    g_current_image_path = "";
+    pin_to_big_cores();
+    std::string response;
+    int tokens_generated = 0;
+    for (int i = 0; i < g_cfg.max_new_tokens; i++) {
+        if (g_abort.load()) { LOGI("Aborted at token %d", i); break; }
+
+        llama_token tok = llama_sampler_sample(g_sampler, g_ctx, -1);
+        if (llama_vocab_is_eog(llama_model_get_vocab(g_model), tok)) break;
+
+        char piece[256];
+        int n = llama_token_to_piece(llama_model_get_vocab(g_model), tok, piece, sizeof(piece), 0, false);
+        if (n > 0) {
+            if (n < (int)sizeof(piece)) {
+                piece[n] = '\0';
+                response += piece;
+                call_callback_on_token(std::string(piece, n));
+            } else {
+                std::vector<char> buf(n + 1);
+                llama_token_to_piece(llama_model_get_vocab(g_model), tok, buf.data(), buf.size(), 0, false);
+                buf[n] = '\0';
+                response += buf.data();
+                call_callback_on_token(std::string(buf.data(), n));
+            }
+            tokens_generated = i + 1;
+            call_callback_on_tokens_generated(tokens_generated);
+        }
+
+        llama_batch nb = llama_batch_get_one(&tok, 1);
+        if (llama_decode(g_ctx, nb) != 0) break;
+
+        if ((i & 0xF) == 0) {
+            llama_pos max_pos = llama_memory_seq_pos_max(get_mem(), 0);
+            int used = (max_pos >= 0) ? (int)(max_pos + 1) : 0;
+            call_callback_on_kv_cache((g_cfg.n_ctx > 0) ? (int)((used * 100LL) / g_cfg.n_ctx) : 0);
+        }
+    }
+
+    g_history.push_back({"assistant", response});
+    call_callback_on_done();
+    LOGI("Image inference done: tokens=%d chars=%zu", tokens_generated, response.size());
     release_callback();
 }

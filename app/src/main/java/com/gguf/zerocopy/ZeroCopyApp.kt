@@ -37,6 +37,7 @@ class ZeroCopyApp : Application() {
     engineManager.llamaCpp.config = config
     engineManager.llamaCpp.repeatPenalty = rp
     engineManager.llamaCpp.systemPrompt = prompt
+    engineManager.llamaCpp.mmprojPath = config.mmprojPath
     engineManager.mnn.config = config
     engineManager.mnn.repeatPenalty = rp
     engineManager.mnn.systemPrompt = prompt

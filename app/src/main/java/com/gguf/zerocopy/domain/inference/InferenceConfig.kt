@@ -4,17 +4,19 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class InferenceConfig(
-  val nCtx: Int = 2048,
+  val nCtx: Int = 4096,
   val nBatch: Int = 512,
   val maxNewTokens: Int = 2048,
   val temperature: Float = 0.5f,
-  val topP: Float = 0.85f,
+  val topP: Float = 0.9f,
   val minP: Float = 0.1f,
   val nGpuLayers: Int = 0,
   val nThreads: Int = 4,
   val seed: Int = -1,
   val lowRamMode: Boolean = true,
-  val flashAttention: Boolean = true
+  val flashAttention: Boolean = true,
+  val presencePenalty: Float = 0.1f,
+  val mmprojPath: String = ""
 )
 
 @Serializable

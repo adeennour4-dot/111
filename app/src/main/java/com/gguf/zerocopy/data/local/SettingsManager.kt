@@ -98,6 +98,12 @@ object SettingsManager {
       prefs?.edit()?.putBoolean("low_ram", v)?.apply()
     }
 
+  var mmprojPath: String
+    get() = prefs?.getString("mmproj_path", "") ?: ""
+    set(v) {
+      prefs?.edit()?.putString("mmproj_path", v)?.apply()
+    }
+
   var isDarkTheme: Boolean
     get() = prefs?.getBoolean("dark_theme", true) ?: true
     set(v) {
@@ -114,7 +120,8 @@ object SettingsManager {
     minP = minP.coerceIn(0f, 1f),
     nGpuLayers = gpuLayers.coerceIn(0, 999),
     nThreads = threads.coerceIn(0, 16),
-    lowRamMode = lowRamMode
+    lowRamMode = lowRamMode,
+    mmprojPath = mmprojPath
   )
 
   fun toRepeatPenalty() = RepeatPenaltyConfig(
@@ -142,6 +149,7 @@ object SettingsManager {
     gpuLayers = config.nGpuLayers
     threads = config.nThreads
     lowRamMode = config.lowRamMode
+    mmprojPath = config.mmprojPath
     repeatPenalty = rp.repeatPenalty
     freqPenalty = rp.freqPenalty
     presPenalty = rp.presPenalty

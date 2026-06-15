@@ -1,6 +1,11 @@
 package com.gguf.zerocopy.ui.settings
 
+import android.app.Activity
+import android.content.Intent
+import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,6 +54,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -63,6 +70,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
+  val context = LocalContext.current
   val app = ZeroCopyApp.instance
   val engineManager = app.engineManager
   val scope = rememberCoroutineScope()
@@ -82,6 +90,22 @@ fun SettingsScreen(onBack: () -> Unit) {
   var sysPrompt by remember { mutableStateOf(SettingsManager.systemPrompt) }
   var lowRam by remember { mutableStateOf(SettingsManager.lowRamMode) }
   var isDark by remember { mutableStateOf(SettingsManager.isDarkTheme) }
+  var mmprojPath by remember { mutableStateOf(SettingsManager.mmprojPath) }
+
+  val mmprojPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+    if (result.resultCode == Activity.RESULT_OK) {
+      result.data?.data?.let { uri ->
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+          if (cursor.moveToFirst()) {
+            val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (idx >= 0) cursor.getString(idx)?.let { name ->
+              mmprojPath = uri.toString()
+            }
+          }
+        }
+      }
+    }
+  }
 
   fun saveSettings() {
     val cfg = InferenceConfig(
@@ -93,7 +117,8 @@ fun SettingsScreen(onBack: () -> Unit) {
       minP = minP.toFloatOrNull()?.coerceIn(0f, 1f) ?: 0.1f,
       nGpuLayers = gpu.toIntOrNull()?.coerceIn(0, 999) ?: 99,
       nThreads = threads.toIntOrNull()?.coerceIn(0, 16) ?: 0,
-      lowRamMode = lowRam
+      lowRamMode = lowRam,
+      mmprojPath = mmprojPath
     )
     val rp = RepeatPenaltyConfig(
       repeatPenalty = repPen.toFloatOrNull() ?: 1.1f,
@@ -238,6 +263,27 @@ fun SettingsScreen(onBack: () -> Unit) {
         color = ZcColors.Amber,
         fontFamily = FontFamily.Monospace
       )
+
+      OutlinedButton(
+        onClick = {
+          val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+          }
+          mmprojPicker.launch(intent)
+        },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = ZcColors.Purple)
+      ) {
+        Icon(Icons.Filled.Visibility, null, modifier = Modifier.size(16.dp), tint = ZcColors.Purple)
+        Spacer(Modifier.width(6.dp))
+        Text(
+          if (mmprojPath.isEmpty()) "Load Vision mmproj" else "mmproj: ${mmprojPath.substringAfterLast('/')}",
+          fontSize = 11.sp,
+          maxLines = 1
+        )
+      }
 
       Button(
         onClick = {

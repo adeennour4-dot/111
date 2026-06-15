@@ -17,6 +17,7 @@ class MnnEngine : InferenceEngine {
   override var config = InferenceConfig()
   override var repeatPenalty = RepeatPenaltyConfig()
   override var systemPrompt = ""
+  override var mmprojPath: String = ""
 
   private val inferenceDone = AtomicBoolean(true)
   private val tokensGenerated = AtomicInteger(0)
@@ -101,6 +102,10 @@ class MnnEngine : InferenceEngine {
     isModelLoaded = false
     modelInfo = null
     currentModelPath = ""
+  }
+
+  override suspend fun executeInferenceWithImage(prompt: String, imagePath: String, callback: TokenCallback) {
+    executeInference("[Image: $imagePath]\n$prompt", callback)
   }
 
   override suspend fun executeInference(prompt: String, callback: TokenCallback) {
