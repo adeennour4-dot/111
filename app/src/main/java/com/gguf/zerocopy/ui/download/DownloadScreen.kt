@@ -47,13 +47,14 @@ import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.data.repository.DownloadableModel
 import com.gguf.zerocopy.data.repository.ModelDownloads
 import com.gguf.zerocopy.data.repository.ModelRepository
-import com.gguf.zerocopy.ui.theme.ZcColors
+import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DownloadScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Unit) {
+  val colors = currentPalette()
   val app = ZeroCopyApp.instance
   val scope = rememberCoroutineScope()
   val deviceInfo = remember { app.deviceUtils.detect() }
@@ -67,40 +68,40 @@ fun DownloadScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Unit
   Scaffold(
     topBar = {
       TopAppBar(
-        title = { Text("Download Models", fontWeight = FontWeight.Bold, color = ZcColors.Text) },
+        title = { Text("Download Models", fontWeight = FontWeight.Bold, color = colors.Text) },
         navigationIcon = {
           IconButton(onClick = onBack) {
-            Icon(Icons.Filled.ArrowBack, "Back", tint = ZcColors.Text2)
+            Icon(Icons.Filled.ArrowBack, "Back", tint = colors.Text2)
           }
         },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = ZcColors.Bg)
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Bg)
       )
     },
-    containerColor = ZcColors.Bg
+    containerColor = colors.Bg
   ) { pad ->
     Column(modifier = Modifier.padding(pad).fillMaxSize()) {
       Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         shape = RoundedCornerShape(12.dp),
-        color = ZcColors.CardLight
+        color = colors.CardLight
       ) {
         Column(modifier = Modifier.padding(12.dp)) {
           Text(
             "Device: ${deviceInfo.socModel.ifEmpty { "Unknown" }}",
             fontSize = 11.sp,
-            color = ZcColors.Text2,
+            color = colors.Text2,
             fontFamily = FontFamily.Monospace
           )
           Text(
             "RAM: ${deviceInfo.availableRamMB}MB available / ${deviceInfo.totalRamMB}MB total",
             fontSize = 11.sp,
-            color = ZcColors.Text2,
+            color = colors.Text2,
             fontFamily = FontFamily.Monospace
           )
           Text(
             "Recommended models shown below",
             fontSize = 11.sp,
-            color = ZcColors.Accent2,
+            color = colors.Accent2,
             fontFamily = FontFamily.Monospace
           )
         }
@@ -164,12 +165,12 @@ fun DownloadScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Unit
       }
 
       if (statusText.isNotEmpty() && downloadTask?.isRunning != true) {
-        Surface(modifier = Modifier.fillMaxWidth(), color = ZcColors.Card) {
+        Surface(modifier = Modifier.fillMaxWidth(), color = colors.Card) {
           Text(
             statusText,
             modifier = Modifier.padding(16.dp),
             fontSize = 11.sp,
-            color = ZcColors.Text3,
+            color = colors.Text3,
             fontFamily = FontFamily.Monospace
           )
         }
@@ -186,41 +187,42 @@ fun DownloadCard(
   onClick: () -> Unit,
   onCancel: () -> Unit = {}
 ) {
+  val colors = currentPalette()
   Surface(
     modifier = Modifier.fillMaxWidth().clickable(enabled = !isDownloading, onClick = onClick),
     shape = RoundedCornerShape(12.dp),
-    color = ZcColors.CardLight
+    color = colors.CardLight
   ) {
     Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
       Icon(
         if (isDownloading) Icons.Outlined.Downloading else Icons.Filled.CloudDownload,
         null,
         modifier = Modifier.size(32.dp),
-        tint = if (isDownloading) ZcColors.Accent2 else ZcColors.Accent
+        tint = if (isDownloading) colors.Accent2 else colors.Accent
       )
       Spacer(Modifier.width(12.dp))
       Column(Modifier.weight(1f)) {
-        Text(model.name, color = ZcColors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-        Text(model.description, fontSize = 11.sp, color = ZcColors.Text2, maxLines = 2)
+        Text(model.name, color = colors.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Text(model.description, fontSize = 11.sp, color = colors.Text2, maxLines = 2)
         Row {
           Text(
             model.format.uppercase(),
             fontSize = 10.sp,
-            color = ZcColors.Accent,
+            color = colors.Accent,
             fontFamily = FontFamily.Monospace
           )
           Spacer(Modifier.width(8.dp))
           Text(
             formatSize(model.sizeBytes),
             fontSize = 10.sp,
-            color = ZcColors.Text3,
+            color = colors.Text3,
             fontFamily = FontFamily.Monospace
           )
           Spacer(Modifier.width(8.dp))
           Text(
             model.engine.id,
             fontSize = 10.sp,
-            color = ZcColors.Accent2,
+            color = colors.Accent2,
             fontFamily = FontFamily.Monospace
           )
         }
@@ -229,14 +231,14 @@ fun DownloadCard(
           LinearProgressIndicator(
             progress = { progress },
             modifier = Modifier.fillMaxWidth().height(4.dp),
-            color = ZcColors.Accent2,
-            trackColor = ZcColors.Card
+            color = colors.Accent2,
+            trackColor = colors.Card
           )
           Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
               "%.0f%%".format(progress * 100),
               fontSize = 10.sp,
-              color = ZcColors.Accent2,
+              color = colors.Accent2,
               fontFamily = FontFamily.Monospace,
               modifier = Modifier.weight(1f)
             )
@@ -244,7 +246,7 @@ fun DownloadCard(
               Icon(
                 Icons.Filled.Close,
                 "Cancel",
-                tint = ZcColors.Red,
+                tint = colors.Red,
                 modifier = Modifier.size(16.dp)
               )
             }

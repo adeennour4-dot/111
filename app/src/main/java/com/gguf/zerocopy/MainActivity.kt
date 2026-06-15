@@ -37,8 +37,8 @@ import com.gguf.zerocopy.ui.download.DownloadScreen
 import com.gguf.zerocopy.ui.models.ModelListScreen
 import com.gguf.zerocopy.ui.sessions.SessionListScreen
 import com.gguf.zerocopy.ui.settings.SettingsScreen
-import com.gguf.zerocopy.ui.theme.ZcColors
 import com.gguf.zerocopy.ui.theme.ZeroCopyTheme
+import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlinx.coroutines.delay
 
 enum class AppScreen { SPLASH, CHAT, SESSIONS, MODELS, DOWNLOAD, SETTINGS }
@@ -119,6 +119,7 @@ fun AppRoot() {
 
 @Composable
 fun SplashScreen(onDone: () -> Unit) {
+  val colors = currentPalette()
   val alpha = remember { Animatable(0f) }
 
   LaunchedEffect(Unit) {
@@ -129,7 +130,7 @@ fun SplashScreen(onDone: () -> Unit) {
   }
 
   Box(
-    modifier = Modifier.fillMaxSize().background(ZcColors.Bg),
+    modifier = Modifier.fillMaxSize().background(colors.Bg),
     contentAlignment = Alignment.Center
   ) {
     Column(
@@ -141,7 +142,7 @@ fun SplashScreen(onDone: () -> Unit) {
           .size(100.dp)
           .clip(RoundedCornerShape(28.dp))
           .background(
-            Brush.linearGradient(listOf(ZcColors.GradientStart, ZcColors.GradientEnd))
+            Brush.linearGradient(listOf(colors.GradientStart, colors.GradientEnd))
           ),
         contentAlignment = Alignment.Center
       ) {
@@ -158,7 +159,7 @@ fun SplashScreen(onDone: () -> Unit) {
         "hello",
         fontSize = 28.sp,
         fontWeight = FontWeight.Light,
-        color = ZcColors.Text2,
+        color = colors.Text2,
         fontFamily = FontFamily.Monospace,
         letterSpacing = 4.sp
       )

@@ -39,11 +39,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Mic
@@ -87,6 +89,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.data.repository.AttachmentType
@@ -95,8 +98,12 @@ import com.gguf.zerocopy.data.repository.MessageRole
 import com.gguf.zerocopy.domain.inference.TokenCallback
 import com.gguf.zerocopy.ui.models.ModelSelectionSheet
 import com.gguf.zerocopy.ui.theme.ZcColors
+import com.gguf.zerocopy.ui.theme.ZcPalette
+import com.gguf.zerocopy.ui.theme.currentPalette
+import java.io.BufferedReader
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStreamReader
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -119,6 +126,7 @@ fun ChatScreen(
   val scope = rememberCoroutineScope()
   val listState = rememberLazyListState()
   val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+  val colors = currentPalette()
 
   val engine = app.engineManager.getActiveEngine()
 
@@ -131,6 +139,7 @@ fun ChatScreen(
   var tps by remember { mutableFloatStateOf(0f) }
   var statusText by remember { mutableStateOf(modelName.ifEmpty { "No model" }) }
   var attachmentUri by remember { mutableStateOf<Uri?>(null) }
+  var reasoningEnabled by remember { mutableStateOf(SettingsManager.reasoningEnabled) }
   var showModelSheet by remember { mutableStateOf(false) }
   var isListening by remember { mutableStateOf(false) }
   var isSpeaking by remember { mutableStateOf(false) }
@@ -234,6 +243,11 @@ fun ChatScreen(
       if (result.resultCode == Activity.RESULT_OK) attachmentUri = result.data?.data
     }
 
+  val docPicker =
+    rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+      if (result.resultCode == Activity.RESULT_OK) attachmentUri = result.data?.data
+    }
+
   val filePicker =
     rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
       if (result.resultCode == Activity.RESULT_OK) {
@@ -276,12 +290,12 @@ fun ChatScreen(
               fontWeight = FontWeight.Black,
               fontSize = 16.sp,
               fontFamily = FontFamily.Monospace,
-              color = ZcColors.Accent
+              color = colors.Accent
             )
             Text(
               statusText,
               fontSize = 10.sp,
-              color = if (engine?.isModelLoaded == true) ZcColors.Accent2 else ZcColors.Amber,
+              color = if (engine?.isModelLoaded == true) colors.Accent2 else colors.Amber,
               fontFamily = FontFamily.Monospace,
               maxLines = 1,
               overflow = TextOverflow.Ellipsis,
@@ -293,7 +307,7 @@ fun ChatScreen(
         },
         navigationIcon = {
           IconButton(onClick = { showModelSheet = true }) {
-            Icon(Icons.Outlined.SmartToy, "Select Model", tint = ZcColors.Text2)
+            Icon(Icons.Outlined.SmartToy, "Select Model", tint = colors.Text2)
           }
         },
         actions = {
@@ -303,8 +317,8 @@ fun ChatScreen(
                 onClick = { engine.abortInference() },
                 label = { Text("Stop", fontSize = 11.sp) },
                 colors = AssistChipDefaults.assistChipColors(
-                  containerColor = ZcColors.Red.copy(alpha = 0.2f),
-                  labelColor = ZcColors.Red
+                  containerColor = colors.Red.copy(alpha = 0.2f),
+                  labelColor = colors.Red
                 )
               )
             }
@@ -312,14 +326,14 @@ fun ChatScreen(
               onClick = {},
               label = { Text("$kvUsage%", fontSize = 11.sp) },
               colors = AssistChipDefaults.assistChipColors(
-                containerColor = if (kvUsage > 80) ZcColors.Red.copy(alpha = 0.2f) else ZcColors.Accent2.copy(alpha = 0.15f),
-                labelColor = if (kvUsage > 80) ZcColors.Red else ZcColors.Accent2
+                containerColor = if (kvUsage > 80) colors.Red.copy(alpha = 0.2f) else colors.Accent2.copy(alpha = 0.15f),
+                labelColor = if (kvUsage > 80) colors.Red else colors.Accent2
               )
             )
           }
           var showExportDialog by remember { mutableStateOf(false) }
           IconButton(onClick = { showExportDialog = true }) {
-            Icon(Icons.Filled.Share, "Export", tint = ZcColors.Text2)
+            Icon(Icons.Filled.Share, "Export", tint = colors.Text2)
           }
           if (showExportDialog) {
             androidx.compose.material3.AlertDialog(
@@ -330,35 +344,60 @@ fun ChatScreen(
                   androidx.compose.material3.TextButton(
                     onClick = {
                       showExportDialog = false
-                      val exportText = app.chatRepository.exportSession(chatId)
-                      Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, exportText)
-                      }.let { context.startActivity(Intent.createChooser(it, "Share as Text")) }
+                      scope.launch(Dispatchers.IO) {
+                        val file = app.chatRepository.exportSession(chatId)
+                        if (file != null) {
+                          val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                          withContext(Dispatchers.Main) {
+                            Intent(Intent.ACTION_SEND).apply {
+                              type = "text/plain"
+                              putExtra(Intent.EXTRA_STREAM, uri)
+                              addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }.let { context.startActivity(Intent.createChooser(it, "Share as Text")) }
+                          }
+                        }
+                      }
                     },
                     modifier = Modifier.fillMaxWidth()
-                  ) { Text("Export as Text", fontSize = 14.sp) }
+                  ) {
+                    Icon(Icons.Filled.Save, null, modifier = Modifier.size(18.dp), tint = colors.Text2)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Export as Text", fontSize = 14.sp)
+                  }
                   androidx.compose.material3.TextButton(
                     onClick = {
                       showExportDialog = false
-                      val msgs = app.chatRepository.getMessages(chatId)
-                      val jsonArr = org.json.JSONArray()
-                      msgs.forEach { m ->
-                        jsonArr.put(org.json.JSONObject().apply {
-                          put("role", m.role.name.lowercase())
-                          put("content", m.content)
-                          put("timestamp", m.timestamp)
-                          if (m.tps > 0f) put("tps", m.tps.toDouble())
-                          if (m.tokens > 0) put("tokens", m.tokens)
-                        })
+                      scope.launch(Dispatchers.IO) {
+                        val msgs = app.chatRepository.getMessages(chatId)
+                        val jsonArr = org.json.JSONArray()
+                        msgs.forEach { m ->
+                          jsonArr.put(org.json.JSONObject().apply {
+                            put("role", m.role.name.lowercase())
+                            put("content", m.content)
+                            put("timestamp", m.timestamp)
+                            if (m.tps > 0f) put("tps", m.tps.toDouble())
+                            if (m.tokens > 0) put("tokens", m.tokens)
+                          })
+                        }
+                        val exportDir = File(context.cacheDir, "exports").also { it.mkdirs() }
+                        val jsonFile = File(exportDir, "chat_${chatId}.json")
+                        jsonFile.writeText(jsonArr.toString(2))
+                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", jsonFile)
+                        withContext(Dispatchers.Main) {
+                          Intent(Intent.ACTION_SEND).apply {
+                            type = "application/json"
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                          }.let { context.startActivity(Intent.createChooser(it, "Export JSON")) }
+                        }
                       }
-                      Intent(Intent.ACTION_SEND).apply {
-                        type = "application/json"
-                        putExtra(Intent.EXTRA_TEXT, jsonArr.toString(2))
-                      }.let { context.startActivity(Intent.createChooser(it, "Export JSON")) }
                     },
                     modifier = Modifier.fillMaxWidth()
-                  ) { Text("Export as JSON", fontSize = 14.sp) }
+                  ) {
+                    Icon(Icons.Filled.Save, null, modifier = Modifier.size(18.dp), tint = colors.Text2)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Export as JSON", fontSize = 14.sp)
+                  }
                 }
               },
               confirmButton = {
@@ -369,16 +408,16 @@ fun ChatScreen(
             )
           }
           IconButton(onClick = onSessions) {
-            Icon(Icons.Outlined.Chat, "Sessions", tint = ZcColors.Text2)
+            Icon(Icons.Outlined.Chat, "Sessions", tint = colors.Text2)
           }
           IconButton(onClick = onSettings) {
-            Icon(Icons.Outlined.Tune, "Settings", tint = ZcColors.Text2)
+            Icon(Icons.Outlined.Tune, "Settings", tint = colors.Text2)
           }
         },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = ZcColors.Bg)
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Bg)
       )
     },
-    containerColor = ZcColors.Bg
+    containerColor = colors.Bg
   ) { pad ->
     Column(modifier = Modifier.padding(pad).fillMaxSize()) {
       Box(modifier = Modifier.weight(1f)) {
@@ -392,12 +431,12 @@ fun ChatScreen(
               Icons.Outlined.SmartToy,
               null,
               modifier = Modifier.size(64.dp),
-              tint = ZcColors.Accent.copy(alpha = 0.5f)
+              tint = colors.Accent.copy(alpha = 0.5f)
             )
             Spacer(Modifier.height(16.dp))
             Text(
               "Tap the icon above to select a model",
-              color = ZcColors.Text3,
+              color = colors.Text3,
               fontSize = 15.sp
             )
             Spacer(Modifier.height(8.dp))
@@ -405,8 +444,8 @@ fun ChatScreen(
               onClick = { showModelSheet = true },
               label = { Text("Choose Model", fontWeight = FontWeight.Bold, fontSize = 13.sp) },
               colors = AssistChipDefaults.assistChipColors(
-                containerColor = ZcColors.Accent.copy(alpha = 0.15f),
-                labelColor = ZcColors.Accent
+                containerColor = colors.Accent.copy(alpha = 0.15f),
+                labelColor = colors.Accent
               )
             )
           }
@@ -472,8 +511,11 @@ fun ChatScreen(
           onPromptChange = { prompt = it },
           isInferring = isInferring,
           attachmentFileName = attachmentUri?.lastPathSegment?.substringAfterLast('/'),
+          attachmentUri = attachmentUri,
           isListening = isListening,
           isSpeaking = isSpeaking,
+          reasoningEnabled = reasoningEnabled,
+          onReasoningToggle = { reasoningEnabled = it; SettingsManager.reasoningEnabled = it },
           onSend = {
             if (prompt.isNotBlank()) {
               val msg = prompt
@@ -482,8 +524,9 @@ fun ChatScreen(
               streamedText = ""
               isInferring = true
               val attachmentName = attach?.lastPathSegment?.substringAfterLast('/')
+              val attachType = attach?.let { getAttachmentType(context, it) }
               val userMsg = if (attach != null) {
-                ChatMessage(MessageRole.USER, msg, attachmentPath = attachmentName, attachmentType = AttachmentType.IMAGE)
+                ChatMessage(MessageRole.USER, msg, attachmentPath = attachmentName, attachmentType = attachType)
               } else {
                 ChatMessage(MessageRole.USER, msg)
               }
@@ -499,13 +542,32 @@ fun ChatScreen(
                   override fun onKvUsage(percent: Int) {}
                   override fun onTokensGenerated(count: Int) {}
                 }
-                var fullPrompt = msg
+                var fullPrompt = if (reasoningEnabled) {
+                  "Use <think> tags for step-by-step reasoning before answering.\n\n$msg"
+                } else msg
                 if (attach != null) {
-                  val savedPath = saveImageToAppStorage(context, attach)
-                  if (savedPath != null && engine.mmprojPath.isNotEmpty()) {
-                    engine.executeInferenceWithImage(fullPrompt, savedPath, cb)
-                  } else {
-                    engine.executeInference("[Image attached: $attachmentName]\n$msg", cb)
+                  val mime = context.contentResolver.getType(attach) ?: ""
+                  when {
+                    mime.startsWith("image/") -> {
+                      val savedPath = saveImageToAppStorage(context, attach)
+                      if (savedPath != null && engine?.mmprojPath?.isNotEmpty() == true) {
+                        engine.executeInferenceWithImage(fullPrompt, savedPath, cb)
+                      } else {
+                        engine.executeInference("[Image attached: $attachmentName]\n$msg", cb)
+                      }
+                    }
+                    mime.startsWith("text/") || mime == "application/pdf" -> {
+                      val fileContent = readFileContent(context, attach, mime)
+                      val combinedPrompt = if (fileContent.isNotEmpty()) {
+                        "I'm sharing the following document ($attachmentName):\n\n---\n$fileContent\n---\n\n$msg"
+                      } else {
+                        "[Document attached: $attachmentName]\n$msg"
+                      }
+                      engine?.executeInference(combinedPrompt, cb)
+                    }
+                    else -> {
+                      engine.executeInference("[File attached: $attachmentName]\n$msg", cb)
+                    }
                   }
                 } else {
                   engine.executeInference(fullPrompt, cb)
@@ -520,6 +582,14 @@ fun ChatScreen(
               type = "image/*"
             }
             imagePicker.launch(intent)
+          },
+          onDoc = {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+              addCategory(Intent.CATEGORY_OPENABLE)
+              type = "*/*"
+              putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/plain", "text/markdown", "application/pdf"))
+            }
+            docPicker.launch(intent)
           },
           onVoice = {
             isListening = true
@@ -563,7 +633,7 @@ fun ChatScreen(
     androidx.compose.material3.AlertDialog(
       onDismissRequest = { deleteConfirmMsg = null },
       title = { Text("Delete message?", fontSize = 16.sp) },
-      text = { Text("This cannot be undone.", fontSize = 14.sp, color = ZcColors.Text2) },
+      text = { Text("This cannot be undone.", fontSize = 14.sp, color = colors.Text2) },
       confirmButton = {
         androidx.compose.material3.TextButton(onClick = {
           if (idx >= 0) {
@@ -571,7 +641,7 @@ fun ChatScreen(
             app.chatRepository.deleteMessage(chatId, idx)
           }
           deleteConfirmMsg = null
-        }) { Text("Delete", color = ZcColors.Red) }
+        }) { Text("Delete", color = colors.Red) }
       },
       dismissButton = {
         androidx.compose.material3.TextButton(onClick = { deleteConfirmMsg = null }) { Text("Cancel") }
@@ -602,7 +672,7 @@ fun ChatScreen(
           ).forEach { (label, value) ->
             if (value.isNotEmpty() && value != "0") {
               Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                Text("$label: ", fontSize = 13.sp, color = ZcColors.Text2, modifier = Modifier.weight(1f))
+                Text("$label: ", fontSize = 13.sp, color = colors.Text2, modifier = Modifier.weight(1f))
                 Text(value, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
               }
             }
@@ -614,6 +684,51 @@ fun ChatScreen(
       }
     )
   }
+}
+
+private fun getAttachmentType(context: Context, uri: Uri): AttachmentType {
+  val mime = context.contentResolver.getType(uri) ?: ""
+  return when {
+    mime.startsWith("image/") -> AttachmentType.IMAGE
+    mime.startsWith("text/") || mime == "application/pdf" -> AttachmentType.DOCUMENT
+    mime.startsWith("audio/") -> AttachmentType.AUDIO
+    else -> AttachmentType.DOCUMENT
+  }
+}
+
+private fun readFileContent(context: Context, uri: Uri, mime: String): String {
+  return try {
+    if (mime == "application/pdf") {
+      readPdfText(context, uri)
+    } else {
+      context.contentResolver.openInputStream(uri)?.use { input ->
+        BufferedReader(InputStreamReader(input)).readText()
+      } ?: ""
+    }
+  } catch (_: Exception) { "" }
+}
+
+private fun readPdfText(context: Context, uri: Uri): String {
+  return try {
+    val input = context.contentResolver.openInputStream(uri) ?: return ""
+    val bytes = input.readBytes()
+    input.close()
+    val text = StringBuilder()
+    var i = 0
+    while (i < bytes.size) {
+      if (bytes[i] == 'T'.code.toByte() && i + 4 < bytes.size &&
+        bytes[i + 1] == 'j'.code.toByte() && bytes[i + 2] == '('.code.toByte()
+      ) {
+        i += 3
+        while (i < bytes.size && bytes[i] != ')'.code.toByte()) {
+          text.append(bytes[i].toInt().toChar())
+          i++
+        }
+      }
+      i++
+    }
+    text.toString().take(10000)
+  } catch (_: Exception) { "" }
 }
 
 private fun saveImageToAppStorage(context: Context, uri: Uri): String? {
@@ -657,6 +772,7 @@ fun ChatBubble(
   onRegenerate: (() -> Unit)? = null,
   onDelete: (() -> Unit)? = null
 ) {
+  val colors = currentPalette()
   val isUser = msg.role == MessageRole.USER
   val isLatestAssistant = !isUser && onRegenerate != null
   var showMenu by remember { mutableStateOf(false) }
@@ -667,7 +783,7 @@ fun ChatBubble(
   ) {
     if (!isUser) {
       Box(
-        modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(ZcColors.Accent),
+        modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(colors.Accent),
         contentAlignment = Alignment.Center
       ) {
         Text("Z", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
@@ -682,27 +798,31 @@ fun ChatBubble(
             onClick = { clip.setPrimaryClip(ClipData.newPlainText("msg", msg.content)) },
             onLongClick = { showMenu = true }
           ),
-        color = if (isUser) ZcColors.UserBg else ZcColors.Card
+        color = if (isUser) colors.UserBg else colors.Card
       ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
           if (msg.attachmentPath != null) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-              Icon(Icons.Outlined.Image, null, modifier = Modifier.size(16.dp), tint = ZcColors.Purple)
+              Icon(Icons.Outlined.Image, null, modifier = Modifier.size(16.dp), tint = colors.Purple)
               Spacer(Modifier.width(4.dp))
-              Text(msg.attachmentPath, fontSize = 11.sp, color = ZcColors.Purple, fontFamily = FontFamily.Monospace)
+              Text(msg.attachmentPath, fontSize = 11.sp, color = colors.Purple, fontFamily = FontFamily.Monospace)
             }
             Spacer(Modifier.height(4.dp))
           }
-          if (!isUser) ThinkingContent(msg.content) else MarkdownText(msg.content)
+          if (!isUser) ThinkingContent(msg.content) else {
+            MarkdownText(msg.content)
+            Text("<end>", fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+          }
         }
       }
       if (!isUser) {
+        Text("<end>", fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(start = 4.dp, top = 2.dp))
         Row(modifier = Modifier.padding(start = 4.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
           if (msg.tps > 0) {
             Text(
               "%.1f t/s · %d tok".format(msg.tps, msg.tokens),
               fontSize = 9.sp,
-              color = ZcColors.Text3,
+              color = colors.Text3,
               fontFamily = FontFamily.Monospace,
               modifier = Modifier.weight(1f)
             )
@@ -710,15 +830,15 @@ fun ChatBubble(
             Spacer(Modifier.weight(1f))
           }
           IconButton(onClick = { onSpeak(msg.content) }, modifier = Modifier.size(20.dp)) {
-            Icon(Icons.Outlined.VolumeUp, "Speak", tint = ZcColors.Text3, modifier = Modifier.size(14.dp))
+            Icon(Icons.Outlined.VolumeUp, "Speak", tint = colors.Text3, modifier = Modifier.size(14.dp))
           }
           if (isLatestAssistant) {
             IconButton(onClick = onRegenerate, modifier = Modifier.size(20.dp)) {
-              Icon(Icons.Filled.Refresh, "Regenerate", tint = ZcColors.Accent, modifier = Modifier.size(14.dp))
+              Icon(Icons.Filled.Refresh, "Regenerate", tint = colors.Accent, modifier = Modifier.size(14.dp))
             }
           }
           IconButton(onClick = { clip.setPrimaryClip(ClipData.newPlainText("msg", msg.content)) }, modifier = Modifier.size(20.dp)) {
-            Icon(Icons.Outlined.ContentCopy, "Copy", tint = ZcColors.Text3, modifier = Modifier.size(12.dp))
+            Icon(Icons.Outlined.ContentCopy, "Copy", tint = colors.Text3, modifier = Modifier.size(12.dp))
           }
         }
       }
@@ -732,7 +852,7 @@ fun ChatBubble(
                 onClick = { clip.setPrimaryClip(ClipData.newPlainText("msg", msg.content)); showMenu = false },
                 modifier = Modifier.fillMaxWidth()
               ) {
-                Icon(Icons.Outlined.ContentCopy, null, modifier = Modifier.size(18.dp), tint = ZcColors.Text2)
+                Icon(Icons.Outlined.ContentCopy, null, modifier = Modifier.size(18.dp), tint = colors.Text2)
                 Spacer(Modifier.width(8.dp))
                 Text("Copy", fontSize = 14.sp, modifier = Modifier.weight(1f))
               }
@@ -741,9 +861,9 @@ fun ChatBubble(
                   onClick = { showMenu = false; onDelete() },
                   modifier = Modifier.fillMaxWidth()
                 ) {
-                  Icon(Icons.Outlined.Delete, null, modifier = Modifier.size(18.dp), tint = ZcColors.Red)
+                  Icon(Icons.Outlined.Delete, null, modifier = Modifier.size(18.dp), tint = colors.Red)
                   Spacer(Modifier.width(8.dp))
-                  Text("Delete", fontSize = 14.sp, color = ZcColors.Red, modifier = Modifier.weight(1f))
+                  Text("Delete", fontSize = 14.sp, color = colors.Red, modifier = Modifier.weight(1f))
                 }
               }
             }
@@ -757,7 +877,7 @@ fun ChatBubble(
     if (isUser) {
       Spacer(Modifier.width(8.dp))
       Box(
-        modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(ZcColors.Accent2),
+        modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(colors.Accent2),
         contentAlignment = Alignment.Center
       ) {
         Text("U", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
@@ -768,6 +888,7 @@ fun ChatBubble(
 
 @Composable
 fun ThinkingContent(content: String) {
+  val colors = currentPalette()
   val pattern = remember { Regex("(?:<think>|<think>\\n?)(.*?)(?:</think>|</think>\\n?)", RegexOption.DOT_MATCHES_ALL) }
   val match = remember(content) { pattern.find(content) }
   if (match != null) {
@@ -778,17 +899,17 @@ fun ThinkingContent(content: String) {
       Surface(
         onClick = { open = !open },
         shape = RoundedCornerShape(8.dp),
-        color = ZcColors.ThinkBg,
+        color = colors.ThinkBg,
         modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)
       ) {
         Column(modifier = Modifier.padding(8.dp)) {
           Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.Lightbulb, null, modifier = Modifier.size(12.dp), tint = ZcColors.Purple)
+            Icon(Icons.Outlined.Lightbulb, null, modifier = Modifier.size(12.dp), tint = colors.Purple)
             Spacer(Modifier.width(4.dp))
-            Text(if (open) "Thinking" else "Thinking...", fontSize = 10.sp, color = ZcColors.Purple, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+            Text(if (open) "Thinking" else "Thinking...", fontSize = 10.sp, color = colors.Purple, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
           }
           AnimatedVisibility(open) {
-            MarkdownText(think, modifier = Modifier.padding(top = 4.dp), style = LocalTextStyle.current.copy(fontSize = 11.sp), textColor = ZcColors.Text3)
+            MarkdownText(think, modifier = Modifier.padding(top = 4.dp), style = LocalTextStyle.current.copy(fontSize = 11.sp), textColor = colors.Text3)
           }
         }
       }
@@ -801,6 +922,7 @@ fun ThinkingContent(content: String) {
 
 @Composable
 fun StreamingBubble(text: String, processing: Boolean) {
+  val colors = currentPalette()
   if (processing) {
     Row(
       modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
@@ -808,7 +930,7 @@ fun StreamingBubble(text: String, processing: Boolean) {
       verticalAlignment = Alignment.Bottom
     ) {
       Box(
-        modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(ZcColors.Accent),
+        modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(colors.Accent),
         contentAlignment = Alignment.Center
       ) {
         Text("Z", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
@@ -816,15 +938,15 @@ fun StreamingBubble(text: String, processing: Boolean) {
       Spacer(Modifier.width(8.dp))
       Surface(
         modifier = Modifier.clip(RoundedCornerShape(6.dp, 18.dp, 18.dp, 18.dp)),
-        color = ZcColors.Card
+        color = colors.Card
       ) {
         Row(
           modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
           verticalAlignment = Alignment.CenterVertically
         ) {
-          CircularProgressIndicator(modifier = Modifier.size(14.dp), color = ZcColors.Accent2, strokeWidth = 2.dp)
+          CircularProgressIndicator(modifier = Modifier.size(14.dp), color = colors.Accent2, strokeWidth = 2.dp)
           Spacer(Modifier.width(8.dp))
-          Text("Processing prompt...", fontSize = 12.sp, color = ZcColors.Text2)
+          Text("Processing prompt...", fontSize = 12.sp, color = colors.Text2)
         }
       }
     }
@@ -836,7 +958,7 @@ fun StreamingBubble(text: String, processing: Boolean) {
     verticalAlignment = Alignment.Bottom
   ) {
     Box(
-      modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(ZcColors.Accent),
+      modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(colors.Accent),
       contentAlignment = Alignment.Center
     ) {
       Text("Z", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
@@ -844,7 +966,7 @@ fun StreamingBubble(text: String, processing: Boolean) {
     Spacer(Modifier.width(8.dp))
     Surface(
       modifier = Modifier.clip(RoundedCornerShape(6.dp, 18.dp, 18.dp, 18.dp)),
-      color = ZcColors.Card
+      color = colors.Card
     ) {
       Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
         if (text.isNotEmpty()) MarkdownText(text)
@@ -859,29 +981,43 @@ fun InputBar(
   onPromptChange: (String) -> Unit,
   isInferring: Boolean,
   attachmentFileName: String?,
+  attachmentUri: Uri?,
   isListening: Boolean,
   isSpeaking: Boolean,
+  reasoningEnabled: Boolean,
+  onReasoningToggle: (Boolean) -> Unit,
   onSend: () -> Unit,
   onStop: () -> Unit,
   onImage: () -> Unit,
+  onDoc: () -> Unit,
   onVoice: () -> Unit,
   onSpeak: (String) -> Unit
 ) {
-  Surface(color = ZcColors.Surface, shadowElevation = 8.dp) {
+  val colors = currentPalette()
+  Surface(color = colors.Surface, shadowElevation = 8.dp) {
     Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
       if (attachmentFileName != null) {
+        val isDoc = attachmentUri?.let {
+          val m = LocalContext.current.contentResolver.getType(it)
+          m != null && (m.startsWith("text/") || m == "application/pdf")
+        } ?: false
         Surface(
           modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
           shape = RoundedCornerShape(8.dp),
-          color = ZcColors.CardLight
+          color = colors.CardLight
         ) {
           Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
           ) {
-            Icon(Icons.Outlined.Image, null, modifier = Modifier.size(14.dp), tint = ZcColors.Purple)
+            Icon(
+              if (isDoc) Icons.Outlined.Description else Icons.Outlined.Image,
+              null,
+              modifier = Modifier.size(14.dp),
+              tint = colors.Purple
+            )
             Spacer(Modifier.width(4.dp))
-            Text(attachmentFileName, fontSize = 11.sp, color = ZcColors.Purple, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+            Text(attachmentFileName, fontSize = 11.sp, color = colors.Purple, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
           }
         }
       }
@@ -889,35 +1025,50 @@ fun InputBar(
         value = prompt,
         onValueChange = onPromptChange,
         modifier = Modifier.fillMaxWidth(),
-        placeholder = { Text(if (isListening) "Listening..." else "Message...", color = ZcColors.Text3, fontSize = 14.sp) },
+        placeholder = { Text(if (isListening) "Listening..." else "Message...", color = colors.Text3, fontSize = 14.sp) },
         enabled = !isInferring && !isListening,
         maxLines = 5,
         shape = RoundedCornerShape(14.dp),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
         keyboardActions = KeyboardActions(onSend = { if (!isInferring && prompt.isNotBlank()) onSend() }),
         colors = OutlinedTextFieldDefaults.colors(
-          focusedBorderColor = ZcColors.Accent.copy(alpha = 0.5f),
-          unfocusedBorderColor = if (isListening) ZcColors.Purple.copy(alpha = 0.5f) else ZcColors.Border,
-          focusedContainerColor = ZcColors.Card,
-          unfocusedContainerColor = ZcColors.Card,
-          focusedTextColor = ZcColors.Text,
-          unfocusedTextColor = ZcColors.Text,
-          cursorColor = ZcColors.Accent
+          focusedBorderColor = colors.Accent.copy(alpha = 0.5f),
+          unfocusedBorderColor = if (isListening) colors.Purple.copy(alpha = 0.5f) else colors.Border,
+          focusedContainerColor = colors.Card,
+          unfocusedContainerColor = colors.Card,
+          focusedTextColor = colors.Text,
+          unfocusedTextColor = colors.Text,
+          cursorColor = colors.Accent
         ),
         textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
       )
       Spacer(Modifier.height(6.dp))
       Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onImage, modifier = Modifier.size(36.dp)) {
-          Icon(Icons.Outlined.Image, "Attach Image", tint = ZcColors.Purple, modifier = Modifier.size(18.dp))
+          Icon(Icons.Outlined.Image, "Attach Image", tint = colors.Purple, modifier = Modifier.size(18.dp))
+        }
+        IconButton(onClick = onDoc, modifier = Modifier.size(36.dp)) {
+          Icon(Icons.Outlined.Description, "Attach Document", tint = colors.Accent, modifier = Modifier.size(18.dp))
         }
         IconButton(onClick = onVoice, modifier = Modifier.size(36.dp)) {
-          Icon(Icons.Outlined.Mic, "Voice Input", tint = if (isListening) ZcColors.Purple else ZcColors.Text2, modifier = Modifier.size(18.dp))
+          Icon(Icons.Outlined.Mic, "Voice Input", tint = if (isListening) colors.Purple else colors.Text2, modifier = Modifier.size(18.dp))
         }
         if (isSpeaking) {
           IconButton(onClick = {}, modifier = Modifier.size(36.dp)) {
-            Icon(Icons.Outlined.VolumeUp, "Speaking", tint = ZcColors.Accent2, modifier = Modifier.size(18.dp))
+            Icon(Icons.Outlined.VolumeUp, "Speaking", tint = colors.Accent2, modifier = Modifier.size(18.dp))
           }
+        }
+        Spacer(Modifier.width(4.dp))
+        IconButton(
+          onClick = { onReasoningToggle(!reasoningEnabled) },
+          modifier = Modifier.size(36.dp)
+        ) {
+          Icon(
+            Icons.Outlined.Lightbulb,
+            "Deep Thinking",
+            tint = if (reasoningEnabled) colors.Amber else colors.Text3,
+            modifier = Modifier.size(18.dp)
+          )
         }
         Spacer(Modifier.weight(1f))
         val enabled = prompt.isNotBlank() && !isInferring
@@ -927,8 +1078,8 @@ fun InputBar(
           modifier = Modifier.size(40.dp),
           shape = CircleShape,
           colors = IconButtonDefaults.filledIconButtonColors(
-            containerColor = if (isInferring) ZcColors.Red else ZcColors.Accent,
-            disabledContainerColor = ZcColors.Card
+            containerColor = if (isInferring) colors.Red else colors.Accent,
+            disabledContainerColor = colors.Card
           )
         ) {
           if (isInferring) {
@@ -937,7 +1088,7 @@ fun InputBar(
             Icon(
               Icons.AutoMirrored.Filled.Send,
               "Send",
-              tint = if (enabled) Color.White else ZcColors.Text3,
+              tint = if (enabled) Color.White else colors.Text3,
               modifier = Modifier.size(18.dp)
             )
           }
@@ -949,6 +1100,7 @@ fun InputBar(
 
 @Composable
 fun PromptSuggestions(expanded: Boolean, onToggle: () -> Unit, onSelect: (String) -> Unit) {
+  val colors = currentPalette()
   val suggestions = listOf(
     "Summarize this thread so far",
     "Explain like I'm 5",
@@ -958,7 +1110,7 @@ fun PromptSuggestions(expanded: Boolean, onToggle: () -> Unit, onSelect: (String
   AnimatedVisibility(visible = expanded) {
     Surface(
       modifier = Modifier.fillMaxWidth(),
-      color = ZcColors.Surface,
+      color = colors.Surface,
       shadowElevation = 4.dp
     ) {
       Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
@@ -971,8 +1123,8 @@ fun PromptSuggestions(expanded: Boolean, onToggle: () -> Unit, onSelect: (String
               onClick = { onSelect(s) },
               label = { Text(s, maxLines = 1, fontSize = 10.sp) },
               colors = AssistChipDefaults.assistChipColors(
-                containerColor = ZcColors.CardLight,
-                labelColor = ZcColors.Text2
+                containerColor = colors.CardLight,
+                labelColor = colors.Text2
               ),
               shape = RoundedCornerShape(16.dp)
             )

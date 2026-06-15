@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -55,7 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.local.SettingsManager
-import com.gguf.zerocopy.ui.theme.ZcColors
+import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -67,6 +68,7 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
   val context = LocalContext.current
   val app = ZeroCopyApp.instance
   val scope = rememberCoroutineScope()
+  val colors = currentPalette()
   val models by app.modelRepository.models.collectAsState(initial = emptyList())
   var loading by remember { mutableStateOf(false) }
 
@@ -107,10 +109,10 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
   Scaffold(
     topBar = {
       TopAppBar(
-        title = { Text("Your Models", fontWeight = FontWeight.Bold, color = ZcColors.Text) },
+        title = { Text("Your Models", fontWeight = FontWeight.Bold, color = colors.Text) },
         navigationIcon = {
           IconButton(onClick = onBack) {
-            Icon(Icons.Filled.ArrowBack, "Back", tint = ZcColors.Text2)
+            Icon(Icons.Filled.ArrowBack, "Back", tint = colors.Text2)
           }
         },
         actions = {
@@ -123,13 +125,13 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
               }
             filePicker.launch(intent)
           }) {
-            Icon(Icons.Filled.Add, "Import", tint = ZcColors.Accent)
+            Icon(Icons.Filled.Add, "Import", tint = colors.Accent)
           }
         },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = ZcColors.Bg)
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Bg)
       )
     },
-    containerColor = ZcColors.Bg
+    containerColor = colors.Bg
   ) { pad ->
     Box(modifier = Modifier.padding(pad).fillMaxSize()) {
       if (models.isEmpty() && !loading) {
@@ -142,11 +144,11 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
             Icons.Outlined.SmartToy,
             null,
             modifier = Modifier.size(48.dp),
-            tint = ZcColors.Text3
+            tint = colors.Text3
           )
           Spacer(Modifier.height(16.dp))
-          Text("No models imported", color = ZcColors.Text3, fontSize = 16.sp)
-          Text("Tap + to add a model file", color = ZcColors.Text3, fontSize = 13.sp)
+          Text("No models imported", color = colors.Text3, fontSize = 16.sp)
+          Text("Tap + to add a model file", color = colors.Text3, fontSize = 13.sp)
         }
       } else {
         LazyColumn(
@@ -183,8 +185,8 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
       infoModel?.let { model ->
         AlertDialog(
           onDismissRequest = { infoModel = null },
-          containerColor = ZcColors.Card,
-          title = { Text("Model Info", color = ZcColors.Text, fontWeight = FontWeight.Bold) },
+          containerColor = colors.Card,
+          title = { Text("Model Info", color = colors.Text, fontWeight = FontWeight.Bold) },
           text = {
             Column {
               DetailRow("Name", model.name)
@@ -224,10 +226,10 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
                   onModelSelected(model.path, model.name)
                 }
               }
-            }) { Text("Load", color = ZcColors.Accent) }
+            }) { Text("Load", color = colors.Accent) }
           },
           dismissButton = {
-            TextButton(onClick = { infoModel = null }) { Text("Close", color = ZcColors.Text2) }
+            TextButton(onClick = { infoModel = null }) { Text("Close", color = colors.Text2) }
           }
         )
       }
@@ -235,7 +237,7 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
       if (loading) {
         CircularProgressIndicator(
           modifier = Modifier.align(Alignment.Center),
-          color = ZcColors.Accent
+          color = colors.Accent
         )
       }
     }
@@ -244,9 +246,10 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
 
 @Composable
 private fun DetailRow(label: String, value: String) {
+  val colors = currentPalette()
   Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-    Text("$label: ", fontSize = 12.sp, color = ZcColors.Text2, fontFamily = FontFamily.Monospace)
-    Text(value, fontSize = 12.sp, color = ZcColors.Text, fontFamily = FontFamily.Monospace)
+    Text("$label: ", fontSize = 12.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+    Text(value, fontSize = 12.sp, color = colors.Text, fontFamily = FontFamily.Monospace)
   }
 }
 
@@ -258,44 +261,48 @@ fun ModelCard(
   onInfo: () -> Unit = {},
   onDelete: () -> Unit
 ) {
+  val colors = currentPalette()
   var showDeleteConfirm by remember { mutableStateOf(false) }
 
   Surface(
     modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     shape = RoundedCornerShape(12.dp),
-    color = ZcColors.CardLight
+    color = colors.CardLight
   ) {
     Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
       Column(Modifier.weight(1f)) {
-        Text(model.name, color = ZcColors.Text, fontSize = 14.sp, maxLines = 1)
+        Text(model.name, color = colors.Text, fontSize = 14.sp, maxLines = 1)
         Row {
           Text(
             model.format.uppercase(),
             fontSize = 10.sp,
-            color = ZcColors.Accent,
+            color = colors.Accent,
             fontFamily = FontFamily.Monospace
           )
           Spacer(Modifier.width(8.dp))
           Text(
             model.sizeFormatted,
             fontSize = 10.sp,
-            color = ZcColors.Text3,
+            color = colors.Text3,
             fontFamily = FontFamily.Monospace
           )
           Spacer(Modifier.width(8.dp))
           Text(
             model.engine.id,
             fontSize = 10.sp,
-            color = ZcColors.Accent2,
+            color = colors.Accent2,
             fontFamily = FontFamily.Monospace
           )
         }
       }
+      IconButton(onClick = onClick, modifier = Modifier.size(32.dp)) {
+        Icon(Icons.Filled.PlayArrow, "Load", tint = colors.Accent, modifier = Modifier.size(18.dp))
+      }
       IconButton(onClick = onInfo, modifier = Modifier.size(32.dp)) {
-        Icon(Icons.Filled.Info, "Info", tint = ZcColors.Accent2, modifier = Modifier.size(18.dp))
+        Icon(Icons.Filled.Info, "Info", tint = colors.Accent2, modifier = Modifier.size(18.dp))
       }
       IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(32.dp)) {
-        Icon(Icons.Filled.Delete, "Delete", tint = ZcColors.Red, modifier = Modifier.size(18.dp))
+        Icon(Icons.Filled.Delete, "Delete", tint = colors.Red, modifier = Modifier.size(18.dp))
       }
     }
   }
@@ -303,21 +310,21 @@ fun ModelCard(
   if (showDeleteConfirm) {
     AlertDialog(
       onDismissRequest = { showDeleteConfirm = false },
-      containerColor = ZcColors.Card,
-      title = { Text("Delete Model?", color = ZcColors.Text, fontSize = 16.sp) },
+      containerColor = colors.Card,
+      title = { Text("Delete Model?", color = colors.Text, fontSize = 16.sp) },
       text = {
-        Text("Remove ${model.name} from device?", color = ZcColors.Text2, fontSize = 14.sp)
+        Text("Remove ${model.name} from device?", color = colors.Text2, fontSize = 14.sp)
       },
       confirmButton = {
         TextButton(onClick = {
           showDeleteConfirm = false
           onDelete()
-        }) { Text("Delete", color = ZcColors.Red) }
+        }) { Text("Delete", color = colors.Red) }
       },
       dismissButton = {
         TextButton(onClick = {
           showDeleteConfirm = false
-        }) { Text("Cancel", color = ZcColors.Text2) }
+        }) { Text("Cancel", color = colors.Text2) }
       }
     )
   }

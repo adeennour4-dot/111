@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.local.SettingsManager
-import com.gguf.zerocopy.ui.theme.ZcColors
+import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -58,6 +58,7 @@ fun ModelSelectionSheet(
   onModelSelected: (String, String) -> Unit,
   onStore: () -> Unit
 ) {
+  val colors = currentPalette()
   val context = LocalContext.current
   val app = ZeroCopyApp.instance
   val scope = rememberCoroutineScope()
@@ -94,7 +95,7 @@ fun ModelSelectionSheet(
   ModalBottomSheet(
     onDismissRequest = onDismiss,
     sheetState = sheetState,
-    containerColor = ZcColors.Surface,
+    containerColor = colors.Surface,
     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
   ) {
     Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
@@ -103,7 +104,7 @@ fun ModelSelectionSheet(
           "Select Model",
           fontSize = 20.sp,
           fontWeight = FontWeight.Bold,
-          color = ZcColors.Text,
+          color = colors.Text,
           modifier = Modifier.weight(1f)
         )
         TextButton(onClick = {
@@ -114,15 +115,15 @@ fun ModelSelectionSheet(
           }
           importLauncher.launch(intent)
         }) {
-          Icon(Icons.Filled.FolderOpen, null, modifier = Modifier.size(18.dp), tint = ZcColors.Accent)
+          Icon(Icons.Filled.FolderOpen, null, modifier = Modifier.size(18.dp), tint = colors.Accent)
           Spacer(Modifier.width(4.dp))
-          Text("Import", color = ZcColors.Accent, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+          Text("Import", color = colors.Accent, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         }
         Spacer(Modifier.width(4.dp))
         TextButton(onClick = onStore) {
-          Icon(Icons.Filled.CloudDownload, null, modifier = Modifier.size(18.dp), tint = ZcColors.Accent2)
+          Icon(Icons.Filled.CloudDownload, null, modifier = Modifier.size(18.dp), tint = colors.Accent2)
           Spacer(Modifier.width(4.dp))
-          Text("Store", color = ZcColors.Accent2, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+          Text("Store", color = colors.Accent2, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         }
       }
 
@@ -133,19 +134,19 @@ fun ModelSelectionSheet(
           modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
           contentAlignment = Alignment.Center
         ) {
-          androidx.compose.material3.CircularProgressIndicator(color = ZcColors.Accent)
+          androidx.compose.material3.CircularProgressIndicator(color = colors.Accent)
         }
       } else if (models.isEmpty()) {
         Column(
           modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp),
           horizontalAlignment = Alignment.CenterHorizontally
         ) {
-          Icon(Icons.Outlined.SmartToy, null, modifier = Modifier.size(48.dp), tint = ZcColors.Text3)
+          Icon(Icons.Outlined.SmartToy, null, modifier = Modifier.size(48.dp), tint = colors.Text3)
           Spacer(Modifier.height(12.dp))
-          Text("No models yet", color = ZcColors.Text3, fontSize = 15.sp)
+          Text("No models yet", color = colors.Text3, fontSize = 15.sp)
           Text(
             "Import a model or download from Store",
-            color = ZcColors.Text3,
+            color = colors.Text3,
             fontSize = 12.sp
           )
         }
@@ -172,7 +173,7 @@ fun ModelSelectionSheet(
                   }
                 },
               shape = RoundedCornerShape(14.dp),
-              color = ZcColors.Card
+              color = colors.Card
             ) {
               Row(
                 modifier = Modifier.padding(16.dp),
@@ -186,30 +187,30 @@ fun ModelSelectionSheet(
                   when (model.format.lowercase()) {
                     "gguf" -> Text(
                       "G", fontSize = 18.sp, fontWeight = FontWeight.Black,
-                      color = ZcColors.Accent, fontFamily = FontFamily.Monospace
+                      color = colors.Accent, fontFamily = FontFamily.Monospace
                     )
                     "mnn" -> Text(
                       "M", fontSize = 18.sp, fontWeight = FontWeight.Black,
-                      color = ZcColors.Accent2, fontFamily = FontFamily.Monospace
+                      color = colors.Accent2, fontFamily = FontFamily.Monospace
                     )
                     else -> Text(
                       "L", fontSize = 18.sp, fontWeight = FontWeight.Black,
-                      color = ZcColors.Purple, fontFamily = FontFamily.Monospace
+                      color = colors.Purple, fontFamily = FontFamily.Monospace
                     )
                   }
                 }
                 Column(modifier = Modifier.weight(1f)) {
                   Text(
-                    model.name, color = ZcColors.Text, fontSize = 14.sp,
+                    model.name, color = colors.Text, fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold, maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                   )
                   Row {
-                    Text(model.format.uppercase(), fontSize = 10.sp, color = ZcColors.Accent, fontFamily = FontFamily.Monospace)
+                    Text(model.format.uppercase(), fontSize = 10.sp, color = colors.Accent, fontFamily = FontFamily.Monospace)
                     Spacer(Modifier.width(8.dp))
-                    Text(model.sizeFormatted, fontSize = 10.sp, color = ZcColors.Text3, fontFamily = FontFamily.Monospace)
+                    Text(model.sizeFormatted, fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
                     Spacer(Modifier.width(8.dp))
-                    Text(model.engine.id, fontSize = 10.sp, color = ZcColors.Accent2, fontFamily = FontFamily.Monospace)
+                    Text(model.engine.id, fontSize = 10.sp, color = colors.Accent2, fontFamily = FontFamily.Monospace)
                   }
                 }
               }

@@ -110,6 +110,12 @@ object SettingsManager {
       prefs?.edit()?.putString("current_session_id", v)?.apply()
     }
 
+  var reasoningEnabled: Boolean
+    get() = prefs?.getBoolean("reasoning_enabled", false) ?: false
+    set(v) {
+      prefs?.edit()?.putBoolean("reasoning_enabled", v)?.apply()
+    }
+
   var isDarkTheme: Boolean
     get() = prefs?.getBoolean("dark_theme", true) ?: true
     set(v) {

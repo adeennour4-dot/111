@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 import com.gguf.zerocopy.data.local.SettingsManager
 
 object ThemeState {
@@ -53,4 +54,32 @@ private val LightScheme =
 fun ZeroCopyTheme(content: @Composable () -> Unit) {
   val colorScheme = if (ThemeState.isDark) DarkScheme else LightScheme
   MaterialTheme(colorScheme = colorScheme) { content() }
+}
+
+val ZcColors.current: ZcPalette
+  @Composable get() = if (ThemeState.isDark) ZcColors else ZcLightColors
+
+@Composable
+fun currentPalette(): ZcPalette = if (ThemeState.isDark) ZcColors else ZcLightColors
+
+interface ZcPalette {
+  val Bg: Color
+  val Surface: Color
+  val Card: Color
+  val CardLight: Color
+  val Border: Color
+  val Accent: Color
+  val Accent2: Color
+  val Red: Color
+  val Amber: Color
+  val Purple: Color
+  val Text: Color
+  val Text2: Color
+  val Text3: Color
+  val UserBg: Color
+  val ThinkBg: Color
+  val GradientStart: Color
+  val GradientEnd: Color
+  val GlowAccent: Color
+  val GlowAccent2: Color
 }

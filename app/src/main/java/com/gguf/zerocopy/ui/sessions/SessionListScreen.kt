@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.repository.ChatSession
-import com.gguf.zerocopy.ui.theme.ZcColors
+import com.gguf.zerocopy.ui.theme.currentPalette
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -55,6 +55,7 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionListScreen(onSessionSelected: (String) -> Unit, onBack: () -> Unit) {
+  val colors = currentPalette()
   val app = ZeroCopyApp.instance
   val sessions by app.chatRepository.sessions.collectAsState(initial = emptyList())
   var showNewDialog by remember { mutableStateOf(false) }
@@ -66,21 +67,21 @@ fun SessionListScreen(onSessionSelected: (String) -> Unit, onBack: () -> Unit) {
   Scaffold(
     topBar = {
       TopAppBar(
-        title = { Text("Chat Sessions", fontWeight = FontWeight.Bold, color = ZcColors.Text) },
+        title = { Text("Chat Sessions", fontWeight = FontWeight.Bold, color = colors.Text) },
         navigationIcon = {
           IconButton(onClick = onBack) {
-            Icon(Icons.Filled.ArrowBack, "Back", tint = ZcColors.Text2)
+            Icon(Icons.Filled.ArrowBack, "Back", tint = colors.Text2)
           }
         },
         actions = {
           IconButton(onClick = { showNewDialog = true }) {
-            Icon(Icons.Filled.Add, "New Chat", tint = ZcColors.Accent)
+            Icon(Icons.Filled.Add, "New Chat", tint = colors.Accent)
           }
         },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = ZcColors.Bg)
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Bg)
       )
     },
-    containerColor = ZcColors.Bg
+    containerColor = colors.Bg
   ) { pad ->
     Box(modifier = Modifier.padding(pad).fillMaxSize()) {
       if (sessions.isEmpty()) {
@@ -93,11 +94,11 @@ fun SessionListScreen(onSessionSelected: (String) -> Unit, onBack: () -> Unit) {
             Icons.Outlined.Chat,
             null,
             modifier = Modifier.size(48.dp),
-            tint = ZcColors.Text3
+            tint = colors.Text3
           )
           Spacer(Modifier.height(16.dp))
-          Text("No chat sessions", color = ZcColors.Text3, fontSize = 16.sp)
-          Text("Tap + to start a new chat", color = ZcColors.Text3, fontSize = 13.sp)
+          Text("No chat sessions", color = colors.Text3, fontSize = 16.sp)
+          Text("Tap + to start a new chat", color = colors.Text3, fontSize = 13.sp)
         }
       } else {
         LazyColumn(
@@ -124,8 +125,8 @@ fun SessionListScreen(onSessionSelected: (String) -> Unit, onBack: () -> Unit) {
   if (showNewDialog) {
     AlertDialog(
       onDismissRequest = { showNewDialog = false },
-      containerColor = ZcColors.Card,
-      title = { Text("New Chat", color = ZcColors.Text) },
+      containerColor = colors.Card,
+      title = { Text("New Chat", color = colors.Text) },
       text = {
         OutlinedTextField(
           value = newName,
@@ -140,13 +141,13 @@ fun SessionListScreen(onSessionSelected: (String) -> Unit, onBack: () -> Unit) {
           app.chatRepository.createSession(newName.ifEmpty { null })
           showNewDialog = false
           newName = ""
-        }) { Text("Create", color = ZcColors.Accent) }
+        }) { Text("Create", color = colors.Accent) }
       },
       dismissButton = {
         TextButton(onClick = {
           showNewDialog = false
           newName = ""
-        }) { Text("Cancel", color = ZcColors.Text2) }
+        }) { Text("Cancel", color = colors.Text2) }
       }
     )
   }
@@ -154,8 +155,8 @@ fun SessionListScreen(onSessionSelected: (String) -> Unit, onBack: () -> Unit) {
   renameTarget?.let { session ->
     AlertDialog(
       onDismissRequest = { renameTarget = null },
-      containerColor = ZcColors.Card,
-      title = { Text("Rename Session", color = ZcColors.Text) },
+      containerColor = colors.Card,
+      title = { Text("Rename Session", color = colors.Text) },
       text = {
         OutlinedTextField(
           value = renameName,
@@ -169,11 +170,11 @@ fun SessionListScreen(onSessionSelected: (String) -> Unit, onBack: () -> Unit) {
         TextButton(onClick = {
           app.chatRepository.renameSession(session.id, renameName)
           renameTarget = null
-        }) { Text("Rename", color = ZcColors.Accent) }
+        }) { Text("Rename", color = colors.Accent) }
       },
       dismissButton = {
         TextButton(onClick = { renameTarget = null }) {
-          Text("Cancel", color = ZcColors.Text2)
+          Text("Cancel", color = colors.Text2)
         }
       }
     )
@@ -182,20 +183,20 @@ fun SessionListScreen(onSessionSelected: (String) -> Unit, onBack: () -> Unit) {
   deleteTarget?.let { session ->
     AlertDialog(
       onDismissRequest = { deleteTarget = null },
-      containerColor = ZcColors.Card,
-      title = { Text("Delete Session?", color = ZcColors.Text) },
+      containerColor = colors.Card,
+      title = { Text("Delete Session?", color = colors.Text) },
       text = {
-        Text("Delete \"${session.name}\" and all its messages?", color = ZcColors.Text2)
+        Text("Delete \"${session.name}\" and all its messages?", color = colors.Text2)
       },
       confirmButton = {
         TextButton(onClick = {
           app.chatRepository.deleteSession(session.id)
           deleteTarget = null
-        }) { Text("Delete", color = ZcColors.Red) }
+        }) { Text("Delete", color = colors.Red) }
       },
       dismissButton = {
         TextButton(onClick = { deleteTarget = null }) {
-          Text("Cancel", color = ZcColors.Text2)
+          Text("Cancel", color = colors.Text2)
         }
       }
     )
@@ -209,6 +210,7 @@ private fun SessionCard(
   onRename: () -> Unit,
   onDelete: () -> Unit
 ) {
+  val colors = currentPalette()
   val dateStr = SimpleDateFormat(
     "MMM d, HH:mm",
     Locale.getDefault()
@@ -217,40 +219,40 @@ private fun SessionCard(
   Surface(
     modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     shape = RoundedCornerShape(12.dp),
-    color = ZcColors.CardLight
+    color = colors.CardLight
   ) {
     Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
       Icon(
         Icons.Outlined.Chat,
         null,
         modifier = Modifier.size(32.dp),
-        tint = ZcColors.Accent2
+        tint = colors.Accent2
       )
       Spacer(Modifier.width(12.dp))
       Column(Modifier.weight(1f)) {
         Text(
           session.name,
-          color = ZcColors.Text,
+          color = colors.Text,
           fontSize = 14.sp,
           fontWeight = FontWeight.SemiBold,
           maxLines = 1
         )
         Row {
-          Text(dateStr, fontSize = 10.sp, color = ZcColors.Text3, fontFamily = FontFamily.Monospace)
-          Text(" · ", fontSize = 10.sp, color = ZcColors.Text3)
+          Text(dateStr, fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+          Text(" · ", fontSize = 10.sp, color = colors.Text3)
           Text(
             "${session.messageCount} msgs",
             fontSize = 10.sp,
-            color = ZcColors.Text3,
+            color = colors.Text3,
             fontFamily = FontFamily.Monospace
           )
         }
       }
       IconButton(onClick = onRename, modifier = Modifier.size(32.dp)) {
-        Icon(Icons.Filled.Edit, "Rename", tint = ZcColors.Accent, modifier = Modifier.size(18.dp))
+        Icon(Icons.Filled.Edit, "Rename", tint = colors.Accent, modifier = Modifier.size(18.dp))
       }
       IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-        Icon(Icons.Filled.Delete, "Delete", tint = ZcColors.Red, modifier = Modifier.size(18.dp))
+        Icon(Icons.Filled.Delete, "Delete", tint = colors.Red, modifier = Modifier.size(18.dp))
       }
     }
   }

@@ -161,7 +161,7 @@ class ChatRepository(context: Context) {
     saveMessages(sessionId, messages)
   }
 
-  fun exportSession(sessionId: String): String {
+  fun exportSession(sessionId: String): File? {
     val messages = getMessages(sessionId)
     val session = _sessions.value.find { it.id == sessionId }
     val sb = StringBuilder()
@@ -173,9 +173,13 @@ class ChatRepository(context: Context) {
       sb.appendLine("[$ts] ${msg.role.name}:")
       sb.appendLine(msg.content)
       if (msg.attachmentPath != null) sb.appendLine("[Attachment: ${msg.attachmentPath}]")
-      sb.appendLine()
+      sb.appendLine("<end>")
     }
-    return sb.toString()
+    return try {
+      val file = File(sessionsDir.parentFile ?: sessionsDir, "${sessionId}_export.txt")
+      file.writeText(sb.toString())
+      file
+    } catch (_: Exception) { null }
   }
 
   private fun saveMessages(sessionId: String, messages: List<ChatMessage>) {

@@ -24,11 +24,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.gguf.zerocopy.ui.theme.ZcColors
+import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlinx.coroutines.delay
 
 @Composable
 fun WelcomeScreen(onLoadModel: (String, String) -> Unit, onDownload: () -> Unit) {
+  val colors = currentPalette()
   val alpha = remember { Animatable(0f) }
 
   LaunchedEffect(Unit) {
@@ -37,7 +38,7 @@ fun WelcomeScreen(onLoadModel: (String, String) -> Unit, onDownload: () -> Unit)
   }
 
   Box(
-    modifier = Modifier.fillMaxSize().background(ZcColors.Bg),
+    modifier = Modifier.fillMaxSize().background(colors.Bg),
     contentAlignment = Alignment.Center
   ) {
     Column(
@@ -50,7 +51,7 @@ fun WelcomeScreen(onLoadModel: (String, String) -> Unit, onDownload: () -> Unit)
           .size(100.dp)
           .clip(RoundedCornerShape(28.dp))
           .background(
-            Brush.linearGradient(listOf(ZcColors.GradientStart, ZcColors.GradientEnd))
+            Brush.linearGradient(listOf(colors.GradientStart, colors.GradientEnd))
           ),
         contentAlignment = Alignment.Center
       ) {

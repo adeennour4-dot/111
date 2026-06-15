@@ -64,7 +64,7 @@ import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.domain.inference.InferenceConfig
 import com.gguf.zerocopy.domain.inference.RepeatPenaltyConfig
-import com.gguf.zerocopy.ui.theme.ZcColors
+import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -75,6 +75,7 @@ fun SettingsScreen(onBack: () -> Unit) {
   val engineManager = app.engineManager
   val scope = rememberCoroutineScope()
   val snackbarHostState = remember { SnackbarHostState() }
+  val colors = currentPalette()
 
   var nCtx by remember { mutableStateOf(SettingsManager.nCtx.toString()) }
   var maxTok by remember { mutableStateOf(SettingsManager.maxTokens.toString()) }
@@ -144,17 +145,17 @@ fun SettingsScreen(onBack: () -> Unit) {
   Scaffold(
     topBar = {
       TopAppBar(
-        title = { Text("Settings", fontWeight = FontWeight.Bold, color = ZcColors.Text) },
+        title = { Text("Settings", fontWeight = FontWeight.Bold, color = colors.Text) },
         navigationIcon = {
           IconButton(onClick = {
             saveSettings()
             onBack()
-          }) { Icon(Icons.Filled.ArrowBack, "Back", tint = ZcColors.Text2) }
+          }) { Icon(Icons.Filled.ArrowBack, "Back", tint = colors.Text2) }
         },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = ZcColors.Bg)
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Bg)
       )
     },
-    containerColor = ZcColors.Bg,
+    containerColor = colors.Bg,
     snackbarHost = { SnackbarHost(snackbarHostState) }
   ) { pad ->
     Column(
@@ -168,7 +169,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         "Sampling",
         fontSize = 13.sp,
         fontWeight = FontWeight.Bold,
-        color = ZcColors.Accent,
+        color = colors.Accent,
         fontFamily = FontFamily.Monospace,
         letterSpacing = 2.sp
       )
@@ -180,13 +181,13 @@ fun SettingsScreen(onBack: () -> Unit) {
       SettingField("Freq Penalty", "0=off, penalizes frequent tokens", freqPen, { freqPen = it })
       SettingField("Presence Penalty", "0=off, penalizes seen tokens", presPen, { presPen = it })
 
-      HorizontalDivider(color = ZcColors.Border, thickness = 1.dp)
+      HorizontalDivider(color = colors.Border, thickness = 1.dp)
 
       Text(
         "Generation",
         fontSize = 13.sp,
         fontWeight = FontWeight.Bold,
-        color = ZcColors.Accent,
+        color = colors.Accent,
         fontFamily = FontFamily.Monospace,
         letterSpacing = 2.sp
       )
@@ -198,44 +199,44 @@ fun SettingsScreen(onBack: () -> Unit) {
       SettingField("Threads", "0=auto, 1-16", threads, { threads = it })
 
       Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Low RAM Mode", fontSize = 13.sp, color = ZcColors.Text2, modifier = Modifier.weight(1f))
+        Text("Low RAM Mode", fontSize = 13.sp, color = colors.Text2, modifier = Modifier.weight(1f))
         Switch(
           checked = lowRam,
           onCheckedChange = { lowRam = it },
-          colors = SwitchDefaults.colors(checkedTrackColor = ZcColors.Accent, checkedThumbColor = ZcColors.Bg)
+          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
         )
       }
 
-      HorizontalDivider(color = ZcColors.Border, thickness = 1.dp)
+      HorizontalDivider(color = colors.Border, thickness = 1.dp)
 
       Text(
         "Appearance",
         fontSize = 13.sp,
         fontWeight = FontWeight.Bold,
-        color = ZcColors.Accent,
+        color = colors.Accent,
         fontFamily = FontFamily.Monospace,
         letterSpacing = 2.sp
       )
 
       Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Dark Theme", fontSize = 13.sp, color = ZcColors.Text2, modifier = Modifier.weight(1f))
+        Text("Dark Theme", fontSize = 13.sp, color = colors.Text2, modifier = Modifier.weight(1f))
         Switch(
           checked = isDark,
           onCheckedChange = {
             isDark = it
             SettingsManager.isDarkTheme = it
           },
-          colors = SwitchDefaults.colors(checkedTrackColor = ZcColors.Accent, checkedThumbColor = ZcColors.Bg)
+          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
         )
       }
 
-      HorizontalDivider(color = ZcColors.Border, thickness = 1.dp)
+      HorizontalDivider(color = colors.Border, thickness = 1.dp)
 
       Text(
         "System",
         fontSize = 13.sp,
         fontWeight = FontWeight.Bold,
-        color = ZcColors.Accent,
+        color = colors.Accent,
         fontFamily = FontFamily.Monospace,
         letterSpacing = 2.sp
       )
@@ -248,11 +249,11 @@ fun SettingsScreen(onBack: () -> Unit) {
         maxLines = 4,
         shape = RoundedCornerShape(10.dp),
         colors = OutlinedTextFieldDefaults.colors(
-          focusedBorderColor = ZcColors.Accent,
-          unfocusedBorderColor = ZcColors.Border,
-          focusedTextColor = ZcColors.Text,
-          unfocusedTextColor = ZcColors.Text,
-          cursorColor = ZcColors.Accent
+          focusedBorderColor = colors.Accent,
+          unfocusedBorderColor = colors.Border,
+          focusedTextColor = colors.Text,
+          unfocusedTextColor = colors.Text,
+          cursorColor = colors.Accent
         ),
         textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace)
       )
@@ -260,7 +261,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       Text(
         "Context/GPU changes need model reload.",
         fontSize = 10.sp,
-        color = ZcColors.Amber,
+        color = colors.Amber,
         fontFamily = FontFamily.Monospace
       )
 
@@ -274,9 +275,9 @@ fun SettingsScreen(onBack: () -> Unit) {
         },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = ZcColors.Purple)
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Purple)
       ) {
-        Icon(Icons.Filled.Visibility, null, modifier = Modifier.size(16.dp), tint = ZcColors.Purple)
+        Icon(Icons.Filled.Visibility, null, modifier = Modifier.size(16.dp), tint = colors.Purple)
         Spacer(Modifier.width(6.dp))
         Text(
           if (mmprojPath.isEmpty()) "Load Vision mmproj" else "mmproj: ${mmprojPath.substringAfterLast('/')}",
@@ -292,19 +293,19 @@ fun SettingsScreen(onBack: () -> Unit) {
         },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = ZcColors.Accent)
+        colors = ButtonDefaults.buttonColors(containerColor = colors.Accent)
       ) {
         Box(
           modifier = Modifier
             .size(20.dp)
             .clip(RoundedCornerShape(6.dp))
-            .background(Brush.linearGradient(listOf(ZcColors.GradientStart, ZcColors.GradientEnd))),
+            .background(Brush.linearGradient(listOf(colors.GradientStart, colors.GradientEnd))),
           contentAlignment = Alignment.Center
         ) {
           Icon(Icons.Filled.Save, null, tint = Color.White, modifier = Modifier.size(14.dp))
         }
         Spacer(Modifier.width(8.dp))
-        Text("Save Settings", color = ZcColors.Bg, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        Text("Save Settings", color = colors.Bg, fontWeight = FontWeight.Bold, fontSize = 14.sp)
       }
 
       OutlinedButton(
@@ -314,7 +315,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = ZcColors.Amber)
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Amber)
       ) {
         Text("Reset Context", fontSize = 12.sp)
       }
@@ -323,7 +324,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         onClick = { engineManager.unloadAll() },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = ZcColors.Red)
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Red)
       ) {
         Text("Unload All Models", fontSize = 12.sp)
       }
@@ -335,9 +336,10 @@ fun SettingsScreen(onBack: () -> Unit) {
 
 @Composable
 fun SettingField(label: String, hint: String, value: String, onChange: (String) -> Unit) {
+  val colors = currentPalette()
   Column {
-    Text(label, fontSize = 11.sp, color = ZcColors.Text2)
-    Text(hint, fontSize = 9.sp, color = ZcColors.Text3)
+    Text(label, fontSize = 11.sp, color = colors.Text2)
+    Text(hint, fontSize = 9.sp, color = colors.Text3)
     OutlinedTextField(
       value = value,
       onValueChange = onChange,
@@ -346,11 +348,11 @@ fun SettingField(label: String, hint: String, value: String, onChange: (String) 
       keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
       shape = RoundedCornerShape(10.dp),
       colors = OutlinedTextFieldDefaults.colors(
-        focusedBorderColor = ZcColors.Accent,
-        unfocusedBorderColor = ZcColors.Border,
-        focusedTextColor = ZcColors.Text,
-        unfocusedTextColor = ZcColors.Text,
-        cursorColor = ZcColors.Accent
+        focusedBorderColor = colors.Accent,
+        unfocusedBorderColor = colors.Border,
+        focusedTextColor = colors.Text,
+        unfocusedTextColor = colors.Text,
+        cursorColor = colors.Accent
       ),
       textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, fontFamily = FontFamily.Monospace)
     )
