@@ -26,7 +26,6 @@ env:
   NDK_VERSION: 27.0.12077973
   CMAKE_VERSION: 3.22.1
   ANDROID_API: 36
-  GRADLE_VERSION: 9.3.1
 
 jobs:
   build:
@@ -48,33 +47,52 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: ${{ env.GRADLE_VERSION }}
+          cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
 
       - name: Install Android SDK components
         id: install-sdk
         run: |
           ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
-          if [ -z "$ANDROID_HOME" ]; then
+          if [ -z "$ANDROID_HOME" ] || [ ! -d "$ANDROID_HOME/platforms" ]; then
             echo "Android SDK not found, installing..."
             mkdir -p $HOME/android-sdk
             cd $HOME/android-sdk
             curl -o cmdline-tools.zip \
               https://dl.google.com/android/repository/commandlinetools-linux-12266719_latest.zip
             unzip -q cmdline-tools.zip
+            # cmdline-tools unzips with contents at root; restructure for sdkmanager
             mkdir -p cmdline-tools/latest
-            mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || true
+            for item in cmdline-tools/*; do
+              [ "$item" = "cmdline-tools/latest" ] && continue
+              mv "$item" cmdline-tools/latest/ 2>/dev/null || true
+            done
             ANDROID_HOME=$HOME/android-sdk
             echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
             echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
           fi
 
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install \
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+
+          # Accept licenses
+          yes | $SDKMANAGER --licenses 2>&1 | tail -5 || true
+
+          # Install components (try API 36 build-tools, fallback to 35)
+          $SDKMANAGER --install \
             "platforms;android-${{ env.ANDROID_API }}" \
             "build-tools;${{ env.ANDROID_API }}.0.0" \
             "ndk;${{ env.NDK_VERSION }}" \
             "cmake;${{ env.CMAKE_VERSION }}" \
             "platform-tools" \
-            2>&1 | tail -20
+            2>&1 | tail -20 || {
+            echo "API ${{ env.ANDROID_API }} build-tools failed, trying API 35..."
+            $SDKMANAGER --install \
+              "platforms;android-${{ env.ANDROID_API }}" \
+              "build-tools;35.0.0" \
+              "ndk;${{ env.NDK_VERSION }}" \
+              "cmake;${{ env.CMAKE_VERSION }}" \
+              "platform-tools" \
+              2>&1 | tail -20
+          }
 
           NDK_HOME="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
           echo "NDK_HOME=$NDK_HOME" >> $GITHUB_ENV
@@ -102,6 +120,7 @@ jobs:
             ${{ runner.os }}-cmake-
 
       - name: Cache LLVM/Clang (NDK)
+        if: steps.install-sdk.outputs.ndk-path != ''
         uses: actions/cache@v4
         with:
           path: |
@@ -255,16 +274,28 @@ jobs:
   size-report:
     runs-on: ubuntu-latest
     needs: build
-    if: always()
+    if: success()
     steps:
-      - name: Download APK artifacts
+      - name: Download debug APK
         uses: actions/download-artifact@v4
         with:
           name: ZeroCopy-v8-debug
+          path: apks/debug
+        continue-on-error: true
+      
+      - name: Download release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: ZeroCopy-v8-release
+          path: apks/release
+        continue-on-error: true
       
       - name: Analyze APK size
         run: |
-          for apk in *.apk; do
-            size=$(stat -f%z "$apk" 2>/dev/null || stat -c%s "$apk")
+          found=false
+          for apk in $(find apks -name "*.apk" 2>/dev/null); do
+            found=true
+            size=$(stat -c%s "$apk" 2>/dev/null)
             echo "::notice::$apk: $(( size / 1024 / 1024 )) MB ($(( size / 1024 )) KB)"
           done
+          [ "$found" = false ] && echo "No APKs found for size analysis"
