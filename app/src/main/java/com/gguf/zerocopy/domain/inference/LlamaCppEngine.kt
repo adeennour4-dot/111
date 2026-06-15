@@ -2,7 +2,6 @@ package com.gguf.zerocopy.domain.inference
 
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -18,8 +17,9 @@ class LlamaCppEngine : InferenceEngine {
   override var repeatPenalty = RepeatPenaltyConfig()
   override var systemPrompt = ""
 
-  private val partialStream = AtomicReference(StringBuilder())
-  private val fullResponse = AtomicReference(StringBuilder())
+  private val lock = Any()
+  private var partialStream = StringBuilder()
+  private var fullResponse = StringBuilder()
   private val inferenceDone = AtomicBoolean(true)
   private val tokensGenerated = AtomicInteger(0)
   private var kvUsage = 0
@@ -71,16 +71,20 @@ class LlamaCppEngine : InferenceEngine {
 
   override suspend fun executeInference(prompt: String, callback: TokenCallback) {
     withContext(Dispatchers.IO) {
-      partialStream.get().clear()
-      fullResponse.get().clear()
+      synchronized(lock) {
+        partialStream.clear()
+        fullResponse.clear()
+      }
       inferenceDone.set(false)
       tokensGenerated.set(0)
 
       val cb =
         object : NativeBridge.TokenCallback {
           override fun onToken(token: String) {
-            partialStream.get().append(token)
-            fullResponse.get().append(token)
+            synchronized(lock) {
+              partialStream.append(token)
+              fullResponse.append(token)
+            }
           }
 
           override fun onDone() {
@@ -114,8 +118,10 @@ class LlamaCppEngine : InferenceEngine {
 
   override fun resetContext() {
     NativeBridge.resetContextNative()
-    partialStream.get().clear()
-    fullResponse.get().clear()
+    synchronized(lock) {
+      partialStream.clear()
+      fullResponse.clear()
+    }
     inferenceDone.set(true)
     tokensGenerated.set(0)
     kvUsage = 0
@@ -147,9 +153,15 @@ class LlamaCppEngine : InferenceEngine {
 
   override fun isInferenceDone(): Boolean = inferenceDone.get()
 
-  override fun readPartialStream(): String = partialStream.getAndSet(StringBuilder()).toString()
+  override fun readPartialStream(): String = synchronized(lock) {
+    val text = partialStream.toString()
+    partialStream = StringBuilder()
+    text
+  }
 
-  override fun readTokenStream(): String = fullResponse.get().toString()
+  override fun readTokenStream(): String = synchronized(lock) {
+    fullResponse.toString()
+  }
 
   private fun parseModelInfo(jsonStr: String): ModelInfo? = try {
     val j = JSONObject(jsonStr)

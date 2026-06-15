@@ -501,10 +501,18 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
         char piece[256];
         int n = llama_token_to_piece(llama_model_get_vocab(g_model), tok, piece, sizeof(piece), 0, false);
         if (n > 0) {
-            piece[n] = '\0';
-            response += piece;
+            if (n < (int)sizeof(piece)) {
+                piece[n] = '\0';
+                response += piece;
+                call_callback_on_token(std::string(piece, n));
+            } else {
+                std::vector<char> buf(n + 1);
+                llama_token_to_piece(llama_model_get_vocab(g_model), tok, buf.data(), buf.size(), 0, false);
+                buf[n] = '\0';
+                response += buf.data();
+                call_callback_on_token(std::string(buf.data(), n));
+            }
             tokens_generated = i + 1;
-            call_callback_on_token(std::string(piece, n));
             call_callback_on_tokens_generated(tokens_generated);
         }
 
