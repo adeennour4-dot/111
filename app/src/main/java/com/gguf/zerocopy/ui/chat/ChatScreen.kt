@@ -294,7 +294,7 @@ fun ChatScreen(
   ) { pad ->
     Column(modifier = Modifier.padding(pad).fillMaxSize()) {
       Box(modifier = Modifier.weight(1f)) {
-        if (!engine?.isModelLoaded == true) {
+        if (engine?.isModelLoaded != true) {
           Column(
             modifier = Modifier.fillMaxSize().padding(32.dp),
             verticalArrangement = Arrangement.Center,

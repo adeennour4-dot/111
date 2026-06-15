@@ -61,7 +61,7 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
   val context = LocalContext.current
   val app = ZeroCopyApp.instance
   val scope = rememberCoroutineScope()
-  val models by app.modelRepository.models.collectAsState()
+  val models by app.modelRepository.models.collectAsState(initial = emptyList())
   var loading by remember { mutableStateOf(false) }
 
   val filePicker =
@@ -129,7 +129,7 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
           horizontalAlignment = Alignment.CenterHorizontally
         ) {
           Icon(
-            Icons.Outlined.ModelTraining,
+            Icons.Outlined.SmartToy,
             null,
             modifier = Modifier.size(48.dp),
             tint = ZcColors.Text3

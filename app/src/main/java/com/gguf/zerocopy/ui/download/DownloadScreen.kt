@@ -1,6 +1,5 @@
 package com.gguf.zerocopy.ui.download
 
-import androidx.compose.animation.core.ExperimentalAnimationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -48,7 +47,7 @@ import com.gguf.zerocopy.data.repository.ModelDownloads
 import com.gguf.zerocopy.ui.theme.ZcColors
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DownloadScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Unit) {
   val app = ZeroCopyApp.instance
