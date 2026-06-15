@@ -22,7 +22,7 @@ object SettingsManager {
     }
 
   var maxTokens: Int
-    get() = prefs?.getInt("max_tokens", 1024) ?: 1024
+    get() = prefs?.getInt("max_tokens", 2048) ?: 2048
     set(v) {
       prefs?.edit()?.putInt("max_tokens", v)?.apply()
     }
@@ -90,12 +90,6 @@ object SettingsManager {
         ?: "You are a helpful, concise assistant running on-device. Respond clearly and directly."
     set(v) {
       prefs?.edit()?.putString("system_prompt", v)?.apply()
-    }
-
-  var autoDetectDevice: Boolean
-    get() = prefs?.getBoolean("auto_detect", true) ?: true
-    set(v) {
-      prefs?.edit()?.putBoolean("auto_detect", v)?.apply()
     }
 
   var lowRamMode: Boolean

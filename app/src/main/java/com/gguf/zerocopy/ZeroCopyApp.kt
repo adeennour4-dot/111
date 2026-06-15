@@ -27,10 +27,6 @@ class ZeroCopyApp : Application() {
     modelRepository = ModelRepository(this)
     chatRepository = ChatRepository(this)
 
-    if (SettingsManager.autoDetectDevice) {
-      val info = deviceUtils.detect()
-      SettingsManager.applyDeviceDefaults(info)
-    }
     syncSettingsToEngines()
   }
 

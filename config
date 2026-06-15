@@ -1,0 +1,7 @@
+[core]
+	repositoryformatversion = 0
+	filemode = false
+	bare = false
+[remote "origin"]
+	url = https://github.com/adeennour4-dot/111.git
+	fetch = +refs/heads/*:refs/remotes/origin/*

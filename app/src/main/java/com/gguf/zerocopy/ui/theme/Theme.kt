@@ -18,13 +18,17 @@ private val DarkScheme =
     background = ZcColors.Bg,
     surface = ZcColors.Surface,
     surfaceVariant = ZcColors.Card,
+    surfaceTint = ZcColors.Accent,
     primary = ZcColors.Accent,
     secondary = ZcColors.Accent2,
     tertiary = ZcColors.Purple,
     onBackground = ZcColors.Text,
     onSurface = ZcColors.Text,
+    onSurfaceVariant = ZcColors.Text2,
     onPrimary = ZcColors.Bg,
-    outline = ZcColors.Border
+    onSecondary = ZcColors.Bg,
+    outline = ZcColors.Border,
+    outlineVariant = ZcColors.Border.copy(alpha = 0.5f)
   )
 
 private val LightScheme =
@@ -32,13 +36,17 @@ private val LightScheme =
     background = ZcLightColors.Bg,
     surface = ZcLightColors.Surface,
     surfaceVariant = ZcLightColors.Card,
+    surfaceTint = ZcLightColors.Accent,
     primary = ZcLightColors.Accent,
     secondary = ZcLightColors.Accent2,
     tertiary = ZcLightColors.Purple,
     onBackground = ZcLightColors.Text,
     onSurface = ZcLightColors.Text,
+    onSurfaceVariant = ZcLightColors.Text2,
     onPrimary = ZcLightColors.Bg,
-    outline = ZcLightColors.Border
+    onSecondary = ZcLightColors.Bg,
+    outline = ZcLightColors.Border,
+    outlineVariant = ZcLightColors.Border.copy(alpha = 0.5f)
   )
 
 @Composable
