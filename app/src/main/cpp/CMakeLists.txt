@@ -12,7 +12,7 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ARM_ARCH_FLAGS}")
 endif()
 
-option(GGML_VULKAN "Enable Vulkan" OFF)
+option(GGML_VULKAN "Enable Vulkan" ON)
 option(GGML_OPENCL "Enable OpenCL" OFF)
 set(GGML_OPENMP        OFF CACHE BOOL "" FORCE)
 set(GGML_LLAMAFILE     OFF CACHE BOOL "" FORCE)
@@ -21,13 +21,21 @@ set(LLAMA_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(LLAMA_FLASH_ATTN ON CACHE BOOL "" FORCE)
 
-FetchContent_Declare(
-    opencl_headers
-    GIT_REPOSITORY https://github.com/KhronosGroup/OpenCL-Headers.git
-    GIT_TAG        v2023.12.14
-    GIT_SHALLOW    TRUE
-)
-FetchContent_MakeAvailable(opencl_headers)
+# Vulkan headers from NDK
+if(GGML_VULKAN)
+    find_path(VULKAN_HEADERS_INCLUDE_DIR
+        NAMES vulkan/vulkan.h
+        PATHS ${ANDROID_NDK}/sources/third_party/vulkan/include
+        NO_DEFAULT_PATH
+    )
+    if(VULKAN_HEADERS_INCLUDE_DIR)
+        message(STATUS "Vulkan headers found: ${VULKAN_HEADERS_INCLUDE_DIR}")
+        set(GGML_VULKAN_HEADERS_DIR ${VULKAN_HEADERS_INCLUDE_DIR} CACHE PATH "" FORCE)
+    else()
+        message(WARNING "Vulkan headers not found in NDK, disabling Vulkan")
+        set(GGML_VULKAN OFF CACHE BOOL "" FORCE)
+    endif()
+endif()
 
 FetchContent_Declare(
     llama
@@ -102,11 +110,13 @@ target_include_directories(mnn-bridge PRIVATE
 )
 target_link_libraries(mnn-bridge PRIVATE MNN ${log-lib} ${android-lib})
 
-find_library(OPENCL_LIB OpenCL)
-if(GGML_OPENCL AND OPENCL_LIB)
-    target_include_directories(ipc-bridge PRIVATE ${opencl_headers_SOURCE_DIR})
-    target_compile_definitions(ipc-bridge PRIVATE GGML_OPENCL_ENABLED)
-    target_link_libraries(ipc-bridge PRIVATE ${OPENCL_LIB})
+if(GGML_VULKAN)
+    find_library(Vulkan_LIB vulkan PATHS ${ANDROID_NDK}/platforms/android-27/arch-arm64/usr/lib NO_DEFAULT_PATH)
+    if(Vulkan_LIB)
+        target_include_directories(ipc-bridge PRIVATE ${VULKAN_HEADERS_INCLUDE_DIR})
+        target_link_libraries(ipc-bridge PRIVATE ${Vulkan_LIB})
+        message(STATUS "Vulkan enabled for ipc-bridge")
+    endif()
 endif()
 
 target_compile_features(ipc-bridge PRIVATE cxx_std_20)

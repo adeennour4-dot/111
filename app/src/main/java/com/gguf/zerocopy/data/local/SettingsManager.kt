@@ -16,25 +16,25 @@ object SettingsManager {
   }
 
   var nCtx: Int
-    get() = prefs?.getInt("n_ctx", 8192) ?: 8192
+    get() = prefs?.getInt("n_ctx", 2048) ?: 2048
     set(v) {
       prefs?.edit()?.putInt("n_ctx", v)?.apply()
     }
 
   var maxTokens: Int
-    get() = prefs?.getInt("max_tokens", 4096) ?: 4096
+    get() = prefs?.getInt("max_tokens", 1024) ?: 1024
     set(v) {
       prefs?.edit()?.putInt("max_tokens", v)?.apply()
     }
 
   var nBatch: Int
-    get() = prefs?.getInt("n_batch", 2048) ?: 2048
+    get() = prefs?.getInt("n_batch", 512) ?: 512
     set(v) {
       prefs?.edit()?.putInt("n_batch", v)?.apply()
     }
 
   var temperature: Float
-    get() = prefs?.getFloat("temperature", 0.7f) ?: 0.7f
+    get() = prefs?.getFloat("temperature", 0.6f) ?: 0.6f
     set(v) {
       prefs?.edit()?.putFloat("temperature", v)?.apply()
     }
@@ -52,13 +52,13 @@ object SettingsManager {
     }
 
   var gpuLayers: Int
-    get() = prefs?.getInt("gpu_layers", 99) ?: 99
+    get() = prefs?.getInt("gpu_layers", 0) ?: 0
     set(v) {
       prefs?.edit()?.putInt("gpu_layers", v)?.apply()
     }
 
   var threads: Int
-    get() = prefs?.getInt("threads", 0) ?: 0
+    get() = prefs?.getInt("threads", 4) ?: 4
     set(v) {
       prefs?.edit()?.putInt("threads", v)?.apply()
     }
@@ -99,9 +99,16 @@ object SettingsManager {
     }
 
   var lowRamMode: Boolean
-    get() = prefs?.getBoolean("low_ram", false) ?: false
+    get() = prefs?.getBoolean("low_ram", true) ?: true
     set(v) {
       prefs?.edit()?.putBoolean("low_ram", v)?.apply()
+    }
+
+  var isDarkTheme: Boolean
+    get() = prefs?.getBoolean("dark_theme", true) ?: true
+    set(v) {
+      prefs?.edit()?.putBoolean("dark_theme", v)?.apply()
+      com.gguf.zerocopy.ui.theme.ThemeState.isDark = v
     }
 
   fun toConfig() = InferenceConfig(

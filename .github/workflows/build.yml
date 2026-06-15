@@ -21,11 +21,6 @@ on:
         required: false
         default: false
         type: boolean
-      enable_vulkan:
-        description: 'Enable Vulkan GPU backend'
-        required: false
-        default: false
-        type: boolean
 
 env:
   NDK_VERSION: 27.0.12077973
@@ -140,16 +135,14 @@ jobs:
           cd ..
           echo "Rust core built and placed in jniLibs"
 
-      # -----------------------------------------------------------------------
-      # Configure CMake flags
-      # -----------------------------------------------------------------------
-      - name: Configure CMake flags
+      - name: Verify Vulkan headers (NDK)
         run: |
-          # Enable Vulkan if requested
-          if [ "${{ github.event.inputs.enable_vulkan }}" == "true" ] || [ "${{ github.ref_type }}" == "tag" ]; then
-            echo "CMAKE_ARGS=-DGGML_VULKAN=ON" >> $GITHUB_ENV
+          NDK="${{ env.NDK_HOME }}"
+          VK_HEADER="$NDK/sources/third_party/vulkan/include/vulkan/vulkan.h"
+          if [ -f "$VK_HEADER" ]; then
+            echo "Vulkan headers found at $VK_HEADER"
           else
-            echo "CMAKE_ARGS=" >> $GITHUB_ENV
+            echo "::warning::Vulkan header not found at $VK_HEADER — Vulkan GPU offload disabled"
           fi
 
       # -----------------------------------------------------------------------
@@ -162,7 +155,6 @@ jobs:
         if: ${{ github.event.inputs.build_type != 'release' && github.ref_type != 'tag' }}
         run: |
           ./gradlew assembleDebug \
-            -PcmakeArgs="${{ env.CMAKE_ARGS }}" \
             --no-daemon \
             --stacktrace
 
@@ -182,7 +174,6 @@ jobs:
             echo "storeFile=../keystore.jks" >> keystore.properties
           fi
           ./gradlew assembleRelease \
-            -PcmakeArgs="${{ env.CMAKE_ARGS }}" \
             --no-daemon \
             --stacktrace
 

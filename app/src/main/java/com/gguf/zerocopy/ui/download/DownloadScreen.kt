@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Downloading
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -42,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ZeroCopyApp
+import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.data.repository.DownloadableModel
 import com.gguf.zerocopy.data.repository.ModelDownloads
 import com.gguf.zerocopy.ui.theme.ZcColors
@@ -55,7 +57,7 @@ fun DownloadScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Unit
   val deviceInfo = remember { app.deviceUtils.detect() }
   val recommended = remember { ModelDownloads.recommendForRam(deviceInfo.availableRamMB) }
 
-  var downloadingId by remember { mutableStateOf<String?>(null) }
+  var downloadTask by remember { mutableStateOf<ModelRepository.DownloadTask?>(null) }
   var downloadProgress by remember { mutableFloatStateOf(0f) }
   var statusText by remember { mutableStateOf("") }
 
@@ -109,22 +111,29 @@ fun DownloadScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Unit
         items(recommended, key = { it.id }) { model ->
           DownloadCard(
             model = model,
-            isDownloading = downloadingId == model.id,
+            isDownloading = downloadTask?.isRunning == true,
             progress = downloadProgress,
             onClick = {
-              if (downloadingId != null) return@DownloadCard
-              downloadingId = model.id
+              if (downloadTask?.isRunning == true) return@DownloadCard
               statusText = "Downloading ${model.name}..."
-              scope.launch {
-                val result =
-                  app.modelRepository.downloadFromHf(
-                    repo = model.hfRepo,
-                    filename = model.hfFile,
-                    onProgress = { progress -> downloadProgress = progress }
-                  )
-                if (result.isSuccess) {
+              val task = app.modelRepository.downloadFromHf(
+                repo = model.hfRepo,
+                filename = model.hfFile,
+                onProgress = { progress -> downloadProgress = progress },
+                onCancel = { downloadTask?.isRunning == false }
+              )
+              downloadTask = task
+              scope.launch(Dispatchers.IO) {
+                while (task.isRunning) {
+                  kotlinx.coroutines.delay(200)
+                }
+                val result = task.result
+                if (result?.isSuccess == true) {
                   val localModel = result.getOrThrow()
                   val engine = app.engineManager.selectEngineForFormat(localModel.path)
+                  engine.config = SettingsManager.toConfig()
+                  engine.repeatPenalty = SettingsManager.toRepeatPenalty()
+                  engine.systemPrompt = SettingsManager.systemPrompt
                   val loadResult = engine.loadModel(localModel.path)
                   if (loadResult.isSuccess) {
                     app.modelRepository.markUsed(localModel.id)
@@ -133,16 +142,21 @@ fun DownloadScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Unit
                     statusText = "Load failed: ${loadResult.exceptionOrNull()?.message}"
                   }
                 } else {
-                  statusText = "Download failed: ${result.exceptionOrNull()?.message}"
+                  statusText = if (task.isRunning) {
+                    "Download failed: ${result?.exceptionOrNull()?.message}"
+                  } else {
+                    "Download cancelled"
+                  }
                 }
-                downloadingId = null
+                downloadTask = null
               }
-            }
+            },
+            onCancel = { downloadTask?.cancel() }
           )
         }
       }
 
-      if (statusText.isNotEmpty() && downloadingId == null) {
+      if (statusText.isNotEmpty() && downloadTask?.isRunning != true) {
         Surface(modifier = Modifier.fillMaxWidth(), color = ZcColors.Card) {
           Text(
             statusText,
@@ -162,7 +176,8 @@ fun DownloadCard(
   model: DownloadableModel,
   isDownloading: Boolean,
   progress: Float,
-  onClick: () -> Unit
+  onClick: () -> Unit,
+  onCancel: () -> Unit = {}
 ) {
   Surface(
     modifier = Modifier.fillMaxWidth().clickable(enabled = !isDownloading, onClick = onClick),
@@ -210,12 +225,18 @@ fun DownloadCard(
             color = ZcColors.Accent2,
             trackColor = ZcColors.Card
           )
-          Text(
-            "%.0f%%".format(progress * 100),
-            fontSize = 10.sp,
-            color = ZcColors.Accent2,
-            fontFamily = FontFamily.Monospace
-          )
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+              "%.0f%%".format(progress * 100),
+              fontSize = 10.sp,
+              color = ZcColors.Accent2,
+              fontFamily = FontFamily.Monospace,
+              modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = onCancel, modifier = Modifier.size(24.dp)) {
+              Icon(Icons.Filled.Close, "Cancel", tint = ZcColors.Red, modifier = Modifier.size(16.dp))
+            }
+          }
         }
       }
     }

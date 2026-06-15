@@ -2,6 +2,7 @@ package com.gguf.zerocopy.ui.welcome
 
 import android.app.Activity
 import android.content.Intent
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -42,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ZeroCopyApp
+import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.ui.theme.ZcColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -61,11 +63,7 @@ fun WelcomeScreen(onLoadModel: (String, String) -> Unit, onDownload: () -> Unit)
     ) { result ->
       if (result.resultCode == Activity.RESULT_OK) {
         result.data?.data?.let { uri ->
-          val name =
-            uri.lastPathSegment
-              ?.substringAfterLast('/')
-              ?.substringAfterLast(':')
-              ?.let { if (it.contains('.')) it else null } ?: "model.gguf"
+          val name = getFileName(context, uri)
           loading = true
           status = "Importing..."
           scope.launch {
@@ -74,6 +72,9 @@ fun WelcomeScreen(onLoadModel: (String, String) -> Unit, onDownload: () -> Unit)
               val model = result.getOrThrow()
               status = "Loading..."
               val engine = app.engineManager.selectEngineForFormat(model.path)
+              engine.config = SettingsManager.toConfig()
+              engine.repeatPenalty = SettingsManager.toRepeatPenalty()
+              engine.systemPrompt = SettingsManager.systemPrompt
               val loadResult = engine.loadModel(model.path)
               withContext(Dispatchers.Main) {
                 loading = false
@@ -180,4 +181,24 @@ fun WelcomeScreen(onLoadModel: (String, String) -> Unit, onDownload: () -> Unit)
       Text(status, fontSize = 11.sp, color = ZcColors.Text3, fontFamily = FontFamily.Monospace)
     }
   }
+}
+
+private fun getFileName(context: android.content.Context, uri: android.net.Uri): String {
+  var name = "model.gguf"
+  context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+    if (cursor.moveToFirst()) {
+      val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+      if (idx >= 0) cursor.getString(idx)?.let { if (it.isNotEmpty()) name = it }
+    }
+  }
+  if ('.' !in name) {
+    val mime = context.contentResolver.getType(uri)
+    name += when {
+      mime?.contains("gguf") == true || mime == "application/octet-stream" -> ".gguf"
+      mime?.contains("tensorflow") == true || mime?.contains("tflite") == true -> ".tflite"
+      mime?.contains("litert") == true -> ".litertlm"
+      else -> ".gguf"
+    }
+  }
+  return name
 }

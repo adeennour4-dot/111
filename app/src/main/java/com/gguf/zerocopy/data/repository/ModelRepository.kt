@@ -5,6 +5,7 @@ import android.net.Uri
 import com.gguf.zerocopy.domain.inference.EngineType
 import java.io.File
 import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
@@ -12,6 +13,34 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+
+private val VALID_EXTENSIONS = setOf("gguf", "mnn", "tflite", "litertlm")
+
+private fun engineForExt(ext: String): EngineType = when (ext) {
+  "gguf" -> EngineType.LLAMA_CPP
+  "mnn" -> EngineType.MNN
+  else -> EngineType.LITER_T
+}
+
+private val GGUF_MAGIC = byteArrayOf(0x47, 0x47, 0x55, 0x46) // "GGUF"
+private val GGML_MAGIC = byteArrayOf(0x47, 0x47, 0x4D, 0x4C) // "GGML"
+private val TFLITE1_MAGIC = byteArrayOf(0x1A, 0x00, 0x00, 0x00)
+private val TFLITE2_MAGIC = byteArrayOf(0x54, 0x46, 0x4C, 0x33) // "TFL3"
+
+fun isValidModelFile(file: File): Boolean {
+  if (!file.isFile || file.length() < 8) return false
+  return try {
+    RandomAccessFile(file, "r").use { raf ->
+      val header = ByteArray(4)
+      raf.readFully(header)
+      header.contentEquals(GGUF_MAGIC) || header.contentEquals(GGML_MAGIC) ||
+        header.contentEquals(TFLITE1_MAGIC) || header.contentEquals(TFLITE2_MAGIC) ||
+        file.extension.lowercase() == "litertlm"
+    }
+  } catch (_: Exception) {
+    false
+  }
+}
 
 data class LocalModel(
   val id: String,
@@ -147,26 +176,29 @@ class ModelRepository(private val context: Context) {
   }
 
   fun scanModels() {
+    val files = modelsDir.listFiles() ?: emptyArray()
     _models.value =
-      (modelsDir.listFiles() ?: emptyArray())
-        .filter {
-          it.isFile &&
-            it.extension.lowercase() in setOf("gguf", "mnn", "tflite", "litertlm")
-        }
+      (files.filter { it.isFile && it.extension.lowercase() in VALID_EXTENSIONS && isValidModelFile(it) } +
+        files.filter { it.isDirectory && File(it, "config.json").exists() }
+          .map { dir ->
+            val entries = dir.listFiles() ?: emptyArray()
+            val dataFile = entries.find { it.extension.lowercase() in VALID_EXTENSIONS }
+            dataFile ?: dir
+          })
         .map { file ->
-          val ext = file.extension.lowercase()
+          val ext = if (file.isDirectory) "mnn" else file.extension.lowercase()
           LocalModel(
             id = "${file.name}_${file.lastModified()}",
             name = file.name,
             path = file.absolutePath,
             format = ext,
-            engine =
-            when (ext) {
-              "gguf" -> EngineType.LLAMA_CPP
-              "mnn" -> EngineType.MNN
-              else -> EngineType.LITER_T
+            engine = engineForExt(ext),
+            sizeBytes =
+            if (file.isDirectory) {
+              file.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+            } else {
+              file.length()
             },
-            sizeBytes = file.length(),
             addedAt = file.lastModified(),
             lastUsed = file.lastModified()
           )
@@ -189,12 +221,7 @@ class ModelRepository(private val context: Context) {
             name = filename,
             path = file.absolutePath,
             format = ext,
-            engine =
-            when (ext) {
-              "gguf" -> EngineType.LLAMA_CPP
-              "mnn" -> EngineType.MNN
-              else -> EngineType.LITER_T
-            },
+            engine = engineForExt(ext),
             sizeBytes = file.length()
           )
         scanModels()
@@ -204,54 +231,115 @@ class ModelRepository(private val context: Context) {
       }
     }
 
-  suspend fun downloadFromHf(
+  fun downloadFromHf(
     repo: String,
     filename: String,
-    onProgress: (Float) -> Unit
-  ): Result<LocalModel> = withContext(Dispatchers.IO) {
-    try {
+    onProgress: (Float) -> Unit,
+    onCancel: () -> Boolean = { false }
+  ): DownloadTask {
+    val task = DownloadTask(modelsDir, repo, filename, onProgress, onCancel)
+    task.start()
+    return task
+  }
+
+  class DownloadTask internal constructor(
+    private val modelsDir: File,
+    private val repo: String,
+    private val filename: String,
+    private val onProgress: (Float) -> Unit,
+    private val onCancel: () -> Boolean
+  ) {
+    @Volatile
+    var isRunning = false
+      private set
+    @Volatile
+    var result: Result<LocalModel>? = null
+      private set
+
+    private val partFile: File get() = File(modelsDir, "${filename}.part")
+
+    fun start() {
+      isRunning = true
+      Thread {
+        try {
+          result = download()
+        } catch (e: Exception) {
+          result = Result.failure(e)
+        }
+        isRunning = false
+      }.apply { isDaemon = true }.start()
+    }
+
+    fun cancel() {
+      isRunning = false
+    }
+
+    private fun download(): Result<LocalModel> {
       val url = URL("https://huggingface.co/$repo/resolve/main/$filename")
-      val conn = url.openConnection() as HttpURLConnection
-      conn.apply {
-        connectTimeout = 30000
-        readTimeout = 60000
-        setRequestProperty("User-Agent", "ZeroCopy-Android/8.0")
-      }
-      conn.connect()
-      val totalBytes = conn.contentLengthLong
-      val file = File(modelsDir, filename)
-      conn.inputStream.use { input ->
-        FileOutputStream(file).use { output ->
-          val buffer = ByteArray(8 * 1024)
-          var bytesRead: Long = 0
-          var bytes = input.read(buffer)
-          while (bytes >= 0) {
-            output.write(buffer, 0, bytes)
-            bytesRead += bytes
-            if (totalBytes > 0) onProgress(bytesRead.toFloat() / totalBytes)
-            bytes = input.read(buffer)
+      var totalBytes = -1L
+      var bytesRead = 0L
+
+      val existingPart = if (partFile.exists()) partFile.length() else 0L
+
+      try {
+        val conn = url.openConnection() as HttpURLConnection
+        conn.apply {
+          connectTimeout = 30000
+          readTimeout = 60000
+          setRequestProperty("User-Agent", "ZeroCopy-Android/8.0")
+          if (existingPart > 0) {
+            setRequestProperty("Range", "bytes=$existingPart-")
           }
         }
-      }
-      val ext = filename.substringAfterLast('.').lowercase()
-      val model =
-        LocalModel(
+        conn.connect()
+
+        val contentLength = conn.contentLengthLong
+        totalBytes = if (contentLength > 0 && existingPart > 0) {
+          contentLength + existingPart
+        } else if (contentLength > 0) {
+          contentLength
+        } else {
+          -1
+        }
+
+        bytesRead = existingPart
+
+        val outputStream = FileOutputStream(partFile, existingPart > 0)
+        conn.inputStream.use { input ->
+          outputStream.use { output ->
+            val buffer = ByteArray(8 * 1024)
+            var bytes = input.read(buffer)
+            while (bytes >= 0 && isRunning && !onCancel()) {
+              output.write(buffer, 0, bytes)
+              bytesRead += bytes
+              if (totalBytes > 0) onProgress(bytesRead.toFloat() / totalBytes)
+              bytes = input.read(buffer)
+            }
+          }
+        }
+
+        if (!isRunning || onCancel()) {
+          return Result.failure(Exception("Download cancelled"))
+        }
+
+        val finalFile = File(modelsDir, filename)
+        partFile.renameTo(finalFile)
+
+        val ext = filename.substringAfterLast('.').lowercase()
+        val model = LocalModel(
           id = "${filename}_${System.currentTimeMillis()}",
           name = filename,
-          path = file.absolutePath,
+          path = finalFile.absolutePath,
           format = ext,
-          engine =
-          when (ext) {
-            "gguf" -> EngineType.LLAMA_CPP
-            "mnn" -> EngineType.MNN
-            else -> EngineType.LITER_T
-          },
-          sizeBytes = file.length()
+          engine = engineForExt(ext),
+          sizeBytes = finalFile.length()
         )
-      scanModels()
-      Result.success(model)
-    } catch (e: Exception) {
-      Result.failure(e)
+        scanModels()
+        Result.success(model)
+      } catch (e: Exception) {
+        if (e.message == "Download cancelled") throw e
+        Result.failure(e)
+      }
     }
   }
 

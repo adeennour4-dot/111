@@ -21,3 +21,23 @@ object ZcColors {
   val GradientStart = Color(0xFF6C63FF)
   val GradientEnd = Color(0xFF00D9A6)
 }
+
+object ZcLightColors {
+  val Bg = Color(0xFFF5F5FA)
+  val Surface = Color(0xFFFFFFFF)
+  val Card = Color(0xFFFFFFFF)
+  val CardLight = Color(0xFFEEEEF4)
+  val Border = Color(0xFFD0D0DC)
+  val Accent = Color(0xFF5B52E0)
+  val Accent2 = Color(0xFF00B88A)
+  val Red = Color(0xFFE53945)
+  val Amber = Color(0xFFE0A800)
+  val Purple = Color(0xFF9C64E8)
+  val Text = Color(0xFF1A1A22)
+  val Text2 = Color(0xFF6B6B80)
+  val Text3 = Color(0xFF9A9AB0)
+  val UserBg = Color(0xFFDCD8FF)
+  val ThinkBg = Color(0xFFF0EEF8)
+  val GradientStart = Color(0xFF5B52E0)
+  val GradientEnd = Color(0xFF00B88A)
+}

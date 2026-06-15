@@ -2,9 +2,11 @@ package com.gguf.zerocopy.ui.models
 
 import android.app.Activity
 import android.content.Intent
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,10 +26,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -51,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ZeroCopyApp
+import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.ui.theme.ZcColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -65,24 +70,28 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
   val models by app.modelRepository.models.collectAsState(initial = emptyList())
   var loading by remember { mutableStateOf(false) }
 
+  var infoModel by remember { mutableStateOf<com.gguf.zerocopy.data.repository.LocalModel?>(null) }
+
   val filePicker =
     rememberLauncherForActivityResult(
       ActivityResultContracts.StartActivityForResult()
     ) { result ->
       if (result.resultCode == Activity.RESULT_OK) {
         result.data?.data?.let { uri ->
-          val name =
-            uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':') ?: "model.gguf"
+          val name = getFileName(context, uri)
           loading = true
           scope.launch {
             val result = app.modelRepository.importUri(uri, name)
             if (result.isSuccess) {
               val model = result.getOrThrow()
-              app.engineManager.selectEngineForFormat(model.path)
-              val loadResult = app.engineManager.getActiveEngine()?.loadModel(model.path)
+              val engine = app.engineManager.selectEngineForFormat(model.path)
+              engine.config = SettingsManager.toConfig()
+              engine.repeatPenalty = SettingsManager.toRepeatPenalty()
+              engine.systemPrompt = SettingsManager.systemPrompt
+              val loadResult = engine.loadModel(model.path)
               withContext(Dispatchers.Main) {
                 loading = false
-                if (loadResult?.isSuccess == true) {
+                if (loadResult.isSuccess) {
                   app.modelRepository.markUsed(model.id)
                   onModelSelected(model.path, model.name)
                 }
@@ -150,18 +159,62 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
               model = model,
               onClick = {
                 scope.launch {
-                  app.engineManager.selectEngineForFormat(model.path)
-                  val loadResult = app.engineManager.getActiveEngine()?.loadModel(model.path)
-                  if (loadResult?.isSuccess == true) {
+                  val engine = app.engineManager.selectEngineForFormat(model.path)
+                  engine.config = SettingsManager.toConfig()
+                  engine.repeatPenalty = SettingsManager.toRepeatPenalty()
+                  engine.systemPrompt = SettingsManager.systemPrompt
+                  val loadResult = engine.loadModel(model.path)
+                  if (loadResult.isSuccess) {
                     app.modelRepository.markUsed(model.id)
                     onModelSelected(model.path, model.name)
                   }
                 }
               },
+              onInfo = { infoModel = model },
               onDelete = { app.modelRepository.deleteModel(model.id) }
             )
           }
         }
+      }
+
+      infoModel?.let { model ->
+        AlertDialog(
+          onDismissRequest = { infoModel = null },
+          containerColor = ZcColors.Card,
+          title = { Text("Model Info", color = ZcColors.Text, fontWeight = FontWeight.Bold) },
+          text = {
+            Column {
+              DetailRow("Name", model.name)
+              DetailRow("Format", model.format.uppercase())
+              DetailRow("Engine", model.engine.id)
+              DetailRow("Size", model.sizeFormatted)
+              DetailRow("Added", java.text.SimpleDateFormat("MMM d, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(model.addedAt)))
+              if (model.lastUsed > 0) {
+                DetailRow("Last used", java.text.SimpleDateFormat("MMM d, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(model.lastUsed)))
+              }
+              DetailRow("Path", model.path)
+            }
+          },
+          confirmButton = {
+            TextButton(onClick = {
+              infoModel = null
+              scope.launch {
+                val engine = app.engineManager.selectEngineForFormat(model.path)
+                engine.config = SettingsManager.toConfig()
+                engine.repeatPenalty = SettingsManager.toRepeatPenalty()
+                engine.systemPrompt = SettingsManager.systemPrompt
+                val loadResult = engine.loadModel(model.path)
+                if (loadResult.isSuccess) {
+                  app.modelRepository.markUsed(model.id)
+                  onModelSelected(model.path, model.name)
+                }
+              }
+            }) { Text("Load", color = ZcColors.Accent) }
+          },
+          dismissButton = {
+            TextButton(onClick = { infoModel = null }) { Text("Close", color = ZcColors.Text2) }
+          }
+        )
       }
 
       if (loading) {
@@ -175,9 +228,19 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
 }
 
 @Composable
+private fun DetailRow(label: String, value: String) {
+  Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+    Text("$label: ", fontSize = 12.sp, color = ZcColors.Text2, fontFamily = FontFamily.Monospace)
+    Text(value, fontSize = 12.sp, color = ZcColors.Text, fontFamily = FontFamily.Monospace)
+  }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 fun ModelCard(
   model: com.gguf.zerocopy.data.repository.LocalModel,
   onClick: () -> Unit,
+  onInfo: () -> Unit = {},
   onDelete: () -> Unit
 ) {
   var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -213,6 +276,9 @@ fun ModelCard(
           )
         }
       }
+      IconButton(onClick = onInfo, modifier = Modifier.size(32.dp)) {
+        Icon(Icons.Filled.Info, "Info", tint = ZcColors.Accent2, modifier = Modifier.size(18.dp))
+      }
       IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(32.dp)) {
         Icon(Icons.Filled.Delete, "Delete", tint = ZcColors.Red, modifier = Modifier.size(18.dp))
       }
@@ -240,4 +306,24 @@ fun ModelCard(
       }
     )
   }
+}
+
+private fun getFileName(context: android.content.Context, uri: android.net.Uri): String {
+  var name = "model.gguf"
+  context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+    if (cursor.moveToFirst()) {
+      val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+      if (idx >= 0) cursor.getString(idx)?.let { if (it.isNotEmpty()) name = it }
+    }
+  }
+  if ('.' !in name) {
+    val mime = context.contentResolver.getType(uri)
+    name += when {
+      mime?.contains("gguf") == true || mime == "application/octet-stream" -> ".gguf"
+      mime?.contains("tensorflow") == true || mime?.contains("tflite") == true -> ".tflite"
+      mime?.contains("litert") == true -> ".litertlm"
+      else -> ".gguf"
+    }
+  }
+  return name
 }

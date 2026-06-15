@@ -55,4 +55,10 @@ interface InferenceEngine {
   suspend fun benchmark(ppTokens: Int, tgTokens: Int): BenchmarkResult
 
   fun supportsFormat(path: String): Boolean
+
+  fun readPartialStream(): String = ""
+  fun readTokenStream(): String = ""
+  fun isInferenceDone(): Boolean = true
+  fun getTokensGenerated(): Int = 0
+  fun getKvUsage(): Int = 0
 }

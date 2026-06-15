@@ -46,11 +46,11 @@ class LiteRtEngine : InferenceEngine {
         )
       Result.success(Unit)
     } catch (e: Exception) {
-      tryFallbackLoad(path)
+      tryFallbackLoad(path, e)
     }
   }
 
-  private fun tryFallbackLoad(path: String): Result<Unit> = try {
+  private fun tryFallbackLoad(path: String, originalError: Exception): Result<Unit> = try {
     val legacyConfig = EngineConfig(modelPath = path, backend = Backend.CPU())
     engine = Engine(legacyConfig)
     engine!!.initialize()
@@ -58,7 +58,7 @@ class LiteRtEngine : InferenceEngine {
     modelInfo = ModelInfo(engineType = EngineType.LITER_T)
     Result.success(Unit)
   } catch (e: Exception) {
-    Result.failure(Exception("LiteRT-LM load failed: ${e.message}"))
+    Result.failure(Exception("LiteRT-LM load failed (primary: ${originalError.message}, fallback: ${e.message})"))
   }
 
   override fun unloadModel() {
@@ -102,25 +102,28 @@ class LiteRtEngine : InferenceEngine {
             override fun onMessage(message: Message) {
               val text = message.toString()
               synchronized(partialStream) {
-                partialStream.clear()
                 partialStream.append(text)
                 fullResponse.append(text)
               }
               tokensGenerated.incrementAndGet()
+              callback.onToken(text)
             }
 
             override fun onDone() {
               inferenceDone.set(true)
+              callback.onDone()
             }
 
             override fun onError(t: Throwable) {
               inferenceDone.set(true)
+              callback.onError(t.message ?: "LiteRT-LM error")
             }
           }
 
         conversation?.sendMessageAsync(prompt, msgCallback, emptyMap())
       } catch (e: Exception) {
         inferenceDone.set(true)
+        callback.onError(e.message ?: "LiteRT-LM error")
       }
     }
   }
@@ -153,15 +156,15 @@ class LiteRtEngine : InferenceEngine {
   override fun supportsFormat(path: String): Boolean =
     path.endsWith(".tflite", true) || path.endsWith(".litertlm", true)
 
-  fun readPartialStream(): String = synchronized(partialStream) {
+  override fun readPartialStream(): String = synchronized(partialStream) {
     partialStream.toString().also { partialStream.clear() }
   }
 
-  fun readTokenStream(): String = synchronized(partialStream) { fullResponse.toString() }
+  override fun readTokenStream(): String = synchronized(partialStream) { fullResponse.toString() }
 
-  fun isInferenceDone(): Boolean = inferenceDone.get()
+  override fun isInferenceDone(): Boolean = inferenceDone.get()
 
-  fun getTokensGenerated(): Int = tokensGenerated.get()
+  override fun getTokensGenerated(): Int = tokensGenerated.get()
 
-  fun getKvUsage(): Int = 0
+  override fun getKvUsage(): Int = 0
 }

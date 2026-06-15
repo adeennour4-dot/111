@@ -141,15 +141,15 @@ class LlamaCppEngine : InferenceEngine {
 
   override fun supportsFormat(path: String): Boolean = path.endsWith(".gguf", true)
 
-  fun getTokensGenerated(): Int = tokensGenerated.get()
+  override fun getTokensGenerated(): Int = tokensGenerated.get()
 
-  fun getKvUsage(): Int = kvUsage
+  override fun getKvUsage(): Int = kvUsage
 
-  fun isInferenceDone(): Boolean = inferenceDone.get()
+  override fun isInferenceDone(): Boolean = inferenceDone.get()
 
-  fun readPartialStream(): String = partialStream.getAndSet(StringBuilder()).toString()
+  override fun readPartialStream(): String = partialStream.getAndSet(StringBuilder()).toString()
 
-  fun readTokenStream(): String = fullResponse.get().toString()
+  override fun readTokenStream(): String = fullResponse.get().toString()
 
   private fun parseModelInfo(jsonStr: String): ModelInfo? = try {
     val j = JSONObject(jsonStr)

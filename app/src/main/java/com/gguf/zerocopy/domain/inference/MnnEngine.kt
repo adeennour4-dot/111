@@ -185,17 +185,17 @@ class MnnEngine : InferenceEngine {
 
   override fun supportsFormat(path: String): Boolean = path.endsWith(".mnn", true)
 
-  fun getTokensGenerated(): Int = tokensGenerated.get()
+  override fun getTokensGenerated(): Int = tokensGenerated.get()
 
-  fun getKvUsage(): Int = kvUsage
+  override fun getKvUsage(): Int = kvUsage
 
-  fun isInferenceDone(): Boolean = inferenceDone.get()
+  override fun isInferenceDone(): Boolean = inferenceDone.get()
 
-  fun readPartialStream(): String = synchronized(partialStream) {
+  override fun readPartialStream(): String = synchronized(partialStream) {
     partialStream.toString().also { partialStream.clear() }
   }
 
-  fun readTokenStream(): String = synchronized(partialStream) { fullResponse.toString() }
+  override fun readTokenStream(): String = synchronized(partialStream) { fullResponse.toString() }
 
   private fun resolveModelDir(path: String): String {
     val file = File(path)

@@ -29,29 +29,25 @@ data class DeviceInfo(
         (cpuCores / 2).coerceIn(1, 4)
       }
 
-    val suggestedGpuLayers =
-      when {
-        isSnapdragon -> 99
-        isMediaTek -> 0
-        isExynos -> 99
-        else -> 0
-      }
+    val suggestedGpuLayers = if (hasVulkan) 99 else 0
 
     val estimatedModelRAM = modelSizeB * 1024 * 0.6f
-    val availableForContext = (availableRamMB - estimatedModelRAM).coerceAtLeast(512f)
+    val availableForContext = (availableRamMB - estimatedModelRAM).coerceAtLeast(256f)
     val suggestedCtx =
       when {
-        modelSizeB <= 1f -> 8192
-        modelSizeB <= 3f -> 4096
-        modelSizeB <= 7f -> 2048
-        else -> 1024
-      }.coerceAtMost((availableForContext * 2).toInt()).coerceAtLeast(2048)
+        modelSizeB <= 1f -> 4096
+        modelSizeB <= 3f -> 2048
+        modelSizeB <= 7f -> 1024
+        else -> 512
+      }.coerceAtMost((availableForContext / 2).toInt()).coerceAtLeast(512)
 
     return InferenceConfig(
       nCtx = suggestedCtx,
-      maxNewTokens = 2048,
+      nBatch = 512,
+      maxNewTokens = suggestedCtx.coerceAtMost(1024),
       nGpuLayers = suggestedGpuLayers,
-      nThreads = 0
+      nThreads = suggestedThreads,
+      lowRamMode = true
     )
   }
 

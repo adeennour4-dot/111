@@ -12,11 +12,12 @@ import androidx.compose.runtime.setValue
 import com.gguf.zerocopy.ui.chat.ChatScreen
 import com.gguf.zerocopy.ui.download.DownloadScreen
 import com.gguf.zerocopy.ui.models.ModelListScreen
+import com.gguf.zerocopy.ui.sessions.SessionListScreen
 import com.gguf.zerocopy.ui.settings.SettingsScreen
 import com.gguf.zerocopy.ui.theme.ZeroCopyTheme
 import com.gguf.zerocopy.ui.welcome.WelcomeScreen
 
-enum class AppScreen { WELCOME, CHAT, MODELS, DOWNLOAD, SETTINGS }
+enum class AppScreen { WELCOME, CHAT, SESSIONS, MODELS, DOWNLOAD, SETTINGS }
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -34,6 +35,7 @@ fun AppRoot() {
   var screen by remember { mutableStateOf(AppScreen.WELCOME) }
   var loadedModelPath by remember { mutableStateOf("") }
   var loadedModelName by remember { mutableStateOf("") }
+  var currentSessionId by remember { mutableStateOf<String?>(null) }
 
   when (screen) {
     AppScreen.WELCOME ->
@@ -41,6 +43,7 @@ fun AppRoot() {
         onLoadModel = { path, name ->
           loadedModelPath = path
           loadedModelName = name
+          currentSessionId = app.chatRepository.createSession("Chat - $name").id
           screen = AppScreen.CHAT
         },
         onDownload = { screen = AppScreen.DOWNLOAD }
@@ -49,15 +52,26 @@ fun AppRoot() {
       ChatScreen(
         modelPath = loadedModelPath,
         modelName = loadedModelName,
+        sessionId = currentSessionId,
         onBack = { screen = AppScreen.WELCOME },
         onSettings = { screen = AppScreen.SETTINGS },
-        onModels = { screen = AppScreen.MODELS }
+        onModels = { screen = AppScreen.MODELS },
+        onSessions = { screen = AppScreen.SESSIONS }
+      )
+    AppScreen.SESSIONS ->
+      SessionListScreen(
+        onSessionSelected = { id ->
+          currentSessionId = id
+          screen = AppScreen.CHAT
+        },
+        onBack = { screen = AppScreen.CHAT }
       )
     AppScreen.MODELS ->
       ModelListScreen(
         onModelSelected = { path, name ->
           loadedModelPath = path
           loadedModelName = name
+          currentSessionId = app.chatRepository.createSession("Chat - $name").id
           screen = AppScreen.CHAT
         },
         onBack = { screen = AppScreen.CHAT }
@@ -67,6 +81,7 @@ fun AppRoot() {
         onModelSelected = { path, name ->
           loadedModelPath = path
           loadedModelName = name
+          currentSessionId = app.chatRepository.createSession("Chat - $name").id
           screen = AppScreen.CHAT
         },
         onBack = { screen = AppScreen.WELCOME }

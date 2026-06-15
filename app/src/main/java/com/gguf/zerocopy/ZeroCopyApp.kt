@@ -31,6 +31,22 @@ class ZeroCopyApp : Application() {
       val info = deviceUtils.detect()
       SettingsManager.applyDeviceDefaults(info)
     }
+    syncSettingsToEngines()
+  }
+
+  private fun syncSettingsToEngines() {
+    val config = SettingsManager.toConfig()
+    val rp = SettingsManager.toRepeatPenalty()
+    val prompt = SettingsManager.systemPrompt
+    engineManager.llamaCpp.config = config
+    engineManager.llamaCpp.repeatPenalty = rp
+    engineManager.llamaCpp.systemPrompt = prompt
+    engineManager.mnn.config = config
+    engineManager.mnn.repeatPenalty = rp
+    engineManager.mnn.systemPrompt = prompt
+    engineManager.liteRt.config = config
+    engineManager.liteRt.repeatPenalty = rp
+    engineManager.liteRt.systemPrompt = prompt
   }
 
   companion object {

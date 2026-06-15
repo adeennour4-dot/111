@@ -36,6 +36,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.SmartToy
@@ -80,8 +81,6 @@ import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.repository.AttachmentType
 import com.gguf.zerocopy.data.repository.ChatMessage
 import com.gguf.zerocopy.data.repository.MessageRole
-import com.gguf.zerocopy.domain.inference.LlamaCppEngine
-import com.gguf.zerocopy.domain.inference.MnnEngine
 import com.gguf.zerocopy.domain.inference.TokenCallback
 import com.gguf.zerocopy.ui.theme.ZcColors
 import kotlinx.coroutines.Dispatchers
@@ -93,9 +92,11 @@ import kotlinx.coroutines.launch
 fun ChatScreen(
   modelPath: String,
   modelName: String,
+  sessionId: String?,
   onBack: () -> Unit,
   onSettings: () -> Unit,
-  onModels: () -> Unit
+  onModels: () -> Unit,
+  onSessions: () -> Unit
 ) {
   val context = LocalContext.current
   val app = ZeroCopyApp.instance
@@ -104,8 +105,6 @@ fun ChatScreen(
   val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
 
   val engine = app.engineManager.getActiveEngine()
-  val llamaEngine = engine as? LlamaCppEngine
-  val mnnEngine = engine as? MnnEngine
 
   var messages by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
   var prompt by remember { mutableStateOf("") }
@@ -117,12 +116,10 @@ fun ChatScreen(
   var statusText by remember { mutableStateOf(modelName.ifEmpty { "No model" }) }
   var attachmentUri by remember { mutableStateOf<Uri?>(null) }
 
-  val chatId =
-    remember {
-      app.chatRepository.createSession("Chat - $modelName").id
-    }
+  val chatId = sessionId ?: remember { app.chatRepository.createSession("Chat - $modelName").id }
 
   LaunchedEffect(chatId) {
+    if (sessionId != null) app.chatRepository.selectSession(sessionId)
     messages = app.chatRepository.getMessages(chatId)
   }
 
@@ -133,12 +130,7 @@ fun ChatScreen(
     isProcessing = true
     while (isInferring) {
       delay(30)
-      val text =
-        when {
-          llamaEngine != null && llamaEngine.isModelLoaded -> llamaEngine.readPartialStream()
-          mnnEngine != null && mnnEngine.isModelLoaded -> mnnEngine.readPartialStream()
-          else -> ""
-        }
+      val text = engine?.readPartialStream().orEmpty()
       if (text.isNotEmpty()) {
         streamedText = if (streamedText.isEmpty() || isProcessing) text else streamedText + text
         if (!firstSeen) {
@@ -147,40 +139,15 @@ fun ChatScreen(
         }
       }
       val elapsed = (System.currentTimeMillis() - start) / 1000f
-      val tok =
-        when {
-          llamaEngine != null -> llamaEngine.getTokensGenerated()
-          mnnEngine != null -> mnnEngine.getTokensGenerated()
-          else -> 0
-        }
+      val tok = engine?.getTokensGenerated() ?: 0
       if (elapsed > 0) tps = tok / elapsed
-      kvUsage =
-        when {
-          llamaEngine != null -> llamaEngine.getKvUsage()
-          mnnEngine != null -> mnnEngine.getKvUsage()
-          else -> 0
-        }
+      kvUsage = engine?.getKvUsage() ?: 0
 
-      val done =
-        when {
-          llamaEngine != null -> llamaEngine.isInferenceDone()
-          mnnEngine != null -> mnnEngine.isInferenceDone()
-          else -> true
-        }
+      val done = engine?.isInferenceDone() ?: true
       if (done) {
         delay(60)
-        val final =
-          when {
-            llamaEngine != null -> llamaEngine.readTokenStream()
-            mnnEngine != null -> mnnEngine.readTokenStream()
-            else -> ""
-          }
-        val ft =
-          when {
-            llamaEngine != null -> llamaEngine.getTokensGenerated()
-            mnnEngine != null -> mnnEngine.getTokensGenerated()
-            else -> 0
-          }
+        val final = engine?.readTokenStream().orEmpty()
+        val ft = engine?.getTokensGenerated() ?: 0
         if (final.isNotEmpty()) {
           val msg = ChatMessage(
             MessageRole.ASSISTANT,
@@ -279,6 +246,9 @@ fun ChatScreen(
                 labelColor = if (kvUsage > 80) ZcColors.Red else ZcColors.Accent2
               )
             )
+          }
+          IconButton(onClick = onSessions) {
+            Icon(Icons.Outlined.Chat, "Sessions", tint = ZcColors.Text2)
           }
           IconButton(onClick = onModels) {
             Icon(Icons.Filled.List, "Models", tint = ZcColors.Text2)
@@ -453,7 +423,7 @@ fun ChatBubble(msg: ChatMessage, clip: ClipboardManager) {
           if (!isUser) {
             ThinkingContent(msg.content)
           } else {
-            Text(msg.content, color = ZcColors.Text, fontSize = 14.sp, lineHeight = 20.sp)
+            MarkdownText(msg.content)
           }
         }
       }
@@ -519,20 +489,19 @@ fun ThinkingContent(content: String) {
             )
           }
           AnimatedVisibility(open) {
-            Text(
+            MarkdownText(
               think,
               modifier = Modifier.padding(top = 4.dp),
-              fontSize = 11.sp,
-              color = ZcColors.Text3,
-              lineHeight = 15.sp
+              style = LocalTextStyle.current.copy(fontSize = 11.sp),
+              textColor = ZcColors.Text3
             )
           }
         }
       }
-      if (rest.isNotEmpty()) Text(rest, color = ZcColors.Text, fontSize = 14.sp, lineHeight = 20.sp)
+      if (rest.isNotEmpty()) MarkdownText(rest, modifier = Modifier.padding(top = 4.dp))
     }
   } else {
-    Text(content, color = ZcColors.Text, fontSize = 14.sp, lineHeight = 20.sp)
+    MarkdownText(content)
   }
 }
 
@@ -600,7 +569,7 @@ fun StreamingBubble(text: String, processing: Boolean) {
       color = ZcColors.Card
     ) {
       Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-        Text(text, color = ZcColors.Text, fontSize = 14.sp, lineHeight = 20.sp)
+        if (text.isNotEmpty()) MarkdownText(text)
       }
     }
   }

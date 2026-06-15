@@ -1,5 +1,6 @@
 package com.gguf.zerocopy.ui.settings
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -75,8 +76,14 @@ fun SettingsScreen(onBack: () -> Unit) {
   var presPen by remember { mutableStateOf(SettingsManager.presPenalty.toString()) }
   var sysPrompt by remember { mutableStateOf(SettingsManager.systemPrompt) }
   var lowRam by remember { mutableStateOf(SettingsManager.lowRamMode) }
+  var isDark by remember { mutableStateOf(SettingsManager.isDarkTheme) }
   var benchResult by remember { mutableStateOf("") }
   var isBenchmarking by remember { mutableStateOf(false) }
+
+  BackHandler(onBack = {
+    applySettings()
+    onBack()
+  })
 
   fun applySettings() {
     val cfg =
@@ -113,7 +120,10 @@ fun SettingsScreen(onBack: () -> Unit) {
       TopAppBar(
         title = { Text("Settings", fontWeight = FontWeight.Bold, color = ZcColors.Text) },
         navigationIcon = {
-          IconButton(onClick = onBack) {
+          IconButton(onClick = {
+            applySettings()
+            onBack()
+          }) {
             Icon(Icons.Filled.ArrowBack, "Back", tint = ZcColors.Text2)
           }
         },
@@ -196,6 +206,26 @@ fun SettingsScreen(onBack: () -> Unit) {
         color = ZcColors.Text3,
         fontFamily = FontFamily.Monospace
       )
+
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+          "Dark Theme",
+          fontSize = 13.sp,
+          color = ZcColors.Text2,
+          modifier = Modifier.weight(1f)
+        )
+        Switch(
+          checked = isDark,
+          onCheckedChange = {
+            isDark = it
+            SettingsManager.isDarkTheme = it
+          },
+          colors = SwitchDefaults.colors(
+            checkedTrackColor = ZcColors.Accent,
+            checkedThumbColor = ZcColors.Bg
+          )
+        )
+      }
 
       OutlinedTextField(
         value = sysPrompt,
