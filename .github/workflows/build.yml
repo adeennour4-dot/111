@@ -52,38 +52,45 @@ jobs:
       - name: Install Android SDK components
         id: install-sdk
         run: |
-          ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
-          if [ -z "$ANDROID_HOME" ] || [ ! -d "$ANDROID_HOME/platforms" ]; then
-            echo "Android SDK not found, installing..."
+          # GitHub Actions runners have Android SDK pre-installed
+          ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+
+          # If sdkmanager not found, install cmdline-tools
+          if [ ! -f "$SDKMANAGER" ]; then
+            echo "cmdline-tools not found, installing..."
             mkdir -p $HOME/android-sdk
             cd $HOME/android-sdk
-            curl -o cmdline-tools.zip \
+            curl -sSLo cmdline-tools.zip \
               https://dl.google.com/android/repository/commandlinetools-linux-12266719_latest.zip
             unzip -q cmdline-tools.zip
-            # cmdline-tools unzips with contents at root; restructure for sdkmanager
             mkdir -p cmdline-tools/latest
             for item in cmdline-tools/*; do
               [ "$item" = "cmdline-tools/latest" ] && continue
               mv "$item" cmdline-tools/latest/ 2>/dev/null || true
             done
             ANDROID_HOME=$HOME/android-sdk
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
             echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
             echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
           fi
 
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          # Accept licenses (ignore failure if already accepted)
+          yes | $SDKMANAGER --licenses > /dev/null 2>&1 || true
 
-          # Accept licenses
-          yes | $SDKMANAGER --licenses 2>&1 | tail -5 || true
-
-          # Install components (try API 36 build-tools, fallback to 35)
+          # Install components using a tempfile to capture exit code
+          TMPLOG=$(mktemp)
+          set +e
           $SDKMANAGER --install \
             "platforms;android-${{ env.ANDROID_API }}" \
             "build-tools;${{ env.ANDROID_API }}.0.0" \
             "ndk;${{ env.NDK_VERSION }}" \
             "cmake;${{ env.CMAKE_VERSION }}" \
             "platform-tools" \
-            2>&1 | tail -20 || {
+            > "$TMPLOG" 2>&1
+          EXIT_CODE=$?
+          tail -20 "$TMPLOG"
+          if [ $EXIT_CODE -ne 0 ]; then
             echo "API ${{ env.ANDROID_API }} build-tools failed, trying API 35..."
             $SDKMANAGER --install \
               "platforms;android-${{ env.ANDROID_API }}" \
@@ -91,8 +98,11 @@ jobs:
               "ndk;${{ env.NDK_VERSION }}" \
               "cmake;${{ env.CMAKE_VERSION }}" \
               "platform-tools" \
-              2>&1 | tail -20
-          }
+              > "$TMPLOG" 2>&1
+            tail -20 "$TMPLOG"
+          fi
+          rm -f "$TMPLOG"
+          set -e
 
           NDK_HOME="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
           echo "NDK_HOME=$NDK_HOME" >> $GITHUB_ENV
