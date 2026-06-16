@@ -184,7 +184,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build debug APK
-        if: ${{ github.event.inputs.build_type != 'release' && github.ref_type != 'tag' }}
+        if: ${{ github.event.inputs.build_type != 'release' || github.ref_type == 'tag' }}
         run: |
           ./gradlew assembleDebug \
             --no-daemon \
@@ -204,6 +204,15 @@ jobs:
             echo "keyPassword=$KEY_PASSWORD" >> keystore.properties
             echo "keyAlias=$KEY_ALIAS" >> keystore.properties
             echo "storeFile=../keystore.jks" >> keystore.properties
+          else
+            # Generate a dev keystore so APK is signed and installable
+            keytool -genkey -v -keystore keystore.jks -alias zero -keyalg RSA -keysize 2048 \
+              -validity 10000 -storepass zerocopy -keypass zerocopy \
+              -dname "CN=ZeroCopy, OU=Dev, O=ZeroCopy, L=Unknown, ST=Unknown, C=XX"
+            echo "storePassword=zerocopy" >> keystore.properties
+            echo "keyPassword=zerocopy" >> keystore.properties
+            echo "keyAlias=zero" >> keystore.properties
+            echo "storeFile=../keystore.jks" >> keystore.properties
           fi
           ./gradlew assembleRelease \
             --no-daemon \
@@ -213,7 +222,7 @@ jobs:
       # Upload artifacts
       # -----------------------------------------------------------------------
       - name: Upload debug APK
-        if: ${{ github.event.inputs.build_type != 'release' && github.ref_type != 'tag' }}
+        if: ${{ github.event.inputs.build_type != 'release' || github.ref_type == 'tag' }}
         uses: actions/upload-artifact@v4
         with:
           name: ZeroCopy-v8-debug
@@ -245,6 +254,7 @@ jobs:
         with:
           files: |
             app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/debug/*.apk
           generate_release_notes: true
           make_latest: true
         env:
