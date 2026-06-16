@@ -39,6 +39,8 @@ interface TokenCallback {
   fun onKvUsage(percent: Int)
 
   fun onTokensGenerated(count: Int)
+
+  fun onToolCall(toolName: String, toolArgs: String) {}
 }
 
 interface InferenceEngine {
@@ -58,9 +60,14 @@ interface InferenceEngine {
 
   fun unloadModel()
 
-  suspend fun executeInference(prompt: String, callback: TokenCallback)
+  suspend   fun executeInference(prompt: String, callback: TokenCallback)
 
   suspend fun executeInferenceWithImage(prompt: String, imagePath: String, callback: TokenCallback)
+
+  fun getToolManager(): ToolManager? = null
+  fun setToolManager(tm: ToolManager?) {}
+  val toolsEnabled: Boolean
+    get() = getToolManager() != null
 
   fun abortInference()
 
@@ -77,4 +84,5 @@ interface InferenceEngine {
   fun isInferenceDone(): Boolean = true
   fun getTokensGenerated(): Int = 0
   fun getKvUsage(): Int = 0
+  fun restoreHistory(messages: List<Pair<String, String>>) {}
 }

@@ -16,6 +16,10 @@ class LlamaCppEngine : InferenceEngine {
   override var config = InferenceConfig()
   override var repeatPenalty = RepeatPenaltyConfig()
   override var systemPrompt = ""
+    set(v) {
+      field = v
+      if (isModelLoaded) NativeBridge.setSystemPromptNative(v)
+    }
   override var mmprojPath: String = ""
 
   private val lock = Any()
@@ -25,6 +29,9 @@ class LlamaCppEngine : InferenceEngine {
   private val tokensGenerated = AtomicInteger(0)
   private var kvUsage = 0
   private var currentModelPath = ""
+  private var _toolManager: ToolManager? = null
+  override fun getToolManager() = _toolManager
+  override fun setToolManager(tm: ToolManager?) { _toolManager = tm }
 
   override suspend fun loadModel(path: String): Result<Unit> = withContext(Dispatchers.IO) {
     try {
@@ -172,6 +179,17 @@ class LlamaCppEngine : InferenceEngine {
 
   override fun abortInference() {
     NativeBridge.abortInferenceNative()
+  }
+
+  override fun restoreHistory(messages: List<Pair<String, String>>) {
+    val jsonArr = org.json.JSONArray()
+    messages.forEach { (role, content) ->
+      jsonArr.put(org.json.JSONObject().apply {
+        put("role", role)
+        put("content", content)
+      })
+    }
+    NativeBridge.restoreHistoryNative(jsonArr.toString())
   }
 
   override fun resetContext() {

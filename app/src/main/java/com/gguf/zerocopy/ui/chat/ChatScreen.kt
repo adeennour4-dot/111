@@ -128,7 +128,7 @@ fun ChatScreen(
   val colors = currentPalette()
 
   val engine = app.engineManager.getActiveEngine()
-  val hasVision = engine?.hasVisionCapability == true
+  val hasVision = engine?.isModelLoaded == true
 
   val chatId = remember(sessionId) {
     val id = if (sessionId != null) {
@@ -158,6 +158,7 @@ fun ChatScreen(
   var statusText by remember { mutableStateOf(modelName.ifEmpty { "No model" }) }
   var attachmentUri by remember { mutableStateOf<Uri?>(null) }
   var reasoningEnabled by remember { mutableStateOf(SettingsManager.reasoningEnabled) }
+  var toolsEnabled by remember { mutableStateOf(false) }
   var showModelSheet by remember { mutableStateOf(false) }
   var isListening by remember { mutableStateOf(false) }
   var isSpeaking by remember { mutableStateOf(false) }
@@ -229,6 +230,46 @@ fun ChatScreen(
         if (final.isNotEmpty() &&
           messages.none { it.timestamp == start && it.role == MessageRole.ASSISTANT }
         ) {
+          // Check for tool calls
+          val toolCall = app.toolManager.parseToolCall(final)
+          if (toolCall != null && engine?.toolsEnabled == true) {
+            val toolResult = app.toolManager.executeTool(toolCall)
+            val toolCallMsg = ChatMessage(
+              MessageRole.ASSISTANT,
+              "🔧 Calling tool: ${toolCall.name}(${toolCall.arguments})",
+              tps = if (elapsed > 0) ft / elapsed else 0f,
+              tokens = ft
+            )
+            app.chatRepository.addMessage(chatId, toolCallMsg)
+            val resultMsg = ChatMessage(
+              MessageRole.USER,
+              "Tool result (${toolResult.name}): ${toolResult.result}\n\nPlease continue with this result.",
+              attachmentType = null
+            )
+            app.chatRepository.addMessage(chatId, resultMsg)
+            // Restart inference with tool context
+            streamedText = ""
+            isProcessing = true
+            scope.launch(Dispatchers.IO) {
+              val cb = object : TokenCallback {
+                override fun onToken(token: String) {}
+                override fun onDone() {}
+                override fun onError(error: String) {}
+                override fun onKvUsage(percent: Int) {}
+                override fun onTokensGenerated(count: Int) {}
+              }
+              engine?.let { e ->
+                // Restore history including tool call/result to native engine
+                val allMsgs = app.chatRepository.getMessages(chatId)
+                val historyPairs = allMsgs.map { it.role.name.lowercase() to it.content }
+                if (historyPairs.isNotEmpty()) {
+                  e.restoreHistory(historyPairs)
+                }
+                e.executeInference("Continue with tool result: ${toolResult.result}", cb)
+              }
+            }
+            return@LaunchedEffect
+          }
           val msg = ChatMessage(
             MessageRole.ASSISTANT,
             final,
@@ -269,6 +310,12 @@ fun ChatScreen(
             statusText = modelInfo.name
           }
         }
+      }
+      // Restore chat history to native engine
+      val msgs = app.chatRepository.getMessages(chatId)
+      if (msgs.isNotEmpty()) {
+        val historyPairs = msgs.map { it.role.name.lowercase() to it.content }
+        app.engineManager.getActiveEngine()?.restoreHistory(historyPairs)
       }
     }
   }
@@ -600,11 +647,13 @@ fun ChatScreen(
           isListening = isListening,
           isSpeaking = isSpeaking,
           reasoningEnabled = reasoningEnabled,
+          toolsEnabled = toolsEnabled,
           hasVision = hasVision,
           onReasoningToggle = {
             reasoningEnabled = it
             SettingsManager.reasoningEnabled = it
           },
+          onToolsToggle = { toolsEnabled = it },
           onSend = {
             if (prompt.isNotBlank()) {
               val msg = prompt
@@ -635,6 +684,21 @@ fun ChatScreen(
                   override fun onKvUsage(percent: Int) {}
                   override fun onTokensGenerated(count: Int) {}
                 }
+
+                // Enable tools if toggled
+                if (toolsEnabled) {
+                  engine?.setToolManager(app.toolManager)
+                  val toolsJson = app.toolManager.getToolDefinitionsJson()
+                  if (toolsJson.isNotEmpty() && toolsJson != "[]") {
+                    engine?.systemPrompt = engine?.systemPrompt?.let {
+                      if (it.contains("Available tools:")) it
+                      else "$it\n\nYou have access to the following tools. Respond with a JSON tool call when needed:\n$toolsJson"
+                    } ?: "You have access to tools. Respond with a JSON tool call when needed:\n$toolsJson"
+                  }
+                } else {
+                  engine?.setToolManager(null)
+                }
+
                 var fullPrompt = if (reasoningEnabled) {
                   "Use <think> tags for step-by-step reasoning before answering.\n\n$msg"
                 } else {
@@ -646,7 +710,9 @@ fun ChatScreen(
                     mime.startsWith("image/") -> {
                       val savedPath = saveImageToAppStorage(context, attach)
                       if (savedPath != null && engine?.mmprojPath?.isNotEmpty() == true) {
-                        engine.executeInferenceWithImage(fullPrompt, savedPath, cb)
+                        // For multimodal models with mmproj, prepend <image> token for visual encoding
+                        val imagePrompt = if (fullPrompt.contains("<image>")) fullPrompt else "<image>\n$fullPrompt"
+                        engine.executeInferenceWithImage(imagePrompt, savedPath, cb)
                       } else {
                         engine.executeInference("[Image attached: $attachmentName]\n$msg", cb)
                       }
@@ -795,8 +861,12 @@ fun ChatScreen(
   }
 }
 
+private val tokenPattern by lazy {
+  Regex("<\\|im_start\\|>|<\\|im_end\\|>|<\\|end\\|>|<\\|user\\|>|<\\|assistant\\|>|<\\|system\\|>|<end>|</s>|<s>")
+}
+
 private fun stripTokens(text: String): String =
-  text.replace(Regex("<\\|end\\|>|<\\|user\\|>|<\\|assistant\\|>|<\\|system\\|>"), "").trim()
+  tokenPattern.replace(text, "").trim()
 
 private fun getAttachmentType(context: Context, uri: Uri): AttachmentType {
   val mime = context.contentResolver.getType(uri) ?: ""
@@ -1210,8 +1280,10 @@ fun InputBar(
   isListening: Boolean,
   isSpeaking: Boolean,
   reasoningEnabled: Boolean,
+  toolsEnabled: Boolean = false,
   hasVision: Boolean = true,
   onReasoningToggle: (Boolean) -> Unit,
+  onToolsToggle: ((Boolean) -> Unit)? = null,
   onSend: () -> Unit,
   onStop: () -> Unit,
   onImage: () -> Unit,
@@ -1341,6 +1413,19 @@ fun InputBar(
             tint = if (reasoningEnabled) colors.Amber else colors.Text3,
             modifier = Modifier.size(18.dp)
           )
+        }
+        if (onToolsToggle != null) {
+          IconButton(
+            onClick = { onToolsToggle(!toolsEnabled) },
+            modifier = Modifier.size(36.dp)
+          ) {
+            Icon(
+              Icons.Outlined.Description,
+              "Tools",
+              tint = if (toolsEnabled) colors.Accent2 else colors.Text3,
+              modifier = Modifier.size(18.dp)
+            )
+          }
         }
         Spacer(Modifier.weight(1f))
         val enabled = prompt.isNotBlank() && !isInferring

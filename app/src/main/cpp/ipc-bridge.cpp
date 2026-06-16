@@ -172,7 +172,33 @@ static const std::vector<std::string> g_stop_sequences = {
     "\n<start_of_turn>assistant",
     "\n<|user|>",
     "\n<|assistant|>",
+    "<|im_end|>",
+    "<|end|>",
+    "<end>",
+    "</s>",
+    "<s>",
+    "<|",
+    "<im_end>",
 };
+
+// Patterns to strip from generated output before saving
+static const std::vector<std::string> g_token_patterns = {
+    "<|im_start|>", "<|im_end|>", "<|end|>",
+    "<|user|>", "<|assistant|>", "<|system|>",
+    "<end>", "<|", "<im_end>", "</s>", "<s>",
+};
+
+// Strip all token patterns from text
+static std::string strip_special_tokens(const std::string& text) {
+    std::string result = text;
+    for (const auto& pat : g_token_patterns) {
+        size_t pos = 0;
+        while ((pos = result.find(pat, pos)) != std::string::npos) {
+            result.erase(pos, pat.length());
+        }
+    }
+    return result;
+}
 
 // Check if any stop sequence appears in the accumulated response
 static bool contains_stop_sequence(const std::string& text) {
@@ -492,6 +518,50 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_getKvCacheUsageNative(
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_gguf_zerocopy_domain_inference_NativeBridge_restoreHistoryNative(
+        JNIEnv* env, jobject, jstring messagesJson) {
+    const char* json = env->GetStringUTFChars(messagesJson, nullptr);
+    if (!json) return;
+
+    g_history.clear();
+    // Parse JSON array: [{"role":"...","content":"..."},...]
+    std::string input(json);
+    env->ReleaseStringUTFChars(messagesJson, json);
+
+    size_t pos = 0;
+    while ((pos = input.find("{\"role\"", pos)) != std::string::npos) {
+        size_t end = input.find("}", pos);
+        if (end == std::string::npos) break;
+        std::string obj = input.substr(pos, end - pos + 1);
+        pos = end + 1;
+
+        auto role_start = obj.find("\"role\":\"") + 8;
+        auto role_end = obj.find("\"", role_start);
+        if (role_start == std::string::npos || role_end == std::string::npos) continue;
+        std::string role = obj.substr(role_start, role_end - role_start);
+
+        auto content_start = obj.find("\"content\":\"") + 11;
+        // Handle escaped quotes in content
+        std::string content;
+        if (content_start != std::string::npos) {
+            bool escaped = false;
+            for (size_t i = content_start; i < obj.size(); i++) {
+                char c = obj[i];
+                if (escaped) { content += c; escaped = false; continue; }
+                if (c == '\\') { escaped = true; continue; }
+                if (c == '"') break;
+                content += c;
+            }
+        }
+
+        if (!role.empty()) {
+            g_history.push_back({role, content});
+        }
+    }
+    LOGI("Restored %zu history messages", g_history.size());
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
         JNIEnv* env, jobject thiz, jstring jprompt, jobject callback) {
     if (!g_model || !g_ctx || !g_sampler) {
@@ -605,7 +675,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
         }
     }
 
-    g_history.push_back({"assistant", response});
+    g_history.push_back({"assistant", strip_special_tokens(response)});
     call_callback_on_done();
     LOGI("Inference done: tokens=%d chars=%zu", tokens_generated, response.size());
     release_callback();
@@ -693,20 +763,73 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
 
     pin_to_all_cores();
 
-    // If we have image embeddings, inject them before text tokens
+    // Inject image embeddings as a separate decode step before text tokens
     if (!image_embeds.empty() && n_image_tokens > 0) {
-        // For multimodal models, we need to set image embeddings
-        // and then decode text tokens
-        llama_batch img_batch = llama_batch_get_one(tokens.data(), 0); // empty batch to prime
-        // Set image embeddings as prefix
+        int n_embd = llama_model_n_embd(g_model);
         LOGI("Processing multimodal input: %d image + %d text tokens", n_image_tokens, n_toks);
-    }
 
-    llama_batch batch = llama_batch_get_one(tokens.data(), n_toks);
-    if (llama_decode(g_ctx, batch) != 0) {
-        call_callback_on_error("Prompt decode failed");
-        release_callback();
-        return;
+        // Step 1: Decode image embeddings as separate tokens
+        std::vector<llama_token> img_tokens(n_image_tokens, llama_token_eos(llama_model_get_vocab(g_model)));
+        std::vector<int32_t> img_pos(n_image_tokens);
+        std::vector<int32_t> img_n_seq_id(n_image_tokens, 1);
+        std::vector<llama_seq_id*> img_seq_id(n_image_tokens);
+        std::vector<llama_seq_id> img_seq_id_data(n_image_tokens, 0);
+        std::vector<int8_t> img_logits(n_image_tokens, 0);
+        for (int i = 0; i < n_image_tokens; i++) {
+            img_pos[i] = i;
+            img_seq_id[i] = &img_seq_id_data[i];
+        }
+
+        // embd array: one float per dimension per token
+        float* img_embeds_flat = image_embeds.data();
+
+        llama_batch ib;
+        ib.n_tokens   = n_image_tokens;
+        ib.token      = img_tokens.data();
+        ib.embd       = img_embeds_flat;
+        ib.pos        = img_pos.data();
+        ib.n_seq_id   = img_n_seq_id.data();
+        ib.seq_id     = img_seq_id.data();
+        ib.logits     = img_logits.data();
+
+        if (llama_decode(g_ctx, ib) != 0) {
+            call_callback_on_error("Image embedding decode failed");
+            release_callback();
+            return;
+        }
+
+        // Step 2: Decode text tokens after image embeddings
+        std::vector<int32_t> text_pos(n_toks);
+        std::vector<int32_t> text_n_seq_id(n_toks, 1);
+        std::vector<llama_seq_id*> text_seq_id(n_toks);
+        std::vector<llama_seq_id> text_seq_id_data(n_toks, 0);
+        std::vector<int8_t> text_logits(n_toks, 0);
+        for (int i = 0; i < n_toks; i++) {
+            text_pos[i] = n_image_tokens + i;
+            text_seq_id[i] = &text_seq_id_data[i];
+        }
+
+        llama_batch tb;
+        tb.n_tokens   = n_toks;
+        tb.token      = tokens.data();
+        tb.embd       = nullptr;
+        tb.pos        = text_pos.data();
+        tb.n_seq_id   = text_n_seq_id.data();
+        tb.seq_id     = text_seq_id.data();
+        tb.logits     = text_logits.data();
+
+        if (llama_decode(g_ctx, tb) != 0) {
+            call_callback_on_error("Text prompt decode after image failed");
+            release_callback();
+            return;
+        }
+    } else {
+        llama_batch batch = llama_batch_get_one(tokens.data(), n_toks);
+        if (llama_decode(g_ctx, batch) != 0) {
+            call_callback_on_error("Prompt decode failed");
+            release_callback();
+            return;
+        }
     }
 
     {
@@ -765,7 +888,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
         }
     }
 
-    g_history.push_back({"assistant", response});
+    g_history.push_back({"assistant", strip_special_tokens(response)});
     call_callback_on_done();
     LOGI("Image inference done: tokens=%d chars=%zu", tokens_generated, response.size());
     release_callback();

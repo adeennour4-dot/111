@@ -54,4 +54,6 @@ object NativeBridge {
   external fun exportChatHistoryNative(): String
 
   external fun getKvCacheUsageNative(): Int
+
+  external fun restoreHistoryNative(messagesJson: String)
 }
