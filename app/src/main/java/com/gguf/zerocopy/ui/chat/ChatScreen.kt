@@ -106,6 +106,7 @@ import java.io.InputStreamReader
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -127,8 +128,27 @@ fun ChatScreen(
   val colors = currentPalette()
 
   val engine = app.engineManager.getActiveEngine()
+  val hasVision = engine?.hasVisionCapability == true
 
-  var messages by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
+  val chatId = remember(sessionId) {
+    val id = if (sessionId != null) {
+      SettingsManager.currentSessionId = sessionId
+      sessionId
+    } else {
+      val savedId = SettingsManager.currentSessionId
+      if (savedId.isNotEmpty() && app.chatRepository.sessionExists(savedId)) {
+        savedId
+      } else {
+        val newSession = app.chatRepository.createSession("Chat - $modelName")
+        SettingsManager.currentSessionId = newSession.id
+        newSession.id
+      }
+    }
+    app.chatRepository.selectSession(id)
+    id
+  }
+  val messages by app.chatRepository.currentMessages.collectAsState()
+
   var prompt by remember { mutableStateOf("") }
   var isInferring by remember { mutableStateOf(false) }
   var streamedText by remember { mutableStateOf("") }
@@ -150,7 +170,15 @@ fun ChatScreen(
 
   DisposableEffect(Unit) {
     val ttsInstance = TextToSpeech(context) { status ->
-      if (status == TextToSpeech.SUCCESS) tts.value?.language = Locale.getDefault()
+      if (status == TextToSpeech.SUCCESS) {
+        ttsInstance.language = Locale.getDefault()
+        ttsInstance.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+          override fun onStart(utteranceId: String?) {}
+          override fun onDone(utteranceId: String?) { isSpeaking = false }
+          override fun onError(utteranceId: String?) { isSpeaking = false }
+          override fun onStop(utteranceId: String?, interrupted: Boolean) { isSpeaking = false }
+        })
+      }
     }
     tts.value = ttsInstance
     onDispose {
@@ -169,30 +197,6 @@ fun ChatScreen(
       }
       isListening = false
     }
-
-  val chatId = remember(sessionId) {
-    if (sessionId != null) {
-      SettingsManager.currentSessionId = sessionId
-      sessionId
-    } else {
-      val savedId = SettingsManager.currentSessionId
-      if (savedId.isNotEmpty() && app.chatRepository.sessionExists(savedId)) {
-        savedId
-      } else {
-        val newSession = app.chatRepository.createSession("Chat - $modelName")
-        SettingsManager.currentSessionId = newSession.id
-        newSession.id
-      }
-    }
-  }
-
-  LaunchedEffect(chatId) {
-    if (sessionId != null) {
-      app.chatRepository.selectSession(sessionId)
-      SettingsManager.currentSessionId = sessionId
-    }
-    messages = app.chatRepository.getMessages(chatId)
-  }
 
   LaunchedEffect(isInferring) {
     if (!isInferring) return@LaunchedEffect
@@ -227,7 +231,6 @@ fun ChatScreen(
             tps = if (elapsed > 0) ft / elapsed else 0f,
             tokens = ft
           )
-          messages = messages + msg
           app.chatRepository.addMessage(chatId, msg)
         }
         streamedText = ""
@@ -356,18 +359,24 @@ fun ChatScreen(
                       scope.launch(Dispatchers.IO) {
                         val file = app.chatRepository.exportSession(chatId)
                         if (file != null) {
-                          val uri = FileProvider.getUriForFile(
-                            context,
-                            "${context.packageName}.fileprovider",
-                            file
-                          )
-                          withContext(Dispatchers.Main) {
-                            Intent(Intent.ACTION_SEND).apply {
-                              type = "text/plain"
-                              putExtra(Intent.EXTRA_STREAM, uri)
-                              addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }.let {
-                              context.startActivity(Intent.createChooser(it, "Share as Text"))
+                          try {
+                            val uri = FileProvider.getUriForFile(
+                              context,
+                              "${context.packageName}.fileprovider",
+                              file
+                            )
+                            withContext(Dispatchers.Main) {
+                              Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                              }.let {
+                                context.startActivity(Intent.createChooser(it, "Share as Text"))
+                              }
+                            }
+                          } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                              clip.setPrimaryClip(ClipData.newPlainText("chat", file.readText()))
                             }
                           }
                         }
@@ -388,33 +397,39 @@ fun ChatScreen(
                     onClick = {
                       showExportDialog = false
                       scope.launch(Dispatchers.IO) {
-                        val msgs = app.chatRepository.getMessages(chatId)
-                        val jsonArr = org.json.JSONArray()
-                        msgs.forEach { m ->
-                          jsonArr.put(
-                            org.json.JSONObject().apply {
-                              put("role", m.role.name.lowercase())
-                              put("content", m.content)
-                              put("timestamp", m.timestamp)
-                              if (m.tps > 0f) put("tps", m.tps.toDouble())
-                              if (m.tokens > 0) put("tokens", m.tokens)
-                            }
+                        try {
+                          val msgs = app.chatRepository.getMessages(chatId)
+                          val jsonArr = org.json.JSONArray()
+                          msgs.forEach { m ->
+                            jsonArr.put(
+                              org.json.JSONObject().apply {
+                                put("role", m.role.name.lowercase())
+                                put("content", m.content)
+                                put("timestamp", m.timestamp)
+                                if (m.tps > 0f) put("tps", m.tps.toDouble())
+                                if (m.tokens > 0) put("tokens", m.tokens)
+                              }
+                            )
+                          }
+                          val exportDir = File(context.cacheDir, "exports").also { it.mkdirs() }
+                          val jsonFile = File(exportDir, "chat_$chatId.json")
+                          jsonFile.writeText(jsonArr.toString(2))
+                          val uri = FileProvider.getUriForFile(
+                            context,
+                            "${context.packageName}.fileprovider",
+                            jsonFile
                           )
-                        }
-                        val exportDir = File(context.cacheDir, "exports").also { it.mkdirs() }
-                        val jsonFile = File(exportDir, "chat_$chatId.json")
-                        jsonFile.writeText(jsonArr.toString(2))
-                        val uri = FileProvider.getUriForFile(
-                          context,
-                          "${context.packageName}.fileprovider",
-                          jsonFile
-                        )
-                        withContext(Dispatchers.Main) {
-                          Intent(Intent.ACTION_SEND).apply {
-                            type = "application/json"
-                            putExtra(Intent.EXTRA_STREAM, uri)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                          }.let { context.startActivity(Intent.createChooser(it, "Export JSON")) }
+                          withContext(Dispatchers.Main) {
+                            Intent(Intent.ACTION_SEND).apply {
+                              type = "application/json"
+                              putExtra(Intent.EXTRA_STREAM, uri)
+                              addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }.let { context.startActivity(Intent.createChooser(it, "Export JSON")) }
+                          }
+                        } catch (e: Exception) {
+                          withContext(Dispatchers.Main) {
+                            clip.setPrimaryClip(ClipData.newPlainText("chat", e.message ?: "Export failed"))
+                          }
                         }
                       }
                     },
@@ -500,7 +515,6 @@ fun ChatScreen(
                 onRegenerate = if (isRegenerateAllowed) {
                   {
                     val userMsg = messages[idx - 1]
-                    messages = messages.toMutableList().also { it.removeAt(idx) }
                     app.chatRepository.deleteMessage(chatId, idx)
 
                     streamedText = ""
@@ -552,6 +566,7 @@ fun ChatScreen(
           isListening = isListening,
           isSpeaking = isSpeaking,
           reasoningEnabled = reasoningEnabled,
+          hasVision = hasVision,
           onReasoningToggle = {
             reasoningEnabled = it
             SettingsManager.reasoningEnabled = it
@@ -575,7 +590,6 @@ fun ChatScreen(
               } else {
                 ChatMessage(MessageRole.USER, msg)
               }
-              messages = messages + userMsg
               app.chatRepository.addMessage(chatId, userMsg)
               attachmentUri = null
 
@@ -659,7 +673,8 @@ fun ChatScreen(
           onSpeak = { text ->
             tts.value?.let { t ->
               if (!isSpeaking) {
-                t.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+                val utteranceId = java.util.UUID.randomUUID().toString()
+                t.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
                 isSpeaking = true
               }
             }
@@ -689,7 +704,6 @@ fun ChatScreen(
       confirmButton = {
         androidx.compose.material3.TextButton(onClick = {
           if (idx >= 0) {
-            messages = messages.toMutableList().also { it.removeAt(idx) }
             app.chatRepository.deleteMessage(chatId, idx)
           }
           deleteConfirmMsg = null
@@ -930,7 +944,7 @@ fun ChatBubble(
           } else {
             Spacer(Modifier.weight(1f))
           }
-          IconButton(onClick = { onSpeak(msg.content) }, modifier = Modifier.size(20.dp)) {
+              IconButton(onClick = { onSpeak(stripTokens(msg.content)) }, modifier = Modifier.size(20.dp)) {
             Icon(
               Icons.Outlined.VolumeUp,
               "Speak",
@@ -1160,6 +1174,7 @@ fun InputBar(
   isListening: Boolean,
   isSpeaking: Boolean,
   reasoningEnabled: Boolean,
+  hasVision: Boolean = true,
   onReasoningToggle: (Boolean) -> Unit,
   onSend: () -> Unit,
   onStop: () -> Unit,
@@ -1243,21 +1258,23 @@ fun InputBar(
       )
       Spacer(Modifier.height(6.dp))
       Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onImage, modifier = Modifier.size(36.dp)) {
-          Icon(
-            Icons.Outlined.Image,
-            "Attach Image",
-            tint = colors.Purple,
-            modifier = Modifier.size(18.dp)
-          )
-        }
-        IconButton(onClick = onDoc, modifier = Modifier.size(36.dp)) {
-          Icon(
-            Icons.Outlined.Description,
-            "Attach Document",
-            tint = colors.Accent,
-            modifier = Modifier.size(18.dp)
-          )
+        if (hasVision) {
+          IconButton(onClick = onImage, modifier = Modifier.size(36.dp)) {
+            Icon(
+              Icons.Outlined.Image,
+              "Attach Image",
+              tint = colors.Purple,
+              modifier = Modifier.size(18.dp)
+            )
+          }
+          IconButton(onClick = onDoc, modifier = Modifier.size(36.dp)) {
+            Icon(
+              Icons.Outlined.Description,
+              "Attach Document",
+              tint = colors.Accent,
+              modifier = Modifier.size(18.dp)
+            )
+          }
         }
         IconButton(onClick = onVoice, modifier = Modifier.size(36.dp)) {
           Icon(

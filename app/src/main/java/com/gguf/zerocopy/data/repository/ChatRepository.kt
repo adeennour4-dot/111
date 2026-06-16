@@ -36,8 +36,12 @@ class ChatRepository(context: Context) {
   private val sessionsDir = File(context.filesDir, "sessions").also { it.mkdirs() }
   private val _sessions = MutableStateFlow<List<ChatSession>>(emptyList())
   val sessions = _sessions.asStateFlow()
+  private val _currentSessionId = MutableStateFlow<String?>(null)
+  val currentSessionIdFlow = _currentSessionId.asStateFlow()
   var currentSessionId: String? = null
     private set
+  private val _currentMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
+  val currentMessages = _currentMessages.asStateFlow()
 
   init {
     loadSessions()
@@ -67,12 +71,16 @@ class ChatRepository(context: Context) {
     val session = ChatSession(name = name ?: generateSessionName())
     saveSessionMeta(session)
     currentSessionId = session.id
+    _currentSessionId.value = session.id
+    _currentMessages.value = emptyList()
     loadSessions()
     return session
   }
 
   fun selectSession(id: String) {
     currentSessionId = id
+    _currentSessionId.value = id
+    _currentMessages.value = getMessages(id)
   }
 
   fun getMessages(sessionId: String): List<ChatMessage> {
@@ -120,6 +128,7 @@ class ChatRepository(context: Context) {
       } catch (_: Exception) {
       }
     }
+    if (sessionId == currentSessionId) _currentMessages.value = messages
     loadSessions()
   }
 
@@ -151,6 +160,7 @@ class ChatRepository(context: Context) {
     if (index < 0 || index >= messages.size) return
     messages.removeAt(index)
     saveMessages(sessionId, messages)
+    if (sessionId == currentSessionId) _currentMessages.value = messages
     loadSessions()
   }
 
@@ -159,6 +169,7 @@ class ChatRepository(context: Context) {
     if (index < 0 || index >= messages.size) return
     messages[index] = message
     saveMessages(sessionId, messages)
+    if (sessionId == currentSessionId) _currentMessages.value = messages
   }
 
   fun exportSession(sessionId: String): File? {

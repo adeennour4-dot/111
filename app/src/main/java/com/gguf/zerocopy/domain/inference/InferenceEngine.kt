@@ -19,7 +19,15 @@ data class ModelInfo(
   val vocabSize: Int = 0,
   val quantization: String = "",
   val engineType: EngineType = EngineType.LLAMA_CPP
-)
+) {
+  val isVisionModel: Boolean get() {
+    val lower = arch.lowercase()
+    return lower.contains("clip") || lower.contains("llava") ||
+      lower.contains("vision") || lower.contains("mmproj") ||
+      lower.contains("multimodal") || lower.contains("qwen2-vl") ||
+      lower.contains("gemma3") || lower.contains("paligemma")
+  }
+}
 
 interface TokenCallback {
   fun onToken(token: String)
@@ -43,6 +51,8 @@ interface InferenceEngine {
   var systemPrompt: String
   var mmprojPath: String
   val loadedModelPath: String?
+  val hasVisionCapability: Boolean
+    get() = modelInfo?.isVisionModel == true || mmprojPath.isNotEmpty()
 
   suspend fun loadModel(path: String): Result<Unit>
 
