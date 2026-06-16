@@ -249,7 +249,8 @@ class LlamaCppEngine : InferenceEngine {
       contextLength = j.optInt("ctx_train", 0),
       vocabSize = j.optInt("n_vocab", 0),
       quantization = j.optString("quantization", ""),
-      engineType = EngineType.LLAMA_CPP
+      engineType = EngineType.LLAMA_CPP,
+      modelPath = currentModelPath
     )
   } catch (_: Exception) {
     null

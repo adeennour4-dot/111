@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Chat
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
@@ -534,6 +535,17 @@ fun ChatScreen(
               }
             )
           }
+          val serverRunning = app.modelServer.isRunning
+          IconButton(onClick = {
+            if (serverRunning) app.modelServer.stop()
+            else app.modelServer.start()
+          }) {
+            Icon(
+              Icons.Outlined.Cloud,
+              if (serverRunning) "Server: ${app.modelServer.getServerUrl()}" else "Start Server",
+              tint = if (serverRunning) colors.Accent2 else colors.Text3
+            )
+          }
           IconButton(onClick = onSessions) {
             Icon(Icons.Outlined.Chat, "Sessions", tint = colors.Text2)
           }
@@ -583,8 +595,7 @@ fun ChatScreen(
             contentPadding = PaddingValues(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
           ) {
-            items(messages) { msg ->
-              val idx = messages.indexOf(msg)
+            itemsIndexed(messages, key = { _, msg -> "${msg.role.name}_${msg.timestamp}" }) { idx, msg ->
               val isLastAssistant =
                 !isInferring && msg.role == MessageRole.ASSISTANT && idx == messages.size - 1
               val isRegenerateAllowed =

@@ -15,12 +15,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 
-private val VALID_EXTENSIONS = setOf("gguf", "mnn", "tflite", "litertlm")
+private val VALID_EXTENSIONS = setOf("gguf", "mnn", "tflite", "litertlm", "lite")
 
 private fun engineForExt(ext: String): EngineType = when (ext) {
   "gguf" -> EngineType.LLAMA_CPP
   "mnn" -> EngineType.MNN
-  else -> EngineType.LITER_T
+  "tflite", "litertlm", "lite" -> EngineType.LITER_T
+  else -> EngineType.LLAMA_CPP
 }
 
 private val GGUF_MAGIC = byteArrayOf(0x47, 0x47, 0x55, 0x46) // "GGUF"
@@ -38,7 +39,7 @@ fun isValidModelFile(file: File): Boolean {
         header.contentEquals(GGML_MAGIC) ||
         header.contentEquals(TFLITE1_MAGIC) ||
         header.contentEquals(TFLITE2_MAGIC) ||
-        file.extension.lowercase() == "litertlm"
+        file.extension.lowercase() in setOf("litertlm", "lite")
     }
   } catch (_: Exception) {
     false

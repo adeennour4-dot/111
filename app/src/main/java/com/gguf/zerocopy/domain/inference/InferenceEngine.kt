@@ -18,15 +18,30 @@ data class ModelInfo(
   val contextLength: Int = 0,
   val vocabSize: Int = 0,
   val quantization: String = "",
-  val engineType: EngineType = EngineType.LLAMA_CPP
+  val engineType: EngineType = EngineType.LLAMA_CPP,
+  val modelPath: String = ""
 ) {
   val isVisionModel: Boolean get() {
     val lower = arch.lowercase()
+    val pathLower = modelPath.lowercase()
     return lower.contains("clip") || lower.contains("llava") ||
       lower.contains("vision") || lower.contains("mmproj") ||
       lower.contains("multimodal") || lower.contains("qwen2-vl") ||
-      lower.contains("gemma3") || lower.contains("paligemma")
+      lower.contains("qwen-vl") || lower.contains("gemma3") ||
+      lower.contains("paligemma") || lower.contains("florence") ||
+      lower.contains("phi-3-vision") || lower.contains("phi-4-vision") ||
+      lower.contains("internvl") || lower.contains("intern-vl") ||
+      lower.contains("cogvlm") || lower.contains("idefics") ||
+      lower.contains("fuyu") || lower.contains("kosmos") ||
+      lower.contains("blip") || lower.contains("git") ||
+      lower.contains("img") || lower.contains("imagebind") ||
+      pathLower.contains("mmproj") || pathLower.contains("vision") ||
+      pathLower.contains("clip")
   }
+
+  val hasSTTCapability: Boolean get() = true
+
+  val hasTTSCapability: Boolean get() = true
 }
 
 interface TokenCallback {

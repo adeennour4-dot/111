@@ -35,7 +35,7 @@ class EngineManager(context: Context) {
 
   fun isAnyModelLoaded(): Boolean = engines.values.any { it.isModelLoaded }
 
-  fun getSupportedExtensions(): Set<String> = setOf("gguf", "mnn", "tflite", "litertlm")
+  fun getSupportedExtensions(): Set<String> = setOf("gguf", "mnn", "tflite", "litertlm", "lite")
 
   fun unloadAll() {
     engines.values.forEach { it.unloadModel() }

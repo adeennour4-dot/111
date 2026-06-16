@@ -7,6 +7,7 @@ import com.gguf.zerocopy.data.repository.ModelRepository
 import com.gguf.zerocopy.domain.device.DeviceUtils
 import com.gguf.zerocopy.domain.inference.EngineManager
 import com.gguf.zerocopy.domain.inference.ToolManager
+import com.gguf.zerocopy.domain.server.ModelServer
 
 class ZeroCopyApp : Application() {
   lateinit var engineManager: EngineManager
@@ -19,6 +20,8 @@ class ZeroCopyApp : Application() {
     private set
   var toolManager: ToolManager = ToolManager()
     private set
+  lateinit var modelServer: ModelServer
+    private set
 
   override fun onCreate() {
     super.onCreate()
@@ -29,6 +32,7 @@ class ZeroCopyApp : Application() {
     engineManager = EngineManager(this)
     modelRepository = ModelRepository(this)
     chatRepository = ChatRepository(this)
+    modelServer = ModelServer()
 
     syncSettingsToEngines()
   }

@@ -6,6 +6,7 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -332,6 +333,43 @@ fun SettingsScreen(onBack: () -> Unit) {
       HorizontalDivider(color = colors.Border, thickness = 1.dp)
 
       Text(
+        "Server",
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Bold,
+        color = colors.Accent,
+        fontFamily = FontFamily.Monospace,
+        letterSpacing = 2.sp
+      )
+
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Model Server", fontSize = 13.sp, color = colors.Text2, modifier = Modifier.weight(1f))
+        Switch(
+          checked = app.modelServer.isRunning,
+          onCheckedChange = {
+            if (it) app.modelServer.start() else app.modelServer.stop()
+          },
+          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent2, checkedThumbColor = colors.Bg)
+        )
+      }
+
+      if (app.modelServer.isRunning) {
+        Text(
+          "Server: ${app.modelServer.getServerUrl()}",
+          fontSize = 10.sp,
+          color = colors.Accent2,
+          fontFamily = FontFamily.Monospace
+        )
+        Text(
+          "Anyone on your WiFi can access the web UI",
+          fontSize = 10.sp,
+          color = colors.Text3,
+          fontFamily = FontFamily.Monospace
+        )
+      }
+
+      HorizontalDivider(color = colors.Border, thickness = 1.dp)
+
+      Text(
         "Credits",
         fontSize = 13.sp,
         fontWeight = FontWeight.Bold,
@@ -341,8 +379,30 @@ fun SettingsScreen(onBack: () -> Unit) {
       )
 
       Text(
-        "Developed by adeennour4-dot",
+        "Developer: adeennour4-dot",
         fontSize = 11.sp,
+        color = colors.Text3,
+        fontFamily = FontFamily.Monospace
+      )
+      Text(
+        "GitHub: github.com/adeennour4-dot/111",
+        fontSize = 11.sp,
+        color = colors.Accent,
+        fontFamily = FontFamily.Monospace,
+        modifier = Modifier.clickable {
+          try {
+            context.startActivity(
+              android.content.Intent(
+                android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse("https://github.com/adeennour4-dot/111")
+              )
+            )
+          } catch (_: Exception) {}
+        }
+      )
+      Text(
+        "App Version: 1.0.0",
+        fontSize = 10.sp,
         color = colors.Text3,
         fontFamily = FontFamily.Monospace
       )

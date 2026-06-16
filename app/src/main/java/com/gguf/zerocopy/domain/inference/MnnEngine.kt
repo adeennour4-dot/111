@@ -218,7 +218,8 @@ class MnnEngine : InferenceEngine {
     ModelInfo(
       arch = j.optString("arch", ""),
       nParams = j.optLong("n_params", 0),
-      engineType = EngineType.MNN
+      engineType = EngineType.MNN,
+      modelPath = currentModelPath
     )
   } catch (_: Exception) {
     null

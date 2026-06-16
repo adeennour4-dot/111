@@ -71,7 +71,14 @@ fun AppRoot() {
         onModelSelected = { path, name ->
           loadedModelPath = path
           loadedModelName = name
-          currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
+          if (currentSessionId != null && app.chatRepository.sessionExists(currentSessionId!!)) {
+            val existing = app.chatRepository.sessions.value.find { it.id == currentSessionId }
+            if (existing != null) {
+              app.chatRepository.renameSession(currentSessionId!!, "Chat - $name")
+            }
+          } else {
+            currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
+          }
         },
         onSettings = { screen = AppScreen.SETTINGS },
         onSessions = { screen = AppScreen.SESSIONS }
@@ -147,12 +154,20 @@ fun SplashScreen(onDone: () -> Unit) {
       }
       Spacer(Modifier.height(20.dp))
       Text(
-        "hello",
+        "ZeroCopy",
         fontSize = 28.sp,
         fontWeight = FontWeight.Light,
         color = colors.Text2,
         fontFamily = FontFamily.Monospace,
         letterSpacing = 4.sp
+      )
+      Spacer(Modifier.height(8.dp))
+      Text(
+        "by adeennour4-dot",
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Normal,
+        color = colors.Text3,
+        fontFamily = FontFamily.Monospace
       )
     }
   }

@@ -24,16 +24,22 @@ android {
                 storePassword = props["storePassword"] ?: ""
                 keyAlias = props["keyAlias"] ?: ""
                 keyPassword = props["keyPassword"] ?: ""
+            } else {
+                // Auto-generate debug keystore for release builds
+                storeFile = rootProject.file("keystore.jks")
+                storePassword = "zerocopy"
+                keyAlias = "zerocopy"
+                keyPassword = "zerocopy"
             }
         }
     }
 
     defaultConfig {
         applicationId = "com.gguf.zerocopy"
-        minSdk        = 27
+        minSdk        = 29
         targetSdk     = 36
-        versionCode   = 1
-        versionName   = "0.1-beta"
+        versionCode   = 10
+        versionName   = "1.0.0"
 
         externalNativeBuild {
             cmake {
@@ -53,8 +59,8 @@ android {
             }
         }
 
-        buildConfigField("String", "VERSION_NAME", "\"0.1-beta\"")
-        buildConfigField("int", "VERSION_CODE", "1")
+        buildConfigField("String", "VERSION_NAME", "\"1.0.0\"")
+        buildConfigField("int", "VERSION_CODE", "10")
     }
 
     compileOptions {
