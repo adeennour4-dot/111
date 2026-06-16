@@ -171,8 +171,8 @@ fun ChatScreen(
   DisposableEffect(Unit) {
     val ttsInstance = TextToSpeech(context) { status ->
       if (status == TextToSpeech.SUCCESS) {
-        ttsInstance.language = Locale.getDefault()
-        ttsInstance.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+        tts.value?.language = Locale.getDefault()
+        tts.value?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
           override fun onStart(utteranceId: String?) {}
           override fun onDone(utteranceId: String?) { isSpeaking = false }
           override fun onError(utteranceId: String?) { isSpeaking = false }
