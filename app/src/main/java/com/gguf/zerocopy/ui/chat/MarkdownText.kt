@@ -4,25 +4,12 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -36,7 +23,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withAnnotation
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ui.theme.currentPalette
 
@@ -90,6 +76,22 @@ private fun parseMarkdown(
   var i = 0
   while (i < text.length) {
     when {
+      // Double newline = paragraph break
+      text.startsWith("\n\n", i) || text.startsWith("\r\n\r\n", i) -> {
+        append("\n\n")
+        i += if (text.startsWith("\r\n\r\n", i)) 4 else 2
+      }
+      // Single newline = line break
+      text[i] == '\n' || text[i] == '\r' -> {
+        append("\n")
+        i++
+        if (i < text.length && text[i] == '\n') i++
+      }
+      // Multiple spaces = keep one
+      text[i] == ' ' && i + 1 < text.length && text[i + 1] == ' ' -> {
+        append(' ')
+        while (i < text.length && text[i] == ' ') i++
+      }
       // Code block ```...```
       text.startsWith("```", i) -> {
         val end = text.indexOf("```", i + 3)

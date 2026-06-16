@@ -54,7 +54,7 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SessionListScreen(onSessionSelected: (String) -> Unit, onBack: () -> Unit) {
+fun SessionListScreen(onSessionSelected: (ChatSession) -> Unit, onBack: () -> Unit) {
   val colors = currentPalette()
   val app = ZeroCopyApp.instance
   val sessions by app.chatRepository.sessions.collectAsState(initial = emptyList())
@@ -109,7 +109,7 @@ fun SessionListScreen(onSessionSelected: (String) -> Unit, onBack: () -> Unit) {
           items(sessions, key = { it.id }) { session ->
             SessionCard(
               session = session,
-              onClick = { onSessionSelected(session.id) },
+              onClick = { onSessionSelected(session) },
               onRename = {
                 renameTarget = session
                 renameName = session.name
@@ -246,6 +246,16 @@ private fun SessionCard(
             color = colors.Text3,
             fontFamily = FontFamily.Monospace
           )
+          if (session.modelName.isNotEmpty()) {
+            Text(" · ", fontSize = 10.sp, color = colors.Text3)
+            Text(
+              session.modelName,
+              fontSize = 10.sp,
+              color = colors.Accent2,
+              fontFamily = FontFamily.Monospace,
+              maxLines = 1
+            )
+          }
         }
       }
       IconButton(onClick = onRename, modifier = Modifier.size(32.dp)) {

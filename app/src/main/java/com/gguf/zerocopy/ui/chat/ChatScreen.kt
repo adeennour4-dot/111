@@ -72,6 +72,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -106,7 +107,6 @@ import java.io.InputStreamReader
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -139,7 +139,7 @@ fun ChatScreen(
       if (savedId.isNotEmpty() && app.chatRepository.sessionExists(savedId)) {
         savedId
       } else {
-        val newSession = app.chatRepository.createSession("Chat - $modelName")
+        val newSession = app.chatRepository.createSession("Chat - $modelName", modelPath, modelName)
         SettingsManager.currentSessionId = newSession.id
         newSession.id
       }
@@ -174,9 +174,15 @@ fun ChatScreen(
         tts.value?.language = Locale.getDefault()
         tts.value?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
           override fun onStart(utteranceId: String?) {}
-          override fun onDone(utteranceId: String?) { isSpeaking = false }
-          override fun onError(utteranceId: String?) { isSpeaking = false }
-          override fun onStop(utteranceId: String?, interrupted: Boolean) { isSpeaking = false }
+          override fun onDone(utteranceId: String?) {
+            isSpeaking = false
+          }
+          override fun onError(utteranceId: String?) {
+            isSpeaking = false
+          }
+          override fun onStop(utteranceId: String?, interrupted: Boolean) {
+            isSpeaking = false
+          }
         })
       }
     }
@@ -201,17 +207,13 @@ fun ChatScreen(
   LaunchedEffect(isInferring) {
     if (!isInferring) return@LaunchedEffect
     val start = System.currentTimeMillis()
-    var firstSeen = false
     isProcessing = true
     while (isInferring) {
       delay(30)
       val text = stripTokens(engine?.readPartialStream().orEmpty())
       if (text.isNotEmpty()) {
-        streamedText = if (streamedText.isEmpty() || isProcessing) text else streamedText + text
-        if (!firstSeen) {
-          firstSeen = true
-          isProcessing = false
-        }
+        streamedText += text
+        if (isProcessing) isProcessing = false
       }
       val elapsed = (System.currentTimeMillis() - start) / 1000f
       val tok = engine?.getTokensGenerated() ?: 0
@@ -224,7 +226,9 @@ fun ChatScreen(
         val raw = engine?.readTokenStream().orEmpty()
         val final = stripTokens(raw)
         val ft = engine?.getTokensGenerated() ?: 0
-        if (final.isNotEmpty()) {
+        if (final.isNotEmpty() &&
+          messages.none { it.timestamp == start && it.role == MessageRole.ASSISTANT }
+        ) {
           val msg = ChatMessage(
             MessageRole.ASSISTANT,
             final,
@@ -242,6 +246,31 @@ fun ChatScreen(
 
   LaunchedEffect(messages.size, isInferring) {
     if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+  }
+
+  LaunchedEffect(chatId) {
+    val session = app.chatRepository.sessions.value.find { it.id == chatId }
+    if (session != null && session.modelPath.isNotEmpty()) {
+      if (modelPath != session.modelPath || modelName != session.modelName) {
+        val engine = app.engineManager.getActiveEngine()
+        var modelInfo = app.modelRepository.models.value.find { it.path == session.modelPath }
+        if (modelInfo == null) {
+          val result = app.modelRepository.importPath(session.modelPath, session.modelName)
+          if (result.isSuccess) modelInfo = result.getOrNull()
+        }
+        if (modelInfo != null && engine != null) {
+          engine.config = SettingsManager.toConfig()
+          engine.systemPrompt = SettingsManager.systemPrompt
+          engine.repeatPenalty = SettingsManager.toRepeatPenalty()
+          val loadResult = engine.loadModel(modelInfo.path)
+          if (loadResult.isSuccess) {
+            app.modelRepository.markUsed(modelInfo.id)
+            onModelSelected(modelInfo.path, modelInfo.name)
+            statusText = modelInfo.name
+          }
+        }
+      }
+    }
   }
 
   val imagePicker =
@@ -428,7 +457,12 @@ fun ChatScreen(
                           }
                         } catch (e: Exception) {
                           withContext(Dispatchers.Main) {
-                            clip.setPrimaryClip(ClipData.newPlainText("chat", e.message ?: "Export failed"))
+                            clip.setPrimaryClip(
+                              ClipData.newPlainText(
+                                "chat",
+                                e.message ?: "Export failed"
+                              )
+                            )
                           }
                         }
                       }
@@ -944,7 +978,9 @@ fun ChatBubble(
           } else {
             Spacer(Modifier.weight(1f))
           }
-              IconButton(onClick = { onSpeak(stripTokens(msg.content)) }, modifier = Modifier.size(20.dp)) {
+          IconButton(onClick = {
+            onSpeak(stripTokens(msg.content))
+          }, modifier = Modifier.size(20.dp)) {
             Icon(
               Icons.Outlined.VolumeUp,
               "Speak",
@@ -1045,7 +1081,7 @@ fun ThinkingContent(content: String) {
   val colors = currentPalette()
   val pattern =
     remember {
-      Regex("(?:<think>|<think>\\n?)(.*?)(?:</think>|</think>\\n?)", RegexOption.DOT_MATCHES_ALL)
+      Regex("<think>(.*?)</think>", RegexOption.DOT_MATCHES_ALL)
     }
   val match = remember(content) { pattern.find(content) }
   if (match != null) {

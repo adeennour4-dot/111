@@ -71,15 +71,20 @@ fun AppRoot() {
         onModelSelected = { path, name ->
           loadedModelPath = path
           loadedModelName = name
-          currentSessionId = app.chatRepository.createSession("Chat - $name").id
+          currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
         },
         onSettings = { screen = AppScreen.SETTINGS },
-        onSessions = { screen = AppScreen.SESSIONS })
+        onSessions = { screen = AppScreen.SESSIONS }
+      )
 
     AppScreen.SESSIONS ->
       SessionListScreen(
-        onSessionSelected = { id ->
-          currentSessionId = id
+        onSessionSelected = { session ->
+          currentSessionId = session.id
+          if (session.modelPath.isNotEmpty()) {
+            loadedModelPath = session.modelPath
+            loadedModelName = session.modelName
+          }
           screen = AppScreen.CHAT
         },
         onBack = { screen = AppScreen.CHAT }
@@ -90,7 +95,7 @@ fun AppRoot() {
         onModelSelected = { path, name ->
           loadedModelPath = path
           loadedModelName = name
-          currentSessionId = app.chatRepository.createSession("Chat - $name").id
+          currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
           screen = AppScreen.CHAT
         },
         onBack = { screen = AppScreen.CHAT }
