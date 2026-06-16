@@ -147,6 +147,7 @@ class ModelServer(private val port: Int = 8080) {
     val uptime = (System.currentTimeMillis() - serverStartTime) / 1000
     val authEnabled = com.gguf.zerocopy.data.local.SettingsManager.serverAuthEnabled
 
+    val authHeader = if (authEnabled) "  -H \"Authorization: Bearer YOUR_API_KEY\"\\\n" else ""
     val html = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -154,138 +155,95 @@ class ModelServer(private val port: Int = 8080) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ZeroCopy AI - Local Inference Server</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #08080F; color: #EEEEF5; min-height: 100vh; display: flex; flex-direction: column; }
-  header { background: linear-gradient(135deg, #7C73FF, #00E6A8); padding: 20px; text-align: center; }
-  header h1 { font-size: 22px; font-weight: 800; letter-spacing: 2px; }
-  header p { font-size: 12px; opacity: 0.8; margin-top: 2px; }
-  .container { max-width: 800px; margin: 0 auto; padding: 16px; flex: 1; display: flex; flex-direction: column; gap: 12px; }
-  .card { background: #1A1A2E; border-radius: 12px; padding: 16px; }
-  .card h3 { font-size: 11px; color: #9A9AB0; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-  .stat-row { display: flex; gap: 12px; flex-wrap: wrap; }
-  .stat { background: #20203A; border-radius: 8px; padding: 8px 12px; }
-  .stat .label { color: #5C5C78; font-size: 10px; }
-  .stat .val { color: #EEEEF5; font-size: 13px; font-weight: 600; }
-  .endpoint { background: #12121E; border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; font-family: monospace; font-size: 12px; }
-  .endpoint .method { display: inline-block; padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 10px; margin-right: 8px; }
-  .method.get { background: #0055AA; color: white; }
-  .method.post { background: #00AA55; color: white; }
-  .endpoint .desc { color: #9A9AB0; font-size: 11px; }
-  code { background: #20203A; padding: 2px 6px; border-radius: 4px; font-size: 11px; color: #BB86FC; }
-  .chat-area { flex: 1; display: flex; flex-direction: column; background: #12121E; border-radius: 12px; overflow: hidden; min-height: 200px; }
-  .messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
-  .msg { padding: 8px 12px; border-radius: 12px; max-width: 80%; font-size: 13px; line-height: 1.5; }
-  .msg.user { background: #2D2B55; align-self: flex-end; border-bottom-right-radius: 3px; }
-  .msg.assistant { background: #20203A; align-self: flex-start; border-bottom-left-radius: 3px; }
-  .input-area { display: flex; gap: 6px; padding: 10px; background: #1A1A2E; }
-  .input-area input { flex: 1; background: #12121E; border: 1px solid #2A2A45; border-radius: 20px; padding: 8px 12px; color: #EEEEF5; font-size: 13px; outline: none; }
-  .input-area input:focus { border-color: #7C73FF; }
-  .input-area button { background: #7C73FF; border: none; border-radius: 20px; padding: 8px 16px; color: white; font-weight: 600; cursor: pointer; font-size: 13px; }
-  .input-area button:hover { background: #6A62E0; }
-  .input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
-  .badge { background: #20203A; border-radius: 6px; padding: 4px 10px; font-size: 10px; color: #9A9AB0; font-family: monospace; }
-  .badge a { color: #7C73FF; text-decoration: none; }
-  footer { text-align: center; padding: 12px; color: #5C5C78; font-size: 10px; }
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,sans-serif;background:#08080F;color:#EEEEF5;min-height:100vh;display:flex;flex-direction:column}
+header{background:linear-gradient(135deg,#7C73FF,#00E6A8);padding:20px;text-align:center}
+header h1{font-size:22px;font-weight:800;letter-spacing:2px}
+header p{font-size:12px;opacity:.8;margin-top:2px}
+.container{max-width:800px;margin:0 auto;padding:16px;flex:1;display:flex;flex-direction:column;gap:12px}
+.card{background:#1A1A2E;border-radius:12px;padding:16px}
+.card h3{font-size:11px;color:#9A9AB0;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+.stat-row{display:flex;gap:12px;flex-wrap:wrap}
+.stat{background:#20203A;border-radius:8px;padding:8px 12px}
+.stat .label{color:#5C5C78;font-size:10px}
+.stat .val{color:#EEEEF5;font-size:13px;font-weight:600}
+.endpoint{background:#12121E;border-radius:8px;padding:10px 12px;margin-bottom:6px;font-family:monospace;font-size:12px}
+.endpoint .method{display:inline-block;padding:2px 6px;border-radius:4px;font-weight:700;font-size:10px;margin-right:8px}
+.method.get{background:#0055AA;color:white}
+.method.post{background:#00AA55;color:white}
+.endpoint .desc{color:#9A9AB0;font-size:11px}
+code{background:#20203A;padding:2px 6px;border-radius:4px;font-size:11px;color:#BB86FC}
+.chat-area{flex:1;display:flex;flex-direction:column;background:#12121E;border-radius:12px;overflow:hidden;min-height:200px}
+.messages{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:6px}
+.msg{padding:8px 12px;border-radius:12px;max-width:80%;font-size:13px;line-height:1.5}
+.msg.user{background:#2D2B55;align-self:flex-end;border-bottom-right-radius:3px}
+.msg.assistant{background:#20203A;align-self:flex-start;border-bottom-left-radius:3px}
+.input-area{display:flex;gap:6px;padding:10px;background:#1A1A2E}
+.input-area input{flex:1;background:#12121E;border:1px solid #2A2A45;border-radius:20px;padding:8px 12px;color:#EEEEF5;font-size:13px;outline:none}
+.input-area input:focus{border-color:#7C73FF}
+.input-area button{background:#7C73FF;border:none;border-radius:20px;padding:8px 16px;color:white;font-weight:600;cursor:pointer;font-size:13px}
+.input-area button:hover{background:#6A62E0}
+.input-area button:disabled{opacity:.5;cursor:not-allowed}
+.badge{background:#20203A;border-radius:6px;padding:4px 10px;font-size:10px;color:#9A9AB0;font-family:monospace}
+.badge a{color:#7C73FF;text-decoration:none}
+footer{text-align:center;padding:12px;color:#5C5C78;font-size:10px}
 </style>
 </head>
 <body>
 <header>
-  <h1>ZeroCopy AI</h1>
-  <p>by adeennour4-dot — Local On-Device Inference Server</p>
+<h1>ZeroCopy AI</h1>
+<p>by adeennour4-dot &mdash; Local On-Device Inference Server</p>
 </header>
 <div class="container">
-  <div class="card">
-    <h3>Server Status</h3>
-    <div class="stat-row">
-      <div class="stat"><div class="label">Model</div><div class="val" style="color:${if (loaded) "#00E6A8" else "#FFBE0B"}">${if (loaded) modelName else "Not loaded"}</div></div>
-      <div class="stat"><div class="label">Uptime</div><div class="val">${uptime / 60}m ${uptime % 60}s</div></div>
-      <div class="stat"><div class="label">Auth</div><div class="val" style="color:${if (authEnabled) "#FFBE0B" else "#00E6A8"}">${if (authEnabled) "Enabled" else "Off"}</div></div>
-      <div class="stat"><div class="label">API Base</div><div class="val" style="font-size:11px">${getServerUrl()}</div></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>API Reference</h3>
-    <div class="endpoint"><span class="method get">GET</span><a href="/v1/models" style="color:#EEEEF5;text-decoration:none">/v1/models</a> <span class="desc">List available models</span></div>
-    <div class="endpoint"><span class="method post">POST</span>/v1/chat/completions <span class="desc">Send a chat message</span></div>
-    <div style="margin-top:8px;font-size:11px;color:#5C5C78;font-family:monospace;line-height:1.8">
-<strong style="color:#9A9AB0">Example:</strong>
-curl ${getServerUrl()}/chat/completions \
-  -H "Content-Type: application/json"${if (authEnabled) """ \
-  -H "Authorization: Bearer YOUR_API_KEY"""" else ""} \
-  -d '{
-    "model": "${modelName}",
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "stream": false
-  }'
-    </div>
-  </div>
-
-  <div class="chat-area">
-    <div class="messages" id="messages"></div>
-    <div class="input-area">
-      <input type="text" id="prompt" placeholder="Type a message..." onkeydown="if(event.key==='Enter') send()">
-      <button id="sendBtn" onclick="send()" ${if (!loaded) "disabled" else ""}>Send</button>
-    </div>
-  </div>
-
-  <div style="display:flex;gap:6px;flex-wrap:wrap">
-    <div class="badge"><a href="/v1/models">/v1/models</a></div>
-    <div class="badge">POST /v1/chat/completions</div>
-    <div class="badge"><a href="/health">/health</a></div>
-    <div class="badge">API: ${getServerUrl()}</div>
-  </div>
+<div class="card">
+<h3>Server Status</h3>
+<div class="stat-row">
+<div class="stat"><div class="label">Model</div><div class="val" style="color:${if (loaded) "#00E6A8" else "#FFBE0B"}">${if (loaded) modelName else "Not loaded"}</div></div>
+<div class="stat"><div class="label">Uptime</div><div class="val">${uptime / 60}m ${uptime % 60}s</div></div>
+<div class="stat"><div class="label">Auth</div><div class="val" style="color:${if (authEnabled) "#FFBE0B" else "#00E6A8"}">${if (authEnabled) "Enabled" else "Off"}</div></div>
+<div class="stat"><div class="label">API Base</div><div class="val" style="font-size:11px">${getServerUrl()}</div></div>
 </div>
-<footer>ZeroCopy v1.0.0 — adeennour4-dot/111</footer>
+</div>
+
+<div class="card">
+<h3>API Reference</h3>
+<div class="endpoint"><span class="method get">GET</span><a href="/v1/models" style="color:#EEEEF5;text-decoration:none">/v1/models</a> <span class="desc">List available models</span></div>
+<div class="endpoint"><span class="method post">POST</span>/v1/chat/completions <span class="desc">Send a chat message</span></div>
+<div style="margin-top:8px;font-size:11px;color:#5C5C78;font-family:monospace;line-height:1.8">
+<strong style="color:#9A9AB0">Example:</strong><br>
+curl ${getServerUrl()}/chat/completions \ <br>
+-H "Content-Type: application/json" \ <br>
+${authHeader}-d '{ <br>
+&nbsp;&nbsp;"model": "${modelName}", <br>
+&nbsp;&nbsp;"messages": [{"role": "user", "content": "Hello!"}], <br>
+&nbsp;&nbsp;"stream": false <br>
+}'
+</div>
+</div>
+
+<div class="chat-area">
+<div class="messages" id="messages"></div>
+<div class="input-area">
+<input type="text" id="prompt" placeholder="Type a message..." onkeydown="if(event.key==='Enter') send()">
+<button id="sendBtn" onclick="send()" ${if (!loaded) "disabled" else ""}>Send</button>
+</div>
+</div>
+
+<div style="display:flex;gap:6px;flex-wrap:wrap">
+<div class="badge"><a href="/v1/models">/v1/models</a></div>
+<div class="badge">POST /v1/chat/completions</div>
+<div class="badge"><a href="/health">/health</a></div>
+<div class="badge">API: ${getServerUrl()}</div>
+</div>
+</div>
+<footer>ZeroCopy v1.0.0 &mdash; adeennour4-dot/111</footer>
 <script>
-const msgs = document.getElementById('messages');
-const prompt = document.getElementById('prompt');
-const btn = document.getElementById('sendBtn');
-let inferring = false;
-
-function addMsg(role, content) {
-  const div = document.createElement('div');
-  div.className = 'msg ' + role;
-  div.textContent = content;
-  msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
-}
-
-async function send() {
-  const text = prompt.value.trim();
-  if (!text || inferring) return;
-  prompt.value = '';
-  addMsg('user', text);
-  inferring = true;
-  btn.disabled = true;
-  btn.textContent = '...';
-
-  const msgDiv = document.createElement('div');
-  msgDiv.className = 'msg assistant';
-  msgs.appendChild(msgDiv);
-  msgs.scrollTop = msgs.scrollHeight;
-
-  try {
-    const resp = await fetch('/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [{ role: 'user', content: text }], stream: false })
-    });
-    if (!resp.ok) {
-      const err = await resp.json();
-      msgDiv.textContent = 'Error: ' + (err.message || err.error || resp.status);
-      return;
-    }
-    const data = await resp.json();
-    const content = data.choices?.[0]?.message?.content || data.response || JSON.stringify(data);
-    msgDiv.textContent = content;
-  } catch(e) {
-    msgDiv.textContent = 'Error: ' + e.message;
-  }
-  inferring = false;
-  btn.disabled = false;
-  btn.textContent = 'Send';
-}
+const msgs=document.getElementById('messages');
+const prompt=document.getElementById('prompt');
+const btn=document.getElementById('sendBtn');
+let inferring=false;
+function addMsg(role,content){const d=document.createElement('div');d.className='msg '+role;d.textContent=content;msgs.appendChild(d);msgs.scrollTop=msgs.scrollHeight;}
+async function send(){const text=prompt.value.trim();if(!text||inferring)return;prompt.value='';addMsg('user',text);inferring=true;btn.disabled=true;btn.textContent='...';const md=document.createElement('div');md.className='msg assistant';msgs.appendChild(md);msgs.scrollTop=msgs.scrollHeight;try{const r=await fetch('/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[{role:'user',content:text}],stream:false})});if(!r.ok){const e=await r.json();md.textContent='Error: '+(e.message||e.error||r.status);return;}const d=await r.json();md.textContent=d.choices?.[0]?.message?.content||d.response||JSON.stringify(d);}catch(e){md.textContent='Error: '+e.message;}inferring=false;btn.disabled=false;btn.textContent='Send';}
 </script>
 </body>
 </html>"""
