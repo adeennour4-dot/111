@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ZeroCopy</string>
+    <string name="tagline">Private on-device LLM</string>
+</resources>
