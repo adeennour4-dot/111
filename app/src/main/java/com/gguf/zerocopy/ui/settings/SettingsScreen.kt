@@ -329,6 +329,24 @@ fun SettingsScreen(onBack: () -> Unit) {
         Text("Unload All Models", fontSize = 12.sp)
       }
 
+      HorizontalDivider(color = colors.Border, thickness = 1.dp)
+
+      Text(
+        "Credits",
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Bold,
+        color = colors.Accent,
+        fontFamily = FontFamily.Monospace,
+        letterSpacing = 2.sp
+      )
+
+      Text(
+        "Developed by adeennour4-dot",
+        fontSize = 11.sp,
+        color = colors.Text3,
+        fontFamily = FontFamily.Monospace
+      )
+
       Spacer(Modifier.height(32.dp))
     }
   }
