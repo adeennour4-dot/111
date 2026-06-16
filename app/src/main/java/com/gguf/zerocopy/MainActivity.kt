@@ -75,7 +75,6 @@ fun AppRoot() {
         },
         onSettings = { screen = AppScreen.SETTINGS },
         onSessions = { screen = AppScreen.SESSIONS })
-      )
 
     AppScreen.SESSIONS ->
       SessionListScreen(
