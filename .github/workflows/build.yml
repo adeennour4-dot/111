@@ -203,7 +203,7 @@ jobs:
             echo "storePassword=$KEYSTORE_PASSWORD" >> keystore.properties
             echo "keyPassword=$KEY_PASSWORD" >> keystore.properties
             echo "keyAlias=$KEY_ALIAS" >> keystore.properties
-            echo "storeFile=../keystore.jks" >> keystore.properties
+            echo "storeFile=keystore.jks" >> keystore.properties
           else
             # Generate a dev keystore so APK is signed and installable
             keytool -genkey -v -keystore keystore.jks -alias zero -keyalg RSA -keysize 2048 \
@@ -212,7 +212,7 @@ jobs:
             echo "storePassword=zerocopy" >> keystore.properties
             echo "keyPassword=zerocopy" >> keystore.properties
             echo "keyAlias=zero" >> keystore.properties
-            echo "storeFile=../keystore.jks" >> keystore.properties
+            echo "storeFile=keystore.jks" >> keystore.properties
           fi
           ./gradlew assembleRelease \
             --no-daemon \
