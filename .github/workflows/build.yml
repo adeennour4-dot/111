@@ -22,6 +22,9 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: write
+
 env:
   NDK_VERSION: 27.0.12077973
   CMAKE_VERSION: 3.22.1
