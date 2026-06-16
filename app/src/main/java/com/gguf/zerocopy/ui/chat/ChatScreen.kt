@@ -12,11 +12,6 @@ import android.speech.tts.TextToSpeech
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -1481,33 +1476,29 @@ fun InputBar(
 
 @Composable
 fun LavaLampGlow(colors: com.gguf.zerocopy.ui.theme.ZcPalette) {
-  val infinite = rememberInfiniteTransition()
-  val glowX by infinite.animateFloat(
-    initialValue = 0.2f, targetValue = 0.8f,
-    animationSpec = infiniteRepeatable(tween(6000, easing = LinearEasing), RepeatMode.Reverse)
-  )
-  val glowY by infinite.animateFloat(
-    initialValue = 0.3f, targetValue = 0.7f,
-    animationSpec = infiniteRepeatable(tween(7000, easing = LinearEasing), RepeatMode.Reverse)
-  )
-  val pulse by infinite.animateFloat(
-    initialValue = 0.3f, targetValue = 1.0f,
-    animationSpec = infiniteRepeatable(tween(5000, easing = LinearEasing), RepeatMode.Reverse)
-  )
+  var phase by remember { mutableFloatStateOf(0f) }
+  LaunchedEffect(Unit) {
+    while (true) {
+      phase += 0.04f
+      if (phase > 6.2832f) phase -= 6.2832f
+      delay(16)
+    }
+  }
+  val glowX = 0.5f + 0.3f * kotlin.math.sin(phase.toDouble()).toFloat()
+  val glowY = 0.5f + 0.2f * kotlin.math.sin((phase * 0.7f + 1f).toDouble()).toFloat()
+  val pulse = 0.65f + 0.35f * kotlin.math.sin((phase * 0.5f + 2f).toDouble()).toFloat()
   Box(
-    modifier = Modifier
-      .fillMaxSize()
-      .background(
-        Brush.radialGradient(
-          colors = listOf(
-            colors.GlowAccent.copy(alpha = 0.15f * pulse),
-            colors.GlowAccent2.copy(alpha = 0.08f * pulse),
-            colors.Bg.copy(alpha = 0f)
-          ),
-          center = Offset(glowX, glowY),
-          radius = 1.2f
-        )
+    modifier = Modifier.fillMaxSize().background(
+      Brush.radialGradient(
+        colors = listOf(
+          colors.GlowAccent.copy(alpha = 0.15f * pulse),
+          colors.GlowAccent2.copy(alpha = 0.08f * pulse),
+          colors.Bg.copy(alpha = 0f)
+        ),
+        center = Offset(glowX, glowY),
+        radius = 1.2f
       )
+    )
   )
 }
 
