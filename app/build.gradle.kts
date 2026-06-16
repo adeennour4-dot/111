@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
@@ -13,11 +14,12 @@ android {
         create("release") {
             val keystoreFile = rootProject.file("keystore.properties")
             if (keystoreFile.exists()) {
-                val props = java.util.Properties().apply { load(keystoreFile.inputStream()) }
-                storeFile = rootProject.file(props["storeFile"] ?: "keystore.jks")
-                storePassword = props["storePassword"] as? String ?: ""
-                keyAlias = props["keyAlias"] as? String ?: ""
-                keyPassword = props["keyPassword"] as? String ?: ""
+                val props = java.util.Properties()
+                keystoreFile.inputStream().use { props.load(it) }
+                storeFile = rootProject.file(props.getProperty("storeFile", "keystore.jks"))
+                storePassword = props.getProperty("storePassword", "")
+                keyAlias = props.getProperty("keyAlias", "")
+                keyPassword = props.getProperty("keyPassword", "")
             }
         }
     }
