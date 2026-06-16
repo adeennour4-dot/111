@@ -434,5 +434,28 @@ class ModelRepository(private val context: Context) {
 
   fun getModel(id: String): LocalModel? = _models.value.find { it.id == id }
 
-  fun getModelByPath(path: String): LocalModel? = _models.value.find { it.path == path }
+
+  suspend fun importPath(path: String, name: String): Result<LocalModel> =
+    withContext(Dispatchers.IO) {
+      try {
+        val file = File(path)
+        if (!file.exists() || !isValidModelFile(file)) {
+          return@withContext Result.failure(Exception("Invalid model file: " + path))
+        }
+        val ext = path.substringAfterLast(".").lowercase()
+        val model =
+          LocalModel(
+            id = "${file.name}_${System.currentTimeMillis()}",
+            name = name,
+            path = file.absolutePath,
+            format = ext,
+            engine = engineForExt(ext),
+            sizeBytes = file.length()
+          )
+        _models.value = _models.value + model
+        Result.success(model)
+      } catch (e: Exception) {
+        Result.failure(e)
+      }
+    }
 }
