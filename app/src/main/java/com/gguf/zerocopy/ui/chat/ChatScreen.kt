@@ -12,6 +12,11 @@ import android.speech.tts.TextToSpeech
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -84,6 +89,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -209,6 +216,13 @@ fun ChatScreen(
 
   LaunchedEffect(isInferring) {
     if (!isInferring) return@LaunchedEffect
+    // Wait for engine to actually start inference (fix race condition)
+    var ready = 0
+    while (ready < 200) {
+      if (engine?.isInferenceDone() == false) break
+      delay(30)
+      ready++
+    }
     val start = System.currentTimeMillis()
     isProcessing = true
     while (isInferring) {
@@ -313,12 +327,12 @@ fun ChatScreen(
           }
         }
       }
-      // Restore chat history to native engine
-      val msgs = app.chatRepository.getMessages(chatId)
-      if (msgs.isNotEmpty()) {
-        val historyPairs = msgs.map { it.role.name.lowercase() to it.content }
-        app.engineManager.getActiveEngine()?.restoreHistory(historyPairs)
-      }
+    }
+    // Restore chat history to native engine (even without modelPath)
+    val msgs = app.chatRepository.getMessages(chatId)
+    if (msgs.isNotEmpty()) {
+      val historyPairs = msgs.map { it.role.name.lowercase() to it.content }
+      app.engineManager.getActiveEngine()?.restoreHistory(historyPairs)
     }
   }
 
@@ -557,6 +571,8 @@ fun ChatScreen(
   ) { pad ->
     Column(modifier = Modifier.padding(pad).fillMaxSize().imePadding()) {
       Box(modifier = Modifier.weight(1f)) {
+        // Lava lamp glow background
+        LavaLampGlow(colors)
         if (engine?.isModelLoaded != true) {
           Column(
             modifier = Modifier.fillMaxSize().padding(32.dp),
@@ -1461,6 +1477,38 @@ fun InputBar(
       }
     }
   }
+}
+
+@Composable
+fun LavaLampGlow(colors: com.gguf.zerocopy.ui.theme.ZcPalette) {
+  val infinite = rememberInfiniteTransition()
+  val glowX by infinite.animateFloat(
+    initialValue = 0.2f, targetValue = 0.8f,
+    animationSpec = infiniteRepeatable(tween(6000, easing = LinearEasing), RepeatMode.Reverse)
+  )
+  val glowY by infinite.animateFloat(
+    initialValue = 0.3f, targetValue = 0.7f,
+    animationSpec = infiniteRepeatable(tween(7000, easing = LinearEasing), RepeatMode.Reverse)
+  )
+  val pulse by infinite.animateFloat(
+    initialValue = 0.3f, targetValue = 1.0f,
+    animationSpec = infiniteRepeatable(tween(5000, easing = LinearEasing), RepeatMode.Reverse)
+  )
+  Box(
+    modifier = Modifier
+      .fillMaxSize()
+      .background(
+        Brush.radialGradient(
+          colors = listOf(
+            colors.GlowAccent.copy(alpha = 0.15f * pulse),
+            colors.GlowAccent2.copy(alpha = 0.08f * pulse),
+            colors.Bg.copy(alpha = 0f)
+          ),
+          center = Offset(glowX, glowY),
+          radius = 1.2f
+        )
+      )
+  )
 }
 
 @Composable

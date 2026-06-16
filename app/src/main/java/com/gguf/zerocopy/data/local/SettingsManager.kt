@@ -121,7 +121,7 @@ object SettingsManager {
     set(v) { prefs?.edit()?.putBoolean("server_enabled", v)?.apply() }
 
   var serverIp: String
-    get() = prefs?.getString("server_ip", "192.168.1.100") ?: "192.168.1.100"
+    get() = prefs?.getString("server_ip", "127.0.0.1") ?: "127.0.0.1"
     set(v) { prefs?.edit()?.putString("server_ip", v)?.apply() }
 
   var serverPort: Int

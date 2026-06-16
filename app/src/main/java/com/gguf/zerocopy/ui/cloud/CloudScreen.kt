@@ -165,14 +165,15 @@ fun CloudScreen(onBack: () -> Unit) {
           Text("Your Device Info", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.Text2)
           Text("Local IP: $localIp", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
           val currentPort = serverPort.toIntOrNull()?.coerceIn(1024, 65535) ?: 8080
-          Text("Server URL: http://$localIp:$currentPort", fontSize = 11.sp, color = if (serverEnabled) colors.Accent2 else colors.Text3, fontFamily = FontFamily.Monospace)
+          Text("API URL: http://$localIp:$currentPort/v1", fontSize = 11.sp, color = if (serverEnabled) colors.Accent2 else colors.Text3, fontFamily = FontFamily.Monospace)
+          Text("curl http://$localIp:$currentPort/v1/chat/completions", fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
 
           Spacer(Modifier.height(4.dp))
 
           Button(
             onClick = {
               val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-              clip.setPrimaryClip(ClipData.newPlainText("ip", localIp))
+              clip.setPrimaryClip(ClipData.newPlainText("api_url", "http://$localIp:$currentPort/v1"))
               copied = true
             },
             shape = RoundedCornerShape(10.dp),
@@ -181,7 +182,7 @@ fun CloudScreen(onBack: () -> Unit) {
           ) {
             Icon(Icons.Filled.ContentCopy, null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text(if (copied) "Copied!" else "Copy IP Address", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Text(if (copied) "Copied!" else "Copy API URL", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
           }
 
           Button(
