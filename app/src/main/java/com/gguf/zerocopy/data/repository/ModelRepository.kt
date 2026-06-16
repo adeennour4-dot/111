@@ -10,6 +10,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
@@ -231,7 +232,7 @@ object ModelDownloads {
 class ModelRepository(private val context: Context) {
   private val modelsDir = File(context.filesDir, "models").also { it.mkdirs() }
   private val _models = MutableStateFlow<List<LocalModel>>(emptyList())
-  val models: Flow<List<LocalModel>> = _models.asStateFlow()
+  val models: StateFlow<List<LocalModel>> = _models.asStateFlow()
 
   init {
     scanModels()
