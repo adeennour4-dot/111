@@ -13,8 +13,8 @@ android {
         applicationId = "com.gguf.zerocopy"
         minSdk        = 29
         targetSdk     = 36
-        versionCode   = 11
-        versionName   = "1.0.1"
+        versionCode   = 12
+        versionName   = "1.0.2"
 
         externalNativeBuild {
             cmake {
@@ -34,8 +34,8 @@ android {
             }
         }
 
-        buildConfigField("String", "VERSION_NAME", "\"1.0.1\"")
-        buildConfigField("int", "VERSION_CODE", "11")
+        buildConfigField("String", "VERSION_NAME", "\"1.0.2\"")
+        buildConfigField("int", "VERSION_CODE", "12")
     }
 
     compileOptions {
