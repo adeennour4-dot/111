@@ -318,7 +318,7 @@ jobs:
           found=false
           for apk in $(find apks -name "*.apk" 2>/dev/null); do
             found=true
-            size=$(stat -c%s "$apk" 2>/dev/null)
+            size=$(stat -c%s "$apk" 2>/dev/null || stat -f%z "$apk" 2>/dev/null)
             echo "::notice::$apk: $(( size / 1024 / 1024 )) MB ($(( size / 1024 )) KB)"
           done
           [ "$found" = false ] && echo "No APKs found for size analysis"

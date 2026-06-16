@@ -9,6 +9,19 @@ android {
     compileSdk = 36
     ndkVersion = "27.0.12077973"
 
+    signingConfigs {
+        create("release") {
+            val keystoreFile = rootProject.file("keystore.properties")
+            if (keystoreFile.exists()) {
+                val props = java.util.Properties().apply { load(keystoreFile.inputStream()) }
+                storeFile = rootProject.file(props["storeFile"] ?: "keystore.jks")
+                storePassword = props["storePassword"] as? String ?: ""
+                keyAlias = props["keyAlias"] as? String ?: ""
+                keyPassword = props["keyPassword"] as? String ?: ""
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.gguf.zerocopy"
         minSdk        = 27
@@ -52,6 +65,13 @@ android {
         cmake {
             path    = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.findByName("release")
+            isMinifyEnabled = false
         }
     }
 
