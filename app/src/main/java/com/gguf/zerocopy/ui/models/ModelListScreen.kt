@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,6 +43,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,8 +73,15 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
   val colors = currentPalette()
   val models by app.modelRepository.models.collectAsState(initial = emptyList())
   var loading by remember { mutableStateOf(false) }
-
   var infoModel by remember { mutableStateOf<com.gguf.zerocopy.data.repository.LocalModel?>(null) }
+  var unloadKey by remember { mutableStateOf(0) }
+  val loadedPath by remember {
+    derivedStateOf {
+      unloadKey
+      val e = app.engineManager.getActiveEngine()
+      if (e?.isModelLoaded == true) e.loadedModelPath else null
+    }
+  }
 
   val filePicker =
     rememberLauncherForActivityResult(
@@ -159,15 +168,18 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
           items(models, key = { it.id }) { model ->
             ModelCard(
               model = model,
+              isLoaded = loadedPath == model.path,
               onClick = {
                 scope.launch {
                   val engine = app.engineManager.selectEngineForFormat(model.path)
                   engine.config = SettingsManager.toConfig()
                   engine.repeatPenalty = SettingsManager.toRepeatPenalty()
                   engine.systemPrompt = SettingsManager.systemPrompt
+                  engine.mmprojPath = SettingsManager.mmprojPath
                   val loadResult = engine.loadModel(model.path)
                   if (loadResult.isSuccess) {
                     app.modelRepository.markUsed(model.id)
+                    unloadKey++
                     onModelSelected(model.path, model.name)
                   }
                 }
@@ -176,6 +188,10 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
               onDelete = {
                 val ok = app.modelRepository.deleteModel(model.id)
                 if (!ok) Toast.makeText(context, "Failed to delete ${model.name}", Toast.LENGTH_SHORT).show()
+              },
+              onUnload = {
+                app.engineManager.getActiveEngine()?.unloadModel()
+                unloadKey++
               }
             )
           }
@@ -220,6 +236,7 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
                 engine.config = SettingsManager.toConfig()
                 engine.repeatPenalty = SettingsManager.toRepeatPenalty()
                 engine.systemPrompt = SettingsManager.systemPrompt
+                engine.mmprojPath = SettingsManager.mmprojPath
                 val loadResult = engine.loadModel(model.path)
                 if (loadResult.isSuccess) {
                   app.modelRepository.markUsed(model.id)
@@ -257,9 +274,11 @@ private fun DetailRow(label: String, value: String) {
 @Composable
 fun ModelCard(
   model: com.gguf.zerocopy.data.repository.LocalModel,
+  isLoaded: Boolean = false,
   onClick: () -> Unit,
   onInfo: () -> Unit = {},
-  onDelete: () -> Unit
+  onDelete: () -> Unit,
+  onUnload: () -> Unit = {}
 ) {
   val colors = currentPalette()
   var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -295,8 +314,14 @@ fun ModelCard(
           )
         }
       }
-      IconButton(onClick = onClick, modifier = Modifier.size(32.dp)) {
-        Icon(Icons.Filled.PlayArrow, "Load", tint = colors.Accent, modifier = Modifier.size(18.dp))
+      if (isLoaded) {
+        IconButton(onClick = onUnload, modifier = Modifier.size(32.dp)) {
+          Icon(Icons.Filled.Stop, "Unload", tint = colors.Red, modifier = Modifier.size(18.dp))
+        }
+      } else {
+        IconButton(onClick = onClick, modifier = Modifier.size(32.dp)) {
+          Icon(Icons.Filled.PlayArrow, "Load", tint = colors.Accent, modifier = Modifier.size(18.dp))
+        }
       }
       IconButton(onClick = onInfo, modifier = Modifier.size(32.dp)) {
         Icon(Icons.Filled.Info, "Info", tint = colors.Accent2, modifier = Modifier.size(18.dp))

@@ -157,6 +157,66 @@ object ModelDownloads {
         EngineType.LLAMA_CPP,
         2_000_000_000L,
         "Best for phones with 4GB+ RAM"
+      ),
+      DownloadableModel(
+        "qwen2.5-0.5b",
+        "Qwen2.5 0.5B",
+        "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+        "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+        "gguf",
+        EngineType.LLAMA_CPP,
+        400_000_000L,
+        "Ultra-light, runs on any device"
+      ),
+      DownloadableModel(
+        "qwen2.5-7b",
+        "Qwen2.5 7B",
+        "Qwen/Qwen2.5-7B-Instruct-GGUF",
+        "qwen2.5-7b-instruct-q4_k_m.gguf",
+        "gguf",
+        EngineType.LLAMA_CPP,
+        4_200_000_000L,
+        "Strong general-purpose model"
+      ),
+      DownloadableModel(
+        "llama-3.1-8b",
+        "Llama 3.1 8B",
+        "lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF",
+        "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+        "gguf",
+        EngineType.LLAMA_CPP,
+        4_700_000_000L,
+        "Meta's powerful 8B model"
+      ),
+      DownloadableModel(
+        "mistral-7b",
+        "Mistral 7B v0.3",
+        "MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF",
+        "Mistral-7B-Instruct-v0.3.Q4_K_M.gguf",
+        "gguf",
+        EngineType.LLAMA_CPP,
+        4_100_000_000L,
+        "Fast and capable 7B model"
+      ),
+      DownloadableModel(
+        "phi-3-mini",
+        "Phi-3 Mini 3.8B",
+        "microsoft/Phi-3-mini-4k-instruct-gguf",
+        "Phi-3-mini-4k-instruct-q4.gguf",
+        "gguf",
+        EngineType.LLAMA_CPP,
+        2_300_000_000L,
+        "Microsoft's efficient 3.8B model"
+      ),
+      DownloadableModel(
+        "deepseek-coder-1.3b",
+        "DeepSeek Coder 1.3B",
+        "TheBloke/deepseek-coder-1.3b-instruct-GGUF",
+        "deepseek-coder-1.3b-instruct.Q4_K_M.gguf",
+        "gguf",
+        EngineType.LLAMA_CPP,
+        800_000_000L,
+        "Best for code generation tasks"
       )
     )
 

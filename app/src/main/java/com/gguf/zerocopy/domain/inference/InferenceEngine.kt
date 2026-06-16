@@ -42,6 +42,7 @@ interface InferenceEngine {
   var repeatPenalty: RepeatPenaltyConfig
   var systemPrompt: String
   var mmprojPath: String
+  val loadedModelPath: String?
 
   suspend fun loadModel(path: String): Result<Unit>
 

@@ -19,6 +19,7 @@ class LiteRtEngine : InferenceEngine {
     private set
   override var modelInfo: ModelInfo? = null
     private set
+  override val loadedModelPath: String? get() = currentModelPath.ifEmpty { null }
   override var config = InferenceConfig()
   override var repeatPenalty = RepeatPenaltyConfig()
   override var systemPrompt = ""

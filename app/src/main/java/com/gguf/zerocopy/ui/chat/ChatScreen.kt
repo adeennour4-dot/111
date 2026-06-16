@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -97,7 +98,6 @@ import com.gguf.zerocopy.data.repository.ChatMessage
 import com.gguf.zerocopy.data.repository.MessageRole
 import com.gguf.zerocopy.domain.inference.TokenCallback
 import com.gguf.zerocopy.ui.models.ModelSelectionSheet
-import com.gguf.zerocopy.ui.theme.ZcColors
 import com.gguf.zerocopy.ui.theme.ZcPalette
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.io.BufferedReader
@@ -118,8 +118,7 @@ fun ChatScreen(
   sessionId: String?,
   onModelSelected: (String, String) -> Unit,
   onSettings: () -> Unit,
-  onSessions: () -> Unit,
-  onStore: () -> Unit
+  onSessions: () -> Unit
 ) {
   val context = LocalContext.current
   val app = ZeroCopyApp.instance
@@ -168,7 +167,7 @@ fun ChatScreen(
     isListening = false
   }
 
-  val chatId = remember {
+  val chatId = remember(sessionId) {
     if (sessionId != null) {
       SettingsManager.currentSessionId = sessionId
       sessionId
@@ -199,7 +198,7 @@ fun ChatScreen(
     isProcessing = true
     while (isInferring) {
       delay(30)
-      val text = engine?.readPartialStream().orEmpty()
+      val text = stripTokens(engine?.readPartialStream().orEmpty())
       if (text.isNotEmpty()) {
         streamedText = if (streamedText.isEmpty() || isProcessing) text else streamedText + text
         if (!firstSeen) {
@@ -215,7 +214,8 @@ fun ChatScreen(
       val done = engine?.isInferenceDone() ?: true
       if (done) {
         delay(60)
-        val final = engine?.readTokenStream().orEmpty()
+        val raw = engine?.readTokenStream().orEmpty()
+        val final = stripTokens(raw)
         val ft = engine?.getTokensGenerated() ?: 0
         if (final.isNotEmpty()) {
           val msg = ChatMessage(
@@ -419,7 +419,7 @@ fun ChatScreen(
     },
     containerColor = colors.Bg
   ) { pad ->
-    Column(modifier = Modifier.padding(pad).fillMaxSize()) {
+    Column(modifier = Modifier.padding(pad).fillMaxSize().imePadding()) {
       Box(modifier = Modifier.weight(1f)) {
         if (engine?.isModelLoaded != true) {
           Column(
@@ -620,10 +620,6 @@ fun ChatScreen(
         showModelSheet = false
         statusText = name
         onModelSelected(path, name)
-      },
-      onStore = {
-        showModelSheet = false
-        onStore()
       }
     )
   }
@@ -685,6 +681,9 @@ fun ChatScreen(
     )
   }
 }
+
+private fun stripTokens(text: String): String =
+  text.replace(Regex("<\\|end\\|>|<\\|user\\|>|<\\|assistant\\|>|<\\|system\\|>"), "").trim()
 
 private fun getAttachmentType(context: Context, uri: Uri): AttachmentType {
   val mime = context.contentResolver.getType(uri) ?: ""
@@ -809,9 +808,8 @@ fun ChatBubble(
             }
             Spacer(Modifier.height(4.dp))
           }
-          if (!isUser) ThinkingContent(msg.content) else {
-            MarkdownText(msg.content)
-            Text("<end>", fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+          if (!isUser) ThinkingContent(stripTokens(msg.content)) else {
+            MarkdownText(stripTokens(msg.content))
           }
         }
       }

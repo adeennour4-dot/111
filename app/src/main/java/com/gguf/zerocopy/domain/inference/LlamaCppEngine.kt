@@ -12,6 +12,7 @@ class LlamaCppEngine : InferenceEngine {
   override var isModelLoaded = false
     private set
   override var modelInfo: ModelInfo? = null
+  override val loadedModelPath: String? get() = currentModelPath.ifEmpty { null }
     private set
   override var config = InferenceConfig()
   override var repeatPenalty = RepeatPenaltyConfig()

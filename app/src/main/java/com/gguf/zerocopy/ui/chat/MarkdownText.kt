@@ -1,9 +1,28 @@
 package com.gguf.zerocopy.ui.chat
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -17,17 +36,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withAnnotation
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.gguf.zerocopy.ui.theme.ZcColors
+import com.gguf.zerocopy.ui.theme.currentPalette
+
+private const val CODE_TAG = "code"
 
 @Composable
 fun MarkdownText(
   markdown: String,
   modifier: Modifier = Modifier,
   style: TextStyle = LocalTextStyle.current,
-  linkColor: Color = ZcColors.Accent,
-  codeColor: Color = ZcColors.Accent2,
-  textColor: Color = ZcColors.Text
+  linkColor: Color = currentPalette().Accent,
+  codeColor: Color = currentPalette().Accent2,
+  textColor: Color = currentPalette().Text
 ) {
   val context = LocalContext.current
   val annotated = remember(markdown) { parseMarkdown(markdown, textColor, linkColor, codeColor) }
@@ -46,8 +68,17 @@ fun MarkdownText(
           )
         } catch (_: Exception) {}
       }
+      annotated.getStringAnnotations(CODE_TAG, offset, offset).firstOrNull()?.let {
+        copyToClipboard(context, it.item)
+      }
     }
   )
+}
+
+private fun copyToClipboard(context: Context, text: String) {
+  val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+  clip.setPrimaryClip(ClipData.newPlainText("code", text))
+  Toast.makeText(context, "Copied!", Toast.LENGTH_SHORT).show()
 }
 
 private fun parseMarkdown(
@@ -64,12 +95,14 @@ private fun parseMarkdown(
         val end = text.indexOf("```", i + 3)
         if (end >= 0) {
           val code = text.substring(i + 3, end).trimStart('\n', '\r').trimEnd('\n', '\r')
-          withStyle(
-            SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = codeColor)
-          ) {
-            append("\n")
-            append(code)
-            append("\n")
+          withAnnotation(CODE_TAG, code) {
+            withStyle(
+              SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = codeColor)
+            ) {
+              append("\n")
+              append(code)
+              append("\n")
+            }
           }
           i = end + 3
         } else {

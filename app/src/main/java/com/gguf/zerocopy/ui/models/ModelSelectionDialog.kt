@@ -20,7 +20,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -55,8 +54,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ModelSelectionSheet(
   onDismiss: () -> Unit,
-  onModelSelected: (String, String) -> Unit,
-  onStore: () -> Unit
+  onModelSelected: (String, String) -> Unit
 ) {
   val colors = currentPalette()
   val context = LocalContext.current
@@ -119,12 +117,6 @@ fun ModelSelectionSheet(
           Spacer(Modifier.width(4.dp))
           Text("Import", color = colors.Accent, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         }
-        Spacer(Modifier.width(4.dp))
-        TextButton(onClick = onStore) {
-          Icon(Icons.Filled.CloudDownload, null, modifier = Modifier.size(18.dp), tint = colors.Accent2)
-          Spacer(Modifier.width(4.dp))
-          Text("Store", color = colors.Accent2, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-        }
       }
 
       Spacer(Modifier.height(12.dp))
@@ -144,11 +136,7 @@ fun ModelSelectionSheet(
           Icon(Icons.Outlined.SmartToy, null, modifier = Modifier.size(48.dp), tint = colors.Text3)
           Spacer(Modifier.height(12.dp))
           Text("No models yet", color = colors.Text3, fontSize = 15.sp)
-          Text(
-            "Import a model or download from Store",
-            color = colors.Text3,
-            fontSize = 12.sp
-          )
+          Text("Import a model to get started", color = colors.Text3, fontSize = 12.sp)
         }
       } else {
         LazyColumn(
@@ -165,6 +153,7 @@ fun ModelSelectionSheet(
                     engine.config = SettingsManager.toConfig()
                     engine.repeatPenalty = SettingsManager.toRepeatPenalty()
                     engine.systemPrompt = SettingsManager.systemPrompt
+                    engine.mmprojPath = SettingsManager.mmprojPath
                     val loadResult = engine.loadModel(model.path)
                     if (loadResult.isSuccess) {
                       app.modelRepository.markUsed(model.id)

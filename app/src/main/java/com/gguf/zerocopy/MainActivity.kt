@@ -33,7 +33,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ui.chat.ChatScreen
-import com.gguf.zerocopy.ui.download.DownloadScreen
 import com.gguf.zerocopy.ui.models.ModelListScreen
 import com.gguf.zerocopy.ui.sessions.SessionListScreen
 import com.gguf.zerocopy.ui.settings.SettingsScreen
@@ -41,7 +40,7 @@ import com.gguf.zerocopy.ui.theme.ZeroCopyTheme
 import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlinx.coroutines.delay
 
-enum class AppScreen { SPLASH, CHAT, SESSIONS, MODELS, DOWNLOAD, SETTINGS }
+enum class AppScreen { SPLASH, CHAT, SESSIONS, MODELS, SETTINGS }
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,8 +74,7 @@ fun AppRoot() {
           currentSessionId = app.chatRepository.createSession("Chat - $name").id
         },
         onSettings = { screen = AppScreen.SETTINGS },
-        onSessions = { screen = AppScreen.SESSIONS },
-        onStore = { screen = AppScreen.DOWNLOAD }
+        onSessions = { screen = AppScreen.SESSIONS })
       )
 
     AppScreen.SESSIONS ->
@@ -90,17 +88,6 @@ fun AppRoot() {
 
     AppScreen.MODELS ->
       ModelListScreen(
-        onModelSelected = { path, name ->
-          loadedModelPath = path
-          loadedModelName = name
-          currentSessionId = app.chatRepository.createSession("Chat - $name").id
-          screen = AppScreen.CHAT
-        },
-        onBack = { screen = AppScreen.CHAT }
-      )
-
-    AppScreen.DOWNLOAD ->
-      DownloadScreen(
         onModelSelected = { path, name ->
           loadedModelPath = path
           loadedModelName = name
