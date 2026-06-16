@@ -3,6 +3,7 @@ package com.gguf.zerocopy.ui.models
 import android.app.Activity
 import android.content.Intent
 import android.provider.OpenableColumns
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -20,10 +21,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.SmartToy
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -31,6 +37,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,16 +53,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.local.SettingsManager
+import com.gguf.zerocopy.data.repository.LocalModel
 import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ModelSelectionSheet(
-  onDismiss: () -> Unit,
-  onModelSelected: (String, String) -> Unit
-) {
+fun ModelSelectionSheet(onDismiss: () -> Unit, onModelSelected: (String, String) -> Unit) {
   val colors = currentPalette()
   val context = LocalContext.current
   val app = ZeroCopyApp.instance
@@ -89,6 +94,16 @@ fun ModelSelectionSheet(
         }
       }
     }
+
+  var unloadKey by remember { mutableStateOf(0) }
+  val loadedPath by remember {
+    derivedStateOf {
+      unloadKey
+      val e = app.engineManager.getActiveEngine()
+      if (e?.isModelLoaded == true) e.loadedModelPath else null
+    }
+  }
+  var deleteModel by remember { mutableStateOf<LocalModel?>(null) }
 
   ModalBottomSheet(
     onDismissRequest = onDismiss,
@@ -144,6 +159,7 @@ fun ModelSelectionSheet(
           modifier = Modifier.height(300.dp)
         ) {
           items(models, key = { it.id }) { model ->
+            val isLoaded = loadedPath == model.path
             Surface(
               modifier = Modifier
                 .fillMaxWidth()
@@ -157,6 +173,7 @@ fun ModelSelectionSheet(
                     val loadResult = engine.loadModel(model.path)
                     if (loadResult.isSuccess) {
                       app.modelRepository.markUsed(model.id)
+                      unloadKey++
                       onModelSelected(model.path, model.name)
                     }
                   }
@@ -165,7 +182,7 @@ fun ModelSelectionSheet(
               color = colors.Card
             ) {
               Row(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier.padding(start = 16.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
               ) {
                 Box(
@@ -175,32 +192,103 @@ fun ModelSelectionSheet(
                 ) {
                   when (model.format.lowercase()) {
                     "gguf" -> Text(
-                      "G", fontSize = 18.sp, fontWeight = FontWeight.Black,
-                      color = colors.Accent, fontFamily = FontFamily.Monospace
+                      "G",
+                      fontSize = 18.sp,
+                      fontWeight = FontWeight.Black,
+                      color = colors.Accent,
+                      fontFamily = FontFamily.Monospace
                     )
                     "mnn" -> Text(
-                      "M", fontSize = 18.sp, fontWeight = FontWeight.Black,
-                      color = colors.Accent2, fontFamily = FontFamily.Monospace
+                      "M",
+                      fontSize = 18.sp,
+                      fontWeight = FontWeight.Black,
+                      color = colors.Accent2,
+                      fontFamily = FontFamily.Monospace
                     )
                     else -> Text(
-                      "L", fontSize = 18.sp, fontWeight = FontWeight.Black,
-                      color = colors.Purple, fontFamily = FontFamily.Monospace
+                      "L",
+                      fontSize = 18.sp,
+                      fontWeight = FontWeight.Black,
+                      color = colors.Purple,
+                      fontFamily = FontFamily.Monospace
                     )
                   }
                 }
                 Column(modifier = Modifier.weight(1f)) {
                   Text(
-                    model.name, color = colors.Text, fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold, maxLines = 1,
+                    model.name,
+                    color = colors.Text,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                   )
                   Row {
-                    Text(model.format.uppercase(), fontSize = 10.sp, color = colors.Accent, fontFamily = FontFamily.Monospace)
+                    Text(
+                      model.format.uppercase(),
+                      fontSize = 10.sp,
+                      color = colors.Accent,
+                      fontFamily = FontFamily.Monospace
+                    )
                     Spacer(Modifier.width(8.dp))
-                    Text(model.sizeFormatted, fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                    Text(
+                      model.sizeFormatted,
+                      fontSize = 10.sp,
+                      color = colors.Text3,
+                      fontFamily = FontFamily.Monospace
+                    )
                     Spacer(Modifier.width(8.dp))
-                    Text(model.engine.id, fontSize = 10.sp, color = colors.Accent2, fontFamily = FontFamily.Monospace)
+                    Text(
+                      model.engine.id,
+                      fontSize = 10.sp,
+                      color = colors.Accent2,
+                      fontFamily = FontFamily.Monospace
+                    )
                   }
+                }
+                if (isLoaded) {
+                  IconButton(onClick = {
+                    app.engineManager.getActiveEngine()?.unloadModel()
+                    unloadKey++
+                  }, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                      Icons.Filled.Stop,
+                      "Unload",
+                      tint = colors.Red,
+                      modifier = Modifier.size(18.dp)
+                    )
+                  }
+                } else {
+                  IconButton(onClick = {
+                    scope.launch(Dispatchers.IO) {
+                      val engine = app.engineManager.selectEngineForFormat(model.path)
+                      engine.config = SettingsManager.toConfig()
+                      engine.repeatPenalty = SettingsManager.toRepeatPenalty()
+                      engine.systemPrompt = SettingsManager.systemPrompt
+                      engine.mmprojPath = SettingsManager.mmprojPath
+                      val loadResult = engine.loadModel(model.path)
+                      if (loadResult.isSuccess) {
+                        app.modelRepository.markUsed(model.id)
+                        unloadKey++
+                        onModelSelected(model.path, model.name)
+                      }
+                    }
+                  }, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                      Icons.Filled.PlayArrow,
+                      "Load",
+                      tint = colors.Accent,
+                      modifier = Modifier.size(18.dp)
+                    )
+                  }
+                }
+                IconButton(onClick = { deleteModel = model }, modifier = Modifier.size(32.dp)) {
+                  Icon(
+                    Icons.Filled.Delete,
+                    "Delete",
+                    tint = colors.Red.copy(alpha = 0.6f),
+                    modifier = Modifier.size(18.dp)
+                  )
                 }
               }
             }
@@ -210,6 +298,31 @@ fun ModelSelectionSheet(
 
       Spacer(Modifier.height(16.dp))
     }
+  }
+
+  deleteModel?.let { model ->
+    AlertDialog(
+      onDismissRequest = { deleteModel = null },
+      containerColor = colors.Card,
+      title = { Text("Delete Model?", color = colors.Text, fontSize = 16.sp) },
+      text = { Text("Remove ${model.name} from device?", color = colors.Text2, fontSize = 14.sp) },
+      confirmButton = {
+        TextButton(onClick = {
+          val ok = app.modelRepository.deleteModel(model.id)
+          if (!ok) {
+            Toast.makeText(
+              context,
+              "Failed to delete ${model.name}",
+              Toast.LENGTH_SHORT
+            ).show()
+          }
+          deleteModel = null
+        }) { Text("Delete", color = colors.Red) }
+      },
+      dismissButton = {
+        TextButton(onClick = { deleteModel = null }) { Text("Cancel", color = colors.Text2) }
+      }
+    )
   }
 }
 

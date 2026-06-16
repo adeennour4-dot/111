@@ -3,6 +3,7 @@ package com.gguf.zerocopy.ui.models
 import android.app.Activity
 import android.content.Intent
 import android.provider.OpenableColumns
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -62,7 +63,6 @@ import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import android.widget.Toast
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -187,7 +187,13 @@ fun ModelListScreen(onModelSelected: (String, String) -> Unit, onBack: () -> Uni
               onInfo = { infoModel = model },
               onDelete = {
                 val ok = app.modelRepository.deleteModel(model.id)
-                if (!ok) Toast.makeText(context, "Failed to delete ${model.name}", Toast.LENGTH_SHORT).show()
+                if (!ok) {
+                  Toast.makeText(
+                    context,
+                    "Failed to delete ${model.name}",
+                    Toast.LENGTH_SHORT
+                  ).show()
+                }
               },
               onUnload = {
                 app.engineManager.getActiveEngine()?.unloadModel()
@@ -320,7 +326,12 @@ fun ModelCard(
         }
       } else {
         IconButton(onClick = onClick, modifier = Modifier.size(32.dp)) {
-          Icon(Icons.Filled.PlayArrow, "Load", tint = colors.Accent, modifier = Modifier.size(18.dp))
+          Icon(
+            Icons.Filled.PlayArrow,
+            "Load",
+            tint = colors.Accent,
+            modifier = Modifier.size(18.dp)
+          )
         }
       }
       IconButton(onClick = onInfo, modifier = Modifier.size(32.dp)) {

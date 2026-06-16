@@ -98,7 +98,6 @@ import com.gguf.zerocopy.data.repository.ChatMessage
 import com.gguf.zerocopy.data.repository.MessageRole
 import com.gguf.zerocopy.domain.inference.TokenCallback
 import com.gguf.zerocopy.ui.models.ModelSelectionSheet
-import com.gguf.zerocopy.ui.theme.ZcPalette
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.io.BufferedReader
 import java.io.File
@@ -154,18 +153,22 @@ fun ChatScreen(
       if (status == TextToSpeech.SUCCESS) tts.value?.language = Locale.getDefault()
     }
     tts.value = ttsInstance
-    onDispose { ttsInstance.stop(); ttsInstance.shutdown() }
+    onDispose {
+      ttsInstance.stop()
+      ttsInstance.shutdown()
+    }
   }
 
-  val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-    if (result.resultCode == Activity.RESULT_OK) {
-      val results = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-      if (!results.isNullOrEmpty()) {
-        prompt = results[0]
+  val speechLauncher =
+    rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+      if (result.resultCode == Activity.RESULT_OK) {
+        val results = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+        if (!results.isNullOrEmpty()) {
+          prompt = results[0]
+        }
       }
+      isListening = false
     }
-    isListening = false
-  }
 
   val chatId = remember(sessionId) {
     if (sessionId != null) {
@@ -326,7 +329,13 @@ fun ChatScreen(
               onClick = {},
               label = { Text("$kvUsage%", fontSize = 11.sp) },
               colors = AssistChipDefaults.assistChipColors(
-                containerColor = if (kvUsage > 80) colors.Red.copy(alpha = 0.2f) else colors.Accent2.copy(alpha = 0.15f),
+                containerColor = if (kvUsage >
+                  80
+                ) {
+                  colors.Red.copy(alpha = 0.2f)
+                } else {
+                  colors.Accent2.copy(alpha = 0.15f)
+                },
                 labelColor = if (kvUsage > 80) colors.Red else colors.Accent2
               )
             )
@@ -347,20 +356,31 @@ fun ChatScreen(
                       scope.launch(Dispatchers.IO) {
                         val file = app.chatRepository.exportSession(chatId)
                         if (file != null) {
-                          val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                          val uri = FileProvider.getUriForFile(
+                            context,
+                            "${context.packageName}.fileprovider",
+                            file
+                          )
                           withContext(Dispatchers.Main) {
                             Intent(Intent.ACTION_SEND).apply {
                               type = "text/plain"
                               putExtra(Intent.EXTRA_STREAM, uri)
                               addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }.let { context.startActivity(Intent.createChooser(it, "Share as Text")) }
+                            }.let {
+                              context.startActivity(Intent.createChooser(it, "Share as Text"))
+                            }
                           }
                         }
                       }
                     },
                     modifier = Modifier.fillMaxWidth()
                   ) {
-                    Icon(Icons.Filled.Save, null, modifier = Modifier.size(18.dp), tint = colors.Text2)
+                    Icon(
+                      Icons.Filled.Save,
+                      null,
+                      modifier = Modifier.size(18.dp),
+                      tint = colors.Text2
+                    )
                     Spacer(Modifier.width(8.dp))
                     Text("Export as Text", fontSize = 14.sp)
                   }
@@ -371,18 +391,24 @@ fun ChatScreen(
                         val msgs = app.chatRepository.getMessages(chatId)
                         val jsonArr = org.json.JSONArray()
                         msgs.forEach { m ->
-                          jsonArr.put(org.json.JSONObject().apply {
-                            put("role", m.role.name.lowercase())
-                            put("content", m.content)
-                            put("timestamp", m.timestamp)
-                            if (m.tps > 0f) put("tps", m.tps.toDouble())
-                            if (m.tokens > 0) put("tokens", m.tokens)
-                          })
+                          jsonArr.put(
+                            org.json.JSONObject().apply {
+                              put("role", m.role.name.lowercase())
+                              put("content", m.content)
+                              put("timestamp", m.timestamp)
+                              if (m.tps > 0f) put("tps", m.tps.toDouble())
+                              if (m.tokens > 0) put("tokens", m.tokens)
+                            }
+                          )
                         }
                         val exportDir = File(context.cacheDir, "exports").also { it.mkdirs() }
-                        val jsonFile = File(exportDir, "chat_${chatId}.json")
+                        val jsonFile = File(exportDir, "chat_$chatId.json")
                         jsonFile.writeText(jsonArr.toString(2))
-                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", jsonFile)
+                        val uri = FileProvider.getUriForFile(
+                          context,
+                          "${context.packageName}.fileprovider",
+                          jsonFile
+                        )
                         withContext(Dispatchers.Main) {
                           Intent(Intent.ACTION_SEND).apply {
                             type = "application/json"
@@ -394,7 +420,12 @@ fun ChatScreen(
                     },
                     modifier = Modifier.fillMaxWidth()
                   ) {
-                    Icon(Icons.Filled.Save, null, modifier = Modifier.size(18.dp), tint = colors.Text2)
+                    Icon(
+                      Icons.Filled.Save,
+                      null,
+                      modifier = Modifier.size(18.dp),
+                      tint = colors.Text2
+                    )
                     Spacer(Modifier.width(8.dp))
                     Text("Export as JSON", fontSize = 14.sp)
                   }
@@ -458,36 +489,42 @@ fun ChatScreen(
           ) {
             items(messages) { msg ->
               val idx = messages.indexOf(msg)
-              val isLastAssistant = !isInferring && msg.role == MessageRole.ASSISTANT && idx == messages.size - 1
-              val isRegenerateAllowed = isLastAssistant && idx > 0 && messages[idx - 1].role == MessageRole.USER
+              val isLastAssistant =
+                !isInferring && msg.role == MessageRole.ASSISTANT && idx == messages.size - 1
+              val isRegenerateAllowed =
+                isLastAssistant && idx > 0 && messages[idx - 1].role == MessageRole.USER
               ChatBubble(
-                msg, clip,
+                msg,
+                clip,
                 onSpeak = { text -> tts.value?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null) },
-                onRegenerate = if (isRegenerateAllowed) {{
+                onRegenerate = if (isRegenerateAllowed) {
+                  {
+                    val userMsg = messages[idx - 1]
+                    messages = messages.toMutableList().also { it.removeAt(idx) }
+                    app.chatRepository.deleteMessage(chatId, idx)
 
-                  val userMsg = messages[idx - 1]
-                  messages = messages.toMutableList().also { it.removeAt(idx) }
-                  app.chatRepository.deleteMessage(chatId, idx)
-
-                  streamedText = ""
-                  isInferring = true
-                  scope.launch(Dispatchers.IO) {
-                    val cb = object : TokenCallback {
-                      override fun onToken(token: String) {}
-                      override fun onDone() {}
-                      override fun onError(error: String) {}
-                      override fun onKvUsage(percent: Int) {}
-                      override fun onTokensGenerated(count: Int) {}
-                    }
-                    engine?.let {
-                      var prompt = userMsg.content
-                      if (userMsg.attachmentPath != null) {
-                        prompt = "[Image attached: ${userMsg.attachmentPath}]\n$prompt"
+                    streamedText = ""
+                    isInferring = true
+                    scope.launch(Dispatchers.IO) {
+                      val cb = object : TokenCallback {
+                        override fun onToken(token: String) {}
+                        override fun onDone() {}
+                        override fun onError(error: String) {}
+                        override fun onKvUsage(percent: Int) {}
+                        override fun onTokensGenerated(count: Int) {}
                       }
-                      it.executeInference(prompt, cb)
+                      engine?.let {
+                        var prompt = userMsg.content
+                        if (userMsg.attachmentPath != null) {
+                          prompt = "[Image attached: ${userMsg.attachmentPath}]\n$prompt"
+                        }
+                        it.executeInference(prompt, cb)
+                      }
                     }
                   }
-                }} else null,
+                } else {
+                  null
+                },
                 onDelete = { deleteConfirmMsg = msg }
               )
             }
@@ -515,7 +552,10 @@ fun ChatScreen(
           isListening = isListening,
           isSpeaking = isSpeaking,
           reasoningEnabled = reasoningEnabled,
-          onReasoningToggle = { reasoningEnabled = it; SettingsManager.reasoningEnabled = it },
+          onReasoningToggle = {
+            reasoningEnabled = it
+            SettingsManager.reasoningEnabled = it
+          },
           onSend = {
             if (prompt.isNotBlank()) {
               val msg = prompt
@@ -526,7 +566,12 @@ fun ChatScreen(
               val attachmentName = attach?.lastPathSegment?.substringAfterLast('/')
               val attachType = attach?.let { getAttachmentType(context, it) }
               val userMsg = if (attach != null) {
-                ChatMessage(MessageRole.USER, msg, attachmentPath = attachmentName, attachmentType = attachType)
+                ChatMessage(
+                  MessageRole.USER,
+                  msg,
+                  attachmentPath = attachmentName,
+                  attachmentType = attachType
+                )
               } else {
                 ChatMessage(MessageRole.USER, msg)
               }
@@ -544,7 +589,9 @@ fun ChatScreen(
                 }
                 var fullPrompt = if (reasoningEnabled) {
                   "Use <think> tags for step-by-step reasoning before answering.\n\n$msg"
-                } else msg
+                } else {
+                  msg
+                }
                 if (attach != null) {
                   val mime = context.contentResolver.getType(attach) ?: ""
                   when {
@@ -587,18 +634,27 @@ fun ChatScreen(
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
               addCategory(Intent.CATEGORY_OPENABLE)
               type = "*/*"
-              putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/plain", "text/markdown", "application/pdf"))
+              putExtra(
+                Intent.EXTRA_MIME_TYPES,
+                arrayOf("text/plain", "text/markdown", "application/pdf")
+              )
             }
             docPicker.launch(intent)
           },
           onVoice = {
             isListening = true
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-              putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+              putExtra(
+                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+              )
               putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak your message...")
             }
-            try { speechLauncher.launch(intent) }
-            catch (_: Exception) { isListening = false }
+            try {
+              speechLauncher.launch(intent)
+            } catch (_: Exception) {
+              isListening = false
+            }
           },
           onSpeak = { text ->
             tts.value?.let { t ->
@@ -640,7 +696,9 @@ fun ChatScreen(
         }) { Text("Delete", color = colors.Red) }
       },
       dismissButton = {
-        androidx.compose.material3.TextButton(onClick = { deleteConfirmMsg = null }) { Text("Cancel") }
+        androidx.compose.material3.TextButton(onClick = {
+          deleteConfirmMsg = null
+        }) { Text("Cancel") }
       }
     )
   }
@@ -668,7 +726,12 @@ fun ChatScreen(
           ).forEach { (label, value) ->
             if (value.isNotEmpty() && value != "0") {
               Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                Text("$label: ", fontSize = 13.sp, color = colors.Text2, modifier = Modifier.weight(1f))
+                Text(
+                  "$label: ",
+                  fontSize = 13.sp,
+                  color = colors.Text2,
+                  modifier = Modifier.weight(1f)
+                )
                 Text(value, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
               }
             }
@@ -676,7 +739,9 @@ fun ChatScreen(
         }
       },
       confirmButton = {
-        androidx.compose.material3.TextButton(onClick = { showModelInfoDialog = false }) { Text("OK") }
+        androidx.compose.material3.TextButton(onClick = {
+          showModelInfoDialog = false
+        }) { Text("OK") }
       }
     )
   }
@@ -695,16 +760,16 @@ private fun getAttachmentType(context: Context, uri: Uri): AttachmentType {
   }
 }
 
-private fun readFileContent(context: Context, uri: Uri, mime: String): String {
-  return try {
-    if (mime == "application/pdf") {
-      readPdfText(context, uri)
-    } else {
-      context.contentResolver.openInputStream(uri)?.use { input ->
-        BufferedReader(InputStreamReader(input)).readText()
-      } ?: ""
-    }
-  } catch (_: Exception) { "" }
+private fun readFileContent(context: Context, uri: Uri, mime: String): String = try {
+  if (mime == "application/pdf") {
+    readPdfText(context, uri)
+  } else {
+    context.contentResolver.openInputStream(uri)?.use { input ->
+      BufferedReader(InputStreamReader(input)).readText()
+    } ?: ""
+  }
+} catch (_: Exception) {
+  ""
 }
 
 private fun readPdfText(context: Context, uri: Uri): String {
@@ -715,8 +780,10 @@ private fun readPdfText(context: Context, uri: Uri): String {
     val text = StringBuilder()
     var i = 0
     while (i < bytes.size) {
-      if (bytes[i] == 'T'.code.toByte() && i + 4 < bytes.size &&
-        bytes[i + 1] == 'j'.code.toByte() && bytes[i + 2] == '('.code.toByte()
+      if (bytes[i] == 'T'.code.toByte() &&
+        i + 4 < bytes.size &&
+        bytes[i + 1] == 'j'.code.toByte() &&
+        bytes[i + 2] == '('.code.toByte()
       ) {
         i += 3
         while (i < bytes.size && bytes[i] != ')'.code.toByte()) {
@@ -727,19 +794,21 @@ private fun readPdfText(context: Context, uri: Uri): String {
       i++
     }
     text.toString().take(10000)
-  } catch (_: Exception) { "" }
+  } catch (_: Exception) {
+    ""
+  }
 }
 
-private fun saveImageToAppStorage(context: Context, uri: Uri): String? {
-  return try {
-    val dir = File(context.filesDir, "images").also { it.mkdirs() }
-    val name = "img_${System.currentTimeMillis()}.jpg"
-    val file = File(dir, name)
-    context.contentResolver.openInputStream(uri)?.use { input ->
-      FileOutputStream(file).use { output -> input.copyTo(output) }
-    }
-    file.absolutePath
-  } catch (_: Exception) { null }
+private fun saveImageToAppStorage(context: Context, uri: Uri): String? = try {
+  val dir = File(context.filesDir, "images").also { it.mkdirs() }
+  val name = "img_${System.currentTimeMillis()}.jpg"
+  val file = File(dir, name)
+  context.contentResolver.openInputStream(uri)?.use { input ->
+    FileOutputStream(file).use { output -> input.copyTo(output) }
+  }
+  file.absolutePath
+} catch (_: Exception) {
+  null
 }
 
 private fun getFileName(context: Context, uri: Uri): String {
@@ -785,14 +854,27 @@ fun ChatBubble(
         modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(colors.Accent),
         contentAlignment = Alignment.Center
       ) {
-        Text("Z", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+        Text(
+          "Z",
+          fontSize = 11.sp,
+          color = Color.White,
+          fontWeight = FontWeight.Black,
+          fontFamily = FontFamily.Monospace
+        )
       }
       Spacer(Modifier.width(8.dp))
     }
     Column(modifier = Modifier.widthIn(max = 300.dp)) {
       Surface(
         modifier = Modifier
-          .clip(RoundedCornerShape(topStart = if (isUser) 18.dp else 6.dp, topEnd = if (isUser) 6.dp else 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp))
+          .clip(
+            RoundedCornerShape(
+              topStart = if (isUser) 18.dp else 6.dp,
+              topEnd = if (isUser) 6.dp else 18.dp,
+              bottomStart = 18.dp,
+              bottomEnd = 18.dp
+            )
+          )
           .combinedClickable(
             onClick = { clip.setPrimaryClip(ClipData.newPlainText("msg", msg.content)) },
             onLongClick = { showMenu = true }
@@ -802,20 +884,41 @@ fun ChatBubble(
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
           if (msg.attachmentPath != null) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-              Icon(Icons.Outlined.Image, null, modifier = Modifier.size(16.dp), tint = colors.Purple)
+              Icon(
+                Icons.Outlined.Image,
+                null,
+                modifier = Modifier.size(16.dp),
+                tint = colors.Purple
+              )
               Spacer(Modifier.width(4.dp))
-              Text(msg.attachmentPath, fontSize = 11.sp, color = colors.Purple, fontFamily = FontFamily.Monospace)
+              Text(
+                msg.attachmentPath,
+                fontSize = 11.sp,
+                color = colors.Purple,
+                fontFamily = FontFamily.Monospace
+              )
             }
             Spacer(Modifier.height(4.dp))
           }
-          if (!isUser) ThinkingContent(stripTokens(msg.content)) else {
+          if (!isUser) {
+            ThinkingContent(stripTokens(msg.content))
+          } else {
             MarkdownText(stripTokens(msg.content))
           }
         }
       }
       if (!isUser) {
-        Text("<end>", fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(start = 4.dp, top = 2.dp))
-        Row(modifier = Modifier.padding(start = 4.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+          "<end>",
+          fontSize = 9.sp,
+          color = colors.Text3,
+          fontFamily = FontFamily.Monospace,
+          modifier = Modifier.padding(start = 4.dp, top = 2.dp)
+        )
+        Row(
+          modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+          verticalAlignment = Alignment.CenterVertically
+        ) {
           if (msg.tps > 0) {
             Text(
               "%.1f t/s · %d tok".format(msg.tps, msg.tokens),
@@ -828,15 +931,32 @@ fun ChatBubble(
             Spacer(Modifier.weight(1f))
           }
           IconButton(onClick = { onSpeak(msg.content) }, modifier = Modifier.size(20.dp)) {
-            Icon(Icons.Outlined.VolumeUp, "Speak", tint = colors.Text3, modifier = Modifier.size(14.dp))
+            Icon(
+              Icons.Outlined.VolumeUp,
+              "Speak",
+              tint = colors.Text3,
+              modifier = Modifier.size(14.dp)
+            )
           }
           if (isLatestAssistant) {
             IconButton(onClick = onRegenerate, modifier = Modifier.size(20.dp)) {
-              Icon(Icons.Filled.Refresh, "Regenerate", tint = colors.Accent, modifier = Modifier.size(14.dp))
+              Icon(
+                Icons.Filled.Refresh,
+                "Regenerate",
+                tint = colors.Accent,
+                modifier = Modifier.size(14.dp)
+              )
             }
           }
-          IconButton(onClick = { clip.setPrimaryClip(ClipData.newPlainText("msg", msg.content)) }, modifier = Modifier.size(20.dp)) {
-            Icon(Icons.Outlined.ContentCopy, "Copy", tint = colors.Text3, modifier = Modifier.size(12.dp))
+          IconButton(onClick = {
+            clip.setPrimaryClip(ClipData.newPlainText("msg", msg.content))
+          }, modifier = Modifier.size(20.dp)) {
+            Icon(
+              Icons.Outlined.ContentCopy,
+              "Copy",
+              tint = colors.Text3,
+              modifier = Modifier.size(12.dp)
+            )
           }
         }
       }
@@ -847,21 +967,43 @@ fun ChatBubble(
           text = {
             Column {
               androidx.compose.material3.TextButton(
-                onClick = { clip.setPrimaryClip(ClipData.newPlainText("msg", msg.content)); showMenu = false },
+                onClick = {
+                  clip.setPrimaryClip(ClipData.newPlainText("msg", msg.content))
+                  showMenu =
+                    false
+                },
                 modifier = Modifier.fillMaxWidth()
               ) {
-                Icon(Icons.Outlined.ContentCopy, null, modifier = Modifier.size(18.dp), tint = colors.Text2)
+                Icon(
+                  Icons.Outlined.ContentCopy,
+                  null,
+                  modifier = Modifier.size(18.dp),
+                  tint = colors.Text2
+                )
                 Spacer(Modifier.width(8.dp))
                 Text("Copy", fontSize = 14.sp, modifier = Modifier.weight(1f))
               }
               if (onDelete != null) {
                 androidx.compose.material3.TextButton(
-                  onClick = { showMenu = false; onDelete() },
+                  onClick = {
+                    showMenu = false
+                    onDelete()
+                  },
                   modifier = Modifier.fillMaxWidth()
                 ) {
-                  Icon(Icons.Outlined.Delete, null, modifier = Modifier.size(18.dp), tint = colors.Red)
+                  Icon(
+                    Icons.Outlined.Delete,
+                    null,
+                    modifier = Modifier.size(18.dp),
+                    tint = colors.Red
+                  )
                   Spacer(Modifier.width(8.dp))
-                  Text("Delete", fontSize = 14.sp, color = colors.Red, modifier = Modifier.weight(1f))
+                  Text(
+                    "Delete",
+                    fontSize = 14.sp,
+                    color = colors.Red,
+                    modifier = Modifier.weight(1f)
+                  )
                 }
               }
             }
@@ -887,7 +1029,10 @@ fun ChatBubble(
 @Composable
 fun ThinkingContent(content: String) {
   val colors = currentPalette()
-  val pattern = remember { Regex("(?:<think>|<think>\\n?)(.*?)(?:</think>|</think>\\n?)", RegexOption.DOT_MATCHES_ALL) }
+  val pattern =
+    remember {
+      Regex("(?:<think>|<think>\\n?)(.*?)(?:</think>|</think>\\n?)", RegexOption.DOT_MATCHES_ALL)
+    }
   val match = remember(content) { pattern.find(content) }
   if (match != null) {
     val think = match.groupValues[1].trim()
@@ -902,12 +1047,28 @@ fun ThinkingContent(content: String) {
       ) {
         Column(modifier = Modifier.padding(8.dp)) {
           Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.Lightbulb, null, modifier = Modifier.size(12.dp), tint = colors.Purple)
+            Icon(
+              Icons.Outlined.Lightbulb,
+              null,
+              modifier = Modifier.size(12.dp),
+              tint = colors.Purple
+            )
             Spacer(Modifier.width(4.dp))
-            Text(if (open) "Thinking" else "Thinking...", fontSize = 10.sp, color = colors.Purple, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+            Text(
+              if (open) "Thinking" else "Thinking...",
+              fontSize = 10.sp,
+              color = colors.Purple,
+              fontFamily = FontFamily.Monospace,
+              fontWeight = FontWeight.SemiBold
+            )
           }
           AnimatedVisibility(open) {
-            MarkdownText(think, modifier = Modifier.padding(top = 4.dp), style = LocalTextStyle.current.copy(fontSize = 11.sp), textColor = colors.Text3)
+            MarkdownText(
+              think,
+              modifier = Modifier.padding(top = 4.dp),
+              style = LocalTextStyle.current.copy(fontSize = 11.sp),
+              textColor = colors.Text3
+            )
           }
         }
       }
@@ -931,7 +1092,13 @@ fun StreamingBubble(text: String, processing: Boolean) {
         modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(colors.Accent),
         contentAlignment = Alignment.Center
       ) {
-        Text("Z", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+        Text(
+          "Z",
+          fontSize = 11.sp,
+          color = Color.White,
+          fontWeight = FontWeight.Black,
+          fontFamily = FontFamily.Monospace
+        )
       }
       Spacer(Modifier.width(8.dp))
       Surface(
@@ -942,7 +1109,11 @@ fun StreamingBubble(text: String, processing: Boolean) {
           modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
           verticalAlignment = Alignment.CenterVertically
         ) {
-          CircularProgressIndicator(modifier = Modifier.size(14.dp), color = colors.Accent2, strokeWidth = 2.dp)
+          CircularProgressIndicator(
+            modifier = Modifier.size(14.dp),
+            color = colors.Accent2,
+            strokeWidth = 2.dp
+          )
           Spacer(Modifier.width(8.dp))
           Text("Processing prompt...", fontSize = 12.sp, color = colors.Text2)
         }
@@ -959,7 +1130,13 @@ fun StreamingBubble(text: String, processing: Boolean) {
       modifier = Modifier.size(24.dp).clip(RoundedCornerShape(7.dp)).background(colors.Accent),
       contentAlignment = Alignment.Center
     ) {
-      Text("Z", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+      Text(
+        "Z",
+        fontSize = 11.sp,
+        color = Color.White,
+        fontWeight = FontWeight.Black,
+        fontFamily = FontFamily.Monospace
+      )
     }
     Spacer(Modifier.width(8.dp))
     Surface(
@@ -1015,7 +1192,13 @@ fun InputBar(
               tint = colors.Purple
             )
             Spacer(Modifier.width(4.dp))
-            Text(attachmentFileName, fontSize = 11.sp, color = colors.Purple, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+            Text(
+              attachmentFileName,
+              fontSize = 11.sp,
+              color = colors.Purple,
+              fontFamily = FontFamily.Monospace,
+              modifier = Modifier.weight(1f)
+            )
           }
         }
       }
@@ -1023,15 +1206,33 @@ fun InputBar(
         value = prompt,
         onValueChange = onPromptChange,
         modifier = Modifier.fillMaxWidth(),
-        placeholder = { Text(if (isListening) "Listening..." else "Message...", color = colors.Text3, fontSize = 14.sp) },
+        placeholder = {
+          Text(
+            if (isListening) "Listening..." else "Message...",
+            color = colors.Text3,
+            fontSize = 14.sp
+          )
+        },
         enabled = !isInferring && !isListening,
         maxLines = 5,
         shape = RoundedCornerShape(14.dp),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-        keyboardActions = KeyboardActions(onSend = { if (!isInferring && prompt.isNotBlank()) onSend() }),
+        keyboardActions = KeyboardActions(onSend = {
+          if (!isInferring &&
+            prompt.isNotBlank()
+          ) {
+            onSend()
+          }
+        }),
         colors = OutlinedTextFieldDefaults.colors(
           focusedBorderColor = colors.Accent.copy(alpha = 0.5f),
-          unfocusedBorderColor = if (isListening) colors.Purple.copy(alpha = 0.5f) else colors.Border,
+          unfocusedBorderColor = if (isListening) {
+            colors.Purple.copy(
+              alpha = 0.5f
+            )
+          } else {
+            colors.Border
+          },
           focusedContainerColor = colors.Card,
           unfocusedContainerColor = colors.Card,
           focusedTextColor = colors.Text,
@@ -1043,17 +1244,37 @@ fun InputBar(
       Spacer(Modifier.height(6.dp))
       Row(verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onImage, modifier = Modifier.size(36.dp)) {
-          Icon(Icons.Outlined.Image, "Attach Image", tint = colors.Purple, modifier = Modifier.size(18.dp))
+          Icon(
+            Icons.Outlined.Image,
+            "Attach Image",
+            tint = colors.Purple,
+            modifier = Modifier.size(18.dp)
+          )
         }
         IconButton(onClick = onDoc, modifier = Modifier.size(36.dp)) {
-          Icon(Icons.Outlined.Description, "Attach Document", tint = colors.Accent, modifier = Modifier.size(18.dp))
+          Icon(
+            Icons.Outlined.Description,
+            "Attach Document",
+            tint = colors.Accent,
+            modifier = Modifier.size(18.dp)
+          )
         }
         IconButton(onClick = onVoice, modifier = Modifier.size(36.dp)) {
-          Icon(Icons.Outlined.Mic, "Voice Input", tint = if (isListening) colors.Purple else colors.Text2, modifier = Modifier.size(18.dp))
+          Icon(
+            Icons.Outlined.Mic,
+            "Voice Input",
+            tint = if (isListening) colors.Purple else colors.Text2,
+            modifier = Modifier.size(18.dp)
+          )
         }
         if (isSpeaking) {
           IconButton(onClick = {}, modifier = Modifier.size(36.dp)) {
-            Icon(Icons.Outlined.VolumeUp, "Speaking", tint = colors.Accent2, modifier = Modifier.size(18.dp))
+            Icon(
+              Icons.Outlined.VolumeUp,
+              "Speaking",
+              tint = colors.Accent2,
+              modifier = Modifier.size(18.dp)
+            )
           }
         }
         Spacer(Modifier.width(4.dp))
