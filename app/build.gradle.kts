@@ -9,37 +9,12 @@ android {
     compileSdk = 36
     ndkVersion = "27.0.12077973"
 
-    signingConfigs {
-        create("release") {
-            val keystoreFile = rootProject.file("keystore.properties")
-            if (keystoreFile.exists()) {
-                val props = mutableMapOf<String, String>()
-                keystoreFile.forEachLine { line ->
-                    val idx = line.indexOf('=')
-                    if (idx > 0 && line.length > idx + 1) {
-                        props[line.substring(0, idx).trim()] = line.substring(idx + 1).trim()
-                    }
-                }
-                storeFile = rootProject.file(props["storeFile"] ?: "keystore.jks")
-                storePassword = props["storePassword"] ?: ""
-                keyAlias = props["keyAlias"] ?: ""
-                keyPassword = props["keyPassword"] ?: ""
-            } else {
-                // Auto-generate debug keystore for release builds
-                storeFile = rootProject.file("keystore.jks")
-                storePassword = "zerocopy"
-                keyAlias = "zerocopy"
-                keyPassword = "zerocopy"
-            }
-        }
-    }
-
     defaultConfig {
         applicationId = "com.gguf.zerocopy"
         minSdk        = 29
         targetSdk     = 36
-        versionCode   = 10
-        versionName   = "1.0.0"
+        versionCode   = 11
+        versionName   = "1.0.1"
 
         externalNativeBuild {
             cmake {
@@ -59,8 +34,8 @@ android {
             }
         }
 
-        buildConfigField("String", "VERSION_NAME", "\"1.0.0\"")
-        buildConfigField("int", "VERSION_CODE", "10")
+        buildConfigField("String", "VERSION_NAME", "\"1.0.1\"")
+        buildConfigField("int", "VERSION_CODE", "11")
     }
 
     compileOptions {
@@ -77,13 +52,6 @@ android {
         cmake {
             path    = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
-        }
-    }
-
-    buildTypes {
-        release {
-            signingConfig = signingConfigs.findByName("release")
-            isMinifyEnabled = false
         }
     }
 

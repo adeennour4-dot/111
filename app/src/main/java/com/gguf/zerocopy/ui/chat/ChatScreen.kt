@@ -119,7 +119,8 @@ fun ChatScreen(
   sessionId: String?,
   onModelSelected: (String, String) -> Unit,
   onSettings: () -> Unit,
-  onSessions: () -> Unit
+  onSessions: () -> Unit,
+  onCloud: () -> Unit = {}
 ) {
   val context = LocalContext.current
   val app = ZeroCopyApp.instance
@@ -535,15 +536,11 @@ fun ChatScreen(
               }
             )
           }
-          val serverRunning = app.modelServer.isRunning
-          IconButton(onClick = {
-            if (serverRunning) app.modelServer.stop()
-            else app.modelServer.start()
-          }) {
+          IconButton(onClick = onCloud) {
             Icon(
               Icons.Outlined.Cloud,
-              if (serverRunning) "Server: ${app.modelServer.getServerUrl()}" else "Start Server",
-              tint = if (serverRunning) colors.Accent2 else colors.Text3
+              "Cloud Server",
+              tint = colors.Accent2
             )
           }
           IconButton(onClick = onSessions) {

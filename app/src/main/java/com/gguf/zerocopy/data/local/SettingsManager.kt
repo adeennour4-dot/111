@@ -116,6 +116,30 @@ object SettingsManager {
       prefs?.edit()?.putBoolean("reasoning_enabled", v)?.apply()
     }
 
+  var serverEnabled: Boolean
+    get() = prefs?.getBoolean("server_enabled", false) ?: false
+    set(v) { prefs?.edit()?.putBoolean("server_enabled", v)?.apply() }
+
+  var serverIp: String
+    get() = prefs?.getString("server_ip", "192.168.1.100") ?: "192.168.1.100"
+    set(v) { prefs?.edit()?.putString("server_ip", v)?.apply() }
+
+  var serverPort: Int
+    get() = prefs?.getInt("server_port", 8080) ?: 8080
+    set(v) { prefs?.edit()?.putInt("server_port", v)?.apply() }
+
+  var serverAuthEnabled: Boolean
+    get() = prefs?.getBoolean("server_auth", false) ?: false
+    set(v) { prefs?.edit()?.putBoolean("server_auth", v)?.apply() }
+
+  var serverAuthToken: String
+    get() = prefs?.getString("server_auth_token", "") ?: ""
+    set(v) { prefs?.edit()?.putString("server_auth_token", v)?.apply() }
+
+  var serverWifiOnly: Boolean
+    get() = prefs?.getBoolean("server_wifi_only", true) ?: true
+    set(v) { prefs?.edit()?.putBoolean("server_wifi_only", v)?.apply() }
+
   var isDarkTheme: Boolean
     get() = prefs?.getBoolean("dark_theme", true) ?: true
     set(v) {

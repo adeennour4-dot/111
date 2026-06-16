@@ -1,4 +1,4 @@
-name: Build ZeroCopy v8
+name: Build ZeroCopy
 
 on:
   push:
@@ -7,20 +7,6 @@ on:
   pull_request:
     branches: [ "main", "master" ]
   workflow_dispatch:
-    inputs:
-      build_type:
-        description: 'Build type'
-        required: true
-        default: 'debug'
-        type: choice
-        options:
-          - debug
-          - release
-      enable_rust:
-        description: 'Build Rust optimization layer'
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: write
@@ -55,11 +41,8 @@ jobs:
       - name: Install Android SDK components
         id: install-sdk
         run: |
-          # GitHub Actions runners have Android SDK pre-installed
           ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-
-          # If sdkmanager not found, install cmdline-tools
           if [ ! -f "$SDKMANAGER" ]; then
             echo "cmdline-tools not found, installing..."
             mkdir -p $HOME/android-sdk
@@ -77,11 +60,7 @@ jobs:
             echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
             echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
           fi
-
-          # Accept licenses (ignore failure if already accepted)
           yes | $SDKMANAGER --licenses > /dev/null 2>&1 || true
-
-          # Install components using a tempfile to capture exit code
           TMPLOG=$(mktemp)
           set +e
           $SDKMANAGER --install \
@@ -91,22 +70,9 @@ jobs:
             "cmake;${{ env.CMAKE_VERSION }}" \
             "platform-tools" \
             > "$TMPLOG" 2>&1
-          EXIT_CODE=$?
           tail -20 "$TMPLOG"
-          if [ $EXIT_CODE -ne 0 ]; then
-            echo "API ${{ env.ANDROID_API }} build-tools failed, trying API 35..."
-            $SDKMANAGER --install \
-              "platforms;android-${{ env.ANDROID_API }}" \
-              "build-tools;35.0.0" \
-              "ndk;${{ env.NDK_VERSION }}" \
-              "cmake;${{ env.CMAKE_VERSION }}" \
-              "platform-tools" \
-              > "$TMPLOG" 2>&1
-            tail -20 "$TMPLOG"
-          fi
           rm -f "$TMPLOG"
           set -e
-
           NDK_HOME="$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"
           echo "NDK_HOME=$NDK_HOME" >> $GITHUB_ENV
           echo "ndk-path=$NDK_HOME" >> $GITHUB_OUTPUT
@@ -132,193 +98,29 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cmake-
 
-      - name: Cache LLVM/Clang (NDK)
-        if: steps.install-sdk.outputs.ndk-path != ''
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ steps.install-sdk.outputs.ndk-path }}/toolchains/llvm
-          key: ${{ runner.os }}-ndk-${{ env.NDK_VERSION }}
-          restore-keys: |
-            ${{ runner.os }}-ndk-
-
-      # -----------------------------------------------------------------------
-      # Optional: Build Rust optimization layer
-      # -----------------------------------------------------------------------
-      - name: Build Rust core
-        if: ${{ github.event.inputs.enable_rust == 'true' || github.ref_type == 'tag' }}
-        run: |
-          export ANDROID_NDK_HOME="${{ env.NDK_HOME }}"
-          
-          # Install Rust
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          source $HOME/.cargo/env
-          
-          # Add Android target
-          rustup target add aarch64-linux-android
-          
-          # Install cargo-ndk
-          cargo install cargo-ndk
-          
-          # Build
-          cd rust_core
-          export ANDROID_NDK_HOME="${{ env.NDK_HOME }}"
-          cargo ndk -t arm64-v8a -o ../app/src/main/jniLibs build --release
-          cd ..
-          echo "Rust core built and placed in jniLibs"
-
-      - name: Verify Vulkan headers (NDK)
-        run: |
-          NDK="${{ env.NDK_HOME }}"
-          VK_HEADER="$NDK/sources/third_party/vulkan/include/vulkan/vulkan.h"
-          if [ -f "$VK_HEADER" ]; then
-            echo "Vulkan headers found at $VK_HEADER"
-          else
-            echo "::warning::Vulkan header not found at $VK_HEADER — Vulkan GPU offload disabled"
-          fi
-
-      # -----------------------------------------------------------------------
-      # Build APK
-      # -----------------------------------------------------------------------
       - name: Make gradlew executable
         run: chmod +x gradlew
 
       - name: Build debug APK
-        if: ${{ github.event.inputs.build_type != 'release' || github.ref_type == 'tag' }}
         run: |
           ./gradlew assembleDebug \
             --no-daemon \
             --stacktrace
 
-      - name: Build release APK
-        if: ${{ github.event.inputs.build_type == 'release' || github.ref_type == 'tag' }}
-        env:
-          KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        run: |
-          if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > keystore.jks
-            echo "storePassword=$KEYSTORE_PASSWORD" >> keystore.properties
-            echo "keyPassword=$KEY_PASSWORD" >> keystore.properties
-            echo "keyAlias=$KEY_ALIAS" >> keystore.properties
-            echo "storeFile=keystore.jks" >> keystore.properties
-          else
-            # Generate a dev keystore so APK is signed and installable
-            keytool -genkey -v -keystore keystore.jks -alias zero -keyalg RSA -keysize 2048 \
-              -validity 10000 -storepass zerocopy -keypass zerocopy \
-              -dname "CN=ZeroCopy, OU=Dev, O=ZeroCopy, L=Unknown, ST=Unknown, C=XX"
-            echo "storePassword=zerocopy" >> keystore.properties
-            echo "keyPassword=zerocopy" >> keystore.properties
-            echo "keyAlias=zero" >> keystore.properties
-            echo "storeFile=keystore.jks" >> keystore.properties
-          fi
-          ./gradlew assembleRelease \
-            --no-daemon \
-            --stacktrace
-
-      # -----------------------------------------------------------------------
-      # Upload artifacts
-      # -----------------------------------------------------------------------
       - name: Upload debug APK
-        if: ${{ github.event.inputs.build_type != 'release' || github.ref_type == 'tag' }}
         uses: actions/upload-artifact@v4
         with:
-          name: ZeroCopy-v8-debug
+          name: ZeroCopy-debug
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 30
 
-      - name: Upload release APK
-        if: ${{ github.event.inputs.build_type == 'release' || github.ref_type == 'tag' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ZeroCopy-v8-release
-          path: app/build/outputs/apk/release/*.apk
-          retention-days: 90
-
-      - name: Upload native debug symbols
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-symbols
-          path: app/build/intermediates/merged_native_libs/**/out/lib/
-          retention-days: 7
-
-      # -----------------------------------------------------------------------
-      # GitHub Release (on tags)
-      # -----------------------------------------------------------------------
       - name: Create GitHub Release
         if: ${{ github.ref_type == 'tag' }}
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            app/build/outputs/apk/release/*.apk
             app/build/outputs/apk/debug/*.apk
           generate_release_notes: true
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # ---------------------------------------------------------------------------
-  # Separate job: Code quality checks (parallel with build)
-  # ---------------------------------------------------------------------------
-  lint:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-      
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-      
-      - name: Run ktlint check
-        run: |
-          # Install ktlint
-          curl -sSLO https://github.com/pinterest/ktlint/releases/download/1.3.1/ktlint
-          chmod +x ktlint
-          # Lint check (non-fatal - formatting issues produce warnings only)
-          find . -name "*.kt" -path "*/main/*" -exec ./ktlint {} \+ || true
-      
-      - name: Check for TODOs and FIXMEs
-        run: |
-          if grep -rn "TODO\|FIXME\|HACK" --include="*.kt" --include="*.cpp" --include="*.rs" .; then
-            echo "WARNING: Found TODOs/FIXMEs in code"
-          fi
-
-  # ---------------------------------------------------------------------------
-  # Separate job: APK size report
-  # ---------------------------------------------------------------------------
-  size-report:
-    runs-on: ubuntu-latest
-    needs: build
-    if: success()
-    steps:
-      - name: Download debug APK
-        uses: actions/download-artifact@v4
-        with:
-          name: ZeroCopy-v8-debug
-          path: apks/debug
-        continue-on-error: true
-      
-      - name: Download release APK
-        uses: actions/download-artifact@v4
-        with:
-          name: ZeroCopy-v8-release
-          path: apks/release
-        continue-on-error: true
-      
-      - name: Analyze APK size
-        run: |
-          found=false
-          for apk in $(find apks -name "*.apk" 2>/dev/null); do
-            found=true
-            size=$(stat -c%s "$apk" 2>/dev/null || stat -f%z "$apk" 2>/dev/null)
-            echo "::notice::$apk: $(( size / 1024 / 1024 )) MB ($(( size / 1024 )) KB)"
-          done
-          [ "$found" = false ] && echo "No APKs found for size analysis"

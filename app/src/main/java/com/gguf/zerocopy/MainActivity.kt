@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ui.chat.ChatScreen
+import com.gguf.zerocopy.ui.cloud.CloudScreen
 import com.gguf.zerocopy.ui.models.ModelListScreen
 import com.gguf.zerocopy.ui.sessions.SessionListScreen
 import com.gguf.zerocopy.ui.settings.SettingsScreen
@@ -40,7 +41,7 @@ import com.gguf.zerocopy.ui.theme.ZeroCopyTheme
 import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlinx.coroutines.delay
 
-enum class AppScreen { SPLASH, CHAT, SESSIONS, MODELS, SETTINGS }
+enum class AppScreen { SPLASH, CHAT, SESSIONS, MODELS, SETTINGS, CLOUD }
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,8 +82,12 @@ fun AppRoot() {
           }
         },
         onSettings = { screen = AppScreen.SETTINGS },
-        onSessions = { screen = AppScreen.SESSIONS }
+        onSessions = { screen = AppScreen.SESSIONS },
+        onCloud = { screen = AppScreen.CLOUD }
       )
+
+    AppScreen.CLOUD ->
+      CloudScreen(onBack = { screen = AppScreen.CHAT })
 
     AppScreen.SESSIONS ->
       SessionListScreen(
