@@ -50,7 +50,7 @@ class ModelServer(private val port: Int = 8080) {
             e.config = com.gguf.zerocopy.data.local.SettingsManager.toConfig()
             e.systemPrompt = com.gguf.zerocopy.data.local.SettingsManager.systemPrompt
             e.repeatPenalty = com.gguf.zerocopy.data.local.SettingsManager.toRepeatPenalty()
-            val result = e.loadModel(modelInfo.path)
+            val result = runBlocking { e.loadModel(modelInfo.path) }
             if (result.isSuccess) {
               app.modelRepository.markUsed(modelInfo.id)
               Log.i(tag, "Auto-loaded model: ${modelInfo.name}")
