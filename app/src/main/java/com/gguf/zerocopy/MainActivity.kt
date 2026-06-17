@@ -72,6 +72,8 @@ fun AppRoot() {
         onModelSelected = { path, name ->
           loadedModelPath = path
           loadedModelName = name
+          SettingsManager.lastModelPath = path
+          SettingsManager.lastModelName = name
           if (currentSessionId != null && app.chatRepository.sessionExists(currentSessionId!!)) {
             val existing = app.chatRepository.sessions.value.find { it.id == currentSessionId }
             if (existing != null) {

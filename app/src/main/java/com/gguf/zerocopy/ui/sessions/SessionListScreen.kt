@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -258,6 +260,17 @@ private fun SessionCard(
           }
         }
       }
+      AssistChip(
+        onClick = onClick,
+        label = { Text("Open", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+        colors = AssistChipDefaults.assistChipColors(
+          containerColor = colors.Accent.copy(alpha = 0.15f),
+          labelColor = colors.Accent
+        ),
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier.height(30.dp)
+      )
+      Spacer(Modifier.width(4.dp))
       IconButton(onClick = onRename, modifier = Modifier.size(32.dp)) {
         Icon(Icons.Filled.Edit, "Rename", tint = colors.Accent, modifier = Modifier.size(18.dp))
       }

@@ -346,7 +346,19 @@ fun SettingsScreen(onBack: () -> Unit) {
         Switch(
           checked = app.modelServer.isRunning,
           onCheckedChange = {
-            if (it) app.modelServer.start() else app.modelServer.stop()
+            if (it) {
+              val engine = app.engineManager.getActiveEngine()
+              if (engine?.loadedModelPath != null) {
+                val path = engine.loadedModelPath ?: ""
+                val name = path.substringAfterLast('/')
+                SettingsManager.lastModelPath = path
+                SettingsManager.lastModelName = name
+              }
+              app.modelServer.setAutoModel(SettingsManager.lastModelPath, SettingsManager.lastModelName)
+              app.modelServer.start()
+            } else {
+              app.modelServer.stop()
+            }
           },
           colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent2, checkedThumbColor = colors.Bg)
         )

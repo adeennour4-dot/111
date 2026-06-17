@@ -140,6 +140,14 @@ object SettingsManager {
     get() = prefs?.getBoolean("server_wifi_only", true) ?: true
     set(v) { prefs?.edit()?.putBoolean("server_wifi_only", v)?.apply() }
 
+  var lastModelPath: String
+    get() = prefs?.getString("last_model_path", "") ?: ""
+    set(v) { prefs?.edit()?.putString("last_model_path", v)?.apply() }
+
+  var lastModelName: String
+    get() = prefs?.getString("last_model_name", "") ?: ""
+    set(v) { prefs?.edit()?.putString("last_model_name", v)?.apply() }
+
   var isDarkTheme: Boolean
     get() = prefs?.getBoolean("dark_theme", true) ?: true
     set(v) {

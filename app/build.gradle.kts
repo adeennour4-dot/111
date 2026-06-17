@@ -18,8 +18,8 @@ android {
 
         externalNativeBuild {
             cmake {
-                cppFlags("-std=c++20 -O3 -flto=thin -march=armv8.6-a+dotprod+i8mm+fp16 -fno-stack-protector")
-                cFlags  ("-O3 -flto=thin -march=armv8.6-a+dotprod+i8mm+fp16 -fno-stack-protector")
+                cppFlags("-std=c++20 -O3 -flto=thin -march=armv8-a+dotprod -fno-stack-protector")
+                cFlags  ("-O3 -flto=thin -march=armv8-a+dotprod -fno-stack-protector")
                 arguments(
                     "-DANDROID_STL=c++_shared",
                     "-DGGML_VULKAN=OFF",

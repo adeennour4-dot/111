@@ -108,6 +108,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStreamReader
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -211,7 +212,7 @@ fun ChatScreen(
 
   LaunchedEffect(isInferring) {
     if (!isInferring) return@LaunchedEffect
-    // Wait for engine to actually start inference (fix race condition)
+    val messageAdded = AtomicBoolean(false)
     var ready = 0
     while (ready < 200) {
       if (engine?.isInferenceDone() == false) break
@@ -238,10 +239,7 @@ fun ChatScreen(
         val raw = engine?.readTokenStream().orEmpty()
         val final = stripTokens(raw)
         val ft = engine?.getTokensGenerated() ?: 0
-        if (final.isNotEmpty() &&
-          messages.none { it.timestamp == start && it.role == MessageRole.ASSISTANT }
-        ) {
-          // Check for tool calls
+        if (final.isNotEmpty() && !messageAdded.getAndSet(true)) {
           val toolCall = app.toolManager.parseToolCall(final)
           if (toolCall != null && engine?.toolsEnabled == true) {
             val toolResult = app.toolManager.executeTool(toolCall)
@@ -258,9 +256,9 @@ fun ChatScreen(
               attachmentType = null
             )
             app.chatRepository.addMessage(chatId, resultMsg)
-            // Restart inference with tool context
             streamedText = ""
             isProcessing = true
+            messageAdded.set(false)
             scope.launch(Dispatchers.IO) {
               val cb = object : TokenCallback {
                 override fun onToken(token: String) {}
@@ -270,7 +268,6 @@ fun ChatScreen(
                 override fun onTokensGenerated(count: Int) {}
               }
               engine?.let { e ->
-                // Restore history including tool call/result to native engine
                 val allMsgs = app.chatRepository.getMessages(chatId)
                 val historyPairs = allMsgs.map { it.role.name.lowercase() to it.content }
                 if (historyPairs.isNotEmpty()) {
@@ -297,7 +294,13 @@ fun ChatScreen(
   }
 
   LaunchedEffect(messages.size, isInferring) {
-    if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    if (messages.isNotEmpty()) {
+      val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+      val nearBottom = lastVisible < 0 || messages.size - 1 - lastVisible <= 2
+      if (isInferring || nearBottom) {
+        listState.animateScrollToItem(messages.size - 1)
+      }
+    }
   }
 
   LaunchedEffect(chatId) {

@@ -23,8 +23,15 @@ class ModelServer(private val port: Int = 8080) {
   private var executor: ExecutorService? = null
   private val running = AtomicBoolean(false)
   private var serverStartTime = 0L
+  private var autoModelPath: String = ""
+  private var autoModelName: String = ""
 
   val isRunning: Boolean get() = running.get()
+
+  fun setAutoModel(path: String, name: String) {
+    autoModelPath = path
+    autoModelName = name
+  }
 
   fun start() {
     if (running.get()) return
@@ -32,6 +39,30 @@ class ModelServer(private val port: Int = 8080) {
     serverStartTime = System.currentTimeMillis()
     executor = Executors.newFixedThreadPool(4)
     executor?.submit { runServer() }
+    // Auto-load model if configured and no model is currently loaded
+    executor?.submit {
+      val app = ZeroCopyApp.instance
+      val engine = app.engineManager.getActiveEngine()
+      if (engine?.isModelLoaded != true && autoModelPath.isNotEmpty()) {
+        val modelInfo = app.modelRepository.models.value.find { it.path == autoModelPath }
+        if (modelInfo != null) {
+          engine?.let { e ->
+            e.config = com.gguf.zerocopy.data.local.SettingsManager.toConfig()
+            e.systemPrompt = com.gguf.zerocopy.data.local.SettingsManager.systemPrompt
+            e.repeatPenalty = com.gguf.zerocopy.data.local.SettingsManager.toRepeatPenalty()
+            val result = e.loadModel(modelInfo.path)
+            if (result.isSuccess) {
+              app.modelRepository.markUsed(modelInfo.id)
+              Log.i(tag, "Auto-loaded model: ${modelInfo.name}")
+            } else {
+              Log.w(tag, "Failed to auto-load model: ${result.exceptionOrNull()?.message}")
+            }
+          }
+        } else {
+          Log.w(tag, "Auto-model not found in repository: $autoModelPath")
+        }
+      }
+    }
     Log.i(tag, "Server starting on port $port")
   }
 

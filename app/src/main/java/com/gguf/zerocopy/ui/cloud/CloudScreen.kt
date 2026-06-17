@@ -27,6 +27,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.net.NetworkInterface
@@ -52,6 +53,22 @@ fun CloudScreen(onBack: () -> Unit) {
     SettingsManager.serverAuthEnabled = authEnabled
     SettingsManager.serverAuthToken = authToken
     SettingsManager.serverWifiOnly = wifiOnly
+    // Persist current model info for server auto-load
+    val app = com.gguf.zerocopy.ZeroCopyApp.instance
+    val engine = app.engineManager.getActiveEngine()
+    if (engine?.isModelLoaded == true && engine.loadedModelPath != null) {
+      val path = engine.loadedModelPath ?: ""
+      val name = path.substringAfterLast('/')
+      SettingsManager.lastModelPath = path
+      SettingsManager.lastModelName = name
+    }
+    // Configure server with current model
+    if (serverEnabled) {
+      app.modelServer.setAutoModel(SettingsManager.lastModelPath, SettingsManager.lastModelName)
+      if (!app.modelServer.isRunning) app.modelServer.start()
+    } else {
+      if (app.modelServer.isRunning) app.modelServer.stop()
+    }
   }
 
   Scaffold(
