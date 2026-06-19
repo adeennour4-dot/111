@@ -479,28 +479,9 @@ fun ChatScreen(
     }
   }
 
-  var autoScroll by remember { mutableStateOf(true) }
-
   LaunchedEffect(messages.size) {
     if (messages.isNotEmpty()) {
       listState.animateScrollToItem(messages.size - 1)
-      autoScroll = true
-    }
-  }
-
-  LaunchedEffect(streamedContent) {
-    if (isInferring && streamedContent.isNotEmpty() && autoScroll) {
-      listState.animateScrollToItem(messages.size)
-    }
-  }
-
-  LaunchedEffect(listState.isScrollInProgress) {
-    if (!listState.isScrollInProgress) {
-      val info = listState.layoutInfo
-      val lastVisible = info.visibleItemsInfo.lastOrNull()
-      if (lastVisible != null) {
-        autoScroll = lastVisible.index >= info.totalItemsCount - 2
-      }
     }
   }
 
