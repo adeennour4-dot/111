@@ -606,9 +606,22 @@ async function send(){
       }
       val json = org.json.JSONObject(body)
       val messages = json.optJSONArray("messages")
+
+      // Restore history for the engine (all messages except last user one)
+      // Then pass only the last message as the raw prompt.
+      // This avoids the C++ build_chat_prompt() from double-templating.
       val prompt = if (messages != null && messages.length() > 0) {
-        buildPrompt(messages)
+        val historyMsgs = mutableListOf<Pair<String, String>>()
+        val lastIdx = messages.length() - 1
+        for (i in 0 until lastIdx) {
+          val msg = messages.getJSONObject(i)
+          historyMsgs.add(msg.optString("role", "user") to msg.optString("content", ""))
+        }
+        engine.restoreHistory(historyMsgs)
+        val last = messages.getJSONObject(lastIdx)
+        last.optString("content", "")
       } else {
+        engine.restoreHistory(emptyList())
         json.optString("prompt", json.optString("input", ""))
       }
       if (prompt.isNullOrBlank()) {
@@ -761,24 +774,6 @@ async function send(){
     } catch (e: Exception) {
       respond(out, 500, """{"error":"server_error","message":"${e.message?.replace("\"","'") ?: "Internal error"}","type":"internal_error"}""")
     }
-  }
-
-  private fun buildPrompt(messages: org.json.JSONArray): String {
-    val sb = StringBuilder()
-    for (i in 0 until messages.length()) {
-      val msg = messages.getJSONObject(i)
-      val role = msg.optString("role", "user")
-      val content = msg.optString("content", "")
-      if (content.isNotEmpty()) {
-        if (sb.isNotEmpty()) sb.append("\n")
-        sb.append("<|im_start|>$role\n$content<|im_end|>")
-      }
-    }
-    if (sb.isNotEmpty()) {
-      sb.append("\n<|im_start|>assistant\n")
-      return sb.toString()
-    }
-    return messages.getJSONObject(messages.length() - 1).optString("content", "")
   }
 
   private fun jsonEncode(s: String): String {

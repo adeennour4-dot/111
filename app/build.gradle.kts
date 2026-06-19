@@ -15,7 +15,7 @@ android {
         minSdk        = 29
         targetSdk     = 36
         versionCode   = 13
-        versionName   = "1.0"
+        versionName   = "1.0.2"
 
         externalNativeBuild {
             cmake {
@@ -35,7 +35,7 @@ cFlags  ("-O3 -flto=thin -march=armv8-a+dotprod -fstack-protector-strong")
         }
 
         buildConfigField("String", "VERSION_NAME", "\"1.0.2\"")
-        buildConfigField("int", "VERSION_CODE", "12")
+        buildConfigField("int", "VERSION_CODE", "13")
     }
 
     compileOptions {

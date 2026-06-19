@@ -23,32 +23,41 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Set up Android NDK
+        run: |
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> $GITHUB_ENV
+          if [ ! -d "$ANDROID_HOME/ndk/27.0.12077973" ]; then
+            echo "Installing NDK 27.0.12077973..."
+            $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;27.0.12077973"
+          fi
+
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle.kts', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
 
       - name: Cache Rust
-        if: ${{ hashFiles('rust_core') != '' }}
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             rust_core/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('rust_core/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust_core/Cargo.toml', 'rust_core/src/**/*.rs') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
-      - name: Build Rust core
+      - name: Build Rust core for Android
         if: ${{ hashFiles('rust_core/Cargo.toml') != '' }}
         run: |
-          if [ -d "rust_core" ] && command -v cargo &> /dev/null; then
-            cd rust_core && cargo build --release && cd ..
-          fi
+          rustup target add aarch64-linux-android
+          cargo install cargo-ndk 2>/dev/null || true
+          cd rust_core && ./build_android.sh && cd ..
 
       - name: Build with Gradle
         run: ./gradlew assembleDebug

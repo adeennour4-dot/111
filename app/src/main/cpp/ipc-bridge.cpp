@@ -137,10 +137,8 @@ static void boost_priority() {
 }
 
 static void lock_pages() {
-#ifdef __aarch64__
     if (mlockall(MCL_CURRENT | MCL_FUTURE) == 0)
         LOGI("Pages locked in RAM");
-#endif
 }
 
 static void apply_perf_optimizations() {
@@ -171,15 +169,21 @@ static std::string build_chat_prompt() {
     if (!tmpl) tmpl = "chatml";
     std::vector<char> buf(65536);
     int n = llama_chat_apply_template(tmpl, msgs.data(), (int)msgs.size(), true, buf.data(), (int)buf.size());
-    // If template detection failed, fall back to chatml
     if (n < 0 && strcmp(tmpl, "chatml") != 0) {
         LOGW("Chat template detection failed, falling back to chatml");
         tmpl = "chatml";
         n = llama_chat_apply_template(tmpl, msgs.data(), (int)msgs.size(), true, buf.data(), (int)buf.size());
     }
-    if (n > (int)buf.size()) { buf.resize(n + 1); n = llama_chat_apply_template(tmpl, msgs.data(), (int)msgs.size(), true, buf.data(), (int)buf.size()); }
-    if (n < 0) n = 0;
-    return std::string(buf.data(), n > 0 ? n : 0);
+    if (n < 0) {
+        LOGE("Chat template application failed, returning empty prompt");
+        return "";
+    }
+    if (n > (int)buf.size()) {
+        buf.resize(n + 1);
+        n = llama_chat_apply_template(tmpl, msgs.data(), (int)msgs.size(), true, buf.data(), (int)buf.size());
+        if (n < 0) return "";
+    }
+    return std::string(buf.data(), n);
 }
 
 // Stop sequences — chat template markers that signal the model is starting
@@ -322,6 +326,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_setEngineConfigNative(
     g_cfg.seed           = (seed < 0) ? LLAMA_DEFAULT_SEED : (uint32_t)seed;
     g_cfg.low_ram_mode   = lowRamMode;
     g_cfg.flash_attn     = flashAttention;
+    if (g_ctx) rebuild_sampler();
     LOGI("Config: ctx=%d batch=%d gpu=%d threads=%d lowRam=%d flashAttn=%d",
          nCtx, nBatch, nGpuLayers, nThreads, lowRamMode, flashAttention);
 }
@@ -396,7 +401,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
     llama_context_params cparams = llama_context_default_params();
     cparams.n_ctx           = n_ctx;
     cparams.n_batch         = g_cfg.n_batch;
-    cparams.n_ubatch        = 512;
+    cparams.n_ubatch        = std::min(g_cfg.n_batch, 512);
     cparams.n_threads       = n_threads;
     cparams.n_threads_batch = n_threads;
     cparams.flash_attn_type = g_cfg.flash_attn ? LLAMA_FLASH_ATTN_TYPE_ENABLED : LLAMA_FLASH_ATTN_TYPE_DISABLED;
@@ -497,8 +502,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_benchmarkNative(
     const char* test_str = "The quick brown fox jumps over the lazy dog. ";
     std::vector<llama_token> pp_toks(ppTokens);
     int n = llama_tokenize(llama_model_get_vocab(g_model), test_str, strlen(test_str), pp_toks.data(), ppTokens, false, true);
-    if (n <= 0) n = 1;
-    if (n <= 0) n = 1;
+    if (n <= 0) n = std::min(ppTokens, 4);
     pp_toks.resize(n);
     while ((int)pp_toks.size() < ppTokens) {
         auto old = pp_toks;
@@ -822,7 +826,6 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
     }
 
     // Process image through CLIP if available
-    // New API (b9581+): clip_image_encode requires pre-allocated float* output
     std::vector<float> image_embeds;
     int n_image_tokens = 0;
 #ifdef ZC_HAS_CLIP
@@ -836,46 +839,35 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
             &img_width, &img_height, &img_channels, 3);
 
         if (img_data && img_width > 0 && img_height > 0) {
-            // Convert uint8 pixel data to float [0,1]
             size_t n_pixels = (size_t)img_width * (size_t)img_height;
-            std::vector<float> float_pixels(n_pixels * 3);
-            for (size_t i = 0; i < n_pixels; i++) {
-                float_pixels[i * 3 + 0] = img_data[i * 3 + 0] / 255.0f;
-                float_pixels[i * 3 + 1] = img_data[i * 3 + 1] / 255.0f;
-                float_pixels[i * 3 + 2] = img_data[i * 3 + 2] / 255.0f;
+
+            // Create clip_image_f32 on the stack and populate with pixel data
+            struct clip_image_f32 clip_img;
+            clip_img.nx = img_width;
+            clip_img.ny = img_height;
+            clip_img.data.resize(n_pixels * 3);
+            for (size_t i = 0; i < n_pixels * 3; i++) {
+                clip_img.data[i] = img_data[i] / 255.0f;
             }
             stbi_image_free(img_data);
 
-            // Create clip_image_f32 and populate with pixel data
-            struct clip_image_f32 * clip_img = clip_image_f32_init();
-            if (clip_img) {
-                clip_img->set_size({img_width, img_height}, false, false);
-                clip_img->cpy_buf(float_pixels);
+            // Get number of output tokens for this image
+            n_image_tokens = clip_n_output_tokens(g_clip, &clip_img);
+            if (n_image_tokens < 1) n_image_tokens = 256;
 
-                // Get number of output tokens for this image
-                n_image_tokens = clip_n_output_tokens(g_clip, clip_img);
-                if (n_image_tokens < 1) n_image_tokens = 256; // safety fallback
+            int n_embd = clip_n_mmproj_embd(g_clip);
+            if (n_embd < 1) n_embd = llama_model_n_embd(g_model);
 
-                int n_embd = clip_n_mmproj_embd(g_clip);
-                if (n_embd < 1) n_embd = llama_model_n_embd(g_model);
+            std::vector<float> embeds_vec((size_t)n_image_tokens * (size_t)n_embd, 0.0f);
 
-                // Pre-allocate output buffer: tokens * embedding_dim
-                std::vector<float> embeds_vec((size_t)n_image_tokens * (size_t)n_embd, 0.0f);
+            bool ok = clip_image_encode(g_clip, n_threads, &clip_img, embeds_vec.data());
 
-                // Encode image into embeddings
-                bool ok = clip_image_encode(g_clip, n_threads, clip_img, embeds_vec.data());
-
-                clip_image_f32_free(clip_img);
-
-                if (ok) {
-                    image_embeds = std::move(embeds_vec);
-                    LOGI("Image encoded: %d tokens, %d dims", n_image_tokens, n_embd);
-                } else {
-                    LOGW("clip_image_encode failed");
-                    n_image_tokens = 0;
-                }
+            if (ok) {
+                image_embeds = std::move(embeds_vec);
+                LOGI("Image encoded: %d tokens, %d dims", n_image_tokens, n_embd);
             } else {
-                LOGW("clip_image_f32_init failed");
+                LOGW("clip_image_encode failed");
+                n_image_tokens = 0;
             }
         } else {
             LOGW("Failed to load image: %s", g_current_image_path.c_str());
