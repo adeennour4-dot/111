@@ -45,6 +45,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -478,15 +479,30 @@ fun ChatScreen(
     }
   }
 
+  var autoScroll by remember { mutableStateOf(true) }
+
   LaunchedEffect(messages.size) {
     if (messages.isNotEmpty()) {
       listState.animateScrollToItem(messages.size - 1)
+      autoScroll = true
     }
   }
 
   LaunchedEffect(streamedContent) {
-    if (isInferring && streamedContent.isNotEmpty()) {
+    if (isInferring && streamedContent.isNotEmpty() && autoScroll) {
       listState.animateScrollToItem(messages.size)
+    }
+  }
+
+  LaunchedEffect(Unit) {
+    snapshotFlow {
+      val info = listState.layoutInfo
+      val lastVisible = info.visibleItemsInfo.lastOrNull()
+      if (lastVisible != null) lastVisible.index to info.totalItemsCount else null
+    }.collect { state ->
+      if (state != null) {
+        autoScroll = state.first >= state.second - 2
+      }
     }
   }
 
