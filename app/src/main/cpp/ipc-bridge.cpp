@@ -702,6 +702,9 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
     }
 
     // Debug: log first few logit values to diagnose empty output
+    bool eos_is_highest = false;
+    float max_logit = -1e38f;
+    llama_token max_logit_id = -1;
     {
         float* logits = llama_get_logits_ith(g_ctx, -1);
         int n_vocab = llama_vocab_n_tokens(llama_model_get_vocab(g_model));
@@ -715,7 +718,10 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
             llama_token eos = llama_vocab_eos(llama_model_get_vocab(g_model));
             if (eos >= 0 && eos < n_vocab && logits[eos] > max_l) {
                 max_l = logits[eos]; max_id = eos;
+                eos_is_highest = (max_id == eos);
             }
+            max_logit = max_l;
+            max_logit_id = max_id;
             LOGI("Logits check: max=%f at token %d (EOS=%d) n_vocab=%d", max_l, max_id, eos, n_vocab);
         }
     }
@@ -736,16 +742,28 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
         if (llama_vocab_is_eog(llama_model_get_vocab(g_model), tok)) {
             if (i == 0) {
                 char piece[16];
-                int pn = llama_token_to_piece(llama_model_get_vocab(g_model), tok, piece, sizeof(piece), 0, false);
+                int pn = llama_token_to_piece(llama_model_get_vocab(g_model), tok, piece, sizeof(piece), 0, true);
                 piece[pn > 0 ? pn : 0] = '\0';
                 LOGW("First sampled token is EOG (id=%d piece='%s' n_toks=%d prompt_len=%zu)",
                      tok, piece, (int)tokens.size(), prompt.size());
+                // Show diagnostic in-app instead of requiring logcat
+                char diag[512];
+                snprintf(diag, sizeof(diag),
+                    "EOG: tok=%d '%s' | toks=%d ctx=%d | maxLogit=%.1f at %d eosHighest=%d | prompt=%.80s",
+                    tok, piece, (int)tokens.size(), n_ctx, max_logit, max_logit_id, (int)eos_is_highest,
+                    prompt.c_str());
+                call_callback_on_error(std::string(diag));
+                g_history.pop_back();
+                release_callback();
+                return;
             }
             break;
         }
 
+        // special=true renders ALL tokens including special tokens like <|eot_id|>
+        // so they show up in the response for stop-sequence detection
         char piece[256];
-        int n = llama_token_to_piece(llama_model_get_vocab(g_model), tok, piece, sizeof(piece), 0, false);
+        int n = llama_token_to_piece(llama_model_get_vocab(g_model), tok, piece, sizeof(piece), 0, true);
         if (n > 0) {
             if (n < (int)sizeof(piece)) {
                 piece[n] = '\0';
@@ -753,7 +771,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
                 call_callback_on_token(std::string(piece, n));
             } else {
                 std::vector<char> buf(n + 1);
-                llama_token_to_piece(llama_model_get_vocab(g_model), tok, buf.data(), buf.size(), 0, false);
+                llama_token_to_piece(llama_model_get_vocab(g_model), tok, buf.data(), buf.size(), 0, true);
                 buf[n] = '\0';
                 response += buf.data();
                 call_callback_on_token(std::string(buf.data(), n));
@@ -1061,16 +1079,24 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
         if (llama_vocab_is_eog(llama_model_get_vocab(g_model), tok)) {
             if (i == 0) {
                 char piece[16];
-                int pn = llama_token_to_piece(llama_model_get_vocab(g_model), tok, piece, sizeof(piece), 0, false);
+                int pn = llama_token_to_piece(llama_model_get_vocab(g_model), tok, piece, sizeof(piece), 0, true);
                 piece[pn > 0 ? pn : 0] = '\0';
                 LOGW("Image: First sampled token is EOG (id=%d piece='%s' n_toks=%d prompt_len=%zu)",
                      tok, piece, (int)tokens.size(), prompt.size());
+                char diag[512];
+                snprintf(diag, sizeof(diag),
+                    "ImgEOG: tok=%d '%s' | toks=%d ctx=%d | prompt=%.80s",
+                    tok, piece, (int)tokens.size(), n_ctx, prompt.c_str());
+                call_callback_on_error(std::string(diag));
+                g_history.pop_back();
+                release_callback();
+                return;
             }
             break;
         }
 
         char piece[256];
-        int n = llama_token_to_piece(llama_model_get_vocab(g_model), tok, piece, sizeof(piece), 0, false);
+        int n = llama_token_to_piece(llama_model_get_vocab(g_model), tok, piece, sizeof(piece), 0, true);
         if (n > 0) {
             if (n < (int)sizeof(piece)) {
                 piece[n] = '\0';
@@ -1078,7 +1104,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
                 call_callback_on_token(std::string(piece, n));
             } else {
                 std::vector<char> buf(n + 1);
-                llama_token_to_piece(llama_model_get_vocab(g_model), tok, buf.data(), buf.size(), 0, false);
+                llama_token_to_piece(llama_model_get_vocab(g_model), tok, buf.data(), buf.size(), 0, true);
                 buf[n] = '\0';
                 response += buf.data();
                 call_callback_on_token(std::string(buf.data(), n));
