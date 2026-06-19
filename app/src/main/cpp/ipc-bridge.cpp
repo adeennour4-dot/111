@@ -664,13 +664,17 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
     // garbled, empty, or "disappearing" responses after the first message.
     llama_memory_clear(get_mem(), true);
 
-    // Manually prepend BOS token on the very first decode (KV cache empty).
-    // This is required because add_special=false skips the BOS.
+    // Only prepend BOS if not already present (e.g., from {{ bos_token }} in template).
+    // add_special=false skips BOS, but some model templates include it via Jinja.
     if (llama_memory_seq_pos_max(get_mem(), 0) < 0) {
         llama_token bos = llama_vocab_bos(llama_model_get_vocab(g_model));
         if (bos != LLAMA_TOKEN_NULL) {
-            tokens.insert(tokens.begin(), bos);
-            LOGI("Prepended BOS token %d", bos);
+            if (tokens.empty() || tokens[0] != bos) {
+                tokens.insert(tokens.begin(), bos);
+                LOGI("Prepended BOS token %d", bos);
+            } else {
+                LOGI("Prompt already starts with BOS token %d, skipping prepend", bos);
+            }
         }
     }
 
@@ -710,7 +714,16 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
         if (g_abort.load()) { LOGI("Aborted at token %d", i); break; }
 
         llama_token tok = llama_sampler_sample(g_sampler, g_ctx, -1);
-        if (llama_vocab_is_eog(llama_model_get_vocab(g_model), tok)) break;
+        if (llama_vocab_is_eog(llama_model_get_vocab(g_model), tok)) {
+            if (i == 0) {
+                char piece[16];
+                int pn = llama_token_to_piece(llama_model_get_vocab(g_model), tok, piece, sizeof(piece), 0, false);
+                piece[pn > 0 ? pn : 0] = '\0';
+                LOGW("First sampled token is EOG (id=%d piece='%s' n_toks=%d prompt_len=%zu)",
+                     tok, piece, (int)tokens.size(), prompt.size());
+            }
+            break;
+        }
 
         char piece[256];
         int n = llama_token_to_piece(llama_model_get_vocab(g_model), tok, piece, sizeof(piece), 0, false);
@@ -730,7 +743,6 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
             call_callback_on_tokens_generated(tokens_generated);
         }
 
-        // Stop if model starts generating a new chat turn
         if (contains_stop_sequence(response)) {
             for (const auto& seq : g_stop_sequences) {
                 auto pos = response.find(seq);
@@ -816,12 +828,16 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
     // positions, corrupting context and producing empty/garbled output.
     llama_memory_clear(get_mem(), true);
 
-    // Manually prepend BOS token on the very first decode (KV cache empty).
+    // Only prepend BOS if not already present (e.g., from {{ bos_token }} in template).
     if (llama_memory_seq_pos_max(get_mem(), 0) < 0) {
         llama_token bos = llama_vocab_bos(llama_model_get_vocab(g_model));
         if (bos != LLAMA_TOKEN_NULL) {
-            tokens.insert(tokens.begin(), bos);
-            LOGI("Image: Prepended BOS token %d", bos);
+            if (tokens.empty() || tokens[0] != bos) {
+                tokens.insert(tokens.begin(), bos);
+                LOGI("Image: Prepended BOS token %d", bos);
+            } else {
+                LOGI("Image: Prompt already starts with BOS token %d, skipping prepend", bos);
+            }
         }
     }
 
@@ -991,7 +1007,16 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
         if (g_abort.load()) { LOGI("Aborted at token %d", i); break; }
 
         llama_token tok = llama_sampler_sample(g_sampler, g_ctx, -1);
-        if (llama_vocab_is_eog(llama_model_get_vocab(g_model), tok)) break;
+        if (llama_vocab_is_eog(llama_model_get_vocab(g_model), tok)) {
+            if (i == 0) {
+                char piece[16];
+                int pn = llama_token_to_piece(llama_model_get_vocab(g_model), tok, piece, sizeof(piece), 0, false);
+                piece[pn > 0 ? pn : 0] = '\0';
+                LOGW("Image: First sampled token is EOG (id=%d piece='%s' n_toks=%d prompt_len=%zu)",
+                     tok, piece, (int)tokens.size(), prompt.size());
+            }
+            break;
+        }
 
         char piece[256];
         int n = llama_token_to_piece(llama_model_get_vocab(g_model), tok, piece, sizeof(piece), 0, false);
@@ -1011,7 +1036,6 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
             call_callback_on_tokens_generated(tokens_generated);
         }
 
-        // Stop if model starts generating a new chat turn
         if (contains_stop_sequence(response)) {
             for (const auto& seq : g_stop_sequences) {
                 auto pos = response.find(seq);
