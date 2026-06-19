@@ -840,34 +840,39 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
 
         if (img_data && img_width > 0 && img_height > 0) {
             size_t n_pixels = (size_t)img_width * (size_t)img_height;
-
-            // Create clip_image_f32 on the stack and populate with pixel data
-            struct clip_image_f32 clip_img;
-            clip_img.nx = img_width;
-            clip_img.ny = img_height;
-            clip_img.data.resize(n_pixels * 3);
+            std::vector<float> float_pixels(n_pixels * 3);
             for (size_t i = 0; i < n_pixels * 3; i++) {
-                clip_img.data[i] = img_data[i] / 255.0f;
+                float_pixels[i] = img_data[i] / 255.0f;
             }
             stbi_image_free(img_data);
 
-            // Get number of output tokens for this image
-            n_image_tokens = clip_n_output_tokens(g_clip, &clip_img);
-            if (n_image_tokens < 1) n_image_tokens = 256;
+            // Use internal clip_image_f32 API from llama.cpp's clip-impl.h
+            struct clip_image_f32 * clip_img = clip_image_f32_init();
+            if (clip_img) {
+                clip_img->set_size({img_width, img_height}, false, false);
+                clip_img->cpy_buf(float_pixels);
 
-            int n_embd = clip_n_mmproj_embd(g_clip);
-            if (n_embd < 1) n_embd = llama_model_n_embd(g_model);
+                n_image_tokens = clip_n_output_tokens(g_clip, clip_img);
+                if (n_image_tokens < 1) n_image_tokens = 256;
 
-            std::vector<float> embeds_vec((size_t)n_image_tokens * (size_t)n_embd, 0.0f);
+                int n_embd = clip_n_mmproj_embd(g_clip);
+                if (n_embd < 1) n_embd = llama_model_n_embd(g_model);
 
-            bool ok = clip_image_encode(g_clip, n_threads, &clip_img, embeds_vec.data());
+                std::vector<float> embeds_vec((size_t)n_image_tokens * (size_t)n_embd, 0.0f);
 
-            if (ok) {
-                image_embeds = std::move(embeds_vec);
-                LOGI("Image encoded: %d tokens, %d dims", n_image_tokens, n_embd);
+                bool ok = clip_image_encode(g_clip, n_threads, clip_img, embeds_vec.data());
+
+                clip_image_f32_free(clip_img);
+
+                if (ok) {
+                    image_embeds = std::move(embeds_vec);
+                    LOGI("Image encoded: %d tokens, %d dims", n_image_tokens, n_embd);
+                } else {
+                    LOGW("clip_image_encode failed");
+                    n_image_tokens = 0;
+                }
             } else {
-                LOGW("clip_image_encode failed");
-                n_image_tokens = 0;
+                LOGW("clip_image_f32_init failed");
             }
         } else {
             LOGW("Failed to load image: %s", g_current_image_path.c_str());
