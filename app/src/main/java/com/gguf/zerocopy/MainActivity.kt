@@ -157,6 +157,7 @@ fun AppRoot() {
                 currentSessionId = session.id
                 SettingsManager.currentSessionId = session.id
                 if (session.modelPath.isNotEmpty()) { loadedModelPath = session.modelPath; loadedModelName = session.modelName }
+                app.chatRepository.selectSession(session.id)
                 showSessionList = false
               },
               onBack = { showSessionList = false }
