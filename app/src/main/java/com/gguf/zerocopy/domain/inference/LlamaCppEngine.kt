@@ -129,6 +129,7 @@ class LlamaCppEngine : InferenceEngine {
               partialStream.append(token)
               fullResponse.append(token)
             }
+            callback.onToken(token)
             android.util.Log.d("LlamaCppEngine", "onToken: ${token.take(50)}")
           }
 
@@ -192,6 +193,7 @@ class LlamaCppEngine : InferenceEngine {
               partialStream.append(token)
               fullResponse.append(token)
             }
+            callback.onToken(token)
             android.util.Log.d("LlamaCppEngine", "onToken (image): ${token.take(50)}")
           }
 
