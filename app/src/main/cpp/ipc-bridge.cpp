@@ -638,14 +638,16 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
     std::string prompt = build_chat_prompt();
     LOGI("Prompt len=%zu", prompt.size());
 
+    // Log first 200 chars of the rendered prompt for debugging
+    LOGI("Prompt (first 200): %s", prompt.substr(0, 200).c_str());
+
     int n_ctx = llama_n_ctx(g_ctx);
     std::vector<llama_token> tokens;
     tokens.resize(n_ctx);
-    // add_special=true: let llama_tokenize handle BOS (b9581 does NOT append EOS
-    // when add_special=true — only prepends BOS). This avoids the double-BOS
-    // issue when the chat template's built-in implementation omits {{ bos_token }}
-    // while the model's Jinja template includes it.
-    int n_toks = llama_tokenize(llama_model_get_vocab(g_model), prompt.c_str(), prompt.size(), tokens.data(), n_ctx, true, true);
+    // add_special=false: let the Jinja template handle BOS (templates like Llama 3
+    // already include {{ bos_token }}). parse_special=true: correctly parse special
+    // token strings like <|start_header_id|> as single tokens.
+    int n_toks = llama_tokenize(llama_model_get_vocab(g_model), prompt.c_str(), prompt.size(), tokens.data(), n_ctx, false, true);
     if (n_toks <= 0) {
         LOGE("Tokenization returned %d tokens, prompt len=%zu", n_toks, prompt.size());
         g_history.pop_back();
@@ -654,7 +656,25 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
         return;
     }
     tokens.resize(n_toks);
-    LOGI("Tokenized to %d tokens, n_ctx=%d", n_toks, n_ctx);
+
+    // Ensure BOS is present: if the template doesn't include bos_token (e.g., chatml
+    // fallback), prepend it manually. This avoids double-BOS when the template
+    // already has it, while still adding BOS for templates that don't.
+    llama_token bos_token = llama_vocab_bos(llama_model_get_vocab(g_model));
+    if (bos_token != LLAMA_TOKEN_NULL && (n_toks == 0 || tokens[0] != bos_token)) {
+        tokens.insert(tokens.begin(), bos_token);
+        n_toks = (int)tokens.size();
+    }
+
+    // Log first 10 tokens for debugging
+    std::string tok_debug;
+    for (int i = 0; i < std::min(10, n_toks); i++) {
+        if (i > 0) tok_debug += " ";
+        char piece[32];
+        int pn = llama_token_to_piece(llama_model_get_vocab(g_model), tokens[i], piece, sizeof(piece), 0, false);
+        tok_debug += std::to_string(tokens[i]) + ":'" + (pn > 0 ? std::string(piece, pn) : "?") + "'";
+    }
+    LOGI("Tokenized %d tokens, first tokens: %s", n_toks, tok_debug.c_str());
 
     if ((int)tokens.size() + 64 >= n_ctx) {
         LOGE("Prompt too large: %d tokens >= %d context", (int)tokens.size(), n_ctx);
@@ -808,11 +828,12 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
 
     std::string prompt = build_chat_prompt();
     LOGI("Image-prompt len=%zu image=%s", prompt.size(), g_current_image_path.c_str());
+    LOGI("Image prompt (first 200): %s", prompt.substr(0, 200).c_str());
 
     int n_ctx = llama_n_ctx(g_ctx);
     std::vector<llama_token> tokens;
     tokens.resize(n_ctx);
-    int n_toks = llama_tokenize(llama_model_get_vocab(g_model), prompt.c_str(), prompt.size(), tokens.data(), n_ctx, true, true);
+    int n_toks = llama_tokenize(llama_model_get_vocab(g_model), prompt.c_str(), prompt.size(), tokens.data(), n_ctx, false, true);
     if (n_toks <= 0) {
         LOGE("Image tokenization returned %d tokens", n_toks);
         g_history.pop_back();
@@ -821,6 +842,13 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
         return;
     }
     tokens.resize(n_toks);
+
+    llama_token bos_token = llama_vocab_bos(llama_model_get_vocab(g_model));
+    if (bos_token != LLAMA_TOKEN_NULL && (n_toks == 0 || tokens[0] != bos_token)) {
+        tokens.insert(tokens.begin(), bos_token);
+        n_toks = (int)tokens.size();
+    }
+
     LOGI("Image prompt tokenized to %d tokens", n_toks);
 
     if ((int)tokens.size() + 64 >= n_ctx) {
