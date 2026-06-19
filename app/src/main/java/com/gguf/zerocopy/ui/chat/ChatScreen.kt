@@ -495,15 +495,14 @@ fun ChatScreen(
   }
 
   LaunchedEffect(Unit) {
-    snapshotFlow {
-      val info = listState.layoutInfo
-      val lastVisible = info.visibleItemsInfo.lastOrNull()
-      if (lastVisible != null) lastVisible.index to info.totalItemsCount else null
-    }.collect { state ->
-      if (state != null) {
-        autoScroll = state.first >= state.second - 2
+    snapshotFlow { listState.firstVisibleItemIndex }
+      .collect {
+        val info = listState.layoutInfo
+        val lastVisible = info.visibleItemsInfo.lastOrNull()
+        if (lastVisible != null) {
+          autoScroll = lastVisible.index >= info.totalItemsCount - 2
+        }
       }
-    }
   }
 
   // Observe sessions StateFlow for reactive updates
