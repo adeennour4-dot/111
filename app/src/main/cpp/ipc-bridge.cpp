@@ -523,7 +523,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_benchmarkNative(
     auto tg_start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < tgTokens; i++) {
         llama_batch tb = llama_batch_get_one(&token, 1);
-        if (llama_decode(g_ctx, tb) != 0) break;
+        if (llama_decode(g_ctx, tb) < 0) break;
         token = llama_sampler_sample(bench_sampler, g_ctx, -1);
         if (llama_vocab_is_eog(llama_model_get_vocab(g_model), token)) break;
     }
@@ -638,14 +638,14 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
     std::string prompt = build_chat_prompt();
     LOGI("Prompt len=%zu", prompt.size());
 
-    int n_max = (int)llama_model_n_ctx_train(g_model);
-    std::vector<llama_token> tokens(n_max);
-    // add_special=false: we must NOT let llama_tokenize append EOS, because
-    // the chat template already ends with an assistant header that signals
-    // "start generating". If EOS is appended here the model immediately
-    // predicts EOS and produces no output.
-    // parse_special=true: tokenize <|im_start|> etc. as single token IDs.
-    int n_toks = llama_tokenize(llama_model_get_vocab(g_model), prompt.c_str(), prompt.size(), tokens.data(), n_max, false, true);
+    int n_ctx = llama_n_ctx(g_ctx);
+    std::vector<llama_token> tokens;
+    tokens.resize(n_ctx);
+    // add_special=true: let llama_tokenize handle BOS (b9581 does NOT append EOS
+    // when add_special=true — only prepends BOS). This avoids the double-BOS
+    // issue when the chat template's built-in implementation omits {{ bos_token }}
+    // while the model's Jinja template includes it.
+    int n_toks = llama_tokenize(llama_model_get_vocab(g_model), prompt.c_str(), prompt.size(), tokens.data(), n_ctx, true, true);
     if (n_toks <= 0) {
         LOGE("Tokenization returned %d tokens, prompt len=%zu", n_toks, prompt.size());
         g_history.pop_back();
@@ -654,51 +654,50 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
         return;
     }
     tokens.resize(n_toks);
+    LOGI("Tokenized to %d tokens, n_ctx=%d", n_toks, n_ctx);
 
-    // build_chat_prompt() always renders the FULL conversation (system +
-    // entire g_history) from scratch on every call. The KV cache, however,
-    // is persistent across calls. If we don't clear it here, the freshly
-    // rendered prompt (which already contains all prior turns) gets decoded
-    // on top of the old cached tokens at the wrong positions, duplicating
-    // the conversation and corrupting context. This was the main cause of
-    // garbled, empty, or "disappearing" responses after the first message.
+    if ((int)tokens.size() + 64 >= n_ctx) {
+        LOGE("Prompt too large: %d tokens >= %d context", (int)tokens.size(), n_ctx);
+        g_history.pop_back();
+        call_callback_on_error("Prompt exceeds context window");
+        release_callback();
+        return;
+    }
+
+    // Clear the KV cache so the freshly rendered prompt (which already contains
+    // the full conversation) is decoded at the correct positions.
     llama_memory_clear(get_mem(), true);
-
-    // Only prepend BOS if not already present (e.g., from {{ bos_token }} in template).
-    // add_special=false skips BOS, but some model templates include it via Jinja.
-    if (llama_memory_seq_pos_max(get_mem(), 0) < 0) {
-        llama_token bos = llama_vocab_bos(llama_model_get_vocab(g_model));
-        if (bos != LLAMA_TOKEN_NULL) {
-            if (tokens.empty() || tokens[0] != bos) {
-                tokens.insert(tokens.begin(), bos);
-                LOGI("Prepended BOS token %d", bos);
-            } else {
-                LOGI("Prompt already starts with BOS token %d, skipping prepend", bos);
-            }
-        }
-    }
-
-    llama_pos cur_max = llama_memory_seq_pos_max(get_mem(), 0);
-    int n_ctx_used = (cur_max >= 0) ? (int)(cur_max + 1) : 0;
-
-    if (n_ctx_used + (int)tokens.size() >= g_cfg.n_ctx && n_ctx_used > 0) {
-        int keep = g_cfg.n_ctx / 4;
-        int n_discard = (n_ctx_used - keep) / 2;
-        if (n_discard > 0) {
-            llama_memory_t mem = get_mem();
-            llama_memory_seq_rm (mem, 0, keep, keep + n_discard);
-            llama_memory_seq_add(mem, 0, keep + n_discard, -1, -n_discard);
-            LOGI("Context shift: discarded=%d", n_discard);
-        }
-    }
 
     pin_to_all_cores();
     llama_batch batch = llama_batch_get_one(tokens.data(), (int)tokens.size());
-    if (llama_decode(g_ctx, batch) != 0) {
-        LOGE("Prompt decode failed for %d tokens", (int)tokens.size());
+    int ret = llama_decode(g_ctx, batch);
+    if (ret < 0) {
+        LOGE("Prompt decode failed with %d for %d tokens", ret, (int)tokens.size());
         call_callback_on_error("Prompt decode failed");
         release_callback();
         return;
+    }
+    if (ret > 0) {
+        LOGW("Prompt decode warning %d for %d tokens", ret, (int)tokens.size());
+    }
+
+    // Debug: log first few logit values to diagnose empty output
+    {
+        float* logits = llama_get_logits_ith(g_ctx, -1);
+        int n_vocab = llama_vocab_n_tokens(llama_model_get_vocab(g_model));
+        if (logits && n_vocab > 0) {
+            float max_l = -1e38f;
+            llama_token max_id = 0;
+            for (int i = 0; i < std::min(n_vocab, 1024); i++) {
+                if (logits[i] > max_l) { max_l = logits[i]; max_id = i; }
+            }
+            // also check EOS token
+            llama_token eos = llama_vocab_eos(llama_model_get_vocab(g_model));
+            if (eos >= 0 && eos < n_vocab && logits[eos] > max_l) {
+                max_l = logits[eos]; max_id = eos;
+            }
+            LOGI("Logits check: max=%f at token %d (EOS=%d) n_vocab=%d", max_l, max_id, eos, n_vocab);
+        }
     }
 
     {
@@ -755,7 +754,8 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
         }
 
         llama_batch nb = llama_batch_get_one(&tok, 1);
-        if (llama_decode(g_ctx, nb) != 0) break;
+        int r2 = llama_decode(g_ctx, nb);
+        if (r2 < 0) { LOGW("Decode failed at token %d with %d", i, r2); break; }
 
         if ((i & 0xF) == 0) {
             llama_pos max_pos = llama_memory_seq_pos_max(get_mem(), 0);
@@ -809,10 +809,10 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
     std::string prompt = build_chat_prompt();
     LOGI("Image-prompt len=%zu image=%s", prompt.size(), g_current_image_path.c_str());
 
-    int n_max = (int)llama_model_n_ctx_train(g_model);
-    std::vector<llama_token> tokens(n_max);
-    // add_special=false: same rationale as executeWithCallbackNative.
-    int n_toks = llama_tokenize(llama_model_get_vocab(g_model), prompt.c_str(), prompt.size(), tokens.data(), n_max, false, true);
+    int n_ctx = llama_n_ctx(g_ctx);
+    std::vector<llama_token> tokens;
+    tokens.resize(n_ctx);
+    int n_toks = llama_tokenize(llama_model_get_vocab(g_model), prompt.c_str(), prompt.size(), tokens.data(), n_ctx, true, true);
     if (n_toks <= 0) {
         LOGE("Image tokenization returned %d tokens", n_toks);
         g_history.pop_back();
@@ -821,25 +821,18 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
         return;
     }
     tokens.resize(n_toks);
+    LOGI("Image prompt tokenized to %d tokens", n_toks);
 
-    // Same fix as executeWithCallbackNative: build_chat_prompt() renders the
-    // full conversation from scratch every call, so the KV cache must be
-    // cleared before decoding or the conversation gets duplicated at wrong
-    // positions, corrupting context and producing empty/garbled output.
-    llama_memory_clear(get_mem(), true);
-
-    // Only prepend BOS if not already present (e.g., from {{ bos_token }} in template).
-    if (llama_memory_seq_pos_max(get_mem(), 0) < 0) {
-        llama_token bos = llama_vocab_bos(llama_model_get_vocab(g_model));
-        if (bos != LLAMA_TOKEN_NULL) {
-            if (tokens.empty() || tokens[0] != bos) {
-                tokens.insert(tokens.begin(), bos);
-                LOGI("Image: Prepended BOS token %d", bos);
-            } else {
-                LOGI("Image: Prompt already starts with BOS token %d, skipping prepend", bos);
-            }
-        }
+    if ((int)tokens.size() + 64 >= n_ctx) {
+        LOGE("Image prompt too large: %d tokens >= %d context", (int)tokens.size(), n_ctx);
+        g_history.pop_back();
+        call_callback_on_error("Prompt exceeds context window");
+        release_callback();
+        return;
     }
+
+    // Clear the KV cache so the freshly rendered prompt is decoded at correct positions.
+    llama_memory_clear(get_mem(), true);
 
     // Process image through CLIP if available
     std::vector<float> image_embeds;
@@ -948,13 +941,13 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
         ib.seq_id     = img_seq_id.data();
         ib.logits     = img_logits.data();
 
-        if (llama_decode(g_ctx, ib) != 0) {
+        if (llama_decode(g_ctx, ib) < 0) {
             call_callback_on_error("Image embedding decode failed");
             release_callback();
             return;
         }
 
-        // Step 2: Decode text tokens (including BOS) after image embeddings
+        // Step 2: Decode text tokens after image embeddings
         std::vector<int32_t> text_pos(n_text_toks);
         std::vector<int32_t> text_n_seq_id(n_text_toks, 1);
         std::vector<llama_seq_id*> text_seq_id(n_text_toks);
@@ -979,17 +972,47 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
         tb.seq_id     = text_seq_id.data();
         tb.logits     = text_logits.data();
 
-        if (llama_decode(g_ctx, tb) != 0) {
+        if (llama_decode(g_ctx, tb) < 0) {
             call_callback_on_error("Text prompt decode after image failed");
             release_callback();
             return;
         }
+
+        // Debug logits
+        {
+            float* logits = llama_get_logits_ith(g_ctx, -1);
+            int n_vocab = llama_vocab_n_tokens(llama_model_get_vocab(g_model));
+            if (logits && n_vocab > 0) {
+                float max_l = -1e38f;
+                for (int i = 0; i < std::min(n_vocab, 1024); i++) {
+                    if (logits[i] > max_l) max_l = logits[i];
+                }
+                llama_token eos = llama_vocab_eos(llama_model_get_vocab(g_model));
+                if (eos >= 0 && eos < n_vocab && logits[eos] > max_l) max_l = logits[eos];
+                LOGI("Image logits max=%f at n_vocab=%d", max_l, n_vocab);
+            }
+        }
     } else {
         llama_batch batch = llama_batch_get_one(tokens.data(), n_text_toks);
-        if (llama_decode(g_ctx, batch) != 0) {
+        if (llama_decode(g_ctx, batch) < 0) {
             call_callback_on_error("Prompt decode failed");
             release_callback();
             return;
+        }
+
+        // Debug logits
+        {
+            float* logits = llama_get_logits_ith(g_ctx, -1);
+            int n_vocab = llama_vocab_n_tokens(llama_model_get_vocab(g_model));
+            if (logits && n_vocab > 0) {
+                float max_l = -1e38f;
+                for (int i = 0; i < std::min(n_vocab, 1024); i++) {
+                    if (logits[i] > max_l) max_l = logits[i];
+                }
+                llama_token eos = llama_vocab_eos(llama_model_get_vocab(g_model));
+                if (eos >= 0 && eos < n_vocab && logits[eos] > max_l) max_l = logits[eos];
+                LOGI("Image text-only logits max=%f at n_vocab=%d", max_l, n_vocab);
+            }
         }
     }
 
@@ -1048,7 +1071,8 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
         }
 
         llama_batch nb = llama_batch_get_one(&tok, 1);
-        if (llama_decode(g_ctx, nb) != 0) break;
+        int r2 = llama_decode(g_ctx, nb);
+        if (r2 < 0) { LOGW("Image: Decode failed at token %d with %d", i, r2); break; }
 
         if ((i & 0xF) == 0) {
             llama_pos max_pos = llama_memory_seq_pos_max(get_mem(), 0);
