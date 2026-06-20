@@ -617,7 +617,7 @@ fun ChatScreen(
         ) {
           itemsIndexed(
             items = messages,
-            key = { idx, msg -> "${msg.role.name}_${msg.timestamp}_$idx" }
+            key = { _, msg -> "msg_${msg.timestamp}" }
           ) { idx, msg ->
             val isLastAssistant = !isInferring &&
               msg.role == MessageRole.ASSISTANT &&
