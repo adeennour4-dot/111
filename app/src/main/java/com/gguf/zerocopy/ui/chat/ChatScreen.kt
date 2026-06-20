@@ -479,11 +479,7 @@ fun ChatScreen(
     }
   }
 
-  LaunchedEffect(messages.size) {
-    if (messages.isNotEmpty()) {
-      listState.scrollToItem(messages.size - 1)
-    }
-  }
+
 
   // Observe sessions StateFlow for reactive updates
   val sessions by app.chatRepository.sessions.collectAsState()
