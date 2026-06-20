@@ -300,6 +300,20 @@ static void call_callback_on_error(const std::string& error) {
     if (need_detach) g_jvm->DetachCurrentThread();
 }
 
+static void call_callback_on_diagnostic(const std::string& info) {
+    if (!g_callback || !g_jvm) return;
+    JNIEnv* env = nullptr; bool need_detach = false;
+    int stat = g_jvm->GetEnv((void**)&env, JNI_VERSION_1_6);
+    if (stat == JNI_EDETACHED) { g_jvm->AttachCurrentThread(&env, nullptr); need_detach = true; }
+    if (!env) return;
+    jclass cls = env->GetObjectClass(g_callback);
+    if (!cls) { if (need_detach) g_jvm->DetachCurrentThread(); return; }
+    jmethodID m = env->GetMethodID(cls, "onDiagnostic", "(Ljava/lang/String;)V");
+    if (m) { jstring s = env->NewStringUTF(info.c_str()); env->CallVoidMethod(g_callback, m, s); env->DeleteLocalRef(s); }
+    env->DeleteLocalRef(cls);
+    if (need_detach) g_jvm->DetachCurrentThread();
+}
+
 static void release_callback() {
     if (g_callback && g_jvm) {
         JNIEnv* env = nullptr;
@@ -688,9 +702,11 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
     // the full conversation) is decoded at the correct positions.
     llama_memory_clear(get_mem(), true);
 
+    auto t_prompt_start = std::chrono::steady_clock::now();
     pin_to_all_cores();
     llama_batch batch = llama_batch_get_one(tokens.data(), (int)tokens.size());
     int ret = llama_decode(g_ctx, batch);
+    auto t_prompt_end = std::chrono::steady_clock::now();
     if (ret < 0) {
         LOGE("Prompt decode failed with %d for %d tokens", ret, (int)tokens.size());
         call_callback_on_error("Prompt decode failed");
@@ -700,6 +716,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
     if (ret > 0) {
         LOGW("Prompt decode warning %d for %d tokens", ret, (int)tokens.size());
     }
+    float prompt_ms = std::chrono::duration<float, std::milli>(t_prompt_end - t_prompt_start).count();
 
     // Debug: log first few logit values to diagnose empty output
     bool eos_is_highest = false;
@@ -732,9 +749,17 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
         call_callback_on_kv_cache((g_cfg.n_ctx > 0) ? (int)((used * 100LL) / g_cfg.n_ctx) : 0);
     }
 
-    pin_to_big_cores();
+    auto t_gen_start = std::chrono::steady_clock::now();
+    // Do NOT pin to big cores here: it restricts all llama_decode worker threads
+    // to only 2 CPUs on S25 Ultra, causing thread contention. Worker threads inherit
+    // the caller's CPU affinity; pin_to_all_cores() above already set full affinity.
     std::string response;
     int tokens_generated = 0;
+    // Track per-token decode times for first 10 tokens to detect anomalies
+    double first_token_ms = 0.0;
+    double slowest_token_ms = 0.0;
+    double total_decode_ms = 0.0;
+    int decode_count = 0;
     for (int i = 0; i < g_cfg.max_new_tokens; i++) {
         if (g_abort.load()) { LOGI("Aborted at token %d", i); break; }
 
@@ -792,8 +817,21 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
         }
 
         llama_batch nb = llama_batch_get_one(&tok, 1);
-        int r2 = llama_decode(g_ctx, nb);
-        if (r2 < 0) { LOGW("Decode failed at token %d with %d", i, r2); break; }
+        {
+            auto t_decode_start = std::chrono::steady_clock::now();
+            int r2 = llama_decode(g_ctx, nb);
+            auto t_decode_end = std::chrono::steady_clock::now();
+            double decode_ms = std::chrono::duration<double, std::milli>(t_decode_end - t_decode_start).count();
+            total_decode_ms += decode_ms;
+            decode_count++;
+            if (i == 0) first_token_ms = decode_ms;
+            if (decode_ms > slowest_token_ms) slowest_token_ms = decode_ms;
+            // Log per-token timing for first 5 tokens
+            if (i < 5) {
+                LOGI("Decode token %d: %.1fms (%.1f tok/s)", i, decode_ms, decode_ms > 0 ? 1000.0 / decode_ms : 0.0);
+            }
+            if (r2 < 0) { LOGW("Decode failed at token %d with %d", i, r2); break; }
+        }
 
         if ((i & 0xF) == 0) {
             llama_pos max_pos = llama_memory_seq_pos_max(get_mem(), 0);
@@ -802,7 +840,27 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
         }
     }
 
+    auto t_gen_end = std::chrono::steady_clock::now();
+    double gen_ms = std::chrono::duration<double, std::milli>(t_gen_end - t_gen_start).count();
     g_history.push_back({"assistant", strip_special_tokens(response)});
+
+    // Diagnostic summary
+    {
+        auto big_cores = detect_big_cores();
+        double avg_decode_ms = decode_count > 0 ? total_decode_ms / decode_count : 0.0;
+        double total_tok_s = gen_ms > 0.0 && tokens_generated > 0 ? (tokens_generated * 1000.0) / gen_ms : 0.0;
+        char diag[1024];
+        snprintf(diag, sizeof(diag),
+            "DIAG: n_threads=%d big_cores=%zu prompt_tokens=%d prompt_ms=%.0f "
+            "gen_tokens=%d gen_ms=%.0f avg=%.1fms first=%.1fms slowest=%.1fms "
+            "avg_tok/s=%.1f n_ctx=%d n_batch=%d",
+            g_cfg.n_threads, big_cores.size(), (int)tokens.size(), prompt_ms,
+            tokens_generated, gen_ms, avg_decode_ms, first_token_ms,
+            slowest_token_ms, total_tok_s, g_cfg.n_ctx, g_cfg.n_batch);
+        LOGI("%s", diag);
+        call_callback_on_diagnostic(std::string(diag));
+    }
+
     call_callback_on_done();
     LOGI("Inference done: tokens=%d chars=%zu", tokens_generated, response.size());
     release_callback();
@@ -1066,12 +1124,18 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
         llama_pos max_pos = llama_memory_seq_pos_max(get_mem(), 0);
         int used = (max_pos >= 0) ? (int)(max_pos + 1) : 0;
         call_callback_on_kv_cache((g_cfg.n_ctx > 0) ? (int)((used * 100LL) / g_cfg.n_ctx) : 0);
+        }
     }
 
-    g_current_image_path = "";
-    pin_to_big_cores();
+    // Do NOT pin to big cores here: same reason as text inference above.
+    auto t_gen_start = std::chrono::steady_clock::now();
     std::string response;
     int tokens_generated = 0;
+    // Track per-token decode times for first 10 tokens to detect anomalies
+    double first_token_ms = 0.0;
+    double slowest_token_ms = 0.0;
+    double total_decode_ms = 0.0;
+    int decode_count = 0;
     for (int i = 0; i < g_cfg.max_new_tokens; i++) {
         if (g_abort.load()) { LOGI("Aborted at token %d", i); break; }
 

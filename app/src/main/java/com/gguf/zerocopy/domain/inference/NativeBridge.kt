@@ -28,6 +28,8 @@ object NativeBridge {
     fun onKvCacheUsage(percent: Int)
 
     fun onTokensGenerated(count: Int)
+
+    fun onDiagnostic(info: String) {}
   }
 
   external fun loadGgufModelNative(filePath: String): Boolean

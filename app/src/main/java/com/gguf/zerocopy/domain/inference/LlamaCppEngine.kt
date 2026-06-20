@@ -40,6 +40,8 @@ class LlamaCppEngine : InferenceEngine {
   private var kvUsage = 0
   private var currentModelPath = ""
   private var _toolManager: ToolManager? = null
+  var lastDiagnostic: String = ""
+    private set
   // Strong reference to prevent garbage collection of callback
   private var activeCallback: NativeBridge.TokenCallback? = null
   override fun getToolManager() = _toolManager
@@ -154,6 +156,11 @@ class LlamaCppEngine : InferenceEngine {
             tokensGenerated.set(count)
             callback.onTokensGenerated(count)
           }
+
+          override fun onDiagnostic(info: String) {
+            android.util.Log.i("LlamaCppEngine", "DIAGNOSTIC: $info")
+            lastDiagnostic = info
+          }
         }
 
       // Store strong reference to prevent garbage collection
@@ -217,6 +224,11 @@ class LlamaCppEngine : InferenceEngine {
           override fun onTokensGenerated(count: Int) {
             tokensGenerated.set(count)
             callback.onTokensGenerated(count)
+          }
+
+          override fun onDiagnostic(info: String) {
+            android.util.Log.i("LlamaCppEngine", "DIAGNOSTIC (image): $info")
+            lastDiagnostic = info
           }
         }
 
