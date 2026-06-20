@@ -6,8 +6,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
 
+# armv8.2-a+dotprod+fp16 covers both older devices (Note 10 Lite)
+# and newer ones (S25 Ultra). i8mm is excluded because the Note 10
+# Lite's Cortex-A76 does not support it, and the compiler may emit
+# i8mm instructions outside of ggml's runtime dispatch, causing SIGILL.
 if(ANDROID_ABI STREQUAL "arm64-v8a")
-    set(ARM_ARCH_FLAGS "-march=armv8.6-a+dotprod+i8mm+fp16")
+    set(ARM_ARCH_FLAGS "-march=armv8.2-a+dotprod+fp16")
     set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   ${ARM_ARCH_FLAGS}")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ARM_ARCH_FLAGS}")
 endif()
