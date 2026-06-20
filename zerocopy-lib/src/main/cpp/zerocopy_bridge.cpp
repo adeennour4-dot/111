@@ -15,6 +15,8 @@
 #include "ggml-backend.h"
 #include "ggml-cpu.h"
 
+constexpr int TN_MAX_CPUS = 64;
+
 #define TAG "ZeroCopy_Lib"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN,  TAG, __VA_ARGS__)
