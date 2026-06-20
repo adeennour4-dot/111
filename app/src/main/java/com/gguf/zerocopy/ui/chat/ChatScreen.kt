@@ -220,6 +220,20 @@ fun ChatScreen(
 
   val ggmlEngine = if (USE_NEW_ENGINE) remember { GGMLEngine() } else null
 
+  LaunchedEffect(modelPath) {
+    if (!USE_NEW_ENGINE || modelPath.isEmpty()) return@LaunchedEffect
+    val eng = ggmlEngine ?: return@LaunchedEffect
+    if (eng.isLoaded) return@LaunchedEffect
+    val cfg = SettingsManager.toConfig()
+    eng.load(
+      path = modelPath,
+      contextSize = cfg.nCtx,
+      threads = cfg.nThreads,
+      batchSize = cfg.nBatch,
+      flashAttn = cfg.flashAttention,
+    )
+  }
+
   fun sendMessageNewEngine(sessionId: String, prompt: String, imagePaths: List<String>) {
     val gEngine = ggmlEngine ?: return
     if (!gEngine.isLoaded) {
@@ -540,54 +554,48 @@ fun ChatScreen(
 
   Scaffold(
     topBar = {
-      Surface(color = colors.Bg) {
-        Row(
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .background(colors.Bg)
+          .padding(horizontal = 4.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Column(
           modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 8.dp),
-          verticalAlignment = Alignment.CenterVertically
+            .weight(1f)
+            .padding(start = 12.dp)
         ) {
-          Column(
-            modifier = Modifier
-              .weight(1f)
-              .padding(start = 12.dp)
-          ) {
+          Text(
+            text = sessionName,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.Text,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+          )
+          if (modelName.isNotEmpty()) {
             Text(
-              text = sessionName,
-              fontSize = 16.sp,
-              fontWeight = FontWeight.Bold,
-              color = colors.Text,
-              maxLines = 1,
-              overflow = TextOverflow.Ellipsis
+              text = modelName,
+              fontSize = 10.sp,
+              color = colors.Text3,
+              fontFamily = FontFamily.Monospace
             )
-            if (modelName.isNotEmpty()) {
-              Text(
-                text = modelName,
-                fontSize = 10.sp,
-                color = colors.Accent2,
-                fontFamily = FontFamily.Monospace
-              )
-            }
           }
-          IconButton(onClick = onSessions) {
-            Icon(Icons.Outlined.History, contentDescription = "Sessions", tint = colors.Text2)
-          }
-          IconButton(onClick = onSettings) {
-            Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = colors.Text2)
-          }
-          IconButton(onClick = onCloud) {
-            Icon(Icons.Outlined.Cloud, contentDescription = "Cloud", tint = colors.Text2)
-          }
+        }
+        IconButton(onClick = onSessions) {
+          Icon(Icons.Outlined.History, contentDescription = "Sessions", tint = colors.Text2)
+        }
+        IconButton(onClick = onSettings) {
+          Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = colors.Text2)
+        }
+        IconButton(onClick = onCloud) {
+          Icon(Icons.Outlined.Cloud, contentDescription = "Cloud", tint = colors.Text2)
         }
       }
     },
     bottomBar = {
       Column {
-        if (messages.isEmpty() && !isInferring) {
-          PromptSuggestions(suggestions = suggestions, onSelect = { text ->
-            sendMessage(text, emptyList(), emptyList())
-          })
-        }
         InputBar(
           onSend = { text, uris, names -> sendMessage(text, uris, names) },
           onStop = { stopInference() },
@@ -640,12 +648,25 @@ fun ChatScreen(
           verticalArrangement = Arrangement.Center,
           horizontalAlignment = Alignment.CenterHorizontally
         ) {
-          Spacer(Modifier.height(48.dp))
+          Spacer(Modifier.height(64.dp))
           Text(
-            text = "Start a conversation",
+            text = "ZeroCopy",
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Light,
             color = colors.Text3,
+            fontFamily = FontFamily.Monospace,
+            letterSpacing = 6.sp
+          )
+          Spacer(Modifier.height(4.dp))
+          Text(
+            text = "How can I help you?",
+            color = colors.Text2,
             fontSize = 15.sp
           )
+          Spacer(Modifier.height(32.dp))
+          PromptSuggestions(suggestions = suggestions, onSelect = { text ->
+            sendMessage(text, emptyList(), emptyList())
+          })
         }
       } else {
         LazyColumn(
