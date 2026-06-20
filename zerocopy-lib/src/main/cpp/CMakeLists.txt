@@ -39,6 +39,7 @@ target_include_directories(zerocopy_engine PRIVATE
     ${llama_SOURCE_DIR}/include
     ${llama_SOURCE_DIR}/ggml/include
     ${llama_SOURCE_DIR}/examples
+    ${llama_SOURCE_DIR}/src
 )
 target_link_libraries(zerocopy_engine PRIVATE llama ggml ${log-lib} ${android-lib})
 target_compile_features(zerocopy_engine PRIVATE cxx_std_20)
