@@ -12,11 +12,11 @@
 #include <sys/syscall.h>
 #include <sched.h>
 #include "llama.h"
-#include "common.h"
 #include "sampling.h"
 #include "chat.h"
 #include "ggml-backend.h"
 #include "ggml-cpu.h"
+#include "llama.h"
 
 #define TAG "ZeroCopy_Lib"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
@@ -33,7 +33,7 @@ extern "C" jint JNI_OnLoad(JavaVM* vm, void* reserved) {
 struct EngineState {
     llama_model* model = nullptr;
     llama_context* ctx = nullptr;
-    common_sampler* sampler = nullptr;
+    llama_sampler* sampler = nullptr;
     std::string system_prompt;
     int thread_mode = 1;
     std::atomic<bool> cancel_flag{false};
@@ -192,14 +192,13 @@ static void apply_thread_mode(int mode) {
 }
 
 static void rebuild_sampler() {
-    if (g_state.sampler) { common_sampler_free(g_state.sampler); g_state.sampler = nullptr; }
+    if (g_state.sampler) { llama_sampler_free(g_state.sampler); g_state.sampler = nullptr; }
     if (g_state.model) {
-        common_params_sampling params;
-        params.temp = 0.7f;
-        params.top_p = 0.9f;
-        params.min_p = 0.05f;
-        params.n_threads = 4;
-        g_state.sampler = common_sampler_init(g_state.model, params);
+        g_state.sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
+        llama_sampler_chain_add(g_state.sampler, llama_sampler_init_temp(0.7f));
+        llama_sampler_chain_add(g_state.sampler, llama_sampler_init_top_p(0.9f, 1));
+        llama_sampler_chain_add(g_state.sampler, llama_sampler_init_min_p(0.05f, 1));
+        llama_sampler_chain_add(g_state.sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
     }
 }
 
@@ -215,7 +214,7 @@ Java_com_gguf_zerocopy_lib_NativeBridge_nativeLoadModel(
     std::lock_guard<std::mutex> lock(g_state.gen_mutex);
     
     // Cleanup
-    if (g_state.sampler) { common_sampler_free(g_state.sampler); g_state.sampler = nullptr; }
+    if (g_state.sampler) { llama_sampler_free(g_state.sampler); g_state.sampler = nullptr; }
     if (g_state.ctx) { llama_detach_threadpool(g_state.ctx); llama_free(g_state.ctx); g_state.ctx = nullptr; }
     if (g_state.threadpool) { ggml_threadpool_free(g_state.threadpool); g_state.threadpool = nullptr; }
     if (g_state.threadpool_batch) { ggml_threadpool_free(g_state.threadpool_batch); g_state.threadpool_batch = nullptr; }
@@ -269,7 +268,7 @@ Java_com_gguf_zerocopy_lib_NativeBridge_nativeLoadModel(
 extern "C" JNIEXPORT void JNICALL
 Java_com_gguf_zerocopy_lib_NativeBridge_nativeRelease(JNIEnv*, jobject) {
     std::lock_guard<std::mutex> lock(g_state.gen_mutex);
-    if (g_state.sampler) { common_sampler_free(g_state.sampler); g_state.sampler = nullptr; }
+    if (g_state.sampler) { llama_sampler_free(g_state.sampler); g_state.sampler = nullptr; }
     if (g_state.ctx) { llama_detach_threadpool(g_state.ctx); llama_free(g_state.ctx); g_state.ctx = nullptr; }
     if (g_state.threadpool) { ggml_threadpool_free(g_state.threadpool); g_state.threadpool = nullptr; }
     if (g_state.threadpool_batch) { ggml_threadpool_free(g_state.threadpool_batch); g_state.threadpool_batch = nullptr; }
