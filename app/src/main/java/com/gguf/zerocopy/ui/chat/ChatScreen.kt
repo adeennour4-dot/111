@@ -220,66 +220,6 @@ fun ChatScreen(
 
   val ggmlEngine = if (USE_NEW_ENGINE) remember { GGMLEngine() } else null
 
-  fun sendMessage(text: String, uris: List<Uri>, names: List<String>) {
-    android.util.Log.d("ChatScreen", "sendMessage called with chatId: $chatId")
-    val id = chatId ?: run {
-      android.util.Log.d("ChatScreen", "Creating new session")
-      val s = app.chatRepository.createSession(
-        modelPath = modelPath,
-        modelName = modelName
-      )
-      SettingsManager.currentSessionId = s.id
-      chatId = s.id
-      android.util.Log.d("ChatScreen", "New session created: ${s.id}")
-      s.id
-    }
-
-    val savedPaths = mutableListOf<String>()
-    var attachType: AttachmentType? = null
-    var extractedPdfText = ""
-
-    uris.forEach { uri ->
-      val mime = context.contentResolver.getType(uri) ?: ""
-      when {
-        mime.startsWith("image/") -> {
-          saveAttachmentToStorage(uri)?.let { path ->
-            savedPaths.add(path)
-            if (attachType == null) attachType = AttachmentType.IMAGE
-          }
-        }
-        mime == "application/pdf" -> {
-          extractedPdfText = "PDF content extracted"
-          if (attachType == null) attachType = AttachmentType.DOCUMENT
-        }
-        else -> {
-          if (attachType == null) {
-            attachType = if (mime.startsWith("audio/")) AttachmentType.AUDIO else AttachmentType.DOCUMENT
-          }
-        }
-      }
-    }
-
-    val finalPrompt = if (extractedPdfText.isNotEmpty()) {
-      val pdfContent = "\n\n[Extracted PDF Content]\n$extractedPdfText"
-      if (text.isNotEmpty()) "$text$pdfContent" else "Please analyze this PDF document:$pdfContent"
-    } else text
-
-    val userMsg = ChatMessage(
-      role = MessageRole.USER,
-      content = finalPrompt,
-      attachmentPath = savedPaths.firstOrNull(),
-      attachmentType = attachType
-    )
-    app.chatRepository.addMessage(id, userMsg)
-    userSentCount++
-
-    if (USE_NEW_ENGINE) {
-      sendMessageNewEngine(id, finalPrompt, savedPaths)
-    } else {
-      sendMessageOldEngine(id, finalPrompt, savedPaths)
-    }
-  }
-
   fun sendMessageNewEngine(sessionId: String, prompt: String, imagePaths: List<String>) {
     val gEngine = ggmlEngine ?: return
     if (!gEngine.isLoaded) {
@@ -420,6 +360,66 @@ fun ChatScreen(
           streamedContent = ""
         }
       }
+    }
+  }
+
+  fun sendMessage(text: String, uris: List<Uri>, names: List<String>) {
+    android.util.Log.d("ChatScreen", "sendMessage called with chatId: $chatId")
+    val id = chatId ?: run {
+      android.util.Log.d("ChatScreen", "Creating new session")
+      val s = app.chatRepository.createSession(
+        modelPath = modelPath,
+        modelName = modelName
+      )
+      SettingsManager.currentSessionId = s.id
+      chatId = s.id
+      android.util.Log.d("ChatScreen", "New session created: ${s.id}")
+      s.id
+    }
+
+    val savedPaths = mutableListOf<String>()
+    var attachType: AttachmentType? = null
+    var extractedPdfText = ""
+
+    uris.forEach { uri ->
+      val mime = context.contentResolver.getType(uri) ?: ""
+      when {
+        mime.startsWith("image/") -> {
+          saveAttachmentToStorage(uri)?.let { path ->
+            savedPaths.add(path)
+            if (attachType == null) attachType = AttachmentType.IMAGE
+          }
+        }
+        mime == "application/pdf" -> {
+          extractedPdfText = "PDF content extracted"
+          if (attachType == null) attachType = AttachmentType.DOCUMENT
+        }
+        else -> {
+          if (attachType == null) {
+            attachType = if (mime.startsWith("audio/")) AttachmentType.AUDIO else AttachmentType.DOCUMENT
+          }
+        }
+      }
+    }
+
+    val finalPrompt = if (extractedPdfText.isNotEmpty()) {
+      val pdfContent = "\n\n[Extracted PDF Content]\n$extractedPdfText"
+      if (text.isNotEmpty()) "$text$pdfContent" else "Please analyze this PDF document:$pdfContent"
+    } else text
+
+    val userMsg = ChatMessage(
+      role = MessageRole.USER,
+      content = finalPrompt,
+      attachmentPath = savedPaths.firstOrNull(),
+      attachmentType = attachType
+    )
+    app.chatRepository.addMessage(id, userMsg)
+    userSentCount++
+
+    if (USE_NEW_ENGINE) {
+      sendMessageNewEngine(id, finalPrompt, savedPaths)
+    } else {
+      sendMessageOldEngine(id, finalPrompt, savedPaths)
     }
   }
 
