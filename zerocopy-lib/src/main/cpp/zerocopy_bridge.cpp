@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <cstdio>
 #include <android/log.h>
 #include <unistd.h>
 #include <sys/syscall.h>
@@ -345,24 +346,21 @@ static void rebuild_sampler() {
     }
 }
 
-// ─── StreamingLLM Eviction ────────────────────────────────────────────────────
-static void maybe_evict_kv_cache() {
+// ─── Context Window Management ────────────────────────────────────────────────
+// Full KV cache reset when nearing the context limit (StreamingLLM-style)
+static void maybe_trim_context() {
     if (!g_state.ctx) return;
     int n_ctx = llama_n_ctx(g_state.ctx);
-    int used = llama_kv_cache_used_cells(g_state.ctx);
-    if (used < (int)(n_ctx * g_state.kv_evict_threshold)) return;
+    if (g_state.n_past < (int)(n_ctx * g_state.kv_evict_threshold)) return;
 
     int keep = g_state.kv_sink_tokens + g_state.kv_recent_tokens;
-    if (keep >= n_ctx) return;
+    if (keep >= g_state.n_past) return;
 
-    int evict_start = g_state.kv_sink_tokens;
-    int evict_end = n_ctx - g_state.kv_recent_tokens;
-    if (evict_end <= evict_start) return;
-
-    llama_kv_cache_seq_rm(g_state.ctx, 0, evict_start, evict_end);
-    llama_kv_cache_seq_add(g_state.ctx, 0, evict_end, n_ctx, -(evict_end - evict_start));
-    g_state.n_past -= (evict_end - evict_start);
-    LOGI("StreamingLLM evicted tokens %d..%d, n_past now %d", evict_start, evict_end, g_state.n_past);
+    int remove_count = g_state.n_past - keep;
+    // Full reset — simpler and works with any llama.cpp version
+    llama_memory_clear(llama_get_memory(g_state.ctx), true);
+    g_state.n_past = keep;
+    LOGI("Context trimmed: removed %d tokens, n_past now %d", remove_count, g_state.n_past);
 }
 
 // ─── RAG: Embedding ────────────────────────────────────────────────────────────
@@ -460,8 +458,7 @@ Java_com_gguf_zerocopy_lib_NativeBridge_nativeLoadModel(
     mparams.use_mmap = useMmap;
     mparams.use_mlock = useMlock;
     mparams.n_gpu_layers = 0;
-    // Enable embeddings for RAG
-    mparams.embedding = true;
+    // Embeddings enabled automatically by llama_encode() at this tag
 
     g_state.model = llama_model_load_from_file(path_s.c_str(), mparams);
     if (!g_state.model) { LOGE("Model load failed"); return JNI_FALSE; }
@@ -616,8 +613,7 @@ Java_com_gguf_zerocopy_lib_NativeBridge_nativeGenerateStream(
         }
         g_state.n_past += cur;
 
-        // StreamingLLM check after each batch
-        maybe_evict_kv_cache();
+        maybe_trim_context();
     }
 
     // ── Generation ──
@@ -643,10 +639,10 @@ Java_com_gguf_zerocopy_lib_NativeBridge_nativeGenerateStream(
         if (llama_decode(g_state.ctx, nb) != 0) break;
         g_state.n_past++;
 
-        // Periodic KV cache callbacks and StreamingLLM eviction
+        // Periodic KV cache callbacks and context trimming
         if (tokens_generated % 16 == 0) {
             if (g_onKvUsage && g_jvm) {
-                int pct = (int)((float)llama_kv_cache_used_cells(g_state.ctx) / n_ctx_max * 100);
+                int pct = (int)((float)g_state.n_past / n_ctx_max * 100);
                 JNIEnv* env2 = nullptr; bool nd = false;
                 int st = g_jvm->GetEnv((void**)&env2, JNI_VERSION_1_6);
                 if (st == JNI_EDETACHED) { g_jvm->AttachCurrentThread(&env2, nullptr); nd = true; }
@@ -660,7 +656,7 @@ Java_com_gguf_zerocopy_lib_NativeBridge_nativeGenerateStream(
                 if (env2) env2->CallVoidMethod(callback, g_onTokensGenerated, tokens_generated);
                 if (nd) g_jvm->DetachCurrentThread();
             }
-            maybe_evict_kv_cache();
+            maybe_trim_context();
         }
     }
 
