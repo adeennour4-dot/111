@@ -120,8 +120,8 @@ fun SettingsScreen(onBack: () -> Unit) {
     }
   }
 
-  private fun parseFloat(s: String) = s.replace(",", ".").toFloatOrNull()
-  private fun parseInt(s: String) = s.replace(",", ".").toIntOrNull()
+  fun parseFloat(s: String) = s.replace(",", ".").toFloatOrNull()
+  fun parseInt(s: String) = s.replace(",", ".").toIntOrNull()
 
   fun saveSettings() {
     val cfg = InferenceConfig(
