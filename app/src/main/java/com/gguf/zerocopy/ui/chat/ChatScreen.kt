@@ -11,6 +11,10 @@ import android.net.Uri
 import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -68,6 +72,7 @@ import com.gguf.zerocopy.ui.chat.components.DeleteConfirmDialog
 import com.gguf.zerocopy.ui.chat.components.ExportSessionDialog
 import com.gguf.zerocopy.ui.chat.components.InputBar
 import com.gguf.zerocopy.ui.chat.components.PromptSuggestions
+import com.gguf.zerocopy.ui.chat.components.RagDocumentDialog
 import com.gguf.zerocopy.ui.chat.components.getFileName
 import com.gguf.zerocopy.ui.theme.currentPalette
 import com.gguf.zerocopy.lib.GGMLEngine
@@ -128,8 +133,9 @@ fun ChatScreen(
   var attachmentFileNames by remember { mutableStateOf(listOf<String>()) }
   var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
   var reasoningEnabled by remember { mutableStateOf(SettingsManager.reasoningEnabled) }
-  var ragEnabled by remember { mutableStateOf(false) }
+  var ragEnabled by remember { mutableStateOf(SettingsManager.ragEnabled) }
   var showExportDialog by remember { mutableStateOf(false) }
+  var showRagDialog by remember { mutableStateOf(false) }
   var deleteMsgIndex by remember { mutableIntStateOf(-1) }
   var showStreamingThinking by remember { mutableStateOf(false) }
   var userSentCount by remember { mutableIntStateOf(0) }
@@ -553,7 +559,13 @@ fun ChatScreen(
 
   LaunchedEffect(userSentCount) {
     if (userSentCount > 0 && messages.isNotEmpty()) {
-      listState.scrollToItem(messages.size - 1)
+      listState.animateScrollToItem(messages.size - 1)
+    }
+  }
+
+  LaunchedEffect(streamedContent) {
+    if (isInferring && streamedContent.isNotEmpty() && messages.isNotEmpty()) {
+      listState.animateScrollToItem(messages.size)
     }
   }
 
@@ -642,10 +654,7 @@ fun ChatScreen(
             SettingsManager.reasoningEnabled = reasoningEnabled
           },
           ragEnabled = ragEnabled,
-          onToggleRag = {
-            ragEnabled = !ragEnabled
-            ggmlEngine?.ragEnabled = ragEnabled
-          },
+          onToggleRag = { showRagDialog = true },
           ragDocCount = ggmlEngine?.numDocuments ?: 0
         )
       }
@@ -685,6 +694,16 @@ fun ChatScreen(
           PromptSuggestions(suggestions = suggestions, onSelect = { text ->
             sendMessage(text, emptyList(), emptyList())
           })
+          val ragDocs = ggmlEngine?.numDocuments ?: 0
+          if (ragDocs > 0) {
+            Spacer(Modifier.height(24.dp))
+            Text(
+              text = "$ragDocs document chunks indexed for RAG",
+              fontSize = 11.sp,
+              color = colors.Accent.copy(alpha = 0.6f),
+              fontFamily = FontFamily.Monospace
+            )
+          }
         }
       } else {
         LazyColumn(
@@ -699,30 +718,36 @@ fun ChatScreen(
             items = messages,
             key = { index, msg -> "msg_${msg.timestamp}" }
           ) { idx, msg ->
-            val isLastAssistant = !isInferring &&
-              msg.role == MessageRole.ASSISTANT &&
-              idx == messages.size - 1
-            val canRegenerate = isLastAssistant && idx > 0 &&
-              messages[idx - 1].role == MessageRole.USER
+            AnimatedVisibility(
+              visible = true,
+              enter = fadeIn(animationSpec = tween(300)) +
+                slideInVertically(animationSpec = tween(300)) { it / 8 }
+            ) {
+              val isLastAssistant = !isInferring &&
+                msg.role == MessageRole.ASSISTANT &&
+                idx == messages.size - 1
+              val canRegenerate = isLastAssistant && idx > 0 &&
+                messages[idx - 1].role == MessageRole.USER
 
-            val thinking = extractThinking(msg.content)
-            val display = removeThinking(msg.content)
+              val thinking = extractThinking(msg.content)
+              val display = removeThinking(msg.content)
 
-            ChatBubble(
-              content = display,
-              role = msg.role,
-              timestamp = msg.timestamp,
-              tps = msg.tps,
-              tokens = msg.tokens,
-              attachmentPath = msg.attachmentPath,
-              attachmentType = msg.attachmentType,
-              thinkingContent = thinking,
-              onCopy = { copyToClipboard(display) },
-              onDelete = { deleteMsgIndex = idx },
-              onRegenerate = if (canRegenerate) {
-                { handleRegenerate(idx - 1) }
-              } else null
-            )
+              ChatBubble(
+                content = display,
+                role = msg.role,
+                timestamp = msg.timestamp,
+                tps = msg.tps,
+                tokens = msg.tokens,
+                attachmentPath = msg.attachmentPath,
+                attachmentType = msg.attachmentType,
+                thinkingContent = thinking,
+                onCopy = { copyToClipboard(display) },
+                onDelete = { deleteMsgIndex = idx },
+                onRegenerate = if (canRegenerate) {
+                  { handleRegenerate(idx - 1) }
+                } else null
+              )
+            }
           }
 
           if (isInferring) {
@@ -760,6 +785,14 @@ fun ChatScreen(
     DeleteConfirmDialog(
       onDismiss = { deleteMsgIndex = -1 },
       onConfirm = { handleDelete(deleteMsgIndex) }
+    )
+  }
+
+  if (showRagDialog) {
+    RagDocumentDialog(
+      engine = ggmlEngine,
+      onDismiss = { showRagDialog = false },
+      onDocumentsChanged = { /* doc count will update next frame */ }
     )
   }
 }

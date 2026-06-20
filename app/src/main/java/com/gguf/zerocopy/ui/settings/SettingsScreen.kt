@@ -67,6 +67,7 @@ import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.domain.server.ModelServerService
 import com.gguf.zerocopy.domain.inference.InferenceConfig
 import com.gguf.zerocopy.domain.inference.RepeatPenaltyConfig
+import com.gguf.zerocopy.lib.GGMLEngine
 import com.gguf.zerocopy.ui.chat.components.getFileName
 import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlinx.coroutines.launch
@@ -77,6 +78,7 @@ fun SettingsScreen(onBack: () -> Unit) {
   val context = LocalContext.current
   val app = ZeroCopyApp.instance
   val engineManager = app.engineManager
+  val ggmlEngine = remember { GGMLEngine() }
   val scope = rememberCoroutineScope()
   val snackbarHostState = remember { SnackbarHostState() }
   val colors = currentPalette()
@@ -97,6 +99,7 @@ fun SettingsScreen(onBack: () -> Unit) {
   var isDark by remember { mutableStateOf(SettingsManager.isDarkTheme) }
   var mmprojPath by remember { mutableStateOf(SettingsManager.mmprojPath) }
   var reasoningEnabled by remember { mutableStateOf(SettingsManager.reasoningEnabled) }
+  var ragEnabled by remember { mutableStateOf(SettingsManager.ragEnabled) }
   var showResetConfirm by remember { mutableStateOf(false) }
   var serverPort by remember { mutableStateOf(SettingsManager.serverPort.toString()) }
   var serverAuthEnabled by remember { mutableStateOf(SettingsManager.serverAuthEnabled) }
@@ -148,6 +151,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     SettingsManager.serverAuthEnabled = serverAuthEnabled
     SettingsManager.serverAuthToken = serverAuthToken
     SettingsManager.serverWifiOnly = serverWifiOnly
+    SettingsManager.ragEnabled = ragEnabled
 
     val active = engineManager.getActiveEngine()
     active?.let { eng ->
@@ -379,6 +383,110 @@ fun SettingsScreen(onBack: () -> Unit) {
           },
           colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
         )
+      }
+
+      HorizontalDivider(color = colors.Border, thickness = 1.dp)
+
+      Text(
+        "RAG (Retrieval)",
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Bold,
+        color = colors.Accent,
+        fontFamily = FontFamily.Monospace,
+        letterSpacing = 2.sp
+      )
+
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Enable RAG", fontSize = 13.sp, color = colors.Text2, modifier = Modifier.weight(1f))
+        Switch(
+          checked = ragEnabled,
+          onCheckedChange = { ragEnabled = it },
+          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
+        )
+      }
+
+      var ragTopK by remember { mutableStateOf(SettingsManager.ragTopK.toString()) }
+      var ragMinScore by remember { mutableStateOf(SettingsManager.ragMinScore.toString()) }
+
+      SettingField("Top-K Results", "1-10", ragTopK, { ragTopK = it })
+      SettingField("Min Similarity", "0-1", ragMinScore, { ragMinScore = it })
+
+      OutlinedButton(
+        onClick = {
+          SettingsManager.ragEnabled = ragEnabled
+          val k = ragTopK.toIntOrNull()?.coerceIn(1, 10) ?: 3
+          val s = ragMinScore.toFloatOrNull()?.coerceIn(0f, 1f) ?: 0.3f
+          SettingsManager.ragTopK = k
+          SettingsManager.ragMinScore = s
+          ggmlEngine?.setRagParams(k, s)
+          scope.launch { snackbarHostState.showSnackbar("RAG settings saved") }
+        },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent2)
+      ) {
+        Text("Save RAG Settings", fontSize = 12.sp)
+      }
+
+      HorizontalDivider(color = colors.Border, thickness = 1.dp)
+
+      Text(
+        "Prompt Cache",
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Bold,
+        color = colors.Accent,
+        fontFamily = FontFamily.Monospace,
+        letterSpacing = 2.sp
+      )
+
+      OutlinedButton(
+        onClick = {
+          ggmlEngine?.clearCache()
+          scope.launch { snackbarHostState.showSnackbar("Prompt cache cleared") }
+        },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Amber)
+      ) {
+        Text("Clear Prompt Cache", fontSize = 12.sp)
+      }
+
+      HorizontalDivider(color = colors.Border, thickness = 1.dp)
+
+      Text(
+        "StreamingLLM",
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Bold,
+        color = colors.Accent,
+        fontFamily = FontFamily.Monospace,
+        letterSpacing = 2.sp
+      )
+
+      var sinkTokens by remember { mutableStateOf(SettingsManager.kvSinkTokens.toString()) }
+      var recentTokens by remember { mutableStateOf(SettingsManager.kvRecentTokens.toString()) }
+      var evictThreshold by remember { mutableStateOf(SettingsManager.kvEvictThreshold.toString()) }
+
+      SettingField("Sink Tokens", "1-32 (first tokens to keep)", sinkTokens, { sinkTokens = it })
+      SettingField("Recent Tokens", "64-2048 (last tokens to keep)", recentTokens, { recentTokens = it })
+      SettingField("Evict Threshold", "0.5-0.99 (% full before eviction)", evictThreshold, { evictThreshold = it })
+
+      OutlinedButton(
+        onClick = {
+          SettingsManager.kvSinkTokens = sinkTokens.toIntOrNull()?.coerceIn(1, 32) ?: 4
+          SettingsManager.kvRecentTokens = recentTokens.toIntOrNull()?.coerceIn(64, 2048) ?: 512
+          SettingsManager.kvEvictThreshold = evictThreshold.toFloatOrNull()?.coerceIn(0.5f, 0.99f) ?: 0.85f
+          ggmlEngine?.setStreamingLLM(
+            SettingsManager.kvSinkTokens,
+            SettingsManager.kvRecentTokens,
+            SettingsManager.kvEvictThreshold,
+          )
+          scope.launch { snackbarHostState.showSnackbar("StreamingLLM settings saved") }
+        },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent2)
+      ) {
+        Text("Save StreamingLLM", fontSize = 12.sp)
       }
 
       HorizontalDivider(color = colors.Border, thickness = 1.dp)

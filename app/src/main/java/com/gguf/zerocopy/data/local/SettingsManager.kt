@@ -167,6 +167,32 @@ object SettingsManager {
       com.gguf.zerocopy.ui.theme.ThemeState.isDark = v
     }
 
+  // RAG
+  var ragEnabled: Boolean
+    get() = prefs?.getBoolean("rag_enabled", false) ?: false
+    set(v) { prefs?.edit()?.putBoolean("rag_enabled", v)?.apply() }
+
+  var ragTopK: Int
+    get() = prefs?.getInt("rag_top_k", 3) ?: 3
+    set(v) { prefs?.edit()?.putInt("rag_top_k", v)?.apply() }
+
+  var ragMinScore: Float
+    get() = prefs?.getFloat("rag_min_score", 0.3f) ?: 0.3f
+    set(v) { prefs?.edit()?.putFloat("rag_min_score", v)?.apply() }
+
+  // StreamingLLM
+  var kvSinkTokens: Int
+    get() = prefs?.getInt("kv_sink_tokens", 4) ?: 4
+    set(v) { prefs?.edit()?.putInt("kv_sink_tokens", v)?.apply() }
+
+  var kvRecentTokens: Int
+    get() = prefs?.getInt("kv_recent_tokens", 512) ?: 512
+    set(v) { prefs?.edit()?.putInt("kv_recent_tokens", v)?.apply() }
+
+  var kvEvictThreshold: Float
+    get() = prefs?.getFloat("kv_evict_threshold", 0.85f) ?: 0.85f
+    set(v) { prefs?.edit()?.putFloat("kv_evict_threshold", v)?.apply() }
+
   fun toConfig() = InferenceConfig(
     nCtx = nCtx,
     nBatch = nBatch.coerceIn(512, 8192),
