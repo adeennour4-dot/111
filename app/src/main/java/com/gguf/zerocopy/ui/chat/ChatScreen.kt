@@ -130,6 +130,7 @@ fun ChatScreen(
   var showExportDialog by remember { mutableStateOf(false) }
   var deleteMsgIndex by remember { mutableIntStateOf(-1) }
   var showStreamingThinking by remember { mutableStateOf(false) }
+  var userSentCount by remember { mutableIntStateOf(0) }
 
   val suggestions = remember {
     listOf(
@@ -280,6 +281,7 @@ fun ChatScreen(
     )
     android.util.Log.d("ChatScreen", "Adding user message to session: $id")
     app.chatRepository.addMessage(id, userMsg)
+    userSentCount++
 
     val activeEngine = engine
     if (activeEngine?.isModelLoaded != true) {
@@ -480,6 +482,12 @@ fun ChatScreen(
   }
 
 
+
+  LaunchedEffect(userSentCount) {
+    if (userSentCount > 0 && messages.isNotEmpty()) {
+      listState.animateScrollToItem(messages.size - 1)
+    }
+  }
 
   // Observe sessions StateFlow for reactive updates
   val sessions by app.chatRepository.sessions.collectAsState()
