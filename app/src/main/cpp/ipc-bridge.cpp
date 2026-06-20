@@ -1124,18 +1124,12 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
         llama_pos max_pos = llama_memory_seq_pos_max(get_mem(), 0);
         int used = (max_pos >= 0) ? (int)(max_pos + 1) : 0;
         call_callback_on_kv_cache((g_cfg.n_ctx > 0) ? (int)((used * 100LL) / g_cfg.n_ctx) : 0);
-        }
     }
 
     // Do NOT pin to big cores here: same reason as text inference above.
-    auto t_gen_start = std::chrono::steady_clock::now();
+    g_current_image_path = "";
     std::string response;
     int tokens_generated = 0;
-    // Track per-token decode times for first 10 tokens to detect anomalies
-    double first_token_ms = 0.0;
-    double slowest_token_ms = 0.0;
-    double total_decode_ms = 0.0;
-    int decode_count = 0;
     for (int i = 0; i < g_cfg.max_new_tokens; i++) {
         if (g_abort.load()) { LOGI("Aborted at token %d", i); break; }
 
