@@ -485,7 +485,7 @@ fun ChatScreen(
 
   LaunchedEffect(userSentCount) {
     if (userSentCount > 0 && messages.isNotEmpty()) {
-      listState.animateScrollToItem(messages.size - 1)
+      listState.scrollToItem(messages.size - 1)
     }
   }
 

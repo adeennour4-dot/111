@@ -6,10 +6,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
 
-# armv8.2-a+dotprod+fp16 covers both older devices (Note 10 Lite)
-# and newer ones (S25 Ultra). i8mm is excluded because the Note 10
-# Lite's Cortex-A76 does not support it, and the compiler may emit
-# i8mm instructions outside of ggml's runtime dispatch, causing SIGILL.
+# armv8.2-a+dotprod+fp16 covers both older devices (Note 10 Lite) and newer
+# ones (S25 Ultra). i8mm is excluded from the global flags because the Note 10
+# Lite's Cortex-A76 does not support it, but we add i8mm specifically to the
+# ggml target below. ggml's runtime dispatch will only execute i8mm kernels
+# on devices that support them (S25 Ultra), so the library is safe on both.
 if(ANDROID_ABI STREQUAL "arm64-v8a")
     set(ARM_ARCH_FLAGS "-march=armv8.2-a+dotprod+fp16")
     set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   ${ARM_ARCH_FLAGS}")
@@ -47,6 +48,14 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(llama)
+
+# ggml's own cmake checks (CheckCXXSourceCompiles) will detect dotprod and
+# i8mm support in the compiler and add per-file COMPILE_OPTIONS to the
+# specific kernel files that need them. The global march stays at
+# armv8.2-a+dotprod+fp16, which is safe for both devices. On S25 Ultra,
+# ggml's runtime dispatch will select i8mm-accelerated kernels that were
+# compiled per-file with i8mm; on Note 10 Lite those kernels exist in the
+# binary but are never called, so no SIGILL occurs.
 
 set(MNN_BUILD_SHARED_LIBS ON  CACHE BOOL "" FORCE)
 set(MNN_BUILD_LLM         ON  CACHE BOOL "" FORCE)

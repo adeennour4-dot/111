@@ -120,37 +120,52 @@ fun SettingsScreen(onBack: () -> Unit) {
     }
   }
 
+  private fun parseFloat(s: String) = s.replace(",", ".").toFloatOrNull()
+  private fun parseInt(s: String) = s.replace(",", ".").toIntOrNull()
+
   fun saveSettings() {
     val cfg = InferenceConfig(
-      nCtx = nCtx.toIntOrNull()?.coerceIn(512, 32768) ?: 2048,
-      maxNewTokens = maxTok.toIntOrNull()?.coerceIn(64, 8192) ?: 2048,
-      nBatch = batch.toIntOrNull()?.coerceIn(512, 8192) ?: 2048,
-      temperature = temp.toFloatOrNull()?.coerceIn(0f, 2f) ?: 0.5f,
-      topP = topP.toFloatOrNull()?.coerceIn(0f, 1f) ?: 0.85f,
-      minP = minP.toFloatOrNull()?.coerceIn(0f, 1f) ?: 0.1f,
-      nGpuLayers = gpu.toIntOrNull()?.coerceIn(0, 999) ?: 99,
-      nThreads = threads.toIntOrNull()?.coerceIn(0, 16) ?: 0,
+      nCtx = parseInt(nCtx)?.coerceIn(512, 32768) ?: 2048,
+      maxNewTokens = parseInt(maxTok)?.coerceIn(64, 8192) ?: 2048,
+      nBatch = parseInt(batch)?.coerceIn(512, 8192) ?: 2048,
+      temperature = parseFloat(temp)?.coerceIn(0f, 2f) ?: 0.5f,
+      topP = parseFloat(topP)?.coerceIn(0f, 1f) ?: 0.85f,
+      minP = parseFloat(minP)?.coerceIn(0f, 1f) ?: 0.1f,
+      nGpuLayers = parseInt(gpu)?.coerceIn(0, 999) ?: 99,
+      nThreads = parseInt(threads)?.coerceIn(0, 16) ?: 0,
       lowRamMode = lowRam,
       mmprojPath = mmprojPath
     )
     val rp = RepeatPenaltyConfig(
-      repeatPenalty = repPen.toFloatOrNull() ?: 1.1f,
-      freqPenalty = freqPen.toFloatOrNull() ?: 0f,
-      presPenalty = presPen.toFloatOrNull() ?: 0f
+      repeatPenalty = parseFloat(repPen) ?: 1.1f,
+      freqPenalty = parseFloat(freqPen) ?: 0f,
+      presPenalty = parseFloat(presPen) ?: 0f
     )
     SettingsManager.save(cfg, rp)
     SettingsManager.systemPrompt = sysPrompt
     SettingsManager.reasoningEnabled = reasoningEnabled
-    SettingsManager.serverPort = serverPort.toIntOrNull() ?: 8080
+    SettingsManager.serverPort = parseInt(serverPort) ?: 8080
     SettingsManager.serverAuthEnabled = serverAuthEnabled
     SettingsManager.serverAuthToken = serverAuthToken
     SettingsManager.serverWifiOnly = serverWifiOnly
 
     val active = engineManager.getActiveEngine()
-    active?.let {
-      it.config = cfg
-      it.repeatPenalty = rp
-      it.systemPrompt = sysPrompt
+    active?.let { eng ->
+      eng.config = cfg
+      eng.repeatPenalty = rp
+      eng.systemPrompt = sysPrompt
+      val modelPath = eng.loadedModelPath
+      if (modelPath != null) {
+        scope.launch {
+          eng.unloadModel()
+          val result = eng.loadModel(modelPath)
+          if (result.isFailure) {
+            snackbarHostState.showSnackbar("Failed to reload model: ${result.exceptionOrNull()?.message}")
+          } else {
+            snackbarHostState.showSnackbar("Model reloaded with new settings")
+          }
+        }
+      }
     }
   }
 
@@ -158,6 +173,13 @@ fun SettingsScreen(onBack: () -> Unit) {
     saveSettings()
     onBack()
   })
+
+  // Save settings when navigating away via tab switch
+  androidx.compose.runtime.DisposableEffect(Unit) {
+    onDispose {
+      saveSettings()
+    }
+  }
 
   Scaffold(
     topBar = {
