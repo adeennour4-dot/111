@@ -12,11 +12,9 @@
 #include <sys/syscall.h>
 #include <sched.h>
 #include "llama.h"
-#include "sampling.h"
 #include "chat.h"
 #include "ggml-backend.h"
 #include "ggml-cpu.h"
-#include "llama.h"
 
 #define TAG "ZeroCopy_Lib"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
