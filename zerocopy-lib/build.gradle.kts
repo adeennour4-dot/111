@@ -51,10 +51,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-        compilerOptions {
-            jvmTarget = "17"
-        }
+    kotlin {
+        jvmToolchain(17)
     }
 }
 
