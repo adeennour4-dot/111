@@ -1,6 +1,5 @@
 package com.gguf.zerocopy.lib
 
-import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -54,4 +53,36 @@ class GGMLEngine {
     fun setSystemPrompt(prompt: String) = NativeBridge.nativeSetSystemPrompt(prompt)
     fun getModelInfoJson(): String? = if (loaded) NativeBridge.nativeGetModelInfo() else null
     fun stopGeneration() = NativeBridge.nativeAbortInference()
+
+    // Prompt cache
+    fun setCacheDir(dir: String) = NativeBridge.nativeSetCacheDir(dir)
+    fun clearCache() = NativeBridge.nativeClearCache()
+
+    // StreamingLLM
+    fun setStreamingLLM(sinkTokens: Int = 4, recentTokens: Int = 512, threshold: Float = 0.85f) =
+        NativeBridge.nativeSetStreamingLLM(sinkTokens, recentTokens, threshold)
+
+    // RAG
+    val embeddingDim: Int get() = NativeBridge.nativeGetEmbeddingDim()
+    val numDocuments: Int get() = NativeBridge.nativeNumDocuments()
+
+    suspend fun addDocument(
+        text: String, source: String = "", chunkSize: Int = 512, overlap: Int = 64
+    ): Boolean = withContext(Dispatchers.IO) {
+        NativeBridge.nativeAddDocument(text, source, chunkSize, overlap)
+    }
+
+    fun queryDocuments(query: String, topK: Int = 3): String =
+        NativeBridge.nativeQueryDocuments(query, topK)
+
+    fun clearDocuments() = NativeBridge.nativeClearDocuments()
+
+    var ragEnabled: Boolean = false
+        set(value) {
+            field = value
+            NativeBridge.nativeSetRagEnabled(value)
+        }
+
+    fun setRagParams(topK: Int = 3, minScore: Float = 0.3f) =
+        NativeBridge.nativeSetRagParams(topK, minScore)
 }

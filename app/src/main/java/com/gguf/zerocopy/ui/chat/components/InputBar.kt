@@ -27,7 +27,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -61,7 +63,10 @@ fun InputBar(
   attachmentFileNames: List<String>,
   onRemoveAttachment: (Int) -> Unit,
   reasoningEnabled: Boolean,
-  onToggleReasoning: () -> Unit
+  onToggleReasoning: () -> Unit,
+  ragEnabled: Boolean = false,
+  onToggleRag: () -> Unit = {},
+  ragDocCount: Int = 0
 ) {
   val colors = currentPalette()
   val context = LocalContext.current
@@ -224,6 +229,16 @@ fun InputBar(
         }
       }
       Spacer(Modifier.weight(1f))
+      if (ragDocCount > 0) {
+        IconButton(onClick = onToggleRag, modifier = Modifier.size(32.dp)) {
+          Icon(
+            if (ragEnabled) Icons.Filled.Search else Icons.Outlined.Search,
+            contentDescription = "RAG",
+            tint = if (ragEnabled) colors.Accent else colors.Text3,
+            modifier = Modifier.size(16.dp)
+          )
+        }
+      }
       IconButton(onClick = onToggleReasoning, modifier = Modifier.size(32.dp)) {
         Icon(
           if (reasoningEnabled) Icons.Filled.Lightbulb else Icons.Outlined.Lightbulb,

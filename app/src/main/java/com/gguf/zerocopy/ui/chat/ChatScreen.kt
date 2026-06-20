@@ -128,6 +128,7 @@ fun ChatScreen(
   var attachmentFileNames by remember { mutableStateOf(listOf<String>()) }
   var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
   var reasoningEnabled by remember { mutableStateOf(SettingsManager.reasoningEnabled) }
+  var ragEnabled by remember { mutableStateOf(false) }
   var showExportDialog by remember { mutableStateOf(false) }
   var deleteMsgIndex by remember { mutableIntStateOf(-1) }
   var showStreamingThinking by remember { mutableStateOf(false) }
@@ -233,6 +234,13 @@ fun ChatScreen(
       batchSize = cfg.nBatch,
       flashAttn = cfg.flashAttention,
     )
+    // Init prompt cache dir
+    val cacheDir = File(context.filesDir, "prompt_cache").also { it.mkdirs() }.absolutePath
+    eng.setCacheDir(cacheDir)
+    // Init StreamingLLM
+    eng.setStreamingLLM(sinkTokens = 4, recentTokens = 512, threshold = 0.85f)
+    // Init RAG
+    eng.setRagParams(topK = 3, minScore = 0.3f)
   }
 
   fun sendMessageNewEngine(sessionId: String, prompt: String, imagePaths: List<String>) {
@@ -241,6 +249,9 @@ fun ChatScreen(
       scope.launch { snackbarHostState.showSnackbar("New engine: model not loaded") }
       return
     }
+    // Sync RAG state before generation
+    gEngine.ragEnabled = ragEnabled && gEngine.numDocuments > 0
+
     inferenceActive = true
     isInferring = true
     streamedContent = ""
@@ -629,7 +640,13 @@ fun ChatScreen(
           onToggleReasoning = {
             reasoningEnabled = !reasoningEnabled
             SettingsManager.reasoningEnabled = reasoningEnabled
-          }
+          },
+          ragEnabled = ragEnabled,
+          onToggleRag = {
+            ragEnabled = !ragEnabled
+            ggmlEngine?.ragEnabled = ragEnabled
+          },
+          ragDocCount = ggmlEngine?.numDocuments ?: 0
         )
       }
     },

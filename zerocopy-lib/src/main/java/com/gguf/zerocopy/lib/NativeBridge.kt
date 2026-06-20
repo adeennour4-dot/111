@@ -26,6 +26,7 @@ object NativeBridge {
         fun onTokensGenerated(count: Int)
     }
 
+    // Model lifecycle
     external fun nativeLoadModel(
         filePath: String, nCtx: Int, nThreads: Int, nBatch: Int,
         flashAttn: Boolean, useMmap: Boolean, useMlock: Boolean,
@@ -38,4 +39,22 @@ object NativeBridge {
     external fun nativeSetSystemPrompt(prompt: String)
     external fun nativeAbortInference()
     external fun nativeGetModelInfo(): String
+
+    // Prompt cache
+    external fun nativeSetCacheDir(dir: String)
+    external fun nativeClearCache()
+
+    // StreamingLLM
+    external fun nativeSetStreamingLLM(sinkTokens: Int, recentTokens: Int, threshold: Float)
+
+    // RAG
+    external fun nativeGetEmbeddingDim(): Int
+    external fun nativeAddDocument(
+        text: String, source: String, chunkSize: Int, overlap: Int
+    ): Boolean
+    external fun nativeQueryDocuments(query: String, topK: Int): String
+    external fun nativeClearDocuments()
+    external fun nativeNumDocuments(): Int
+    external fun nativeSetRagEnabled(enabled: Boolean)
+    external fun nativeSetRagParams(topK: Int, minScore: Float)
 }
