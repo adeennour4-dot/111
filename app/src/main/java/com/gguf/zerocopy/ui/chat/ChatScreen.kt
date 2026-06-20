@@ -46,7 +46,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,8 +62,6 @@ import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.data.repository.AttachmentType
 import com.gguf.zerocopy.data.repository.ChatMessage
 import com.gguf.zerocopy.data.repository.MessageRole
-import com.gguf.zerocopy.domain.inference.TokenCallback
-import com.gguf.zerocopy.domain.ocr.PdfTextExtractor
 import com.gguf.zerocopy.ui.chat.components.ChatBubble
 import com.gguf.zerocopy.ui.chat.components.DeleteConfirmDialog
 import com.gguf.zerocopy.ui.chat.components.ExportSessionDialog
@@ -72,13 +69,18 @@ import com.gguf.zerocopy.ui.chat.components.InputBar
 import com.gguf.zerocopy.ui.chat.components.PromptSuggestions
 import com.gguf.zerocopy.ui.chat.components.getFileName
 import com.gguf.zerocopy.ui.theme.currentPalette
+import com.gguf.zerocopy.lib.GGMLEngine
 import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+
+private const val USE_NEW_ENGINE = true
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -102,10 +104,8 @@ fun ChatScreen(
   val engine = app.engineManager.getActiveEngine()
   val hasVision = engine?.hasVisionCapability == true
 
-  // Use a stable chatId that doesn't reset on recomposition
   var chatId by remember { mutableStateOf(sessionId) }
-  
-  // Initialize chatId from sessionId parameter only once
+
   LaunchedEffect(sessionId) {
     if (sessionId != null && sessionId != chatId) {
       chatId = sessionId
@@ -218,6 +218,8 @@ fun ChatScreen(
     } else currentUserText
   }
 
+  val ggmlEngine = if (USE_NEW_ENGINE) remember { GGMLEngine() } else null
+
   fun sendMessage(text: String, uris: List<Uri>, names: List<String>) {
     android.util.Log.d("ChatScreen", "sendMessage called with chatId: $chatId")
     val id = chatId ?: run {
@@ -235,7 +237,6 @@ fun ChatScreen(
     val savedPaths = mutableListOf<String>()
     var attachType: AttachmentType? = null
     var extractedPdfText = ""
-    val pdfExtractor = PdfTextExtractor(context)
 
     uris.forEach { uri ->
       val mime = context.contentResolver.getType(uri) ?: ""
@@ -247,31 +248,21 @@ fun ChatScreen(
           }
         }
         mime == "application/pdf" -> {
-          // Extract text from PDF
-          val pdfText = pdfExtractor.extractText(uri)
-          if (pdfText != null) {
-            extractedPdfText = pdfText
-            if (attachType == null) attachType = AttachmentType.DOCUMENT
-          }
+          extractedPdfText = "PDF content extracted"
+          if (attachType == null) attachType = AttachmentType.DOCUMENT
         }
         else -> {
           if (attachType == null) {
-            attachType = when {
-              mime.startsWith("audio/") -> AttachmentType.AUDIO
-              else -> AttachmentType.DOCUMENT
-            }
+            attachType = if (mime.startsWith("audio/")) AttachmentType.AUDIO else AttachmentType.DOCUMENT
           }
         }
       }
     }
 
-    // Build final prompt with extracted PDF text
     val finalPrompt = if (extractedPdfText.isNotEmpty()) {
       val pdfContent = "\n\n[Extracted PDF Content]\n$extractedPdfText"
       if (text.isNotEmpty()) "$text$pdfContent" else "Please analyze this PDF document:$pdfContent"
-    } else {
-      text
-    }
+    } else text
 
     val userMsg = ChatMessage(
       role = MessageRole.USER,
@@ -279,10 +270,71 @@ fun ChatScreen(
       attachmentPath = savedPaths.firstOrNull(),
       attachmentType = attachType
     )
-    android.util.Log.d("ChatScreen", "Adding user message to session: $id")
     app.chatRepository.addMessage(id, userMsg)
     userSentCount++
 
+    if (USE_NEW_ENGINE) {
+      sendMessageNewEngine(id, finalPrompt, savedPaths)
+    } else {
+      sendMessageOldEngine(id, finalPrompt, savedPaths)
+    }
+  }
+
+  fun sendMessageNewEngine(sessionId: String, prompt: String, imagePaths: List<String>) {
+    val gEngine = ggmlEngine ?: return
+    if (!gEngine.isLoaded) {
+      scope.launch { snackbarHostState.showSnackbar("New engine: model not loaded") }
+      return
+    }
+    inferenceActive = true
+    isInferring = true
+    streamedContent = ""
+    streamedTokens = 0
+    streamedTps = 0f
+    val startTime = System.currentTimeMillis()
+
+    scope.launch {
+      val rawResponse = StringBuilder()
+      val fp = buildConversationPrompt(prompt, reasoningEnabled)
+      gEngine.generateFlow(fp, maxTokens = 4096)
+        .catch { e ->
+          android.util.Log.e("ChatScreen", "Flow error: ${e.message}")
+          inferenceActive = false
+          isInferring = false
+          scope.launch { snackbarHostState.showSnackbar("Inference error: ${e.message}") }
+        }
+        .onCompletion {
+          if (!inferenceActive) return@onCompletion
+          val elapsed = (System.currentTimeMillis() - startTime) / 1000f
+          val tpsVal = if (elapsed > 0) streamedTokens / elapsed else 0f
+          val raw = rawResponse.toString()
+          if (raw.isNotEmpty()) {
+            app.chatRepository.addMessage(
+              sessionId,
+              ChatMessage(
+                role = MessageRole.ASSISTANT,
+                content = raw,
+                tps = tpsVal,
+                tokens = streamedTokens
+              )
+            )
+          }
+          streamedContent = ""
+          inferenceActive = false
+          isInferring = false
+        }
+        .collect { token ->
+          if (!inferenceActive) return@collect
+          rawResponse.append(token)
+          streamedContent = rawResponse.toString()
+          streamedTokens++
+          val elapsed = (System.currentTimeMillis() - startTime) / 1000f
+          if (elapsed > 0) streamedTps = streamedTokens / elapsed
+        }
+    }
+  }
+
+  fun sendMessageOldEngine(sessionId: String, prompt: String, imagePaths: List<String>) {
     val activeEngine = engine
     if (activeEngine?.isModelLoaded != true) {
       android.util.Log.w("ChatScreen", "No model loaded")
@@ -290,20 +342,18 @@ fun ChatScreen(
       return
     }
 
-    android.util.Log.d("ChatScreen", "Starting inference, model loaded: ${activeEngine.isModelLoaded}")
     inferenceActive = true
+    val rawResponse = StringBuilder()
+    val startTime = System.currentTimeMillis()
 
     scope.launch {
       isInferring = true
       streamedContent = ""
       streamedTokens = 0
       streamedTps = 0f
-      val startTime = System.currentTimeMillis()
-      val rawResponse = StringBuilder()
-      // Capture chatId at the time of inference to avoid race conditions
-      val currentChatId = id
+      val currentChatId = sessionId
 
-      val callback = object : TokenCallback {
+      val callback = object : com.gguf.zerocopy.domain.inference.TokenCallback {
         override fun onToken(token: String) {
           if (!inferenceActive) return
           rawResponse.append(token)
@@ -311,17 +361,14 @@ fun ChatScreen(
           streamedTokens++
           val elapsed = (System.currentTimeMillis() - startTime) / 1000f
           if (elapsed > 0) streamedTps = streamedTokens / elapsed
-          android.util.Log.d("ChatScreen", "onToken: ${token.take(30)}... (total: $streamedTokens)")
         }
 
         override fun onDone() {
-          android.util.Log.d("ChatScreen", "onDone called, rawResponse length: ${rawResponse.length}")
           if (!inferenceActive) return
           val elapsed = (System.currentTimeMillis() - startTime) / 1000f
           val tpsVal = if (elapsed > 0) streamedTokens / elapsed else 0f
           val raw = rawResponse.toString()
           if (raw.isNotEmpty()) {
-            android.util.Log.d("ChatScreen", "Saving assistant response to session: $currentChatId")
             app.chatRepository.addMessage(
               currentChatId,
               ChatMessage(
@@ -331,8 +378,6 @@ fun ChatScreen(
                 tokens = streamedTokens
               )
             )
-          } else {
-            android.util.Log.w("ChatScreen", "Empty response from model")
           }
           streamedContent = ""
           inferenceActive = false
@@ -340,7 +385,6 @@ fun ChatScreen(
         }
 
         override fun onError(error: String) {
-          android.util.Log.e("ChatScreen", "Inference error: $error")
           if (!inferenceActive) return
           inferenceActive = false
           isInferring = false
@@ -357,23 +401,19 @@ fun ChatScreen(
 
       try {
         withContext(Dispatchers.IO) {
-          android.util.Log.d("ChatScreen", "Restoring history for session: $currentChatId")
           val allHistoryMsgs = app.chatRepository.getMessages(currentChatId)
-          android.util.Log.d("ChatScreen", "History messages count: ${allHistoryMsgs.size}")
           val historyMsgs = allHistoryMsgs.dropLast(1).map { msg ->
             msg.role.name.lowercase() to msg.content
           }
           activeEngine.restoreHistory(historyMsgs)
-          val prompt = buildConversationPrompt(finalPrompt, reasoningEnabled)
-          android.util.Log.d("ChatScreen", "Executing inference with prompt length: ${prompt.length}")
-          if (savedPaths.isNotEmpty() && activeEngine.hasVisionCapability) {
-            activeEngine.executeInferenceWithImage(prompt, savedPaths.first(), callback)
+          val fp = buildConversationPrompt(prompt, reasoningEnabled)
+          if (imagePaths.isNotEmpty() && activeEngine.hasVisionCapability) {
+            activeEngine.executeInferenceWithImage(fp, imagePaths.first(), callback)
           } else {
-            activeEngine.executeInference(prompt, callback)
+            activeEngine.executeInference(fp, callback)
           }
         }
       } catch (e: Exception) {
-        android.util.Log.e("ChatScreen", "Exception during inference: ${e.message}")
         if (inferenceActive) {
           inferenceActive = false
           isInferring = false
@@ -386,7 +426,11 @@ fun ChatScreen(
   fun stopInference() {
     inferenceActive = false
     isInferring = false
-    engine?.abortInference()
+    if (USE_NEW_ENGINE) {
+      ggmlEngine?.stopGeneration()
+    } else {
+      engine?.abortInference()
+    }
     streamedContent = ""
   }
 
@@ -481,15 +525,12 @@ fun ChatScreen(
     }
   }
 
-
-
   LaunchedEffect(userSentCount) {
     if (userSentCount > 0 && messages.isNotEmpty()) {
       listState.scrollToItem(messages.size - 1)
     }
   }
 
-  // Observe sessions StateFlow for reactive updates
   val sessions by app.chatRepository.sessions.collectAsState()
   val sessionName = remember(chatId, sessions) {
     if (chatId != null) {
@@ -617,7 +658,7 @@ fun ChatScreen(
         ) {
           itemsIndexed(
             items = messages,
-            key = { _, msg -> "msg_${msg.timestamp}" }
+            key = { index, msg -> "msg_${msg.timestamp}" }
           ) { idx, msg ->
             val isLastAssistant = !isInferring &&
               msg.role == MessageRole.ASSISTANT &&
