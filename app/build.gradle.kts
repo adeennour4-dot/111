@@ -79,6 +79,8 @@ dependencies {
 
     implementation(libs.litertlm.android)
 
+    implementation(project(":zerocopy-lib"))
+
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.junit)
