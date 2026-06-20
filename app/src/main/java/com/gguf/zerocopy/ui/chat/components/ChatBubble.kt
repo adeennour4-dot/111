@@ -8,7 +8,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,10 +28,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Psychology
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -55,7 +53,6 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlinx.coroutines.delay
 
 @Composable
 fun ChatBubble(
@@ -84,12 +81,12 @@ fun ChatBubble(
   Column(
     modifier = Modifier
       .fillMaxWidth()
-      .padding(vertical = 2.dp)
+      .padding(vertical = 3.dp)
   ) {
     Row(
       modifier = Modifier
         .fillMaxWidth()
-        .padding(horizontal = 12.dp),
+        .padding(horizontal = 14.dp),
       horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
       verticalAlignment = Alignment.Bottom
     ) {
@@ -109,57 +106,64 @@ fun ChatBubble(
           )
         }
 
-        Surface(
-          shape = RoundedCornerShape(
-            topStart = if (isUser) 16.dp else 4.dp,
-            topEnd = if (isUser) 4.dp else 16.dp,
-            bottomStart = 16.dp,
-            bottomEnd = 16.dp
-          ),
-          color = if (isUser) colors.Accent.copy(alpha = 0.85f) else colors.Card,
-          tonalElevation = 0.dp
+        AnimatedVisibility(
+          visible = true,
+          enter = fadeIn(animationSpec = tween(250)) +
+            scaleIn(animationSpec = tween(250), initialScale = 0.95f)
         ) {
-          Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-            if (attachmentPath != null && attachmentType == AttachmentType.IMAGE) {
-              val file = File(attachmentPath)
-              if (file.exists()) {
-                val bitmap = remember(attachmentPath) {
-                  BitmapFactory.decodeFile(attachmentPath)?.asImageBitmap()
-                }
-                bitmap?.let { bmp ->
-                  androidx.compose.foundation.Image(
-                    bitmap = bmp,
-                    contentDescription = "Attached image",
-                    modifier = Modifier
-                      .fillMaxWidth()
-                      .widthIn(max = 260.dp)
-                      .height(180.dp)
-                      .clip(RoundedCornerShape(12.dp)),
-                    contentScale = ContentScale.Crop
-                  )
-                  Spacer(Modifier.height(8.dp))
+          Surface(
+            shape = RoundedCornerShape(
+              topStart = if (isUser) 16.dp else 4.dp,
+              topEnd = if (isUser) 4.dp else 16.dp,
+              bottomStart = 16.dp,
+              bottomEnd = 16.dp
+            ),
+            color = if (isUser) colors.Accent.copy(alpha = 0.85f) else colors.Card,
+            tonalElevation = 0.dp,
+            shadowElevation = if (isUser) 0.dp else 0.5.dp
+          ) {
+            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+              if (attachmentPath != null && attachmentType == AttachmentType.IMAGE) {
+                val file = File(attachmentPath)
+                if (file.exists()) {
+                  val bitmap = remember(attachmentPath) {
+                    BitmapFactory.decodeFile(attachmentPath)?.asImageBitmap()
+                  }
+                  bitmap?.let { bmp ->
+                    androidx.compose.foundation.Image(
+                      bitmap = bmp,
+                      contentDescription = "Attached image",
+                      modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 260.dp)
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                      contentScale = ContentScale.Crop
+                    )
+                    Spacer(Modifier.height(8.dp))
+                  }
                 }
               }
-            }
 
-            if (isLoading) {
-              PulsingDots(colors.Text3)
-            } else {
-              MarkdownText(
-                markdown = content,
-                fontSize = 14.sp,
-                modifier = Modifier.fillMaxWidth()
-              )
-              if (isStreaming) {
-                BlinkingCursor(colors.Accent)
+              if (isLoading) {
+                PulsingDots(colors.Text3)
+              } else {
+                MarkdownText(
+                  markdown = content,
+                  fontSize = 14.sp,
+                  modifier = Modifier.fillMaxWidth()
+                )
+                if (isStreaming) {
+                  BlinkingCursor(colors.Accent)
+                }
               }
             }
           }
         }
 
         Row(
-          modifier = Modifier.padding(top = 2.dp, start = 4.dp),
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          modifier = Modifier.padding(top = 3.dp, start = 4.dp),
+          horizontalArrangement = Arrangement.spacedBy(6.dp),
           verticalAlignment = Alignment.CenterVertically
         ) {
           Text(
@@ -176,28 +180,29 @@ fun ChatBubble(
               fontFamily = FontFamily.Monospace
             )
           }
-          if (!isUser && onRegenerate != null) {
+          Spacer(Modifier.weight(1f))
+          if (onRegenerate != null) {
             IconButton(
               onClick = onRegenerate,
-              modifier = Modifier.size(18.dp)
+              modifier = Modifier.size(20.dp)
             ) {
               Icon(
                 Icons.Filled.Refresh,
                 contentDescription = "Regenerate",
-                tint = colors.Text3,
-                modifier = Modifier.size(12.dp)
+                tint = colors.Text3.copy(alpha = 0.6f),
+                modifier = Modifier.size(13.dp)
               )
             }
           }
           IconButton(
             onClick = onDelete,
-            modifier = Modifier.size(18.dp)
+            modifier = Modifier.size(20.dp)
           ) {
             Icon(
               Icons.Outlined.Delete,
               contentDescription = "Delete",
-              tint = colors.Text3,
-              modifier = Modifier.size(12.dp)
+              tint = colors.Text3.copy(alpha = 0.6f),
+              modifier = Modifier.size(13.dp)
             )
           }
         }
@@ -238,7 +243,7 @@ private fun UserAvatar() {
     modifier = Modifier
       .size(28.dp)
       .clip(CircleShape)
-      .background(colors.Accent.copy(alpha = 0.2f)),
+      .background(colors.Accent.copy(alpha = 0.15f)),
     contentAlignment = Alignment.Center
   ) {
     Text(
@@ -286,8 +291,8 @@ private fun ThinkingChip(
     if (isExpanded) {
       AnimatedVisibility(
         visible = isExpanded,
-        enter = fadeIn(),
-        exit = fadeOut()
+        enter = fadeIn(animationSpec = tween(200)),
+        exit = fadeIn(animationSpec = tween(200))
       ) {
         Surface(
           modifier = Modifier.padding(horizontal = 10.dp).padding(bottom = 10.dp),
@@ -333,7 +338,6 @@ private fun PulsingDots(color: androidx.compose.ui.graphics.Color) {
 
 @Composable
 private fun BlinkingCursor(color: androidx.compose.ui.graphics.Color) {
-  var visible by remember { mutableStateOf(true) }
   val infiniteTransition = rememberInfiniteTransition()
   val alpha by infiniteTransition.animateFloat(
     initialValue = 1f,

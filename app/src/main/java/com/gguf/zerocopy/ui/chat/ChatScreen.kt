@@ -244,9 +244,13 @@ fun ChatScreen(
     val cacheDir = File(context.filesDir, "prompt_cache").also { it.mkdirs() }.absolutePath
     eng.setCacheDir(cacheDir)
     // Init StreamingLLM
-    eng.setStreamingLLM(sinkTokens = 4, recentTokens = 512, threshold = 0.85f)
+    eng.setStreamingLLM(
+      sinkTokens = SettingsManager.kvSinkTokens,
+      recentTokens = SettingsManager.kvRecentTokens,
+      threshold = SettingsManager.kvEvictThreshold
+    )
     // Init RAG
-    eng.setRagParams(topK = 3, minScore = 0.3f)
+    eng.setRagParams(topK = SettingsManager.ragTopK, minScore = SettingsManager.ragMinScore)
   }
 
   fun sendMessageNewEngine(sessionId: String, prompt: String, imagePaths: List<String>) {
@@ -256,6 +260,7 @@ fun ChatScreen(
       return
     }
     // Sync RAG state before generation
+    gEngine.setRagParams(topK = SettingsManager.ragTopK, minScore = SettingsManager.ragMinScore)
     gEngine.ragEnabled = ragEnabled && gEngine.numDocuments > 0
 
     inferenceActive = true
@@ -675,34 +680,62 @@ fun ChatScreen(
           verticalArrangement = Arrangement.Center,
           horizontalAlignment = Alignment.CenterHorizontally
         ) {
-          Spacer(Modifier.height(64.dp))
+          Spacer(Modifier.height(48.dp))
+          Box(
+            modifier = Modifier
+              .size(72.dp)
+              .clip(RoundedCornerShape(20.dp))
+              .background(colors.Accent.copy(alpha = 0.1f)),
+            contentAlignment = Alignment.Center
+          ) {
+            Text(
+              text = "ZC",
+              fontSize = 20.sp,
+              fontWeight = FontWeight.Bold,
+              color = colors.Accent,
+              fontFamily = FontFamily.Monospace
+            )
+          }
+          Spacer(Modifier.height(16.dp))
           Text(
             text = "ZeroCopy",
-            fontSize = 24.sp,
+            fontSize = 22.sp,
             fontWeight = FontWeight.Light,
-            color = colors.Text3,
+            color = colors.Text,
             fontFamily = FontFamily.Monospace,
             letterSpacing = 6.sp
           )
-          Spacer(Modifier.height(4.dp))
+          Spacer(Modifier.height(8.dp))
           Text(
             text = "How can I help you?",
             color = colors.Text2,
-            fontSize = 15.sp
+            fontSize = 14.sp
           )
-          Spacer(Modifier.height(32.dp))
+          Spacer(Modifier.height(28.dp))
           PromptSuggestions(suggestions = suggestions, onSelect = { text ->
             sendMessage(text, emptyList(), emptyList())
           })
           val ragDocs = ggmlEngine?.numDocuments ?: 0
           if (ragDocs > 0) {
             Spacer(Modifier.height(24.dp))
-            Text(
-              text = "$ragDocs document chunks indexed for RAG",
-              fontSize = 11.sp,
-              color = colors.Accent.copy(alpha = 0.6f),
-              fontFamily = FontFamily.Monospace
-            )
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.Center
+            ) {
+              Box(
+                modifier = Modifier
+                  .size(6.dp)
+                  .clip(CircleShape)
+                  .background(colors.Accent2.copy(alpha = 0.6f))
+              )
+              Spacer(Modifier.width(8.dp))
+              Text(
+                text = "$ragDocs document chunks indexed",
+                fontSize = 11.sp,
+                color = colors.Accent2.copy(alpha = 0.6f),
+                fontFamily = FontFamily.Monospace
+              )
+            }
           }
         }
       } else {

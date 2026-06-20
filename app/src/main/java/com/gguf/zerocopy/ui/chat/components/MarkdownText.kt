@@ -37,7 +37,7 @@ fun MarkdownText(
   val uriHandler = LocalUriHandler.current
   val clipboardManager = LocalClipboardManager.current
   val annotated = remember(markdown) {
-    parseMarkdown(markdown, colors.Text, colors.Accent, colors.Accent2)
+    parseMarkdown(markdown, colors.Text, colors.Accent, colors.Accent2, colors.CardLight)
   }
   ClickableText(
     text = annotated,
@@ -59,7 +59,8 @@ private fun parseMarkdown(
   text: String,
   textColor: Color,
   linkColor: Color,
-  codeColor: Color
+  codeColor: Color,
+  codeBg: Color
 ): AnnotatedString = buildAnnotatedString {
   var i = 0
   while (i < text.length) {
@@ -87,7 +88,7 @@ private fun parseMarkdown(
                 fontFamily = FontFamily.Monospace,
                 fontSize = 12.sp,
                 color = codeColor,
-                background = Color(0x22FFFFFF)
+                background = codeBg
               )
             ) {
               append("\n")
@@ -110,7 +111,7 @@ private fun parseMarkdown(
               fontFamily = FontFamily.Monospace,
               fontSize = 12.sp,
               color = codeColor,
-              background = Color(0x22FFFFFF)
+              background = codeBg
             )
           ) {
             append(code)

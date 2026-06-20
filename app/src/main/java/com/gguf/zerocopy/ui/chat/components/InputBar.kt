@@ -2,6 +2,8 @@ package com.gguf.zerocopy.ui.chat.components
 
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -43,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -72,6 +75,10 @@ fun InputBar(
   val context = LocalContext.current
   var prompt by remember { mutableStateOf("") }
   val hasAttachments = attachmentUris.isNotEmpty()
+  val sendScale by animateFloatAsState(
+    targetValue = if (prompt.isNotBlank()) 1f else 0.92f,
+    animationSpec = tween(200)
+  )
 
   Column(
     modifier = Modifier
@@ -150,7 +157,7 @@ fun InputBar(
         onValueChange = { prompt = it },
         modifier = Modifier.weight(1f),
         placeholder = {
-          Text("Type a message...", color = colors.Text3, fontSize = 14.sp)
+          Text("Type a message...", color = colors.Text3.copy(alpha = 0.7f), fontSize = 14.sp)
         },
         enabled = !isInferring,
         minLines = 1,
@@ -169,8 +176,8 @@ fun InputBar(
           }
         ),
         colors = OutlinedTextFieldDefaults.colors(
-          focusedBorderColor = colors.Border.copy(alpha = 0.5f),
-          unfocusedBorderColor = colors.Border.copy(alpha = 0.3f),
+          focusedBorderColor = colors.Accent.copy(alpha = 0.6f),
+          unfocusedBorderColor = colors.Border.copy(alpha = 0.25f),
           focusedContainerColor = colors.Card,
           unfocusedContainerColor = colors.Card,
           focusedTextColor = colors.Text,
@@ -197,6 +204,7 @@ fun InputBar(
         Box(
           modifier = Modifier
             .size(40.dp)
+            .scale(sendScale)
             .clip(CircleShape)
             .background(if (prompt.isNotBlank()) colors.Accent else colors.Card)
             .clickable(enabled = prompt.isNotBlank()) {
@@ -208,7 +216,7 @@ fun InputBar(
           Icon(
             Icons.AutoMirrored.Filled.Send,
             contentDescription = "Send",
-            tint = if (prompt.isNotBlank()) colors.Bg else colors.Text3,
+            tint = if (prompt.isNotBlank()) colors.Bg else colors.Text3.copy(alpha = 0.5f),
             modifier = Modifier.size(18.dp)
           )
         }
@@ -222,10 +230,10 @@ fun InputBar(
     ) {
       if (!isInferring && prompt.isEmpty()) {
         IconButton(onClick = onAttach, modifier = Modifier.size(32.dp)) {
-          Icon(Icons.Filled.AttachFile, "Attach", tint = colors.Text3, modifier = Modifier.size(16.dp))
+          Icon(Icons.Filled.AttachFile, "Attach", tint = colors.Text3.copy(alpha = 0.7f), modifier = Modifier.size(16.dp))
         }
         IconButton(onClick = onCamera, modifier = Modifier.size(32.dp)) {
-          Icon(Icons.Filled.CameraAlt, "Camera", tint = colors.Text3, modifier = Modifier.size(16.dp))
+          Icon(Icons.Filled.CameraAlt, "Camera", tint = colors.Text3.copy(alpha = 0.7f), modifier = Modifier.size(16.dp))
         }
       }
       Spacer(Modifier.weight(1f))
@@ -234,7 +242,7 @@ fun InputBar(
           Icon(
             if (ragEnabled) Icons.Filled.Search else Icons.Outlined.Search,
             contentDescription = "RAG",
-            tint = if (ragEnabled) colors.Accent else colors.Text3,
+            tint = if (ragEnabled) colors.Accent else colors.Text3.copy(alpha = 0.7f),
             modifier = Modifier.size(16.dp)
           )
         }
@@ -243,7 +251,7 @@ fun InputBar(
         Icon(
           if (reasoningEnabled) Icons.Filled.Lightbulb else Icons.Outlined.Lightbulb,
           contentDescription = "Reasoning",
-          tint = if (reasoningEnabled) colors.Amber else colors.Text3,
+          tint = if (reasoningEnabled) colors.Amber else colors.Text3.copy(alpha = 0.7f),
           modifier = Modifier.size(16.dp)
         )
       }
