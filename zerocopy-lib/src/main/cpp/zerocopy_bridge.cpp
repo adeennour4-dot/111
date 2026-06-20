@@ -12,7 +12,6 @@
 #include <sys/syscall.h>
 #include <sched.h>
 #include "llama.h"
-#include "chat.h"
 #include "ggml-backend.h"
 #include "ggml-cpu.h"
 
