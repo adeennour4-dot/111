@@ -38,6 +38,7 @@ add_library(zerocopy_engine SHARED zerocopy_bridge.cpp)
 target_include_directories(zerocopy_engine PRIVATE
     ${llama_SOURCE_DIR}/include
     ${llama_SOURCE_DIR}/ggml/include
+    ${llama_SOURCE_DIR}/examples
 )
 target_link_libraries(zerocopy_engine PRIVATE llama ggml ${log-lib} ${android-lib})
 target_compile_features(zerocopy_engine PRIVATE cxx_std_20)
