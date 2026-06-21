@@ -35,6 +35,8 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.TextButton
@@ -46,6 +48,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,6 +74,8 @@ import com.gguf.zerocopy.ui.theme.currentPalette
 fun CloudScreen(onBack: () -> Unit) {
   val app = ZeroCopyApp.instance
   val colors = currentPalette()
+  val scope = rememberCoroutineScope()
+  val snackbarHostState = remember { SnackbarHostState() }
   val models by app.modelRepository.models.collectAsState(initial = emptyList())
 
   var serverPort by remember { mutableStateOf(SettingsManager.serverPort.toString()) }
@@ -106,6 +111,7 @@ fun CloudScreen(onBack: () -> Unit) {
         colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Bg)
       )
     },
+    snackbarHost = { SnackbarHost(snackbarHostState) },
     containerColor = colors.Bg
   ) { pad ->
     Column(
@@ -134,10 +140,12 @@ fun CloudScreen(onBack: () -> Unit) {
         onClick = {
           if (isRunning) {
             context.stopService(Intent(context, ModelServerService::class.java))
+            scope.launch { snackbarHostState.showSnackbar("Server stopped") }
           } else {
             saveSettings()
             app.modelServer.setAutoModel(serverModelPath.ifEmpty { SettingsManager.lastModelPath }, serverModelName.ifEmpty { SettingsManager.lastModelName })
             context.startService(Intent(context, ModelServerService::class.java))
+            scope.launch { snackbarHostState.showSnackbar("Server started") }
           }
         },
         modifier = Modifier.fillMaxWidth().height(52.dp),
@@ -258,7 +266,10 @@ fun CloudScreen(onBack: () -> Unit) {
       Spacer(Modifier.height(8.dp))
 
       Button(
-        onClick = { saveSettings() },
+        onClick = {
+          saveSettings()
+          scope.launch { snackbarHostState.showSnackbar("Server settings saved") }
+        },
         modifier = Modifier.fillMaxWidth().height(48.dp),
         shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.buttonColors(containerColor = colors.Accent)

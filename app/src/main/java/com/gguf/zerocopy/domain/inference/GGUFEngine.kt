@@ -78,10 +78,10 @@ class GGUFEngine(
             if (info != null) {
                 try {
                     val json = org.json.JSONObject(info)
-                    if (json.optBoolean("has_vision", false)) return true
+                    return json.optBoolean("has_vision", false)
                 } catch (_: Exception) {}
             }
-            return com.gguf.zerocopy.data.local.SettingsManager.mmprojPath.isNotEmpty()
+            return false
         }
 
     override val hasVoice: Boolean
@@ -95,7 +95,4 @@ class GGUFEngine(
             }
             return false
         }
-
-    override val mmprojPath: String?
-        get() = com.gguf.zerocopy.data.local.SettingsManager.mmprojPath.ifEmpty { null }
 }

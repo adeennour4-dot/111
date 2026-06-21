@@ -221,10 +221,22 @@ fun ChatScreen(
     null
   }
 
-  fun buildConversationPrompt(currentUserText: String, useReasoning: Boolean): String {
-    return if (useReasoning) {
-      "Use <think> tags for step-by-step reasoning before answering.\n\n$currentUserText"
-    } else currentUserText
+  fun buildConversationPrompt(
+    currentUserText: String, useReasoning: Boolean, history: List<ChatMessage>
+  ): String {
+    val historyBlocks = history.joinToString("\n") { msg ->
+      when (msg.role) {
+        MessageRole.USER -> "User: ${msg.content}"
+        MessageRole.ASSISTANT -> "Assistant: ${msg.content}"
+        MessageRole.SYSTEM -> "System: ${msg.content}"
+      }
+    }
+    val reasoningPrefix = if (useReasoning) "Use <think> tags for step-by-step reasoning before answering.\n\n" else ""
+    return if (historyBlocks.isNotEmpty()) {
+      "$reasoningPrefix$historyBlocks\nUser: $currentUserText"
+    } else {
+      "${reasoningPrefix}User: $currentUserText"
+    }
   }
 
   LaunchedEffect(modelPath) {
@@ -260,7 +272,8 @@ fun ChatScreen(
 
     scope.launch {
       val rawResponse = StringBuilder()
-      val fp = buildConversationPrompt(prompt, reasoningEnabled)
+      val historyMsgs = app.chatRepository.getMessages(sessionId).filter { it.role != MessageRole.SYSTEM }
+      val fp = buildConversationPrompt(prompt, reasoningEnabled, historyMsgs)
       val maxGenTokens = SettingsManager.maxTokens.coerceIn(64, 8192)
       val generateTimeoutMs = 300_000L
       app.activeEngine.generateFlow(fp, maxTokens = maxGenTokens)
@@ -719,11 +732,32 @@ fun ChatScreen(
     }
   }
 
+  val importLauncher = rememberLauncherForActivityResult(
+    ActivityResultContracts.OpenDocument()
+  ) { uri ->
+    if (uri != null) {
+      scope.launch(Dispatchers.IO) {
+        try {
+          val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText() ?: return@launch
+          val session = app.chatRepository.importSession(text)
+          if (session != null) {
+            withContext(Dispatchers.Main) {
+              chatId = session.id
+              app.chatRepository.selectSession(session.id)
+              scope.launch { snackbarHostState.showSnackbar("Session imported") }
+            }
+          }
+        } catch (_: Exception) {}
+      }
+    }
+  }
+
   if (showExportDialog) {
     ExportSessionDialog(
       onDismiss = { showExportDialog = false },
       onShareText = { handleExportText() },
-      onShareJson = { handleExportJson() }
+      onShareJson = { handleExportJson() },
+      onImport = { importLauncher.launch(arrayOf("application/json", "*/*")) }
     )
   }
 

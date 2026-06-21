@@ -31,5 +31,4 @@ interface InferenceEngine {
 
     val hasVision: Boolean
     val hasVoice: Boolean
-    val mmprojPath: String?
 }

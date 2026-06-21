@@ -122,7 +122,8 @@ class LiteRtEngine : InferenceEngine {
 
     override fun setRagParams(topK: Int, minScore: Float) {}
 
-    override val hasVision: Boolean = false
+    override val hasVision: Boolean = _loadedModelPath?.let { path ->
+        path.lowercase().let { p -> p.contains("vision") || p.contains("multimodal") || p.contains("llava") }
+    } ?: false
     override val hasVoice: Boolean = false
-    override val mmprojPath: String? = null
 }

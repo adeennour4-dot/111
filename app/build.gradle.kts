@@ -59,6 +59,7 @@ dependencies {
     implementation(libs.executorch.android)
 
     implementation(libs.pdfbox.android)
+    implementation("com.google.mlkit:text-recognition:16.0.0")
 
     implementation(project(":zerocopy-lib"))
     implementation(project(":mnn-lib"))

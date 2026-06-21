@@ -135,7 +135,6 @@ class ExecutorchEngine : InferenceEngine {
 
     override val hasVision: Boolean = false
     override val hasVoice: Boolean = false
-    override val mmprojPath: String? = null
 
     private fun resolveModelFile(path: String): File {
         val file = File(path)

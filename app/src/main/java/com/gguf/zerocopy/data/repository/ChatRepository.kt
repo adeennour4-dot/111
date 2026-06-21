@@ -213,6 +213,27 @@ class ChatRepository(private val context: Context) {
     // Don't call loadSessions() here - it causes unnecessary recomposition
   }
 
+  fun importSession(jsonContent: String): ChatSession? {
+    return try {
+      val arr = JSONArray(jsonContent)
+      val session = createSession()
+      for (i in 0 until arr.length()) {
+        val obj = arr.getJSONObject(i)
+        val msg = ChatMessage(
+          role = MessageRole.valueOf(obj.getString("role").uppercase()),
+          content = obj.getString("content"),
+          timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+          tps = obj.optDouble("tps", 0.0).toFloat(),
+          tokens = obj.optInt("tokens", 0)
+        )
+        addMessage(session.id, msg)
+      }
+      session
+    } catch (_: Exception) {
+      null
+    }
+  }
+
   fun exportSession(sessionId: String): File? {
     val messages = getMessages(sessionId)
     val session = _sessions.value.find { it.id == sessionId }

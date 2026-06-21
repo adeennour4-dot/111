@@ -70,6 +70,7 @@ import com.gguf.zerocopy.data.repository.LocalModel
 import com.gguf.zerocopy.data.repository.ModelDownloads
 import com.gguf.zerocopy.ui.chat.components.ModelDeleteConfirmDialog
 import com.gguf.zerocopy.ui.theme.currentPalette
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -269,6 +270,35 @@ fun ModelListScreen(
     }
   }
 
+  if (showDownloadDialog) {
+    DownloadDialog(
+      onDismiss = { showDownloadDialog = false },
+      onDownload = { model ->
+        showDownloadDialog = false
+        scope.launch {
+          val app = ZeroCopyApp.instance
+          val url = "https://huggingface.co/${model.hfRepo}/resolve/main/${model.hfFile}"
+          val dir = File(app.filesDir, "models").also { it.mkdirs() }
+          val file = File(dir, model.hfFile)
+          try {
+            withContext(Dispatchers.IO) {
+              val conn = java.net.URL(url).openConnection()
+              conn.connect()
+              conn.getInputStream().use { input ->
+                file.outputStream().use { output -> input.copyTo(output) }
+              }
+            }
+            val localModel = app.modelRepository.addModel(file.absolutePath, model.name, model.format)
+            app.modelRepository.scanModels()
+            snackbarHostState.showSnackbar("Downloaded: ${model.name}")
+          } catch (e: Exception) {
+            snackbarHostState.showSnackbar("Download failed: ${e.message?.take(60)}")
+          }
+        }
+      }
+    )
+  }
+
   if (modelToDelete != null) {
     ModelDeleteConfirmDialog(
       modelName = modelToDelete!!.name,
@@ -435,6 +465,54 @@ private fun FormatBadge(format: String) {
       fontWeight = FontWeight.Bold
     )
   }
+}
+
+@Composable
+fun DownloadDialog(
+  onDismiss: () -> Unit,
+  onDownload: (DownloadableModel) -> Unit
+) {
+  val colors = currentPalette()
+  val downloads = remember { ModelDownloads.models }
+
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    containerColor = colors.Card,
+    shape = RoundedCornerShape(16.dp),
+    title = {
+      Text("Download Model", fontWeight = FontWeight.Bold, color = colors.Text, fontSize = 16.sp)
+    },
+    text = {
+      LazyColumn(modifier = Modifier.height(360.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        items(downloads, key = { it.id }) { model ->
+          Surface(
+            onClick = { onDownload(model) },
+            shape = RoundedCornerShape(10.dp),
+            color = colors.CardLight,
+            modifier = Modifier.fillMaxWidth()
+          ) {
+            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+              Column(Modifier.weight(1f)) {
+                Text(model.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(model.description, fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace, maxLines = 2)
+              }
+              Text(model.sizeBytes.formatBytes(), fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+            }
+          }
+        }
+      }
+    },
+    confirmButton = {
+      TextButton(onClick = onDismiss) { Text("Cancel", color = colors.Text2) }
+    }
+  )
+}
+
+private fun Long.formatBytes(): String = when {
+  this >= 1L shl 30 -> "%.1f GB".format(this.toDouble() / (1 shl 30))
+  this >= 1L shl 20 -> "%.1f MB".format(this.toDouble() / (1 shl 20))
+  this >= 1L shl 10 -> "%.1f KB".format(this.toDouble() / (1 shl 10))
+  else -> "$this B"
 }
 
 private fun getFileName(context: android.content.Context, uri: android.net.Uri): String {

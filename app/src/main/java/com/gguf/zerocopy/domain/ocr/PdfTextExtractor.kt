@@ -4,6 +4,10 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
+import com.google.android.gms.tasks.Tasks
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
@@ -11,6 +15,8 @@ import java.io.File
 import java.io.FileOutputStream
 
 class PdfTextExtractor(private val context: Context) {
+
+    private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
     init {
         PDFBoxResourceLoader.init(context)
@@ -44,11 +50,11 @@ class PdfTextExtractor(private val context: Context) {
             text.trim().ifEmpty { null }
         } catch (e: Exception) {
             android.util.Log.e("PdfTextExtractor", "PDFBox extract failed", e)
-            fallbackExtractText(file)
+            fallbackOcrText(file)
         }
     }
 
-    private fun fallbackExtractText(file: File): String? {
+    private fun fallbackOcrText(file: File): String? {
         var descriptor: ParcelFileDescriptor? = null
         var renderer: PdfRenderer? = null
         return try {
@@ -59,15 +65,19 @@ class PdfTextExtractor(private val context: Context) {
             for (i in 0 until renderer.pageCount) {
                 val page = renderer.openPage(i)
                 val bitmap = Bitmap.createBitmap(
-                    page.width * 2,
-                    page.height * 2,
-                    Bitmap.Config.ARGB_8888
+                    page.width * 2, page.height * 2, Bitmap.Config.ARGB_8888
                 )
                 bitmap.eraseColor(android.graphics.Color.WHITE)
                 page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
 
                 textBuilder.appendLine("--- Page ${i + 1} ---")
-                textBuilder.appendLine("[Rendered as image: ${page.width}x${page.height}px]")
+                val image = InputImage.fromBitmap(bitmap, 0)
+                try {
+                    val result = Tasks.await(recognizer.process(image))
+                    textBuilder.appendLine(result.text)
+                } catch (_: Exception) {
+                    textBuilder.appendLine("[OCR failed on page ${i + 1}]")
+                }
 
                 bitmap.recycle()
                 page.close()
@@ -122,9 +132,7 @@ class PdfTextExtractor(private val context: Context) {
 
             val page = renderer.openPage(pageIndex)
             val bitmap = Bitmap.createBitmap(
-                page.width * 2,
-                page.height * 2,
-                Bitmap.Config.ARGB_8888
+                page.width * 2, page.height * 2, Bitmap.Config.ARGB_8888
             )
             bitmap.eraseColor(android.graphics.Color.WHITE)
             page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)

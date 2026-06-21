@@ -19,8 +19,7 @@ data class InferenceConfig(
   val seed: Int = -1,
   val lowRamMode: Boolean = true,
   val flashAttention: Boolean = true,
-  val presencePenalty: Float = 0.1f,
-  val mmprojPath: String = ""
+  val presencePenalty: Float = 0.1f
 )
 
 @Serializable
@@ -120,12 +119,6 @@ object SettingsManager {
     get() = prefs?.getBoolean("low_ram", true) ?: true
     set(v) {
       prefs?.edit()?.putBoolean("low_ram", v)?.apply()
-    }
-
-  var mmprojPath: String
-    get() = prefs?.getString("mmproj_path", "") ?: ""
-    set(v) {
-      prefs?.edit()?.putString("mmproj_path", v)?.apply()
     }
 
   var currentSessionId: String
@@ -246,8 +239,7 @@ object SettingsManager {
     minP = minP.coerceIn(0f, 1f),
     nGpuLayers = gpuLayers.coerceIn(0, 999),
     nThreads = threads.coerceIn(0, 16),
-    lowRamMode = lowRamMode,
-    mmprojPath = mmprojPath
+    lowRamMode = lowRamMode
   )
 
   fun toRepeatPenalty() = RepeatPenaltyConfig(
@@ -287,7 +279,6 @@ object SettingsManager {
     gpuLayers = config.nGpuLayers
     threads = config.nThreads
     lowRamMode = config.lowRamMode
-    mmprojPath = config.mmprojPath
     repeatPenalty = rp.repeatPenalty
     freqPenalty = rp.freqPenalty
     presPenalty = rp.presPenalty
