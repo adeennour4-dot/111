@@ -2,7 +2,7 @@ package com.gguf.zerocopy.domain.server
 
 import android.util.Log
 import com.gguf.zerocopy.ZeroCopyApp
-import com.gguf.zerocopy.domain.inference.TokenCallback
+import com.gguf.zerocopy.data.local.SettingsManager
 import kotlinx.coroutines.runBlocking
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -18,7 +18,6 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 
 class ModelServer(val port: Int = 8080) {
   private val tag = "ModelServer"
@@ -51,30 +50,34 @@ class ModelServer(val port: Int = 8080) {
     executor?.submit { runServer() }
     executor?.submit {
       val app = ZeroCopyApp.instance
-      val engine = app.engineManager.getActiveEngine()
-      val modelName = if (engine?.isModelLoaded != true && autoModelPath.isNotEmpty()) {
+      val modelName = if (!app.ggmlEngine.isLoaded && autoModelPath.isNotEmpty()) {
         val modelInfo = app.modelRepository.models.value.find { it.path == autoModelPath }
         if (modelInfo != null) {
-          engine?.let { e ->
-            e.config = com.gguf.zerocopy.data.local.SettingsManager.toConfig()
-            e.systemPrompt = com.gguf.zerocopy.data.local.SettingsManager.systemPrompt
-            e.repeatPenalty = com.gguf.zerocopy.data.local.SettingsManager.toRepeatPenalty()
-            val result = runBlocking { e.loadModel(modelInfo.path) }
-            if (result.isSuccess) {
-              app.modelRepository.markUsed(modelInfo.id)
-              Log.i(tag, "Auto-loaded model: ${modelInfo.name}")
-              modelInfo.name
-            } else {
-              Log.w(tag, "Failed to auto-load model: ${result.exceptionOrNull()?.message}")
-              null
-            }
+          val cfg = SettingsManager.toConfig()
+          app.ggmlEngine.setSystemPrompt(SettingsManager.systemPrompt)
+          val success = runBlocking {
+            app.ggmlEngine.load(
+              path = modelInfo.path,
+              contextSize = cfg.nCtx,
+              threads = cfg.nThreads,
+              batchSize = cfg.nBatch,
+              flashAttn = cfg.flashAttention,
+            )
+          }
+          if (success) {
+            app.modelRepository.markUsed(modelInfo.id)
+            Log.i(tag, "Auto-loaded model: ${modelInfo.name}")
+            modelInfo.name
+          } else {
+            Log.w(tag, "Failed to auto-load model at $autoModelPath")
+            null
           }
         } else {
           Log.w(tag, "Auto-model not found in repository: $autoModelPath")
           null
         }
       } else {
-        engine?.loadedModelPath?.substringAfterLast('/') ?: autoModelName.ifEmpty { "Unknown" }
+        SettingsManager.lastModelPath.substringAfterLast('/').ifEmpty { autoModelName.ifEmpty { "Unknown" } }
       }
       val ip = getLocalIp()
       var waited = 0
@@ -252,9 +255,8 @@ class ModelServer(val port: Int = 8080) {
 
   private fun handleIndex(out: OutputStream) {
     val app = ZeroCopyApp.instance
-    val engine = app.engineManager.getActiveEngine()
-    val loaded = engine?.isModelLoaded == true
-    val modelName = engine?.loadedModelPath?.substringAfterLast('/') ?: "No model loaded"
+    val loaded = app.ggmlEngine.isLoaded
+    val modelName = SettingsManager.lastModelPath.substringAfterLast('/').ifEmpty { "No model loaded" }
     val uptime = (System.currentTimeMillis() - serverStartTime) / 1000
     val authEnabled = com.gguf.zerocopy.data.local.SettingsManager.serverAuthEnabled
     val authHeader = if (authEnabled) "  -H \"Authorization: Bearer YOUR_API_KEY\"\\\n" else ""
@@ -582,68 +584,76 @@ async function send(){
 
   private fun handleHealth(out: OutputStream) {
     val app = ZeroCopyApp.instance
-    val engine = app.engineManager.getActiveEngine()
-    respond(out, 200, """{"status":"ok","model_loaded":${engine?.isModelLoaded == true},"version":"1.0.0"}""")
+    respond(out, 200, """{"status":"ok","model_loaded":${app.ggmlEngine.isLoaded},"version":"1.0.0"}""")
   }
 
   private fun handleModels(out: OutputStream) {
     val app = ZeroCopyApp.instance
     val models = app.modelRepository.models.value
-    val engine = app.engineManager.getActiveEngine()
     val jsonModels = models.joinToString(",") { m ->
-      """{"id":"${m.id}","object":"model","name":"${m.name}","format":"${m.format}","engine":"${m.engine.id}","size":"${m.sizeFormatted}","loaded":${engine?.loadedModelPath == m.path}}"""
+      """{"id":"${m.id}","object":"model","name":"${m.name}","format":"${m.format}","size":"${m.sizeFormatted}","loaded":${SettingsManager.lastModelPath == m.path}}"""
     }
     respond(out, 200, """{"object":"list","data":[$jsonModels]}""")
+  }
+
+  private fun buildPromptFromMessages(messages: org.json.JSONArray): String {
+    val sb = StringBuilder()
+    val systemPrompt = SettingsManager.systemPrompt
+    if (systemPrompt.isNotBlank()) {
+      sb.appendLine(systemPrompt)
+      sb.appendLine()
+    }
+    for (i in 0 until messages.length()) {
+      val msg = messages.getJSONObject(i)
+      val role = msg.optString("role", "user")
+      val content = msg.optString("content", "")
+      when (role) {
+        "system" -> sb.appendLine("System: $content")
+        "user" -> sb.appendLine("User: $content")
+        "assistant" -> sb.appendLine("Assistant: $content")
+        else -> sb.appendLine("$role: $content")
+      }
+      sb.appendLine()
+    }
+    return sb.toString().trimEnd()
   }
 
   private fun handleChatCompletions(out: OutputStream, body: String, ip: String) {
     try {
       val app = ZeroCopyApp.instance
-      val engine = app.engineManager.getActiveEngine()
-      if (engine?.isModelLoaded != true) {
+      if (!app.ggmlEngine.isLoaded) {
         respond(out, 503, """{"error":"model_unavailable","message":"No model loaded","type":"server_error"}""")
         return
       }
       val json = org.json.JSONObject(body)
       val messages = json.optJSONArray("messages")
 
-      // Restore history for the engine (all messages except last user one)
-      // Then pass only the last message as the raw prompt.
-      // This avoids the C++ build_chat_prompt() from double-templating.
       val prompt = if (messages != null && messages.length() > 0) {
-        val historyMsgs = mutableListOf<Pair<String, String>>()
-        val lastIdx = messages.length() - 1
-        for (i in 0 until lastIdx) {
-          val msg = messages.getJSONObject(i)
-          historyMsgs.add(msg.optString("role", "user") to msg.optString("content", ""))
-        }
-        engine.restoreHistory(historyMsgs)
-        val last = messages.getJSONObject(lastIdx)
-        last.optString("content", "")
+        buildPromptFromMessages(messages)
       } else {
-        engine.restoreHistory(emptyList())
         json.optString("prompt", json.optString("input", ""))
       }
-      if (prompt.isNullOrBlank()) {
+      if (prompt.isBlank()) {
         respond(out, 400, """{"error":"invalid_request","message":"messages or prompt is required","type":"invalid_request_error"}""")
         return
       }
       val stream = json.optBoolean("stream", false)
+      val maxTokens = json.optInt("max_tokens", SettingsManager.maxTokens)
 
       val inferenceId = "chat_${System.currentTimeMillis()}"
-      val modelName = engine.loadedModelPath?.substringAfterLast('/') ?: "unknown"
+      val modelName = SettingsManager.lastModelPath.substringAfterLast('/').ifEmpty { "unknown" }
 
       if (stream) {
-        streamResponse(out, inferenceId, modelName, engine, prompt)
+        streamResponse(out, inferenceId, modelName, prompt, maxTokens)
       } else {
-        syncResponse(out, inferenceId, modelName, engine, prompt)
+        syncResponse(out, inferenceId, modelName, prompt, maxTokens)
       }
     } catch (e: Exception) {
       respond(out, 500, """{"error":"server_error","message":"${e.message?.replace("\"","'") ?: "Internal error"}","type":"internal_error"}""")
     }
   }
 
-  private fun streamResponse(out: OutputStream, id: String, model: String, engine: com.gguf.zerocopy.domain.inference.InferenceEngine, prompt: String) {
+  private fun streamResponse(out: OutputStream, id: String, model: String, prompt: String, maxTokens: Int) {
     val headers = "HTTP/1.1 200 OK\r\n" +
       "Content-Type: text/event-stream\r\n" +
       "Cache-Control: no-cache\r\n" +
@@ -656,14 +666,12 @@ async function send(){
       out.write(headers.toByteArray())
       out.flush()
 
-      val done = AtomicBoolean(false)
-      val errorRef = arrayOfNulls<String>(1)
-      val fullText = StringBuilder()
+      var errorMsg: String? = null
+      val app = ZeroCopyApp.instance
 
       runBlocking {
-        engine.executeInference(prompt, object : TokenCallback {
-          override fun onToken(token: String) {
-            fullText.append(token)
+        try {
+          app.ggmlEngine.generateFlow(prompt, maxTokens).collect { token ->
             val escaped = token
               .replace("\\", "\\\\")
               .replace("\"", "\\\"")
@@ -676,46 +684,30 @@ async function send(){
               out.flush()
             } catch (_: Exception) {}
           }
-          override fun onDone() { done.set(true) }
-          override fun onError(error: String) { errorRef[0] = error; done.set(true) }
-          override fun onKvUsage(percent: Int) {}
-          override fun onTokensGenerated(count: Int) {}
-        })
+        } catch (e: Exception) {
+          errorMsg = e.message
+        }
       }
 
-      var waited = 0
-      while (!done.get() && waited < 120_000) {
-        Thread.sleep(50)
-        waited += 50
-      }
-
-      val finish = """{"id":"$id","object":"chat.completion.chunk","created":${System.currentTimeMillis()/1000},"model":"$model","choices":[{"index":0,"delta":{},"finish_reason":"${if (errorRef[0] != null) "error" else "stop"}"}]}"""
+      val finish = """{"id":"$id","object":"chat.completion.chunk","created":${System.currentTimeMillis()/1000},"model":"$model","choices":[{"index":0,"delta":{},"finish_reason":"${if (errorMsg != null) "error" else "stop"}"}]}"""
       out.write("data: $finish\n\n".toByteArray())
       out.write("data: [DONE]\n\n".toByteArray())
       out.flush()
     } catch (_: Exception) {}
   }
 
-  private fun syncResponse(out: OutputStream, id: String, model: String, engine: com.gguf.zerocopy.domain.inference.InferenceEngine, prompt: String) {
-    val resultBuilder = StringBuilder()
-    val done = AtomicBoolean(false)
+  private fun syncResponse(out: OutputStream, id: String, model: String, prompt: String, maxTokens: Int) {
+    val app = ZeroCopyApp.instance
     var errorMsg: String? = null
-    val tokCount = AtomicLong(0)
-
-    runBlocking {
-      engine.executeInference(prompt, object : TokenCallback {
-        override fun onToken(token: String) { resultBuilder.append(token) }
-        override fun onDone() { done.set(true) }
-        override fun onError(error: String) { errorMsg = error; done.set(true) }
-        override fun onKvUsage(percent: Int) {}
-        override fun onTokensGenerated(count: Int) { tokCount.set(count.toLong()) }
-      })
-    }
-
-    var waited = 0
-    while (!done.get() && waited < 120_000) {
-      Thread.sleep(100)
-      waited += 100
+    val result = runBlocking {
+      try {
+        val sb = StringBuilder()
+        app.ggmlEngine.generateFlow(prompt, maxTokens).collect { sb.append(it) }
+        sb.toString()
+      } catch (e: Exception) {
+        errorMsg = e.message
+        null
+      }
     }
 
     if (errorMsg != null) {
@@ -723,16 +715,15 @@ async function send(){
       return
     }
 
-    val response = resultBuilder.toString()
-    val json = """{"id":"$id","object":"chat.completion","created":${System.currentTimeMillis()/1000},"model":"$model","choices":[{"index":0,"message":{"role":"assistant","content":${jsonEncode(response)}},"finish_reason":"stop"}],"usage":{"total_tokens":${tokCount.get()}}}"""
+    val response = result ?: ""
+    val json = """{"id":"$id","object":"chat.completion","created":${System.currentTimeMillis()/1000},"model":"$model","choices":[{"index":0,"message":{"role":"assistant","content":${jsonEncode(response)}},"finish_reason":"stop"}],"usage":{"total_tokens":${response.length / 4}}}"""
     respond(out, 200, json)
   }
 
   private fun handleEmbeddings(out: OutputStream, body: String) {
     try {
       val app = ZeroCopyApp.instance
-      val engine = app.engineManager.getActiveEngine()
-      if (engine?.isModelLoaded != true) {
+      if (!app.ggmlEngine.isLoaded) {
         respond(out, 503, """{"error":"model_unavailable","message":"No model loaded","type":"server_error"}""")
         return
       }
@@ -742,22 +733,14 @@ async function send(){
         respond(out, 400, """{"error":"invalid_request","message":"input is required","type":"invalid_request_error"}""")
         return
       }
-      val done = AtomicBoolean(false)
       var errorMsg: String? = null
       val embeddingTokens = StringBuilder()
       runBlocking {
-        engine.executeInference("Embed the following text and return its semantic meaning:\n$input", object : TokenCallback {
-          override fun onToken(token: String) { embeddingTokens.append(token) }
-          override fun onDone() { done.set(true) }
-          override fun onError(error: String) { errorMsg = error; done.set(true) }
-          override fun onKvUsage(percent: Int) {}
-          override fun onTokensGenerated(count: Int) {}
-        })
-      }
-      var waited = 0
-      while (!done.get() && waited < 120_000) {
-        Thread.sleep(100)
-        waited += 100
+        try {
+          app.ggmlEngine.generateFlow("Embed the following text and return its semantic meaning:\n$input").collect { embeddingTokens.append(it) }
+        } catch (e: Exception) {
+          errorMsg = e.message
+        }
       }
       if (errorMsg != null) {
         respond(out, 500, """{"error":"inference_error","message":"${errorMsg?.replace("\"","'")}","type":"server_error"}""")

@@ -3,8 +3,31 @@ package com.gguf.zerocopy.data.local
 import android.content.Context
 import android.content.SharedPreferences
 import com.gguf.zerocopy.domain.device.DeviceInfo
-import com.gguf.zerocopy.domain.inference.InferenceConfig
-import com.gguf.zerocopy.domain.inference.RepeatPenaltyConfig
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class InferenceConfig(
+  val nCtx: Int = 4096,
+  val nBatch: Int = 512,
+  val maxNewTokens: Int = 2048,
+  val temperature: Float = 0.5f,
+  val topP: Float = 0.9f,
+  val minP: Float = 0.1f,
+  val nGpuLayers: Int = 0,
+  val nThreads: Int = 4,
+  val seed: Int = -1,
+  val lowRamMode: Boolean = true,
+  val flashAttention: Boolean = true,
+  val presencePenalty: Float = 0.1f,
+  val mmprojPath: String = ""
+)
+
+@Serializable
+data class RepeatPenaltyConfig(
+  val repeatPenalty: Float = 1.1f,
+  val freqPenalty: Float = 0.0f,
+  val presPenalty: Float = 0.0f
+)
 
 object SettingsManager {
   private const val PREFS_NAME = "zerocopy_settings"

@@ -2,7 +2,6 @@ package com.gguf.zerocopy.data.repository
 
 import android.content.Context
 import android.net.Uri
-import com.gguf.zerocopy.domain.inference.EngineType
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
@@ -15,19 +14,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 
-private val VALID_EXTENSIONS = setOf("gguf", "mnn", "tflite", "litertlm", "lite")
-
-private fun engineForExt(ext: String): EngineType = when (ext) {
-  "gguf" -> EngineType.LLAMA_CPP
-  "mnn" -> EngineType.MNN
-  "tflite", "litertlm", "lite" -> EngineType.LITER_T
-  else -> EngineType.LLAMA_CPP
-}
+private val VALID_EXTENSIONS = setOf("gguf")
 
 private val GGUF_MAGIC = byteArrayOf(0x47, 0x47, 0x55, 0x46) // "GGUF"
 private val GGML_MAGIC = byteArrayOf(0x47, 0x47, 0x4D, 0x4C) // "GGML"
-private val TFLITE1_MAGIC = byteArrayOf(0x1A, 0x00, 0x00, 0x00)
-private val TFLITE2_MAGIC = byteArrayOf(0x54, 0x46, 0x4C, 0x33) // "TFL3"
 
 fun isValidModelFile(file: File): Boolean {
   if (!file.isFile || file.length() < 8) return false
@@ -35,11 +25,7 @@ fun isValidModelFile(file: File): Boolean {
     RandomAccessFile(file, "r").use { raf ->
       val header = ByteArray(4)
       raf.readFully(header)
-      header.contentEquals(GGUF_MAGIC) ||
-        header.contentEquals(GGML_MAGIC) ||
-        header.contentEquals(TFLITE1_MAGIC) ||
-        header.contentEquals(TFLITE2_MAGIC) ||
-        file.extension.lowercase() in setOf("litertlm", "lite")
+      header.contentEquals(GGUF_MAGIC) || header.contentEquals(GGML_MAGIC)
     }
   } catch (_: Exception) {
     false
@@ -51,7 +37,6 @@ data class LocalModel(
   val name: String,
   val path: String,
   val format: String,
-  val engine: EngineType,
   val sizeBytes: Long = 0,
   val addedAt: Long = System.currentTimeMillis(),
   val lastUsed: Long = 0
@@ -264,7 +249,7 @@ class ModelRepository(private val context: Context) {
             name = file.name,
             path = file.absolutePath,
             format = ext,
-            engine = engineForExt(ext),
+
             sizeBytes =
             if (file.isDirectory) {
               file.walkTopDown().filter { it.isFile }.sumOf { it.length() }
@@ -293,7 +278,7 @@ class ModelRepository(private val context: Context) {
             name = filename,
             path = file.absolutePath,
             format = ext,
-            engine = engineForExt(ext),
+
             sizeBytes = file.length()
           )
         scanModels()
@@ -453,7 +438,7 @@ class ModelRepository(private val context: Context) {
             name = name,
             path = file.absolutePath,
             format = ext,
-            engine = engineForExt(ext),
+
             sizeBytes = file.length()
           )
         _models.value = _models.value + model

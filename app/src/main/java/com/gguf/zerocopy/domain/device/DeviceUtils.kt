@@ -4,8 +4,7 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import com.gguf.zerocopy.domain.inference.EngineType
-import com.gguf.zerocopy.domain.inference.InferenceConfig
+import com.gguf.zerocopy.data.local.InferenceConfig
 import java.io.File
 
 data class DeviceInfo(
@@ -50,13 +49,6 @@ data class DeviceInfo(
       nThreads = suggestedThreads,
       lowRamMode = true
     )
-  }
-
-  fun suggestEngine(): EngineType = when {
-    isSnapdragon -> EngineType.LLAMA_CPP
-    isMediaTek -> EngineType.MNN
-    isExynos -> EngineType.LLAMA_CPP
-    else -> EngineType.LLAMA_CPP
   }
 
   fun canFitModel(modelSizeGB: Float, safetyMargin: Float = 0.8f): Boolean {

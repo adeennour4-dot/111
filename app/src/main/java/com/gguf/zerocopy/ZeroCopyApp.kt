@@ -7,7 +7,6 @@ import com.gguf.zerocopy.domain.server.ModelServerService
 import com.gguf.zerocopy.data.repository.ChatRepository
 import com.gguf.zerocopy.data.repository.ModelRepository
 import com.gguf.zerocopy.domain.device.DeviceUtils
-import com.gguf.zerocopy.domain.inference.EngineManager
 import com.gguf.zerocopy.domain.inference.ToolManager
 import com.gguf.zerocopy.domain.server.ModelServer
 import com.gguf.zerocopy.lib.GGMLEngine
@@ -24,7 +23,6 @@ class ZeroCopyApp : Application() {
   lateinit var modelServer: ModelServer
     private set
   val ggmlEngine: GGMLEngine = GGMLEngine()
-  val engineManager: EngineManager = EngineManager()
 
   override fun onCreate() {
     super.onCreate()

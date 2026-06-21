@@ -65,8 +65,8 @@ import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.domain.server.ModelServerService
-import com.gguf.zerocopy.domain.inference.InferenceConfig
-import com.gguf.zerocopy.domain.inference.RepeatPenaltyConfig
+import com.gguf.zerocopy.data.local.InferenceConfig
+import com.gguf.zerocopy.data.local.RepeatPenaltyConfig
 import com.gguf.zerocopy.lib.GGMLEngine
 import com.gguf.zerocopy.ui.chat.components.getFileName
 import com.gguf.zerocopy.ui.theme.currentPalette

@@ -90,8 +90,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-private const val USE_NEW_ENGINE = true
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChatScreen(
@@ -229,14 +227,13 @@ fun ChatScreen(
     } else currentUserText
   }
 
-  val ggmlEngine = if (USE_NEW_ENGINE) ZeroCopyApp.instance.ggmlEngine else null
+  val ggmlEngine = ZeroCopyApp.instance.ggmlEngine
 
   LaunchedEffect(modelPath) {
-    if (!USE_NEW_ENGINE || modelPath.isEmpty()) return@LaunchedEffect
-    val eng = ggmlEngine ?: return@LaunchedEffect
-    if (!eng.isLoaded) {
+    if (modelPath.isEmpty()) return@LaunchedEffect
+    if (!ggmlEngine.isLoaded) {
       val cfg = SettingsManager.toConfig()
-      eng.load(
+      ggmlEngine.load(
         path = modelPath,
         contextSize = cfg.nCtx,
         threads = cfg.nThreads,
@@ -245,24 +242,23 @@ fun ChatScreen(
       )
     }
     val cacheDir = File(context.filesDir, "prompt_cache").also { it.mkdirs() }.absolutePath
-    eng.setCacheDir(cacheDir)
-    eng.setStreamingLLM(
+    ggmlEngine.setCacheDir(cacheDir)
+    ggmlEngine.setStreamingLLM(
       sinkTokens = SettingsManager.kvSinkTokens,
       recentTokens = SettingsManager.kvRecentTokens,
       threshold = SettingsManager.kvEvictThreshold
     )
-    eng.setRagParams(topK = SettingsManager.ragTopK, minScore = SettingsManager.ragMinScore)
+    ggmlEngine.setRagParams(topK = SettingsManager.ragTopK, minScore = SettingsManager.ragMinScore)
   }
 
   fun sendMessageNewEngine(sessionId: String, prompt: String, imagePaths: List<String>) {
-    val gEngine = ggmlEngine ?: return
-    if (!gEngine.isLoaded) {
+    if (!ggmlEngine.isLoaded) {
       scope.launch { snackbarHostState.showSnackbar("New engine: model not loaded") }
       return
     }
     // Sync RAG state before generation
-    gEngine.setRagParams(topK = SettingsManager.ragTopK, minScore = SettingsManager.ragMinScore)
-    gEngine.ragEnabled = ragEnabled && gEngine.numDocuments > 0
+    ggmlEngine.setRagParams(topK = SettingsManager.ragTopK, minScore = SettingsManager.ragMinScore)
+    ggmlEngine.ragEnabled = ragEnabled && ggmlEngine.numDocuments > 0
 
     inferenceActive = true
     isInferring = true
@@ -274,7 +270,7 @@ fun ChatScreen(
     scope.launch {
       val rawResponse = StringBuilder()
       val fp = buildConversationPrompt(prompt, reasoningEnabled)
-      gEngine.generateFlow(fp, maxTokens = 4096)
+      ggmlEngine.generateFlow(fp, maxTokens = 4096)
         .catch { e ->
           android.util.Log.e("ChatScreen", "Flow error: ${e.message}")
           inferenceActive = false
@@ -310,11 +306,6 @@ fun ChatScreen(
           if (elapsed > 0) streamedTps = streamedTokens / elapsed
         }
     }
-  }
-
-  @Suppress("UNUSED_PARAMETER")
-  fun sendMessageOldEngine(sessionId: String, prompt: String, imagePaths: List<String>) {
-    scope.launch { snackbarHostState.showSnackbar("Old engine not available") }
   }
 
   fun sendMessage(text: String, uris: List<Uri>, names: List<String>) {
@@ -370,21 +361,13 @@ fun ChatScreen(
     app.chatRepository.addMessage(id, userMsg)
     userSentCount++
 
-    if (USE_NEW_ENGINE) {
-      sendMessageNewEngine(id, finalPrompt, savedPaths)
-    } else {
-      sendMessageOldEngine(id, finalPrompt, savedPaths)
-    }
+    sendMessageNewEngine(id, finalPrompt, savedPaths)
   }
 
   fun stopInference() {
     inferenceActive = false
     isInferring = false
-    if (USE_NEW_ENGINE) {
-      ggmlEngine?.stopGeneration()
-    } else {
-      engine?.abortInference()
-    }
+    ggmlEngine.stopGeneration()
     streamedContent = ""
   }
 
@@ -577,7 +560,7 @@ fun ChatScreen(
           },
           ragEnabled = ragEnabled,
           onToggleRag = { showRagDialog = true },
-          ragDocCount = ggmlEngine?.numDocuments ?: 0
+          ragDocCount = ggmlEngine.numDocuments
         )
       }
     },
@@ -632,7 +615,7 @@ fun ChatScreen(
           PromptSuggestions(suggestions = suggestions, onSelect = { text ->
             sendMessage(text, emptyList(), emptyList())
           })
-          val ragDocs = ggmlEngine?.numDocuments ?: 0
+          val ragDocs = ggmlEngine.numDocuments
           if (ragDocs > 0) {
             Spacer(Modifier.height(24.dp))
             Row(
