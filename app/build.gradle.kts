@@ -17,23 +17,6 @@ android {
         versionCode   = 13
         versionName   = "1.0.2"
 
-        externalNativeBuild {
-            cmake {
-cppFlags("-std=c++20 -O3 -flto=thin -march=armv8-a+dotprod -fstack-protector-strong")
-cFlags  ("-O3 -flto=thin -march=armv8-a+dotprod -fstack-protector-strong")
-                arguments(
-                    "-DANDROID_STL=c++_shared",
-                    "-DGGML_VULKAN=OFF",
-                    "-DGGML_OPENMP=OFF",
-                    "-DGGML_LLAMAFILE=OFF",
-                    "-DLLAMA_BUILD_TESTS=OFF",
-                    "-DLLAMA_BUILD_EXAMPLES=OFF",
-                    "-DGGML_BACKEND_DL=OFF"
-                )
-                abiFilters += "arm64-v8a"
-            }
-        }
-
         buildConfigField("String", "VERSION_NAME", "\"1.0.2\"")
         buildConfigField("int", "VERSION_CODE", "13")
     }
@@ -46,13 +29,6 @@ cFlags  ("-O3 -flto=thin -march=armv8-a+dotprod -fstack-protector-strong")
     buildFeatures {
         compose = true
         buildConfig = true
-    }
-
-    externalNativeBuild {
-        cmake {
-            path    = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
-        }
     }
 
     packaging {

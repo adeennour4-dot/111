@@ -8,6 +8,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -292,7 +293,7 @@ private fun ThinkingChip(
       AnimatedVisibility(
         visible = isExpanded,
         enter = fadeIn(animationSpec = tween(200)),
-        exit = fadeIn(animationSpec = tween(200))
+        exit = fadeOut(animationSpec = tween(200))
       ) {
         Surface(
           modifier = Modifier.padding(horizontal = 10.dp).padding(bottom = 10.dp),
