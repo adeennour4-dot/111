@@ -13,11 +13,11 @@ Your private, offline AI assistant that runs entirely on your phone. No internet
 | **ONNX Runtime** | `.onnx` | Cross-platform models |
 | **ExecuTorch** | `.pte` | Meta's edge-optimized format |
 
-### 🎤 Voice Input
-Speak your questions instead of typing. Uses Android's built-in speech recognition.
+### 🎤 Voice Input (SpeechRecognizer)
+Speak your questions instead of typing. Mic button in InputBar uses Android's built-in `SpeechRecognizer` for real-time speech-to-text. Requires `RECORD_AUDIO` permission (requested on first use).
 
-### 🔊 Text-to-Speech
-Listen to AI responses read aloud with Android TTS.
+### 🔊 Text-to-Speech (TTS)
+Listen to AI responses read aloud. Speaker button on each assistant message uses Android's `TextToSpeech` engine. Tap again to stop playback.
 
 ### 📤 Conversation Export/Import
 Share your chats as text or JSON. Import conversations from JSON backup.
@@ -122,7 +122,9 @@ Apache 2.0. All dependencies (llama.cpp, MNN, LiteRT-LM, ONNX Runtime, ExecuTorc
 
 ## Version History
 
-### v8.1.0 - Phase 1 Rework
+### v8.2.0 - Voice Input & Text-to-Speech
+- 🎤 Voice input via Android SpeechRecognizer (mic button in InputBar)
+- 🔊 Text-to-speech via Android TTS engine (speaker button on assistant messages)
 - 🔌 5 engines: GGUF/llama.cpp, LiteRT-LM, MNN, ONNX Runtime, ExecuTorch
 - 🔍 Vision auto-detected from model metadata (no mmproj)
 - 📚 RAG with document indexing + ML Kit OCR for scanned PDFs

@@ -37,6 +37,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -71,6 +72,8 @@ import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.data.repository.AttachmentType
 import com.gguf.zerocopy.data.repository.ChatMessage
 import com.gguf.zerocopy.data.repository.MessageRole
+import com.gguf.zerocopy.domain.media.TtsManager
+import com.gguf.zerocopy.domain.media.VoiceInputHandler
 import com.gguf.zerocopy.domain.ocr.PdfTextExtractor
 import com.gguf.zerocopy.ui.chat.components.ChatBubble
 import com.gguf.zerocopy.ui.chat.components.DeleteConfirmDialog
@@ -140,6 +143,35 @@ fun ChatScreen(
   var deleteMsgIndex by remember { mutableIntStateOf(-1) }
   var showStreamingThinking by remember { mutableStateOf(false) }
   var userSentCount by remember { mutableIntStateOf(0) }
+  var isVoiceListening by remember { mutableStateOf(false) }
+  var speakingMessageTimestamp by remember { mutableStateOf(0L) }
+  val voiceHandler = remember { VoiceInputHandler(context) }
+  val ttsManager = remember { TtsManager(context) }
+
+  DisposableEffect(Unit) {
+    onDispose {
+      voiceHandler.destroy()
+      ttsManager.destroy()
+    }
+  }
+
+  val audioPermissionLauncher = rememberLauncherForActivityResult(
+    ActivityResultContracts.RequestPermission()
+  ) { granted ->
+    if (granted) voiceHandler.startListening()
+    else scope.launch { snackbarHostState.showSnackbar("Microphone permission denied") }
+  }
+
+  voiceHandler.onResult = { text ->
+    isVoiceListening = false
+    if (text.isNotBlank()) {
+      sendMessage(text, emptyList(), emptyList())
+    }
+  }
+  voiceHandler.onError = { msg ->
+    isVoiceListening = false
+    scope.launch { snackbarHostState.showSnackbar(msg) }
+  }
 
   val suggestions = remember {
     listOf(
@@ -572,6 +604,15 @@ fun ChatScreen(
               docPickLauncher.launch(arrayOf("text/plain", "text/markdown", "application/pdf"))
             }
           },
+          onVoiceInput = {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+              isVoiceListening = true
+              voiceHandler.startListening()
+            } else {
+              audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+          },
+          isVoiceListening = isVoiceListening,
           isInferring = isInferring,
           attachmentUris = attachmentUris,
           attachmentFileNames = attachmentFileNames,
@@ -691,6 +732,7 @@ fun ChatScreen(
               val thinking = extractThinking(msg.content)
               val display = removeThinking(msg.content)
 
+              val isThisSpeaking = speakingMessageTimestamp == msg.timestamp
               ChatBubble(
                 content = display,
                 role = msg.role,
@@ -699,6 +741,20 @@ fun ChatScreen(
                 tokens = msg.tokens,
                 attachmentPath = msg.attachmentPath,
                 attachmentType = msg.attachmentType,
+                isSpeaking = isThisSpeaking,
+                onSpeak = if (msg.role == MessageRole.ASSISTANT && display.isNotEmpty()) {
+                  {
+                    if (isThisSpeaking) {
+                      ttsManager.stop()
+                      speakingMessageTimestamp = 0L
+                    } else {
+                      ttsManager.ensureInit()
+                      ttsManager.onDone = { speakingMessageTimestamp = 0L }
+                      speakingMessageTimestamp = msg.timestamp
+                      ttsManager.speak(display)
+                    }
+                  }
+                } else null,
                 thinkingContent = thinking,
                 onCopy = { copyToClipboard(display) },
                 onDelete = { deleteMsgIndex = idx },
@@ -713,14 +769,29 @@ fun ChatScreen(
             item(key = "streaming") {
               val thinking = extractThinking(streamedContent)
               val display = removeThinking(streamedContent)
+              val streamingTs = System.currentTimeMillis()
               ChatBubble(
                 content = display,
                 role = MessageRole.ASSISTANT,
-                timestamp = System.currentTimeMillis(),
+                timestamp = streamingTs,
                 tps = streamedTps,
                 tokens = streamedTokens,
                 isLoading = streamedContent.isEmpty(),
                 isStreaming = streamedContent.isNotEmpty(),
+                isSpeaking = speakingMessageTimestamp == streamingTs,
+                onSpeak = if (display.isNotEmpty()) {
+                  {
+                    if (speakingMessageTimestamp == streamingTs) {
+                      ttsManager.stop()
+                      speakingMessageTimestamp = 0L
+                    } else {
+                      ttsManager.ensureInit()
+                      ttsManager.onDone = { speakingMessageTimestamp = 0L }
+                      speakingMessageTimestamp = streamingTs
+                      ttsManager.speak(display)
+                    }
+                  }
+                } else null,
                 thinkingContent = thinking,
                 showThinking = showStreamingThinking,
                 onToggleThinking = { showStreamingThinking = !showStreamingThinking }

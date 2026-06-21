@@ -26,9 +26,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -66,6 +68,8 @@ fun ChatBubble(
   attachmentType: AttachmentType? = null,
   isLoading: Boolean = false,
   isStreaming: Boolean = false,
+  isSpeaking: Boolean = false,
+  onSpeak: (() -> Unit)? = null,
   thinkingContent: String? = null,
   showThinking: Boolean = false,
   onToggleThinking: () -> Unit = {},
@@ -180,6 +184,19 @@ fun ChatBubble(
               color = colors.Text3,
               fontFamily = FontFamily.Monospace
             )
+          }
+          if (onSpeak != null && !isLoading && !isUser) {
+            IconButton(
+              onClick = onSpeak,
+              modifier = Modifier.size(20.dp)
+            ) {
+              Icon(
+                if (isSpeaking) Icons.Filled.VolumeUp else Icons.Outlined.VolumeUp,
+                contentDescription = "Speak",
+                tint = if (isSpeaking) colors.Accent else colors.Text3.copy(alpha = 0.6f),
+                modifier = Modifier.size(13.dp)
+              )
+            }
           }
           Spacer(Modifier.weight(1f))
           if (onRegenerate != null) {

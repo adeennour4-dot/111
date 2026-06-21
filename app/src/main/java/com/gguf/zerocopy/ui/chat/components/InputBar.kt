@@ -26,11 +26,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -61,6 +63,8 @@ fun InputBar(
   onStop: () -> Unit,
   onCamera: () -> Unit,
   onAttach: () -> Unit,
+  onVoiceInput: () -> Unit,
+  isVoiceListening: Boolean = false,
   isInferring: Boolean,
   attachmentUris: List<Uri>,
   attachmentFileNames: List<String>,
@@ -234,6 +238,14 @@ fun InputBar(
         }
         IconButton(onClick = onCamera, modifier = Modifier.size(32.dp)) {
           Icon(Icons.Filled.CameraAlt, "Camera", tint = colors.Text3.copy(alpha = 0.7f), modifier = Modifier.size(16.dp))
+        }
+        IconButton(onClick = onVoiceInput, modifier = Modifier.size(32.dp)) {
+          Icon(
+            if (isVoiceListening) Icons.Filled.Mic else Icons.Outlined.Mic,
+            "Voice input",
+            tint = if (isVoiceListening) colors.Accent else colors.Text3.copy(alpha = 0.7f),
+            modifier = Modifier.size(16.dp)
+          )
         }
       }
       Spacer(Modifier.weight(1f))
