@@ -10,10 +10,9 @@ import com.gguf.zerocopy.domain.device.DeviceUtils
 import com.gguf.zerocopy.domain.inference.EngineManager
 import com.gguf.zerocopy.domain.inference.ToolManager
 import com.gguf.zerocopy.domain.server.ModelServer
+import com.gguf.zerocopy.lib.GGMLEngine
 
 class ZeroCopyApp : Application() {
-  lateinit var engineManager: EngineManager
-    private set
   lateinit var modelRepository: ModelRepository
     private set
   lateinit var chatRepository: ChatRepository
@@ -24,6 +23,8 @@ class ZeroCopyApp : Application() {
     private set
   lateinit var modelServer: ModelServer
     private set
+  val ggmlEngine: GGMLEngine = GGMLEngine()
+  val engineManager: EngineManager = EngineManager()
 
   override fun onCreate() {
     super.onCreate()
@@ -31,33 +32,14 @@ class ZeroCopyApp : Application() {
 
     SettingsManager.init(this)
     deviceUtils = DeviceUtils(this)
-    engineManager = EngineManager(this)
     modelRepository = ModelRepository(this)
     chatRepository = ChatRepository(this)
     modelServer = ModelServer()
-
-    syncSettingsToEngines()
 
     if (SettingsManager.serverEnabled && SettingsManager.lastModelPath.isNotEmpty()) {
       modelServer.setAutoModel(SettingsManager.lastModelPath, SettingsManager.lastModelName)
       startService(Intent(this, ModelServerService::class.java))
     }
-  }
-
-  private fun syncSettingsToEngines() {
-    val config = SettingsManager.toConfig()
-    val rp = SettingsManager.toRepeatPenalty()
-    val prompt = SettingsManager.systemPrompt
-    engineManager.llamaCpp.config = config
-    engineManager.llamaCpp.repeatPenalty = rp
-    engineManager.llamaCpp.systemPrompt = prompt
-    engineManager.llamaCpp.mmprojPath = config.mmprojPath
-    engineManager.mnn.config = config
-    engineManager.mnn.repeatPenalty = rp
-    engineManager.mnn.systemPrompt = prompt
-    engineManager.liteRt.config = config
-    engineManager.liteRt.repeatPenalty = rp
-    engineManager.liteRt.systemPrompt = prompt
   }
 
   companion object {

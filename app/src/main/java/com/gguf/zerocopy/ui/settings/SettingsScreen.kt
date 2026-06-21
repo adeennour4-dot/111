@@ -77,8 +77,7 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(onBack: () -> Unit) {
   val context = LocalContext.current
   val app = ZeroCopyApp.instance
-  val engineManager = app.engineManager
-  val ggmlEngine = remember { GGMLEngine() }
+  val ggmlEngine = app.ggmlEngine
   val scope = rememberCoroutineScope()
   val snackbarHostState = remember { SnackbarHostState() }
   val colors = currentPalette()
@@ -153,20 +152,22 @@ fun SettingsScreen(onBack: () -> Unit) {
     SettingsManager.serverWifiOnly = serverWifiOnly
     SettingsManager.ragEnabled = ragEnabled
 
-    val active = engineManager.getActiveEngine()
-    active?.let { eng ->
-      eng.config = cfg
-      eng.repeatPenalty = rp
-      eng.systemPrompt = sysPrompt
-      val modelPath = eng.loadedModelPath
-      if (modelPath != null) {
+    if (ggmlEngine.isLoaded) {
+      val modelPath = SettingsManager.lastModelPath
+      if (modelPath.isNotEmpty()) {
         scope.launch {
-          eng.unloadModel()
-          val result = eng.loadModel(modelPath)
-          if (result.isFailure) {
-            snackbarHostState.showSnackbar("Failed to reload model: ${result.exceptionOrNull()?.message}")
-          } else {
+          ggmlEngine.unload()
+          val ok = ggmlEngine.load(
+            path = modelPath,
+            contextSize = cfg.nCtx,
+            threads = cfg.nThreads,
+            batchSize = cfg.nBatch,
+            flashAttn = cfg.flashAttention,
+          )
+          if (ok) {
             snackbarHostState.showSnackbar("Model reloaded with new settings")
+          } else {
+            snackbarHostState.showSnackbar("Failed to reload model")
           }
         }
       }
@@ -316,7 +317,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       }
 
       OutlinedButton(
-        onClick = { engineManager.unloadAll() },
+        onClick = { scope.launch { ggmlEngine.unload() } },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Red)
@@ -506,9 +507,8 @@ fun SettingsScreen(onBack: () -> Unit) {
           checked = app.modelServer.isRunning,
           onCheckedChange = {
             if (it) {
-              val engine = app.engineManager.getActiveEngine()
-              if (engine?.loadedModelPath != null) {
-                val path = engine.loadedModelPath ?: ""
+              val path = SettingsManager.lastModelPath
+              if (path.isNotEmpty()) {
                 val name = path.substringAfterLast('/')
                 SettingsManager.lastModelPath = path
                 SettingsManager.lastModelName = name
@@ -679,10 +679,9 @@ fun SettingsScreen(onBack: () -> Unit) {
       },
       confirmButton = {
         TextButton(onClick = {
-          val active = engineManager.getActiveEngine()
-          if (active != null) active.resetContext()
+          ggmlEngine?.let { scope.launch { it.unload(); it.load(path = SettingsManager.lastModelPath) } }
           showResetConfirm = false
-          scope.launch { snackbarHostState.showSnackbar("Context reset") }
+          scope.launch { snackbarHostState.showSnackbar("Model reloaded") }
         }) { Text("Reset", color = colors.Red) }
       },
       dismissButton = {

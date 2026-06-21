@@ -36,7 +36,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -63,7 +62,8 @@ import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.data.repository.LocalModel
-import com.gguf.zerocopy.domain.inference.EngineType
+import com.gguf.zerocopy.ui.chat.components.DeleteConfirmDialog
+import com.gguf.zerocopy.ui.chat.components.ModelDetailDialog
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -78,76 +78,99 @@ fun ModelListScreen(
   onModelSelected: (path: String, name: String) -> Unit,
   onBack: () -> Unit
 ) {
-  val context = LocalContext.current
-  val app = ZeroCopyApp.instance
-  val scope = rememberCoroutineScope()
   val colors = currentPalette()
-  val models by app.modelRepository.models.collectAsState(initial = emptyList())
+  val models by ZeroCopyApp.instance.modelRepository.models.collectAsState(initial = emptyList())
   var loading by remember { mutableStateOf(false) }
   var isLoading by remember { mutableStateOf(false) }
   var modelToDelete by remember { mutableStateOf<LocalModel?>(null) }
   var modelToDetail by remember { mutableStateOf<LocalModel?>(null) }
-  var engineSwitchWarningModel by remember { mutableStateOf<LocalModel?>(null) }
   var longPressModel by remember { mutableStateOf<LocalModel?>(null) }
+  var statusMsg by remember { mutableStateOf("") }
+  var statusError by remember { mutableStateOf(false) }
 
-  val activeEngine = app.engineManager.getActiveEngine()
-  val isModelLoaded = activeEngine?.isModelLoaded == true
-  val loadedModelPath = if (isModelLoaded) activeEngine?.loadedModelPath else null
+  val scope = rememberCoroutineScope()
+  val ggmlEngine = remember { GGMLEngine() }
+  val isModelLoaded = ggmlEngine.isLoaded
+  val loadedModelPath = if (isModelLoaded) SettingsManager.lastModelPath.takeIf { it.isNotEmpty() } else null
+
+  fun loadAndSelect(model: LocalModel) {
+    isLoading = true
+    statusMsg = ""
+    scope.launch {
+      val cfg = SettingsManager.toConfig()
+      val ok = withContext(Dispatchers.IO) {
+        try {
+          ggmlEngine.load(
+            path = model.path,
+            contextSize = cfg.nCtx,
+            threads = cfg.nThreads,
+            batchSize = cfg.nBatch,
+            flashAttn = cfg.flashAttention,
+            useMmap = true,
+            useMlock = false,
+            cacheTypeK = "q8_0",
+            cacheTypeV = "q8_0",
+            opOffload = false
+          )
+        } catch (e: Exception) {
+          Log.e("ModelList", "load failed", e)
+          false
+        }
+      }
+      isLoading = false
+      if (ok) {
+        SettingsManager.lastModelPath = model.path
+        SettingsManager.lastModelName = model.name
+        ZeroCopyApp.instance.modelRepository.markUsed(model.id)
+        onModelSelected(model.path, model.name)
+      } else {
+        statusMsg = "Failed to load model: ${model.name}"
+        statusError = true
+      }
+    }
+  }
+
+  fun handleModelTap(model: LocalModel) {
+    if (!model.path.endsWith(".gguf", ignoreCase = true)) {
+      statusMsg = "Only GGUF models supported"
+      statusError = true
+      return
+    }
+    if (loadedModelPath == model.path && isModelLoaded) {
+      scope.launch { ggmlEngine.unload() }
+      return
+    }
+    loadAndSelect(model)
+  }
+
+  fun confirmDelete(model: LocalModel) {
+    if (loadedModelPath == model.path) {
+      scope.launch { ggmlEngine.unload() }
+    }
+    ZeroCopyApp.instance.modelRepository.deleteModel(model.id)
+    modelToDelete = null
+  }
 
   val filePicker = rememberLauncherForActivityResult(
     ActivityResultContracts.StartActivityForResult()
   ) { result ->
     if (result.resultCode == Activity.RESULT_OK) {
       result.data?.data?.let { uri ->
-        val name = getFileName(context, uri)
         loading = true
         scope.launch {
-          app.modelRepository.importUri(uri, name)
+          ZeroCopyApp.instance.modelRepository.importUri(uri, getFileName(LocalContext.current, uri))
             .onSuccess { model ->
               loading = false
-              isLoading = true
-              loadModel(model, onModelSelected)
-              isLoading = false
+              loadAndSelect(model)
             }
-            .onFailure { loading = false }
+            .onFailure { e ->
+              loading = false
+              statusMsg = "Import failed: ${e.message?.take(60)}"
+              statusError = true
+            }
         }
       }
     }
-  }
-
-  fun handleModelTap(model: LocalModel) {
-    if (loadedModelPath == model.path && activeEngine != null) {
-      activeEngine.unloadModel()
-      return
-    }
-    val targetEngine = app.engineManager.selectEngineForFormat(model.path)
-    if (isModelLoaded && activeEngine != targetEngine) {
-      engineSwitchWarningModel = model
-      return
-    }
-    isLoading = true
-    scope.launch {
-      loadModel(model, onModelSelected)
-      isLoading = false
-    }
-  }
-
-  fun confirmEngineSwitch(model: LocalModel) {
-    engineSwitchWarningModel = null
-    isLoading = true
-    scope.launch {
-      app.engineManager.unloadAll()
-      loadModel(model, onModelSelected)
-      isLoading = false
-    }
-  }
-
-  fun confirmDelete(model: LocalModel) {
-    if (loadedModelPath == model.path) {
-      app.engineManager.getActiveEngine()?.unloadModel()
-    }
-    app.modelRepository.deleteModel(model.id)
-    modelToDelete = null
   }
 
   Scaffold(
@@ -170,7 +193,11 @@ fun ModelListScreen(
           }) {
             Icon(Icons.Filled.Add, "Import", tint = colors.Accent)
           }
-          IconButton(onClick = { app.modelRepository.scanModels() }) {
+          IconButton(onClick = {
+            ZeroCopyApp.instance.modelRepository.scanModels()
+            statusMsg = "Scanned for models"
+            statusError = false
+          }) {
             Icon(Icons.Filled.Refresh, "Scan", tint = colors.Accent2)
           }
         },
@@ -197,176 +224,82 @@ fun ModelListScreen(
         }
       } else {
         LazyColumn(
-          modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-          contentPadding = PaddingValues(vertical = 8.dp),
+          modifier = Modifier.fillMaxSize(),
+          contentPadding = PaddingValues(16.dp),
           verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+          if (statusMsg.isNotEmpty()) {
+            item {
+              Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp),
+                color = if (statusError) colors.Red.copy(alpha = 0.15f) else colors.Accent.copy(alpha = 0.15f)
+              ) {
+                Text(
+                  text = statusMsg,
+                  modifier = Modifier.padding(12.dp),
+                  fontSize = 12.sp,
+                  color = if (statusError) colors.Red else colors.Accent,
+                  fontFamily = FontFamily.Monospace
+                )
+              }
+            }
+          }
+          if (loading || isLoading) {
+            item {
+              Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = colors.Accent, modifier = Modifier.size(24.dp))
+              }
+            }
+          }
           items(models, key = { it.id }) { model ->
-            val isThisLoaded = loadedModelPath == model.path
             ModelCard(
               model = model,
-              isLoaded = isThisLoaded,
+              isLoaded = loadedModelPath == model.path,
               onClick = { handleModelTap(model) },
               onLongClick = { longPressModel = model }
             )
           }
         }
       }
-
-      if (loading || isLoading) {
-        CircularProgressIndicator(
-          modifier = Modifier.align(Alignment.Center),
-          color = colors.Accent
-        )
-      }
-
-      longPressModel?.let { model ->
-        DropdownMenu(
-          expanded = true,
-          onDismissRequest = { longPressModel = null },
-          modifier = Modifier.background(colors.Card)
-        ) {
-          DropdownMenuItem(
-            text = { Text("Details", color = colors.Text, fontSize = 14.sp) },
-            onClick = {
-              longPressModel = null
-              modelToDetail = model
-            },
-            leadingIcon = {
-              Icon(Icons.Filled.Info, null, tint = colors.Accent2, modifier = Modifier.size(18.dp))
-            }
-          )
-          HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
-          DropdownMenuItem(
-            text = { Text("Delete", color = colors.Red, fontSize = 14.sp) },
-            onClick = {
-              longPressModel = null
-              modelToDelete = model
-            },
-            leadingIcon = {
-              Icon(Icons.Filled.Delete, null, tint = colors.Red, modifier = Modifier.size(18.dp))
-            }
-          )
-        }
-      }
-
-      modelToDelete?.let { model ->
-        AlertDialog(
-          onDismissRequest = { modelToDelete = null },
-          containerColor = colors.Card,
-          title = { Text("Delete Model?", color = colors.Text, fontSize = 16.sp) },
-          text = {
-            Text("Remove ${model.name} from device? This cannot be undone.", color = colors.Text2, fontSize = 14.sp)
-          },
-          confirmButton = {
-            TextButton(onClick = { confirmDelete(model) }) {
-              Text("Delete", color = colors.Red)
-            }
-          },
-          dismissButton = {
-            TextButton(onClick = { modelToDelete = null }) {
-              Text("Cancel", color = colors.Text2)
-            }
-          }
-        )
-      }
-
-      modelToDetail?.let { model ->
-        AlertDialog(
-          onDismissRequest = { modelToDetail = null },
-          containerColor = colors.Card,
-          title = { Text("Model Details", color = colors.Text, fontWeight = FontWeight.Bold) },
-          text = {
-            Column {
-              DetailRow("Name", model.name)
-              DetailRow("Format", model.format.uppercase())
-              DetailRow("Engine", model.engine.id)
-              DetailRow("Size", model.sizeFormatted)
-              DetailRow(
-                "Added",
-                SimpleDateFormat("MMM d, yyyy HH:mm", Locale.getDefault()).format(Date(model.addedAt))
-              )
-              if (model.lastUsed > 0) {
-                DetailRow(
-                  "Last used",
-                  SimpleDateFormat("MMM d, yyyy HH:mm", Locale.getDefault()).format(Date(model.lastUsed))
-                )
-              }
-              DetailRow("Path", model.path)
-            }
-          },
-          confirmButton = {
-            TextButton(onClick = {
-              modelToDetail = null
-              handleModelTap(model)
-            }) {
-              Text(if (loadedModelPath == model.path) "Unload" else "Load", color = colors.Accent)
-            }
-          },
-          dismissButton = {
-            TextButton(onClick = { modelToDetail = null }) {
-              Text("Close", color = colors.Text2)
-            }
-          }
-        )
-      }
-
-      engineSwitchWarningModel?.let { model ->
-        AlertDialog(
-          onDismissRequest = { engineSwitchWarningModel = null },
-          containerColor = colors.Card,
-          title = { Text("Switch Engine?", color = colors.Amber, fontSize = 16.sp) },
-          text = {
-            Column {
-              Text(
-                "Another model is currently loaded by a different engine. Loading ${model.name} will unload the current model.",
-                color = colors.Text2,
-                fontSize = 14.sp
-              )
-            }
-          },
-          confirmButton = {
-            TextButton(onClick = { confirmEngineSwitch(model) }) {
-              Text("Switch", color = colors.Accent)
-            }
-          },
-          dismissButton = {
-            TextButton(onClick = { engineSwitchWarningModel = null }) {
-              Text("Cancel", color = colors.Text2)
-            }
-          }
-        )
-      }
     }
   }
-}
 
-private suspend fun loadModel(
-  model: LocalModel,
-  onModelSelected: (String, String) -> Unit
-) {
-  val app = ZeroCopyApp.instance
-  val engine = app.engineManager.selectEngineForFormat(model.path)
-  engine.config = SettingsManager.toConfig()
-  engine.repeatPenalty = SettingsManager.toRepeatPenalty()
-  engine.systemPrompt = SettingsManager.systemPrompt
-  engine.mmprojPath = SettingsManager.mmprojPath
-  withContext(Dispatchers.IO) {
-    engine.loadModel(model.path)
-  }.onSuccess {
-    app.modelRepository.markUsed(model.id)
-    onModelSelected(model.path, model.name)
-  }.onFailure { e ->
-    Log.e("ModelList", "Failed to load model: ${e.message}")
+  if (modelToDelete != null) {
+    DeleteConfirmDialog(
+      name = modelToDelete!!.name,
+      onConfirm = { confirmDelete(modelToDelete!!); modelToDelete = null },
+      onDismiss = { modelToDelete = null }
+    )
   }
-}
 
-@Composable
-private fun DetailRow(label: String, value: String) {
-  val colors = currentPalette()
-  Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-    Text("$label: ", fontSize = 12.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
-    Text(value, fontSize = 12.sp, color = colors.Text, fontFamily = FontFamily.Monospace)
+  if (modelToDetail != null) {
+    ModelDetailDialog(
+      model = modelToDetail!!,
+      onDismiss = { modelToDetail = null }
+    )
+  }
+
+  if (longPressModel != null) {
+    DropdownMenu(
+      expanded = true,
+      onDismissRequest = { longPressModel = null }
+    ) {
+      DropdownMenuItem(
+        text = { Text("Details", fontSize = 13.sp) },
+        onClick = {
+          modelToDetail = longPressModel
+          longPressModel = null
+        }
+      )
+      DropdownMenuItem(
+        text = { Text("Delete", color = colors.Red, fontSize = 13.sp) },
+        onClick = {
+          modelToDelete = longPressModel
+          longPressModel = null
+        }
+      )
+    }
   }
 }
 
@@ -407,7 +340,7 @@ private fun ModelCard(
             modifier = Modifier.weight(1f, fill = false)
           )
           Spacer(Modifier.width(8.dp))
-          EngineBadge(engine = model.engine)
+          GGUFBadge()
         }
         Spacer(Modifier.height(4.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -456,22 +389,17 @@ private fun ModelCard(
 }
 
 @Composable
-private fun EngineBadge(engine: EngineType) {
+private fun GGUFBadge() {
   val colors = currentPalette()
-  val (label, badgeColor) = when (engine) {
-    EngineType.LLAMA_CPP -> "GGUF" to colors.Purple
-    EngineType.MNN -> "MNN" to colors.Accent2
-    EngineType.LITER_T -> "TFLite" to colors.Amber
-  }
   Surface(
     shape = RoundedCornerShape(4.dp),
-    color = badgeColor.copy(alpha = 0.2f)
+    color = colors.Purple.copy(alpha = 0.2f)
   ) {
     Text(
-      label,
+      "GGUF",
       modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
       fontSize = 9.sp,
-      color = badgeColor,
+      color = colors.Purple,
       fontFamily = FontFamily.Monospace,
       fontWeight = FontWeight.Bold
     )

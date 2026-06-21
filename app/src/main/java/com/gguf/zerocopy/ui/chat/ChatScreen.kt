@@ -80,7 +80,6 @@ import com.gguf.zerocopy.ui.chat.components.PromptSuggestions
 import com.gguf.zerocopy.ui.chat.components.RagDocumentDialog
 import com.gguf.zerocopy.ui.chat.components.getFileName
 import com.gguf.zerocopy.ui.theme.currentPalette
-import com.gguf.zerocopy.lib.GGMLEngine
 import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
@@ -112,8 +111,7 @@ fun ChatScreen(
   val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
   val snackbarHostState = remember { SnackbarHostState() }
 
-  val engine = app.engineManager.getActiveEngine()
-  val hasVision = engine?.hasVisionCapability == true
+  val hasVision = false
 
   var chatId by remember { mutableStateOf(sessionId) }
 
@@ -231,30 +229,28 @@ fun ChatScreen(
     } else currentUserText
   }
 
-  val ggmlEngine = if (USE_NEW_ENGINE) remember { GGMLEngine() } else null
+  val ggmlEngine = if (USE_NEW_ENGINE) ZeroCopyApp.instance.ggmlEngine else null
 
   LaunchedEffect(modelPath) {
     if (!USE_NEW_ENGINE || modelPath.isEmpty()) return@LaunchedEffect
     val eng = ggmlEngine ?: return@LaunchedEffect
-    if (eng.isLoaded) return@LaunchedEffect
-    val cfg = SettingsManager.toConfig()
-    eng.load(
-      path = modelPath,
-      contextSize = cfg.nCtx,
-      threads = cfg.nThreads,
-      batchSize = cfg.nBatch,
-      flashAttn = cfg.flashAttention,
-    )
-    // Init prompt cache dir
+    if (!eng.isLoaded) {
+      val cfg = SettingsManager.toConfig()
+      eng.load(
+        path = modelPath,
+        contextSize = cfg.nCtx,
+        threads = cfg.nThreads,
+        batchSize = cfg.nBatch,
+        flashAttn = cfg.flashAttention,
+      )
+    }
     val cacheDir = File(context.filesDir, "prompt_cache").also { it.mkdirs() }.absolutePath
     eng.setCacheDir(cacheDir)
-    // Init StreamingLLM
     eng.setStreamingLLM(
       sinkTokens = SettingsManager.kvSinkTokens,
       recentTokens = SettingsManager.kvRecentTokens,
       threshold = SettingsManager.kvEvictThreshold
     )
-    // Init RAG
     eng.setRagParams(topK = SettingsManager.ragTopK, minScore = SettingsManager.ragMinScore)
   }
 
@@ -316,93 +312,9 @@ fun ChatScreen(
     }
   }
 
+  @Suppress("UNUSED_PARAMETER")
   fun sendMessageOldEngine(sessionId: String, prompt: String, imagePaths: List<String>) {
-    val activeEngine = engine
-    if (activeEngine?.isModelLoaded != true) {
-      android.util.Log.w("ChatScreen", "No model loaded")
-      scope.launch { snackbarHostState.showSnackbar("No model loaded") }
-      return
-    }
-
-    inferenceActive = true
-    val rawResponse = StringBuilder()
-    val startTime = System.currentTimeMillis()
-
-    scope.launch {
-      isInferring = true
-      streamedContent = ""
-      streamedTokens = 0
-      streamedTps = 0f
-      val currentChatId = sessionId
-
-      val callback = object : com.gguf.zerocopy.domain.inference.TokenCallback {
-        override fun onToken(token: String) {
-          if (!inferenceActive) return
-          rawResponse.append(token)
-          streamedContent = rawResponse.toString()
-          streamedTokens++
-          val elapsed = (System.currentTimeMillis() - startTime) / 1000f
-          if (elapsed > 0) streamedTps = streamedTokens / elapsed
-        }
-
-        override fun onDone() {
-          if (!inferenceActive) return
-          val elapsed = (System.currentTimeMillis() - startTime) / 1000f
-          val tpsVal = if (elapsed > 0) streamedTokens / elapsed else 0f
-          val raw = rawResponse.toString()
-          if (raw.isNotEmpty()) {
-            app.chatRepository.addMessage(
-              currentChatId,
-              ChatMessage(
-                role = MessageRole.ASSISTANT,
-                content = raw,
-                tps = tpsVal,
-                tokens = streamedTokens
-              )
-            )
-          }
-          streamedContent = ""
-          inferenceActive = false
-          isInferring = false
-        }
-
-        override fun onError(error: String) {
-          if (!inferenceActive) return
-          inferenceActive = false
-          isInferring = false
-          streamedContent = ""
-          scope.launch { snackbarHostState.showSnackbar("Inference error: $error") }
-        }
-
-        override fun onKvUsage(percent: Int) {}
-
-        override fun onTokensGenerated(count: Int) {
-          streamedTokens = count
-        }
-      }
-
-      try {
-        withContext(Dispatchers.IO) {
-          val allHistoryMsgs = app.chatRepository.getMessages(currentChatId)
-          val historyMsgs = allHistoryMsgs.dropLast(1).map { msg ->
-            msg.role.name.lowercase() to msg.content
-          }
-          activeEngine.restoreHistory(historyMsgs)
-          val fp = buildConversationPrompt(prompt, reasoningEnabled)
-          if (imagePaths.isNotEmpty() && activeEngine.hasVisionCapability) {
-            activeEngine.executeInferenceWithImage(fp, imagePaths.first(), callback)
-          } else {
-            activeEngine.executeInference(fp, callback)
-          }
-        }
-      } catch (e: Exception) {
-        if (inferenceActive) {
-          inferenceActive = false
-          isInferring = false
-          streamedContent = ""
-        }
-      }
-    }
+    scope.launch { snackbarHostState.showSnackbar("Old engine not available") }
   }
 
   fun sendMessage(text: String, uris: List<Uri>, names: List<String>) {

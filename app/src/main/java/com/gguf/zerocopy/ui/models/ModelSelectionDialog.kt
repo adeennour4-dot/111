@@ -25,8 +25,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ZeroCopyApp
+import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.data.repository.LocalModel
-import com.gguf.zerocopy.domain.inference.EngineType
 import com.gguf.zerocopy.ui.theme.currentPalette
 
 @Composable
@@ -36,9 +36,8 @@ fun ModelSelectionDialog(
   onDismiss: () -> Unit
 ) {
   val colors = currentPalette()
-  val loadedPath = ZeroCopyApp.instance.engineManager
-    .getActiveEngine()
-    ?.let { if (it.isModelLoaded) it.loadedModelPath else null }
+  val loadedPath = if (ZeroCopyApp.instance.ggmlEngine.isLoaded)
+    SettingsManager.lastModelPath.takeIf { it.isNotEmpty() } else null
 
   AlertDialog(
     onDismissRequest = onDismiss,
@@ -125,7 +124,7 @@ private fun ModelRow(
             modifier = Modifier.weight(1f, fill = false)
           )
           Spacer(Modifier.width(8.dp))
-          EngineBadge(engine = model.engine)
+          EngineBadge(label = if (model.path.endsWith(".gguf", ignoreCase = true)) "GGUF" else model.format.uppercase())
         }
         Spacer(Modifier.height(3.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -165,13 +164,9 @@ private fun ModelRow(
 }
 
 @Composable
-private fun EngineBadge(engine: EngineType) {
+private fun EngineBadge(label: String) {
   val colors = currentPalette()
-  val (label, badgeColor) = when (engine) {
-    EngineType.LLAMA_CPP -> "GGUF" to colors.Purple
-    EngineType.MNN -> "MNN" to colors.Accent2
-    EngineType.LITER_T -> "TFLite" to colors.Amber
-  }
+  val badgeColor = colors.Purple
   Surface(
     shape = RoundedCornerShape(4.dp),
     color = badgeColor.copy(alpha = 0.2f)
