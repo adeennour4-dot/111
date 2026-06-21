@@ -99,7 +99,8 @@ fun ChatScreen(
   onModelSelected: (path: String, name: String) -> Unit,
   onSettings: () -> Unit,
   onSessions: () -> Unit,
-  onCloud: () -> Unit
+  onCloud: () -> Unit,
+  onRag: () -> Unit = {}
 ) {
   val context = LocalContext.current
   val app = ZeroCopyApp.instance
@@ -227,38 +228,29 @@ fun ChatScreen(
     } else currentUserText
   }
 
-  val ggmlEngine = ZeroCopyApp.instance.ggmlEngine
-
   LaunchedEffect(modelPath) {
     if (modelPath.isEmpty()) return@LaunchedEffect
-    if (!ggmlEngine.isLoaded) {
-      val cfg = SettingsManager.toConfig()
-      ggmlEngine.load(
-        path = modelPath,
-        contextSize = cfg.nCtx,
-        threads = cfg.nThreads,
-        batchSize = cfg.nBatch,
-        flashAttn = cfg.flashAttention,
-      )
+    if (!app.activeEngine.isLoaded) {
+      app.activeEngine.load(path = modelPath, config = SettingsManager.toEngineConfig())
     }
     val cacheDir = File(context.filesDir, "prompt_cache").also { it.mkdirs() }.absolutePath
-    ggmlEngine.setCacheDir(cacheDir)
-    ggmlEngine.setStreamingLLM(
+    app.activeEngine.setCacheDir(cacheDir)
+    app.activeEngine.setStreamingLLM(
       sinkTokens = SettingsManager.kvSinkTokens,
       recentTokens = SettingsManager.kvRecentTokens,
       threshold = SettingsManager.kvEvictThreshold
     )
-    ggmlEngine.setRagParams(topK = SettingsManager.ragTopK, minScore = SettingsManager.ragMinScore)
+    app.activeEngine.setRagParams(topK = SettingsManager.ragTopK, minScore = SettingsManager.ragMinScore)
   }
 
   fun sendMessageNewEngine(sessionId: String, prompt: String, imagePaths: List<String>) {
-    if (!ggmlEngine.isLoaded) {
+    if (!app.activeEngine.isLoaded) {
       scope.launch { snackbarHostState.showSnackbar("New engine: model not loaded") }
       return
     }
     // Sync RAG state before generation
-    ggmlEngine.setRagParams(topK = SettingsManager.ragTopK, minScore = SettingsManager.ragMinScore)
-    ggmlEngine.ragEnabled = ragEnabled && ggmlEngine.numDocuments > 0
+    app.activeEngine.setRagParams(topK = SettingsManager.ragTopK, minScore = SettingsManager.ragMinScore)
+    app.activeEngine.ragEnabled = ragEnabled && app.activeEngine.numDocuments > 0
 
     inferenceActive = true
     isInferring = true
@@ -270,7 +262,7 @@ fun ChatScreen(
     scope.launch {
       val rawResponse = StringBuilder()
       val fp = buildConversationPrompt(prompt, reasoningEnabled)
-      ggmlEngine.generateFlow(fp, maxTokens = 4096)
+      app.activeEngine.generateFlow(fp, maxTokens = 4096)
         .catch { e ->
           android.util.Log.e("ChatScreen", "Flow error: ${e.message}")
           inferenceActive = false
@@ -367,7 +359,7 @@ fun ChatScreen(
   fun stopInference() {
     inferenceActive = false
     isInferring = false
-    ggmlEngine.stopGeneration()
+    app.activeEngine.stopGeneration()
     streamedContent = ""
   }
 
@@ -560,7 +552,7 @@ fun ChatScreen(
           },
           ragEnabled = ragEnabled,
           onToggleRag = { showRagDialog = true },
-          ragDocCount = ggmlEngine.numDocuments
+          ragDocCount = app.activeEngine.numDocuments
         )
       }
     },
@@ -615,7 +607,7 @@ fun ChatScreen(
           PromptSuggestions(suggestions = suggestions, onSelect = { text ->
             sendMessage(text, emptyList(), emptyList())
           })
-          val ragDocs = ggmlEngine.numDocuments
+          val ragDocs = app.activeEngine.numDocuments
           if (ragDocs > 0) {
             Spacer(Modifier.height(24.dp))
             Row(
@@ -723,9 +715,10 @@ fun ChatScreen(
 
   if (showRagDialog) {
     RagDocumentDialog(
-      engine = ggmlEngine,
+      engine = app.activeEngine,
       onDismiss = { showRagDialog = false },
-      onDocumentsChanged = { /* doc count will update next frame */ }
+      onDocumentsChanged = { /* doc count will update next frame */ },
+      onManageLibrary = onRag
     )
   }
 }

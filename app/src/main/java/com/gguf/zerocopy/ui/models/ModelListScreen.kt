@@ -3,7 +3,6 @@ package com.gguf.zerocopy.ui.models
 import android.app.Activity
 import android.content.Intent
 import android.provider.OpenableColumns
-import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -27,8 +26,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.AlertDialog
@@ -39,6 +41,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -61,8 +65,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.local.SettingsManager
+import com.gguf.zerocopy.data.repository.DownloadableModel
 import com.gguf.zerocopy.data.repository.LocalModel
-import com.gguf.zerocopy.ui.chat.components.DeleteConfirmDialog
+import com.gguf.zerocopy.data.repository.ModelDownloads
+import com.gguf.zerocopy.ui.chat.components.ModelDeleteConfirmDialog
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -86,42 +92,30 @@ fun ModelListScreen(
   var longPressModel by remember { mutableStateOf<LocalModel?>(null) }
   var statusMsg by remember { mutableStateOf("") }
   var statusError by remember { mutableStateOf(false) }
+  var showDownloadDialog by remember { mutableStateOf(false) }
+  val snackbarHostState = remember { SnackbarHostState() }
 
   val scope = rememberCoroutineScope()
-  val ggmlEngine = ZeroCopyApp.instance.ggmlEngine
-  val isModelLoaded = ggmlEngine.isLoaded
+  val engine = ZeroCopyApp.instance.activeEngine
+  val isModelLoaded = engine.isLoaded
   val loadedModelPath = if (isModelLoaded) SettingsManager.lastModelPath.takeIf { it.isNotEmpty() } else null
   val context = LocalContext.current
 
   fun loadAndSelect(model: LocalModel) {
     isLoading = true
     statusMsg = ""
+    val app = ZeroCopyApp.instance
+    val targetEngine = app.engineRegistry.find(model.path)
+        ?: app.engineRegistry.findByFormat(model.format)
+        ?: app.activeEngine
     scope.launch {
-      val cfg = SettingsManager.toConfig()
-      val ok = withContext(Dispatchers.IO) {
-        try {
-          ggmlEngine.load(
-            path = model.path,
-            contextSize = cfg.nCtx,
-            threads = cfg.nThreads,
-            batchSize = cfg.nBatch,
-            flashAttn = cfg.flashAttention,
-            useMmap = true,
-            useMlock = false,
-            cacheTypeK = "q8_0",
-            cacheTypeV = "q8_0",
-            opOffload = false
-          )
-        } catch (e: Exception) {
-          Log.e("ModelList", "load failed", e)
-          false
-        }
-      }
+      val result = targetEngine.load(model.path, SettingsManager.toEngineConfig())
       isLoading = false
-      if (ok) {
+      if (result.isSuccess) {
+        app.switchEngine(targetEngine)
         SettingsManager.lastModelPath = model.path
         SettingsManager.lastModelName = model.name
-        ZeroCopyApp.instance.modelRepository.markUsed(model.id)
+        app.modelRepository.markUsed(model.id)
         onModelSelected(model.path, model.name)
       } else {
         statusMsg = "Failed to load model: ${model.name}"
@@ -131,13 +125,19 @@ fun ModelListScreen(
   }
 
   fun handleModelTap(model: LocalModel) {
-    if (!model.path.endsWith(".gguf", ignoreCase = true)) {
-      statusMsg = "Only GGUF models supported"
+    val app = ZeroCopyApp.instance
+    val targetEngine = app.engineRegistry.find(model.path)
+        ?: app.engineRegistry.findByFormat(model.format)
+    if (targetEngine == null) {
+      statusMsg = "No engine available for .${model.path.substringAfterLast('.')} files"
       statusError = true
       return
     }
+    if (targetEngine != app.activeEngine) {
+      scope.launch { app.activeEngine.unload() }
+    }
     if (loadedModelPath == model.path && isModelLoaded) {
-      scope.launch { ggmlEngine.unload() }
+      scope.launch { app.activeEngine.unload() }
       return
     }
     loadAndSelect(model)
@@ -145,7 +145,7 @@ fun ModelListScreen(
 
   fun confirmDelete(model: LocalModel) {
     if (loadedModelPath == model.path) {
-      scope.launch { ggmlEngine.unload() }
+      scope.launch { engine.unload() }
     }
     ZeroCopyApp.instance.modelRepository.deleteModel(model.id)
     modelToDelete = null
@@ -183,6 +183,9 @@ fun ModelListScreen(
           }
         },
         actions = {
+          IconButton(onClick = { showDownloadDialog = true }) {
+            Icon(Icons.Filled.CloudDownload, "Download", tint = colors.Accent)
+          }
           IconButton(onClick = {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
               addCategory(Intent.CATEGORY_OPENABLE)
@@ -191,7 +194,7 @@ fun ModelListScreen(
             }
             filePicker.launch(intent)
           }) {
-            Icon(Icons.Filled.Add, "Import", tint = colors.Accent)
+            Icon(Icons.Filled.NoteAdd, "Import", tint = colors.Accent2)
           }
           IconButton(onClick = {
             ZeroCopyApp.instance.modelRepository.scanModels()
@@ -204,6 +207,7 @@ fun ModelListScreen(
         colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Bg)
       )
     },
+    snackbarHost = { SnackbarHost(snackbarHostState) },
     containerColor = colors.Bg
   ) { pad ->
     Box(modifier = Modifier.padding(pad).fillMaxSize()) {
@@ -266,7 +270,8 @@ fun ModelListScreen(
   }
 
   if (modelToDelete != null) {
-    DeleteConfirmDialog(
+    ModelDeleteConfirmDialog(
+      modelName = modelToDelete!!.name,
       onConfirm = { confirmDelete(modelToDelete!!); modelToDelete = null },
       onDismiss = { modelToDelete = null }
     )
@@ -294,6 +299,14 @@ fun ModelListScreen(
       },
       confirmButton = {
         TextButton(onClick = { modelToDetail = null }) { Text("Close") }
+      },
+      dismissButton = {
+        TextButton(onClick = {
+          modelToDetail = null
+          modelToDelete = m
+        }) {
+          Text("Delete", color = colors.Red, fontSize = 14.sp)
+        }
       }
     )
   }
@@ -358,7 +371,7 @@ private fun ModelCard(
             modifier = Modifier.weight(1f, fill = false)
           )
           Spacer(Modifier.width(8.dp))
-          GGUFBadge()
+          FormatBadge(model.format)
         }
         Spacer(Modifier.height(4.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -407,14 +420,14 @@ private fun ModelCard(
 }
 
 @Composable
-private fun GGUFBadge() {
+private fun FormatBadge(format: String) {
   val colors = currentPalette()
   Surface(
     shape = RoundedCornerShape(4.dp),
     color = colors.Purple.copy(alpha = 0.2f)
   ) {
     Text(
-      "GGUF",
+      format.uppercase(),
       modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
       fontSize = 9.sp,
       color = colors.Purple,
@@ -438,6 +451,8 @@ private fun getFileName(context: android.content.Context, uri: android.net.Uri):
       mime?.contains("gguf") == true || mime == "application/octet-stream" -> ".gguf"
       mime?.contains("tensorflow") == true || mime?.contains("tflite") == true -> ".tflite"
       mime?.contains("litert") == true -> ".litertlm"
+      mime?.contains("onnx") == true -> ".onnx"
+      mime?.contains("executorch") == true || mime?.contains("pte") == true -> ".pte"
       else -> ".gguf"
     }
   }

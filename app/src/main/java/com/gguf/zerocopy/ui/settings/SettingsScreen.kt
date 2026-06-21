@@ -67,7 +67,6 @@ import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.domain.server.ModelServerService
 import com.gguf.zerocopy.data.local.InferenceConfig
 import com.gguf.zerocopy.data.local.RepeatPenaltyConfig
-import com.gguf.zerocopy.lib.GGMLEngine
 import com.gguf.zerocopy.ui.chat.components.getFileName
 import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlinx.coroutines.launch
@@ -77,7 +76,7 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(onBack: () -> Unit) {
   val context = LocalContext.current
   val app = ZeroCopyApp.instance
-  val ggmlEngine = app.ggmlEngine
+  val engine = app.activeEngine
   val scope = rememberCoroutineScope()
   val snackbarHostState = remember { SnackbarHostState() }
   val colors = currentPalette()
@@ -152,19 +151,13 @@ fun SettingsScreen(onBack: () -> Unit) {
     SettingsManager.serverWifiOnly = serverWifiOnly
     SettingsManager.ragEnabled = ragEnabled
 
-    if (ggmlEngine.isLoaded) {
+    if (engine.isLoaded) {
       val modelPath = SettingsManager.lastModelPath
       if (modelPath.isNotEmpty()) {
         scope.launch {
-          ggmlEngine.unload()
-          val ok = ggmlEngine.load(
-            path = modelPath,
-            contextSize = cfg.nCtx,
-            threads = cfg.nThreads,
-            batchSize = cfg.nBatch,
-            flashAttn = cfg.flashAttention,
-          )
-          if (ok) {
+          engine.unload()
+          val result = engine.load(path = modelPath, config = SettingsManager.toEngineConfig())
+          if (result.isSuccess) {
             snackbarHostState.showSnackbar("Model reloaded with new settings")
           } else {
             snackbarHostState.showSnackbar("Failed to reload model")
@@ -317,7 +310,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       }
 
       OutlinedButton(
-        onClick = { scope.launch { ggmlEngine.unload() } },
+        onClick = { scope.launch { engine.unload() } },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Red)
@@ -419,7 +412,7 @@ fun SettingsScreen(onBack: () -> Unit) {
           val s = ragMinScore.toFloatOrNull()?.coerceIn(0f, 1f) ?: 0.3f
           SettingsManager.ragTopK = k
           SettingsManager.ragMinScore = s
-          ggmlEngine?.setRagParams(k, s)
+          engine?.setRagParams(k, s)
           scope.launch { snackbarHostState.showSnackbar("RAG settings saved") }
         },
         modifier = Modifier.fillMaxWidth(),
@@ -442,7 +435,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
       OutlinedButton(
         onClick = {
-          ggmlEngine?.clearCache()
+          engine?.clearCache()
           scope.launch { snackbarHostState.showSnackbar("Prompt cache cleared") }
         },
         modifier = Modifier.fillMaxWidth(),
@@ -476,7 +469,7 @@ fun SettingsScreen(onBack: () -> Unit) {
           SettingsManager.kvSinkTokens = sinkTokens.toIntOrNull()?.coerceIn(1, 32) ?: 4
           SettingsManager.kvRecentTokens = recentTokens.toIntOrNull()?.coerceIn(64, 2048) ?: 512
           SettingsManager.kvEvictThreshold = evictThreshold.toFloatOrNull()?.coerceIn(0.5f, 0.99f) ?: 0.85f
-          ggmlEngine?.setStreamingLLM(
+          engine?.setStreamingLLM(
             SettingsManager.kvSinkTokens,
             SettingsManager.kvRecentTokens,
             SettingsManager.kvEvictThreshold,
@@ -679,7 +672,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       },
       confirmButton = {
         TextButton(onClick = {
-          ggmlEngine?.let { scope.launch { it.unload(); it.load(path = SettingsManager.lastModelPath) } }
+          scope.launch { engine.unload(); engine.load(SettingsManager.lastModelPath, SettingsManager.toEngineConfig()) }
           showResetConfirm = false
           scope.launch { snackbarHostState.showSnackbar("Model reloaded") }
         }) { Text("Reset", color = colors.Red) }

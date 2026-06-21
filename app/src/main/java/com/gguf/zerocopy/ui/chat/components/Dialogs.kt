@@ -19,7 +19,9 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -45,7 +47,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.data.repository.LocalModel
-import com.gguf.zerocopy.lib.GGMLEngine
+import com.gguf.zerocopy.domain.inference.InferenceEngine
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -55,7 +57,8 @@ import kotlinx.coroutines.launch
 fun ExportSessionDialog(
   onDismiss: () -> Unit,
   onShareText: () -> Unit,
-  onShareJson: () -> Unit
+  onShareJson: () -> Unit,
+  onImport: (() -> Unit)? = null
 ) {
   val colors = currentPalette()
   var exportProgress by remember { mutableFloatStateOf(0f) }
@@ -66,7 +69,7 @@ fun ExportSessionDialog(
     shape = RoundedCornerShape(16.dp),
     title = {
       Text(
-        text = "Export Session",
+        text = "Session",
         fontSize = 16.sp,
         fontWeight = FontWeight.Bold,
         color = colors.Text
@@ -143,6 +146,20 @@ fun ExportSessionDialog(
               modifier = Modifier.size(16.dp),
               tint = colors.Accent2
             )
+          }
+        }
+        if (onImport != null) {
+          Spacer(Modifier.height(8.dp))
+          TextButton(
+            onClick = {
+              onDismiss()
+              onImport()
+            },
+            modifier = Modifier.fillMaxWidth()
+          ) {
+            Icon(Icons.Filled.FileUpload, null, tint = colors.Accent2, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Import Session", fontSize = 14.sp, color = colors.Text, modifier = Modifier.weight(1f))
           }
         }
       }
@@ -241,6 +258,46 @@ fun ModelSelectDialog(
 }
 
 @Composable
+fun ModelDeleteConfirmDialog(
+  modelName: String,
+  onDismiss: () -> Unit,
+  onConfirm: () -> Unit
+) {
+  val colors = currentPalette()
+
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    containerColor = colors.Surface,
+    shape = RoundedCornerShape(16.dp),
+    title = {
+      Text(
+        text = "Delete model?",
+        fontSize = 16.sp,
+        fontWeight = FontWeight.Bold,
+        color = colors.Text
+      )
+    },
+    text = {
+      Text(
+        text = "Delete \"$modelName\"? This action cannot be undone. The model file will be permanently removed.",
+        fontSize = 14.sp,
+        color = colors.Text2
+      )
+    },
+    confirmButton = {
+      TextButton(onClick = onConfirm) {
+        Text(text = "Delete", color = colors.Red, fontSize = 14.sp)
+      }
+    },
+    dismissButton = {
+      TextButton(onClick = onDismiss) {
+        Text(text = "Cancel", color = colors.Text2, fontSize = 14.sp)
+      }
+    }
+  )
+}
+
+@Composable
 fun DeleteConfirmDialog(
   onDismiss: () -> Unit,
   onConfirm: () -> Unit
@@ -281,44 +338,13 @@ fun DeleteConfirmDialog(
 
 @Composable
 fun RagDocumentDialog(
-  engine: GGMLEngine?,
+  engine: InferenceEngine?,
   onDismiss: () -> Unit,
-  onDocumentsChanged: () -> Unit
+  onDocumentsChanged: () -> Unit,
+  onManageLibrary: (() -> Unit)? = null
 ) {
   val colors = currentPalette()
-  val context = LocalContext.current
-  val scope = rememberCoroutineScope()
   var docCount by remember { mutableIntStateOf(engine?.numDocuments ?: 0) }
-  var isAdding by remember { mutableStateOf(false) }
-  var statusMsg by remember { mutableStateOf("") }
-
-  val docPicker = rememberLauncherForActivityResult(
-    ActivityResultContracts.OpenMultipleDocuments()
-  ) { uris ->
-    if (uris.isEmpty()) return@rememberLauncherForActivityResult
-    isAdding = true
-    scope.launch {
-      var added = 0
-      for (uri in uris) {
-        try {
-          val name = getFileName(context, uri)
-          val text = context.contentResolver.openInputStream(uri)?.use { stream ->
-            BufferedReader(InputStreamReader(stream)).readText()
-          } ?: ""
-          if (text.isNotEmpty()) {
-            val ok = engine?.addDocument(text, name, 512, 64) ?: false
-            if (ok) added++
-          }
-        } catch (e: Exception) {
-          statusMsg = "Error: ${e.message?.take(60)}"
-        }
-      }
-      docCount = engine?.numDocuments ?: 0
-      isAdding = false
-      statusMsg = if (added > 0) "Added $added document(s)" else ""
-      onDocumentsChanged()
-    }
-  }
 
   AlertDialog(
     onDismissRequest = onDismiss,
@@ -360,49 +386,19 @@ fun RagDocumentDialog(
           )
         }
 
-        Spacer(Modifier.height(16.dp))
-
-        Button(
-          onClick = {
-            docPicker.launch(arrayOf("text/plain", "text/markdown", "application/pdf"))
-          },
-          modifier = Modifier.fillMaxWidth(),
-          shape = RoundedCornerShape(10.dp),
-          colors = ButtonDefaults.buttonColors(containerColor = colors.Accent),
-          enabled = !isAdding
-        ) {
-          Icon(Icons.Filled.Add, null, tint = colors.Bg, modifier = Modifier.size(16.dp))
-          Spacer(Modifier.width(6.dp))
-          Text(if (isAdding) "Processing..." else "Add Documents", color = colors.Bg, fontSize = 13.sp)
-        }
-
-        if (docCount > 0) {
-          Spacer(Modifier.height(8.dp))
-          Button(
+        if (onManageLibrary != null) {
+          Spacer(Modifier.height(16.dp))
+          TextButton(
             onClick = {
-              engine?.clearDocuments()
-              docCount = 0
-              statusMsg = "Documents cleared"
-              onDocumentsChanged()
+              onDismiss()
+              onManageLibrary()
             },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(10.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = colors.Red.copy(alpha = 0.2f))
+            modifier = Modifier.fillMaxWidth()
           ) {
-            Icon(Icons.Filled.Delete, null, tint = colors.Red, modifier = Modifier.size(16.dp))
+            Icon(Icons.Filled.OpenInNew, null, tint = colors.Accent, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text("Clear All", color = colors.Red, fontSize = 13.sp)
+            Text("Manage full library", color = colors.Accent, fontSize = 13.sp)
           }
-        }
-
-        if (statusMsg.isNotEmpty()) {
-          Spacer(Modifier.height(8.dp))
-          Text(
-            text = statusMsg,
-            fontSize = 11.sp,
-            color = if (statusMsg.startsWith("Error")) colors.Red else colors.Accent2,
-            fontFamily = FontFamily.Monospace
-          )
         }
       }
     },

@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 rootProject.name = "GGUF-ZeroCopy-v8"
 include(":app")
 include(":zerocopy-lib")
+include(":mnn-lib")

@@ -36,7 +36,7 @@ fun ModelSelectionDialog(
   onDismiss: () -> Unit
 ) {
   val colors = currentPalette()
-  val loadedPath = if (ZeroCopyApp.instance.ggmlEngine.isLoaded)
+  val loadedPath = if (ZeroCopyApp.instance.activeEngine.isLoaded)
     SettingsManager.lastModelPath.takeIf { it.isNotEmpty() } else null
 
   AlertDialog(

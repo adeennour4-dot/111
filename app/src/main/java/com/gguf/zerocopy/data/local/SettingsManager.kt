@@ -3,6 +3,7 @@ package com.gguf.zerocopy.data.local
 import android.content.Context
 import android.content.SharedPreferences
 import com.gguf.zerocopy.domain.device.DeviceInfo
+import com.gguf.zerocopy.domain.inference.EngineConfig
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -203,6 +204,22 @@ object SettingsManager {
     get() = prefs?.getFloat("rag_min_score", 0.3f) ?: 0.3f
     set(v) { prefs?.edit()?.putFloat("rag_min_score", v)?.apply() }
 
+  var ragChunkSize: Int
+    get() = prefs?.getInt("rag_chunk_size", 512) ?: 512
+    set(v) { prefs?.edit()?.putInt("rag_chunk_size", v)?.apply() }
+
+  var ragOverlap: Int
+    get() = prefs?.getInt("rag_overlap", 64) ?: 64
+    set(v) { prefs?.edit()?.putInt("rag_overlap", v)?.apply() }
+
+  var embeddingModelPath: String
+    get() = prefs?.getString("embedding_model_path", "") ?: ""
+    set(v) { prefs?.edit()?.putString("embedding_model_path", v)?.apply() }
+
+  var embeddingModelName: String
+    get() = prefs?.getString("embedding_model_name", "") ?: ""
+    set(v) { prefs?.edit()?.putString("embedding_model_name", v)?.apply() }
+
   // StreamingLLM
   var kvSinkTokens: Int
     get() = prefs?.getInt("kv_sink_tokens", 4) ?: 4
@@ -233,6 +250,18 @@ object SettingsManager {
     repeatPenalty = repeatPenalty,
     freqPenalty = freqPenalty,
     presPenalty = presPenalty
+  )
+
+  fun toEngineConfig() = EngineConfig(
+    contextSize = nCtx,
+    threads = threads.coerceIn(0, 16),
+    batchSize = nBatch,
+    flashAttn = true,
+    useMmap = true,
+    useMlock = false,
+    cacheTypeK = "q8_0",
+    cacheTypeV = "q8_0",
+    opOffload = false,
   )
 
   fun applyDeviceDefaults(info: DeviceInfo) {

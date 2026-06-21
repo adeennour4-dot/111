@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.Dns
+import androidx.compose.material.icons.outlined.LibraryBooks
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -57,6 +58,7 @@ import com.gguf.zerocopy.ui.chat.ChatScreen
 import com.gguf.zerocopy.ui.cloud.CloudScreen
 import com.gguf.zerocopy.ui.models.ModelListScreen
 import com.gguf.zerocopy.ui.sessions.SessionListScreen
+import com.gguf.zerocopy.ui.rag.RagScreen
 import com.gguf.zerocopy.ui.settings.SettingsScreen
 import com.gguf.zerocopy.ui.theme.ZeroCopyTheme
 import com.gguf.zerocopy.ui.theme.currentPalette
@@ -68,6 +70,7 @@ data class NavItem(val label: String, val icon: ImageVector)
 private val navItems = listOf(
   NavItem("Chat", Icons.Outlined.Chat),
   NavItem("Models", Icons.Outlined.SmartToy),
+  NavItem("RAG", Icons.Outlined.LibraryBooks),
   NavItem("Server", Icons.Outlined.Dns),
   NavItem("Settings", Icons.Filled.Settings)
 )
@@ -175,9 +178,10 @@ fun AppRoot() {
                   else currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
                 } else currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
               },
-              onSettings = { selectedTab = 3 },
+              onSettings = { selectedTab = 4 },
               onSessions = { showSessionList = true },
-              onCloud = { selectedTab = 2 }
+              onCloud = { selectedTab = 3 },
+              onRag = { selectedTab = 2 }
             )
           }
         }
@@ -189,8 +193,9 @@ fun AppRoot() {
           },
           onBack = { selectedTab = 0 }
         )
-        2 -> CloudScreen(onBack = { selectedTab = 0 })
-        3 -> SettingsScreen(onBack = { selectedTab = 0 })
+        2 -> RagScreen(onBack = { selectedTab = 0 })
+        3 -> CloudScreen(onBack = { selectedTab = 0 })
+        4 -> SettingsScreen(onBack = { selectedTab = 0 })
       }
     }
   }

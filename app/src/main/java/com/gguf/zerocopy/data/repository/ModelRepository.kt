@@ -14,13 +14,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 
-private val VALID_EXTENSIONS = setOf("gguf")
+private val VALID_EXTENSIONS = setOf("gguf", "tflite", "litertlm", "mnn", "onnx", "pte")
 
 private val GGUF_MAGIC = byteArrayOf(0x47, 0x47, 0x55, 0x46) // "GGUF"
 private val GGML_MAGIC = byteArrayOf(0x47, 0x47, 0x4D, 0x4C) // "GGML"
 
 fun isValidModelFile(file: File): Boolean {
   if (!file.isFile || file.length() < 8) return false
+  val ext = file.extension.lowercase()
+  if (ext in VALID_EXTENSIONS && ext != "gguf") return true
   return try {
     RandomAccessFile(file, "r").use { raf ->
       val header = ByteArray(4)

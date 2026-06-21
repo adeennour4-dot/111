@@ -50,20 +50,15 @@ class ModelServer(val port: Int = 8080) {
     executor?.submit { runServer() }
     executor?.submit {
       val app = ZeroCopyApp.instance
-      val modelName = if (!app.ggmlEngine.isLoaded && autoModelPath.isNotEmpty()) {
+      val modelName = if (!app.activeEngine.isLoaded && autoModelPath.isNotEmpty()) {
         val modelInfo = app.modelRepository.models.value.find { it.path == autoModelPath }
         if (modelInfo != null) {
-          val cfg = SettingsManager.toConfig()
-          app.ggmlEngine.setSystemPrompt(SettingsManager.systemPrompt)
+          val targetEngine = app.engineRegistry.find(modelInfo.path) ?: app.activeEngine
+          if (targetEngine != app.activeEngine) app.switchEngine(targetEngine)
+          app.activeEngine.setSystemPrompt(SettingsManager.systemPrompt)
           val success = runBlocking {
-            app.ggmlEngine.load(
-              path = modelInfo.path,
-              contextSize = cfg.nCtx,
-              threads = cfg.nThreads,
-              batchSize = cfg.nBatch,
-              flashAttn = cfg.flashAttention,
-            )
-          }
+            app.activeEngine.load(modelInfo.path, SettingsManager.toEngineConfig())
+          }.isSuccess
           if (success) {
             app.modelRepository.markUsed(modelInfo.id)
             Log.i(tag, "Auto-loaded model: ${modelInfo.name}")
@@ -255,7 +250,7 @@ class ModelServer(val port: Int = 8080) {
 
   private fun handleIndex(out: OutputStream) {
     val app = ZeroCopyApp.instance
-    val loaded = app.ggmlEngine.isLoaded
+    val loaded = app.activeEngine.isLoaded
     val modelName = SettingsManager.lastModelPath.substringAfterLast('/').ifEmpty { "No model loaded" }
     val uptime = (System.currentTimeMillis() - serverStartTime) / 1000
     val authEnabled = com.gguf.zerocopy.data.local.SettingsManager.serverAuthEnabled
@@ -584,7 +579,7 @@ async function send(){
 
   private fun handleHealth(out: OutputStream) {
     val app = ZeroCopyApp.instance
-    respond(out, 200, """{"status":"ok","model_loaded":${app.ggmlEngine.isLoaded},"version":"1.0.0"}""")
+    respond(out, 200, """{"status":"ok","model_loaded":${app.activeEngine.isLoaded},"version":"1.0.0"}""")
   }
 
   private fun handleModels(out: OutputStream) {
@@ -621,7 +616,7 @@ async function send(){
   private fun handleChatCompletions(out: OutputStream, body: String, ip: String) {
     try {
       val app = ZeroCopyApp.instance
-      if (!app.ggmlEngine.isLoaded) {
+      if (!app.activeEngine.isLoaded) {
         respond(out, 503, """{"error":"model_unavailable","message":"No model loaded","type":"server_error"}""")
         return
       }
@@ -671,7 +666,7 @@ async function send(){
 
       runBlocking {
         try {
-          app.ggmlEngine.generateFlow(prompt, maxTokens).collect { token ->
+          app.activeEngine.generateFlow(prompt, maxTokens).collect { token ->
             val escaped = token
               .replace("\\", "\\\\")
               .replace("\"", "\\\"")
@@ -702,7 +697,7 @@ async function send(){
     val result = runBlocking {
       try {
         val sb = StringBuilder()
-        app.ggmlEngine.generateFlow(prompt, maxTokens).collect { sb.append(it) }
+        app.activeEngine.generateFlow(prompt, maxTokens).collect { sb.append(it) }
         sb.toString()
       } catch (e: Exception) {
         errorMsg = e.message
@@ -723,7 +718,7 @@ async function send(){
   private fun handleEmbeddings(out: OutputStream, body: String) {
     try {
       val app = ZeroCopyApp.instance
-      if (!app.ggmlEngine.isLoaded) {
+      if (!app.activeEngine.isLoaded) {
         respond(out, 503, """{"error":"model_unavailable","message":"No model loaded","type":"server_error"}""")
         return
       }
@@ -737,7 +732,7 @@ async function send(){
       val embeddingTokens = StringBuilder()
       runBlocking {
         try {
-          app.ggmlEngine.generateFlow("Embed the following text and return its semantic meaning:\n$input").collect { embeddingTokens.append(it) }
+          app.activeEngine.generateFlow("Embed the following text and return its semantic meaning:\n$input").collect { embeddingTokens.append(it) }
         } catch (e: Exception) {
           errorMsg = e.message
         }

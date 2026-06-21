@@ -54,7 +54,12 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
 
+    implementation(libs.litertlm.android)
+    implementation(libs.onnx.android)
+    implementation(libs.executorch.android)
+
     implementation(project(":zerocopy-lib"))
+    implementation(project(":mnn-lib"))
 
     debugImplementation(libs.compose.ui.tooling)
 
