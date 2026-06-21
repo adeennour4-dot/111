@@ -5,7 +5,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.withContext
-import org.pytorch.executorch.IValue
+import org.pytorch.executorch.EValue
 import org.pytorch.executorch.Module
 import org.pytorch.executorch.Tensor
 import java.io.File
@@ -79,8 +79,8 @@ class ExecutorchEngine : InferenceEngine {
                 val seqLen = inputIds.size
                 val data = inputIds.map { it.toFloat() }.toFloatArray()
                 val inputTensor = Tensor.fromBlob(data, longArrayOf(1L, seqLen.toLong()))
-                val outputIValue = mod.forward(IValue.from(inputTensor))
-                val outputTensor = outputIValue.toTensor()
+                val outputEValues = mod.forward(EValue.from(inputTensor))
+                val outputTensor = outputEValues[0].toTensor()
                 val scores = outputTensor.dataAsFloatArray()
 
                 val vSize = vocabSize.coerceIn(1, scores.size)

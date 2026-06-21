@@ -168,13 +168,13 @@ class SimpleTokenizer(
             return pieces
         }
 
-        private fun readVarintRaw(data: ByteArray, pos: Int): Long {
-            var result = 0L
+        private fun readVarintRaw(data: ByteArray, pos: Int): Int {
+            var result = 0
             var shift = 0
             var i = pos
             while (i < data.size) {
                 val byte = data[i].toInt() and 0xFF
-                result = result or ((byte and 0x7F).toLong() shl shift)
+                result = result or ((byte and 0x7F) shl shift)
                 shift += 7
                 i++
                 if (byte and 0x80 == 0) return result
@@ -182,7 +182,7 @@ class SimpleTokenizer(
             return result
         }
 
-        private fun varintLen(value: Long): Int {
+        private fun varintLen(value: Int): Int {
             if (value == 0L) return 1
             var v = value
             var count = 0

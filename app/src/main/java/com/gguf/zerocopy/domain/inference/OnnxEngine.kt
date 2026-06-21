@@ -103,8 +103,11 @@ class OnnxEngine : InferenceEngine {
                 inputs["attention_mask"] = maskTensor
 
                 val result = session.run(inputs)
-                val logitsTensor = (result.get("logits") as? OnnxTensor)
-                    ?: (result.values.first() as OnnxTensor)
+                val logitsTensor = run {
+                    val v = result.get("logits")
+                    if (v.isPresent) v.get() as? OnnxTensor
+                    else result.get(0) as? OnnxTensor
+                }
 
                 val logitsBuf = logitsTensor.floatBuffer
                 val logitsCapacity = logitsBuf.capacity()
@@ -142,8 +145,7 @@ class OnnxEngine : InferenceEngine {
     override fun getModelInfoJson(): String? {
         val session = ortSession ?: return null
         return try {
-            val info = session.metadata ?: return """{"arch":"onnx"}"""
-            """{"arch":"onnx","name":"${info.name ?: ""}","description":"${info.description ?: ""}","vocab_size":$vocabSize}"""
+            """{"arch":"onnx","vocab_size":$vocabSize}"""
         } catch (_: Exception) {
             """{"arch":"onnx"}"""
         }

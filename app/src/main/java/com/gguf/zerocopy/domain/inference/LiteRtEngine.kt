@@ -4,7 +4,6 @@ import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.Engine
-import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.MessageCallback
 import kotlinx.coroutines.Dispatchers
@@ -26,7 +25,7 @@ class LiteRtEngine : InferenceEngine {
     override suspend fun load(path: String, config: EngineConfig): Result<Unit> =
         withContext(Dispatchers.IO) {
             try {
-                val extConfig = EngineConfig(modelPath = path, backend = Backend.CPU(null))
+                val extConfig = com.google.ai.edge.litertlm.EngineConfig(modelPath = path, backend = Backend.CPU(null))
                 engine = Engine(extConfig)
                 engine!!.initialize()
                 _loadedModelPath = path
