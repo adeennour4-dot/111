@@ -63,7 +63,6 @@ import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.data.repository.LocalModel
 import com.gguf.zerocopy.ui.chat.components.DeleteConfirmDialog
-import com.gguf.zerocopy.ui.chat.components.ModelDetailDialog
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -89,7 +88,7 @@ fun ModelListScreen(
   var statusError by remember { mutableStateOf(false) }
 
   val scope = rememberCoroutineScope()
-  val ggmlEngine = remember { GGMLEngine() }
+  val ggmlEngine = ZeroCopyApp.instance.ggmlEngine
   val isModelLoaded = ggmlEngine.isLoaded
   val loadedModelPath = if (isModelLoaded) SettingsManager.lastModelPath.takeIf { it.isNotEmpty() } else null
 
@@ -267,16 +266,34 @@ fun ModelListScreen(
 
   if (modelToDelete != null) {
     DeleteConfirmDialog(
-      name = modelToDelete!!.name,
       onConfirm = { confirmDelete(modelToDelete!!); modelToDelete = null },
       onDismiss = { modelToDelete = null }
     )
   }
 
   if (modelToDetail != null) {
-    ModelDetailDialog(
-      model = modelToDetail!!,
-      onDismiss = { modelToDetail = null }
+    val m = modelToDetail!!
+    AlertDialog(
+      onDismissRequest = { modelToDetail = null },
+      title = { Text(m.name, fontWeight = FontWeight.Bold) },
+      text = {
+        Column {
+          Text("Path: ${m.path}", fontSize = 13.sp, color = colors.Text2)
+          Spacer(Modifier.height(4.dp))
+          Text("Format: ${m.format.uppercase()}", fontSize = 13.sp, color = colors.Text2)
+          Spacer(Modifier.height(4.dp))
+          Text("Size: ${m.sizeFormatted}", fontSize = 13.sp, color = colors.Text2)
+          Spacer(Modifier.height(4.dp))
+          Text("Added: ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(m.addedAt))}", fontSize = 13.sp, color = colors.Text2)
+          if (m.lastUsed > 0) {
+            Spacer(Modifier.height(4.dp))
+            Text("Last used: ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(m.lastUsed))}", fontSize = 13.sp, color = colors.Text2)
+          }
+        }
+      },
+      confirmButton = {
+        TextButton(onClick = { modelToDetail = null }) { Text("Close") }
+      }
     )
   }
 

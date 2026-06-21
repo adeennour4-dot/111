@@ -56,7 +56,6 @@ data class DownloadableModel(
   val hfRepo: String,
   val hfFile: String,
   val format: String,
-  val engine: EngineType,
   val sizeBytes: Long,
   val description: String,
   val requires: String = ""
@@ -71,7 +70,7 @@ object ModelDownloads {
         "Zaya-AI/Zaya1-8B-GGUF",
         "zaya1-8b-q4_k_m.gguf",
         "gguf",
-        EngineType.LLAMA_CPP,
+
         4_600_000_000L,
         "Latest Zaya1 8B model, optimized for on-device"
       ),
@@ -81,7 +80,7 @@ object ModelDownloads {
         "Zaya-AI/Zaya1-8B-GGUF",
         "zaya1-8b-q8_0.gguf",
         "gguf",
-        EngineType.LLAMA_CPP,
+
         8_000_000_000L,
         "Zaya1 8B at higher quality, needs 8GB+ RAM"
       ),
@@ -91,7 +90,7 @@ object ModelDownloads {
         "google/gemma-4-2b-it-GGUF",
         "gemma-4-2b-it-q4_k_m.gguf",
         "gguf",
-        EngineType.LLAMA_CPP,
+
         1_200_000_000L,
         "Google's latest compact model"
       ),
@@ -101,7 +100,7 @@ object ModelDownloads {
         "google/gemma-4-9b-it-GGUF",
         "gemma-4-9b-it-q4_k_m.gguf",
         "gguf",
-        EngineType.LLAMA_CPP,
+
         5_200_000_000L,
         "Google's flagship on-device model"
       ),
@@ -111,7 +110,7 @@ object ModelDownloads {
         "Qwen/Qwen3-1B-GGUF",
         "qwen3-1b-q4_k_m.gguf",
         "gguf",
-        EngineType.LLAMA_CPP,
+
         700_000_000L,
         "Lightweight, fast for low-end devices"
       ),
@@ -121,7 +120,7 @@ object ModelDownloads {
         "Qwen/Qwen3-8B-GGUF",
         "qwen3-8b-q4_k_m.gguf",
         "gguf",
-        EngineType.LLAMA_CPP,
+
         4_800_000_000L,
         "Best quality/speed balance"
       ),
@@ -131,7 +130,7 @@ object ModelDownloads {
         "lmstudio-community/Llama-3.2-1B-Instruct-GGUF",
         "Llama-3.2-1B-Instruct-q4_k_m.gguf",
         "gguf",
-        EngineType.LLAMA_CPP,
+
         700_000_000L,
         "Meta's efficient 1B model"
       ),
@@ -141,7 +140,7 @@ object ModelDownloads {
         "lmstudio-community/Llama-3.2-3B-Instruct-GGUF",
         "Llama-3.2-3B-Instruct-q4_k_m.gguf",
         "gguf",
-        EngineType.LLAMA_CPP,
+
         2_000_000_000L,
         "Best for phones with 4GB+ RAM"
       ),
@@ -151,7 +150,7 @@ object ModelDownloads {
         "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
         "qwen2.5-0.5b-instruct-q4_k_m.gguf",
         "gguf",
-        EngineType.LLAMA_CPP,
+
         400_000_000L,
         "Ultra-light, runs on any device"
       ),
@@ -161,7 +160,7 @@ object ModelDownloads {
         "Qwen/Qwen2.5-7B-Instruct-GGUF",
         "qwen2.5-7b-instruct-q4_k_m.gguf",
         "gguf",
-        EngineType.LLAMA_CPP,
+
         4_200_000_000L,
         "Strong general-purpose model"
       ),
@@ -171,7 +170,7 @@ object ModelDownloads {
         "lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF",
         "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
         "gguf",
-        EngineType.LLAMA_CPP,
+
         4_700_000_000L,
         "Meta's powerful 8B model"
       ),
@@ -181,7 +180,7 @@ object ModelDownloads {
         "MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF",
         "Mistral-7B-Instruct-v0.3.Q4_K_M.gguf",
         "gguf",
-        EngineType.LLAMA_CPP,
+
         4_100_000_000L,
         "Fast and capable 7B model"
       ),
@@ -191,7 +190,7 @@ object ModelDownloads {
         "microsoft/Phi-3-mini-4k-instruct-gguf",
         "Phi-3-mini-4k-instruct-q4.gguf",
         "gguf",
-        EngineType.LLAMA_CPP,
+
         2_300_000_000L,
         "Microsoft's efficient 3.8B model"
       ),
@@ -201,7 +200,7 @@ object ModelDownloads {
         "TheBloke/deepseek-coder-1.3b-instruct-GGUF",
         "deepseek-coder-1.3b-instruct.Q4_K_M.gguf",
         "gguf",
-        EngineType.LLAMA_CPP,
+
         800_000_000L,
         "Best for code generation tasks"
       )
@@ -390,7 +389,6 @@ class ModelRepository(private val context: Context) {
           name = filename,
           path = finalFile.absolutePath,
           format = ext,
-          engine = engineForExt(ext),
           sizeBytes = finalFile.length()
         )
         onComplete()
