@@ -288,7 +288,6 @@ fun ModelListScreen(
                 file.outputStream().use { output -> input.copyTo(output) }
               }
             }
-            val localModel = app.modelRepository.addModel(file.absolutePath, model.name, model.format)
             app.modelRepository.scanModels()
             snackbarHostState.showSnackbar("Downloaded: ${model.name}")
           } catch (e: Exception) {

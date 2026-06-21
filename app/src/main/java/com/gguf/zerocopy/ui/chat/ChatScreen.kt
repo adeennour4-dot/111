@@ -162,17 +162,6 @@ fun ChatScreen(
     else scope.launch { snackbarHostState.showSnackbar("Microphone permission denied") }
   }
 
-  voiceHandler.onResult = { text ->
-    isVoiceListening = false
-    if (text.isNotBlank()) {
-      sendMessage(text, emptyList(), emptyList())
-    }
-  }
-  voiceHandler.onError = { msg ->
-    isVoiceListening = false
-    scope.launch { snackbarHostState.showSnackbar(msg) }
-  }
-
   val suggestions = remember {
     listOf(
       "What can you do?",
@@ -417,6 +406,17 @@ fun ChatScreen(
     userSentCount++
 
     sendMessageNewEngine(id, finalPrompt, savedPaths)
+  }
+
+  voiceHandler.onResult = { text ->
+    isVoiceListening = false
+    if (text.isNotBlank()) {
+      sendMessage(text, emptyList(), emptyList())
+    }
+  }
+  voiceHandler.onError = { msg ->
+    isVoiceListening = false
+    scope.launch { snackbarHostState.showSnackbar(msg) }
   }
 
   fun stopInference() {

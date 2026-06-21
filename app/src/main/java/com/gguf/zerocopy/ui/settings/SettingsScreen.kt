@@ -1,5 +1,6 @@
 package com.gguf.zerocopy.ui.settings
 
+import android.content.Intent
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
