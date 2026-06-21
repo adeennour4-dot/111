@@ -15,11 +15,13 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.LibraryBooks
 import androidx.compose.material.icons.outlined.SmartToy
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -34,6 +37,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -104,6 +108,7 @@ fun AppRoot() {
   var currentSessionId by remember { mutableStateOf<String?>(SettingsManager.currentSessionId.ifEmpty { null }) }
   var selectedTab by rememberSaveable { mutableIntStateOf(0) }
   var showSessionList by remember { mutableStateOf(false) }
+  var pendingModelSwitch by remember { mutableStateOf<Pair<String, String>?>(null) }
 
   // Restore last session on startup
   LaunchedEffect(Unit) {
@@ -171,6 +176,7 @@ fun AppRoot() {
                 loadedModelPath = path; loadedModelName = name
                 SettingsManager.lastModelPath = path; SettingsManager.lastModelName = name
                 if (currentSessionId != null && app.chatRepository.sessionExists(currentSessionId!!)) {
+                  app.chatRepository.updateSessionModel(currentSessionId!!, path, name)
                   val existing = app.chatRepository.sessions.value.find { it.id == currentSessionId }
                   if (existing != null) app.chatRepository.renameSession(currentSessionId!!, "Chat - $name")
                   else currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
@@ -184,6 +190,13 @@ fun AppRoot() {
         }
         1 -> ModelListScreen(
           onModelSelected = { path, name ->
+            if (currentSessionId != null && app.chatRepository.sessionExists(currentSessionId!!)) {
+              val msgs = app.chatRepository.getMessages(currentSessionId!!)
+              if (msgs.isNotEmpty()) {
+                pendingModelSwitch = path to name
+                return@ModelListScreen
+              }
+            }
             loadedModelPath = path; loadedModelName = name
             currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
             selectedTab = 0
@@ -191,9 +204,51 @@ fun AppRoot() {
           onBack = { selectedTab = 0 }
         )
          2 -> RagScreen(onBack = { selectedTab = 0 })
-         3 -> SettingsScreen(onBack = { selectedTab = 0 })
+          3 -> SettingsScreen(onBack = { selectedTab = 0 })
       }
     }
+  }
+
+  pendingModelSwitch?.let { (path, name) ->
+    AlertDialog(
+      onDismissRequest = { pendingModelSwitch = null },
+      containerColor = currentPalette().Card,
+      title = { Text("$name", color = currentPalette().Text, fontWeight = FontWeight.SemiBold) },
+      text = {
+        Text(
+          "Continue the current chat with this model, or start a new chat?",
+          color = currentPalette().Text2
+        )
+      },
+      confirmButton = {
+        TextButton(onClick = {
+          loadedModelPath = path; loadedModelName = name
+          SettingsManager.lastModelPath = path; SettingsManager.lastModelName = name
+          app.chatRepository.updateSessionModel(currentSessionId!!, path, name)
+          pendingModelSwitch = null
+          selectedTab = 0
+        }) {
+          Text("Continue Current Chat", color = currentPalette().Accent)
+        }
+      },
+      dismissButton = {
+        Row {
+          TextButton(onClick = {
+            loadedModelPath = path; loadedModelName = name
+            SettingsManager.lastModelPath = path; SettingsManager.lastModelName = name
+            currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
+            pendingModelSwitch = null
+            selectedTab = 0
+          }) {
+            Text("New Chat", color = currentPalette().Text2)
+          }
+          Spacer(Modifier.width(4.dp))
+          TextButton(onClick = { pendingModelSwitch = null }) {
+            Text("Cancel", color = currentPalette().Text2)
+          }
+        }
+      }
+    )
   }
 }
 

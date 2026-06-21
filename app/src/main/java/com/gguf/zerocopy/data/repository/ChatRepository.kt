@@ -158,9 +158,11 @@ class ChatRepository(private val context: Context) {
         android.util.Log.d("ChatRepository", "Updating currentMessages, count: ${messages.size}")
         _currentMessages.value = messages
       }
+      _sessions.value = _sessions.value.map {
+        if (it.id == sessionId) it.copy(lastMessageAt = message.timestamp, messageCount = messages.size)
+        else it
+      }.sortedByDescending { it.lastMessageAt }
     }
-    // Don't call loadSessions() here - it causes unnecessary recomposition
-    // Sessions list will be updated when needed (e.g., when opening session list)
   }
 
   fun renameSession(sessionId: String, name: String) {
@@ -173,6 +175,22 @@ class ChatRepository(private val context: Context) {
         loadSessions()
       } catch (_: Exception) {
       }
+    }
+  }
+
+  fun updateSessionModel(sessionId: String, modelPath: String, modelName: String) {
+    val file = File(sessionsDir, "${sessionId}_meta.json")
+    if (file.exists()) {
+      try {
+        val j = JSONObject(file.readText())
+        j.put("modelPath", modelPath)
+        j.put("modelName", modelName)
+        file.writeText(j.toString())
+        _sessions.value = _sessions.value.map {
+          if (it.id == sessionId) it.copy(modelPath = modelPath, modelName = modelName)
+          else it
+        }
+      } catch (_: Exception) {}
     }
   }
 
