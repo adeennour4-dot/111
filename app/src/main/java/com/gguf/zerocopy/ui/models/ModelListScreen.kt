@@ -91,6 +91,7 @@ fun ModelListScreen(
   val ggmlEngine = ZeroCopyApp.instance.ggmlEngine
   val isModelLoaded = ggmlEngine.isLoaded
   val loadedModelPath = if (isModelLoaded) SettingsManager.lastModelPath.takeIf { it.isNotEmpty() } else null
+  val context = LocalContext.current
 
   fun loadAndSelect(model: LocalModel) {
     isLoading = true
@@ -157,7 +158,7 @@ fun ModelListScreen(
       result.data?.data?.let { uri ->
         loading = true
         scope.launch {
-          ZeroCopyApp.instance.modelRepository.importUri(uri, getFileName(LocalContext.current, uri))
+          ZeroCopyApp.instance.modelRepository.importUri(uri, getFileName(context, uri))
             .onSuccess { model ->
               loading = false
               loadAndSelect(model)
