@@ -138,6 +138,18 @@ class ChatRepository(private val context: Context) {
     }
   }
 
+  fun replaceMessage(sessionId: String, index: Int, message: ChatMessage, persist: Boolean = true) {
+    lock.write {
+      val messages = getMessages(sessionId).toMutableList()
+      if (index < 0 || index >= messages.size) return
+      messages[index] = message
+      if (persist) atomicWrite(sessionId, messages)
+      if (sessionId == currentSessionId) {
+        _currentMessages.value = messages
+      }
+    }
+  }
+
   fun addMessage(sessionId: String, message: ChatMessage) {
     android.util.Log.d("ChatRepository", "addMessage to session: $sessionId, role: ${message.role}")
     lock.write {

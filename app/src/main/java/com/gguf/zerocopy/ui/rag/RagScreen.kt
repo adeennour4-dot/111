@@ -31,14 +31,18 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -55,7 +59,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.local.SettingsManager
+import com.gguf.zerocopy.data.repository.LocalModel
 import com.gguf.zerocopy.domain.ocr.PdfTextExtractor
+import com.gguf.zerocopy.ui.models.ModelSelectionDialog
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -70,6 +76,7 @@ fun RagScreen(onBack: () -> Unit) {
     val context = LocalContext.current
 
     val engine = app.activeEngine
+    val models by app.modelRepository.models.collectAsState(initial = emptyList())
     var docCount by remember { mutableIntStateOf(engine.numDocuments) }
     var isAdding by remember { mutableStateOf(false) }
     var statusMsg by remember { mutableStateOf("") }
@@ -78,6 +85,14 @@ fun RagScreen(onBack: () -> Unit) {
     var ragMinScore by remember { mutableStateOf(SettingsManager.ragMinScore.toString()) }
     var ragChunkSize by remember { mutableIntStateOf(SettingsManager.ragChunkSize) }
     var ragOverlap by remember { mutableIntStateOf(SettingsManager.ragOverlap) }
+
+    var useDedicatedEmbedding by remember { mutableStateOf(SettingsManager.useDedicatedEmbedding) }
+    var embModelName by remember { mutableStateOf(SettingsManager.embeddingModelName) }
+    var embModelPath by remember { mutableStateOf(SettingsManager.embeddingModelPath) }
+    var showEmbeddingModelDialog by remember { mutableStateOf(false) }
+
+    var documentNames by remember { mutableStateOf(listOf<String>()) }
+    var documentTexts by remember { mutableStateOf(listOf<String>()) }
 
     var showPasteDialog by remember { mutableStateOf(false) }
     var pasteText by remember { mutableStateOf("") }
@@ -89,12 +104,17 @@ fun RagScreen(onBack: () -> Unit) {
         isAdding = true
         scope.launch {
             var added = 0
+            val addedNames = mutableListOf<String>()
+            val addedTexts = mutableListOf<String>()
             val pdfExtractor = PdfTextExtractor(context)
             for (uri in uris) {
                 try {
                     val name = getFileName(context, uri)
                     val mime = context.contentResolver.getType(uri) ?: ""
                     val text = when {
+                        mime.startsWith("image/") -> {
+                            pdfExtractor.extractImageText(uri) ?: ""
+                        }
                         mime == "application/pdf" -> {
                             pdfExtractor.extractText(uri) ?: ""
                         }
@@ -110,12 +130,18 @@ fun RagScreen(onBack: () -> Unit) {
                     }
                     if (text.isNotEmpty() && text.length > 50) {
                         val ok = engine.addDocument(text, name, ragChunkSize, ragOverlap)
-                        if (ok) added++
+                        if (ok) {
+                            added++
+                            addedNames.add(name)
+                            addedTexts.add(text)
+                        }
                     }
                 } catch (e: Exception) {
                     statusMsg = "Error: ${e.message?.take(60)}"
                 }
             }
+            documentNames = documentNames + addedNames
+            documentTexts = documentTexts + addedTexts
             docCount = engine.numDocuments
             isAdding = false
             statusMsg = if (added > 0) "Added $added document(s)" else ""
@@ -175,6 +201,63 @@ fun RagScreen(onBack: () -> Unit) {
                 }
             }
 
+            // Embedding model card
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = colors.Card,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Dedicated Embedding Model", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = colors.Text)
+                            Text(
+                                if (useDedicatedEmbedding && embModelName.isNotEmpty()) embModelName else "Same as main model",
+                                fontSize = 12.sp, color = colors.Text3, fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        Switch(
+                            checked = useDedicatedEmbedding,
+                            onCheckedChange = {
+                                useDedicatedEmbedding = it
+                                SettingsManager.useDedicatedEmbedding = it
+                                if (!it) {
+                                    embModelPath = ""
+                                    embModelName = ""
+                                    SettingsManager.embeddingModelPath = ""
+                                    SettingsManager.embeddingModelName = ""
+                                }
+                            },
+                            colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
+                        )
+                    }
+                    if (useDedicatedEmbedding) {
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = { showEmbeddingModelDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.Accent2)
+                        ) {
+                            Text("Select Embedding Model", color = colors.Bg, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                        if (embModelPath.isNotEmpty()) {
+                            Spacer(Modifier.height(4.dp))
+                            TextButton(onClick = {
+                                embModelPath = ""
+                                embModelName = ""
+                                useDedicatedEmbedding = false
+                                SettingsManager.embeddingModelPath = ""
+                                SettingsManager.embeddingModelName = ""
+                                SettingsManager.useDedicatedEmbedding = false
+                            }) {
+                                Text("Clear", color = colors.Text3, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
             // Add documents section
             Surface(
                 shape = RoundedCornerShape(12.dp),
@@ -191,7 +274,7 @@ fun RagScreen(onBack: () -> Unit) {
                     Spacer(Modifier.height(12.dp))
 
                     Button(
-                        onClick = { docPicker.launch(arrayOf("text/plain", "text/markdown", "application/pdf")) },
+                        onClick = { docPicker.launch(arrayOf("text/plain", "text/markdown", "application/pdf", "image/*")) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = colors.Accent),
@@ -214,12 +297,51 @@ fun RagScreen(onBack: () -> Unit) {
                         Text("Paste Text", color = colors.Text, fontSize = 13.sp)
                     }
 
+                    if (documentNames.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        HorizontalDivider(color = colors.Border.copy(alpha = 0.3f))
+                        Spacer(Modifier.height(6.dp))
+                        documentNames.forEachIndexed { idx, name ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            ) {
+                                Text(
+                                    name, fontSize = 12.sp, color = colors.Text, fontFamily = FontFamily.Monospace,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+                                )
+                                IconButton(
+                                    onClick = {
+                                        val newNames = documentNames.toMutableList()
+                                        val newTexts = documentTexts.toMutableList()
+                                        newNames.removeAt(idx)
+                                        newTexts.removeAt(idx)
+                                        documentNames = newNames
+                                        documentTexts = newTexts
+                                        scope.launch {
+                                            engine.clearDocuments()
+                                            newTexts.forEachIndexed { i, txt ->
+                                                engine.addDocument(txt, newNames[i], ragChunkSize, ragOverlap)
+                                            }
+                                            docCount = engine.numDocuments
+                                            statusMsg = "Deleted: $name"
+                                        }
+                                    },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(Icons.Filled.Delete, null, tint = colors.Red, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
                     if (docCount > 0) {
                         Spacer(Modifier.height(8.dp))
                         Button(
                             onClick = {
                                 engine.clearDocuments()
                                 docCount = 0
+                                documentNames = emptyList()
+                                documentTexts = emptyList()
                                 statusMsg = "All documents cleared"
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -357,7 +479,11 @@ fun RagScreen(onBack: () -> Unit) {
                         scope.launch {
                             isAdding = true
                             val ok = engine.addDocument(pasteText, "pasted_text", ragChunkSize, ragOverlap)
-                            if (ok) statusMsg = "Text added (${pasteText.length} chars)"
+                            if (ok) {
+                                statusMsg = "Text added (${pasteText.length} chars)"
+                                documentNames = documentNames + "pasted_text"
+                                documentTexts = documentTexts + pasteText
+                            }
                             pasteText = ""
                             docCount = engine.numDocuments
                             isAdding = false
@@ -373,6 +499,22 @@ fun RagScreen(onBack: () -> Unit) {
                     Text("Cancel", color = colors.Text2, fontSize = 14.sp)
                 }
             }
+        )
+    }
+
+    if (showEmbeddingModelDialog) {
+        ModelSelectionDialog(
+            models = models,
+            onSelect = { model ->
+                embModelPath = model.path
+                embModelName = model.name
+                SettingsManager.embeddingModelPath = model.path
+                SettingsManager.embeddingModelName = model.name
+                SettingsManager.useDedicatedEmbedding = true
+                useDedicatedEmbedding = true
+                showEmbeddingModelDialog = false
+            },
+            onDismiss = { showEmbeddingModelDialog = false }
         )
     }
 }

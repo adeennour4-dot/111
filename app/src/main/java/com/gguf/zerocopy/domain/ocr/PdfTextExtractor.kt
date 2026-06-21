@@ -40,6 +40,25 @@ class PdfTextExtractor(private val context: Context) {
         }
     }
 
+    fun extractImageText(imageUri: android.net.Uri): String? {
+        return try {
+            val inputStream = context.contentResolver.openInputStream(imageUri) ?: return null
+            val tempFile = File(context.cacheDir, "temp_img_${System.currentTimeMillis()}.jpg")
+            FileOutputStream(tempFile).use { output -> inputStream.copyTo(output) }
+            inputStream.close()
+            val bitmap = android.graphics.BitmapFactory.decodeFile(tempFile.absolutePath)
+            tempFile.delete()
+            if (bitmap == null) return null
+            val image = InputImage.fromBitmap(bitmap, 0)
+            val result = Tasks.await(recognizer.process(image))
+            bitmap.recycle()
+            result.text.trim().ifEmpty { null }
+        } catch (e: Exception) {
+            android.util.Log.e("PdfTextExtractor", "extractImageText failed", e)
+            null
+        }
+    }
+
     fun extractTextFromFile(file: File): String? {
         return try {
             val doc = PDDocument.load(file)

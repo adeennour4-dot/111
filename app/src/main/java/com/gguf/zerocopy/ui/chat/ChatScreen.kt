@@ -49,7 +49,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -129,9 +128,6 @@ fun ChatScreen(
   val messages by app.chatRepository.currentMessages.collectAsState()
 
   var isInferring by remember { mutableStateOf(false) }
-  var streamedContent by remember { mutableStateOf("") }
-  var streamedTokens by remember { mutableIntStateOf(0) }
-  var streamedTps by remember { mutableFloatStateOf(0f) }
   var inferenceActive by remember { mutableStateOf(false) }
   var attachmentUris by remember { mutableStateOf(listOf<Uri>()) }
   var attachmentFileNames by remember { mutableStateOf(listOf<String>()) }
@@ -141,7 +137,6 @@ fun ChatScreen(
   var showExportDialog by remember { mutableStateOf(false) }
   var showRagDialog by remember { mutableStateOf(false) }
   var deleteMsgIndex by remember { mutableIntStateOf(-1) }
-  var showStreamingThinking by remember { mutableStateOf(false) }
   var userSentCount by remember { mutableIntStateOf(0) }
   var isVoiceListening by remember { mutableStateOf(false) }
   var speakingMessageTimestamp by remember { mutableStateOf(0L) }
@@ -280,23 +275,25 @@ fun ChatScreen(
       scope.launch { snackbarHostState.showSnackbar("New engine: model not loaded") }
       return
     }
-    // Sync RAG state before generation
     app.activeEngine.setRagParams(topK = SettingsManager.ragTopK, minScore = SettingsManager.ragMinScore)
     app.activeEngine.ragEnabled = ragEnabled && app.activeEngine.numDocuments > 0
 
     inferenceActive = true
     isInferring = true
-    streamedContent = ""
-    streamedTokens = 0
-    streamedTps = 0f
     val startTime = System.currentTimeMillis()
+
+    val historyMsgs = app.chatRepository.getMessages(sessionId).filter { it.role != MessageRole.SYSTEM }
+
+    val assistantMsg = ChatMessage(role = MessageRole.ASSISTANT, content = "", tps = 0f, tokens = 0)
+    app.chatRepository.addMessage(sessionId, assistantMsg)
+    val msgIndex = app.chatRepository.currentMessages.value.size - 1
 
     scope.launch {
       val rawResponse = StringBuilder()
-      val historyMsgs = app.chatRepository.getMessages(sessionId).filter { it.role != MessageRole.SYSTEM }
       val fp = buildConversationPrompt(prompt, reasoningEnabled, historyMsgs)
       val maxGenTokens = SettingsManager.maxTokens.coerceIn(64, 8192)
       val generateTimeoutMs = 300_000L
+      var tokenCount = 0
       app.activeEngine.generateFlow(fp, maxTokens = maxGenTokens)
         .catch { e ->
           android.util.Log.e("ChatScreen", "Flow error: ${e.message}")
@@ -306,18 +303,14 @@ fun ChatScreen(
           val raw = rawResponse.toString()
           if (raw.isNotEmpty()) {
             val elapsed = (System.currentTimeMillis() - startTime) / 1000f
-            val tpsVal = if (elapsed > 0) streamedTokens / elapsed else 0f
-            app.chatRepository.addMessage(
-              sessionId,
-              ChatMessage(
-                role = MessageRole.ASSISTANT,
-                content = raw,
-                tps = tpsVal,
-                tokens = streamedTokens
-              )
+            val tpsVal = if (elapsed > 0 && tokenCount > 0) tokenCount / elapsed else 0f
+            app.chatRepository.replaceMessage(
+              sessionId, msgIndex,
+              ChatMessage(role = MessageRole.ASSISTANT, content = raw, tps = tpsVal, tokens = tokenCount)
             )
+          } else {
+            app.chatRepository.deleteMessage(sessionId, msgIndex)
           }
-          streamedContent = ""
           inferenceActive = false
           isInferring = false
         }
@@ -329,10 +322,12 @@ fun ChatScreen(
             return@collect
           }
           rawResponse.append(token)
-          streamedContent = rawResponse.toString()
-          streamedTokens++
-          val elapsed = (System.currentTimeMillis() - startTime) / 1000f
-          if (elapsed > 0) streamedTps = streamedTokens / elapsed
+          tokenCount++
+          app.chatRepository.replaceMessage(
+            sessionId, msgIndex,
+            ChatMessage(role = MessageRole.ASSISTANT, content = rawResponse.toString(), tps = 0f, tokens = tokenCount),
+            persist = false
+          )
         }
     }
   }
@@ -411,7 +406,7 @@ fun ChatScreen(
   voiceHandler.onResult = { text ->
     isVoiceListening = false
     if (text.isNotBlank()) {
-      sendMessage(text, emptyList(), emptyList())
+      sendMessage(text, emptyList<Uri>(), emptyList<String>())
     }
   }
   voiceHandler.onError = { msg ->
@@ -434,7 +429,7 @@ fun ChatScreen(
     val allMsgs = app.chatRepository.getMessages(id)
     val userMsg = allMsgs.getOrNull(userMsgIndex) ?: return
     app.chatRepository.deleteMessage(id, userMsgIndex + 1)
-    sendMessage(userMsg.content, emptyList(), emptyList())
+    sendMessage(userMsg.content, emptyList<Uri>(), emptyList<String>())
   }
 
   fun handleDelete(index: Int) {
@@ -670,7 +665,7 @@ fun ChatScreen(
           )
           Spacer(Modifier.height(28.dp))
           PromptSuggestions(suggestions = suggestions, onSelect = { text ->
-            sendMessage(text, emptyList(), emptyList())
+            sendMessage(text, emptyList<Uri>(), emptyList<String>())
           })
           val ragDocs = app.activeEngine.numDocuments
           if (ragDocs > 0) {
@@ -713,6 +708,9 @@ fun ChatScreen(
               enter = fadeIn(animationSpec = tween(300)) +
                 slideInVertically(animationSpec = tween(300)) { it / 8 }
             ) {
+              val isStreamingMsg = isInferring &&
+                msg.role == MessageRole.ASSISTANT &&
+                idx == messages.size - 1
               val isLastAssistant = !isInferring &&
                 msg.role == MessageRole.ASSISTANT &&
                 idx == messages.size - 1
@@ -731,6 +729,8 @@ fun ChatScreen(
                 tokens = msg.tokens,
                 attachmentPath = msg.attachmentPath,
                 attachmentType = msg.attachmentType,
+                isLoading = isStreamingMsg && msg.content.isEmpty(),
+                isStreaming = isStreamingMsg && msg.content.isNotEmpty(),
                 isSpeaking = isThisSpeaking,
                 onSpeak = if (msg.role == MessageRole.ASSISTANT && display.isNotEmpty()) {
                   {
@@ -755,39 +755,7 @@ fun ChatScreen(
             }
           }
 
-          if (isInferring) {
-            item(key = "streaming") {
-              val thinking = extractThinking(streamedContent)
-              val display = removeThinking(streamedContent)
-              val streamingTs = System.currentTimeMillis()
-              ChatBubble(
-                content = display,
-                role = MessageRole.ASSISTANT,
-                timestamp = streamingTs,
-                tps = streamedTps,
-                tokens = streamedTokens,
-                isLoading = streamedContent.isEmpty(),
-                isStreaming = streamedContent.isNotEmpty(),
-                isSpeaking = speakingMessageTimestamp == streamingTs,
-                onSpeak = if (display.isNotEmpty()) {
-                  {
-                    if (speakingMessageTimestamp == streamingTs) {
-                      ttsManager.stop()
-                      speakingMessageTimestamp = 0L
-                    } else {
-                      ttsManager.ensureInit()
-                      ttsManager.onDone = { speakingMessageTimestamp = 0L }
-                      speakingMessageTimestamp = streamingTs
-                      ttsManager.speak(display)
-                    }
-                  }
-                } else null,
-                thinkingContent = thinking,
-                showThinking = showStreamingThinking,
-                onToggleThinking = { showStreamingThinking = !showStreamingThinking }
-              )
-            }
-          }
+
         }
       }
     }
