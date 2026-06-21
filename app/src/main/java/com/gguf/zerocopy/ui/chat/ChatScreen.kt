@@ -311,16 +311,10 @@ fun ChatScreen(
       app.activeEngine.generateFlow(fp, maxTokens = maxGenTokens)
         .catch { e ->
           android.util.Log.e("ChatScreen", "Flow error: ${e.message}")
-          inferenceActive = false
-          isInferring = false
           scope.launch { snackbarHostState.showSnackbar("Inference error: ${e.message}") }
         }
         .onCompletion {
-          if (!inferenceActive) return@onCompletion
           val raw = rawResponse.toString()
-          streamedContent = ""
-          inferenceActive = false
-          isInferring = false
           if (raw.isNotEmpty()) {
             val elapsed = (System.currentTimeMillis() - startTime) / 1000f
             val tpsVal = if (elapsed > 0) streamedTokens / elapsed else 0f
@@ -334,12 +328,13 @@ fun ChatScreen(
               )
             )
           }
+          streamedContent = ""
+          inferenceActive = false
+          isInferring = false
         }
         .collect { token ->
           if (!inferenceActive) return@collect
           if (System.currentTimeMillis() - startTime > generateTimeoutMs) {
-            inferenceActive = false
-            isInferring = false
             app.activeEngine.stopGeneration()
             scope.launch { snackbarHostState.showSnackbar("Generation timed out after 5 min") }
             return@collect
@@ -426,9 +421,7 @@ fun ChatScreen(
 
   fun stopInference() {
     inferenceActive = false
-    isInferring = false
     app.activeEngine.stopGeneration()
-    streamedContent = ""
   }
 
   fun copyToClipboard(text: String) {
@@ -524,13 +517,10 @@ fun ChatScreen(
 
   LaunchedEffect(userSentCount) {
     if (userSentCount > 0 && messages.isNotEmpty()) {
-      listState.animateScrollToItem(messages.size - 1)
-    }
-  }
-
-  LaunchedEffect(streamedContent) {
-    if (isInferring && streamedContent.isNotEmpty() && messages.isNotEmpty()) {
-      listState.animateScrollToItem(messages.size)
+      val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return@LaunchedEffect
+      if (lastVisible >= messages.size - 3) {
+        listState.animateScrollToItem(messages.size - 1)
+      }
     }
   }
 
