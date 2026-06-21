@@ -288,7 +288,7 @@ Java_com_gguf_zerocopy_domain_inference_MnnEngine_mnnBenchmark(JNIEnv *env, jobj
         auto prefillEnd = std::chrono::high_resolution_clock::now();
 
         auto decodeStart = std::chrono::high_resolution_clock::now();
-        s_llm->generate({}, tgTokens);
+        s_llm->generate(std::vector<int>{}, tgTokens);
         auto decodeEnd = std::chrono::high_resolution_clock::now();
 
         auto prefillMs = std::chrono::duration_cast<std::chrono::milliseconds>(prefillEnd - prefillStart).count();
