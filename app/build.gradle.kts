@@ -58,6 +58,8 @@ dependencies {
     implementation(libs.onnx.android)
     implementation(libs.executorch.android)
 
+    implementation(libs.pdfbox.android)
+
     implementation(project(":zerocopy-lib"))
     implementation(project(":mnn-lib"))
 

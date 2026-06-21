@@ -98,6 +98,11 @@ fun SettingsScreen(onBack: () -> Unit) {
   var mmprojPath by remember { mutableStateOf(SettingsManager.mmprojPath) }
   var reasoningEnabled by remember { mutableStateOf(SettingsManager.reasoningEnabled) }
   var ragEnabled by remember { mutableStateOf(SettingsManager.ragEnabled) }
+  var ragTopK by remember { mutableStateOf(SettingsManager.ragTopK.toString()) }
+  var ragMinScore by remember { mutableStateOf(SettingsManager.ragMinScore.toString()) }
+  var useDedicatedEmbedding by remember { mutableStateOf(SettingsManager.useDedicatedEmbedding) }
+  var embeddingModelPath by remember { mutableStateOf(SettingsManager.embeddingModelPath) }
+  var embeddingModelName by remember { mutableStateOf(SettingsManager.embeddingModelName) }
   var showResetConfirm by remember { mutableStateOf(false) }
   var serverPort by remember { mutableStateOf(SettingsManager.serverPort.toString()) }
   var serverAuthEnabled by remember { mutableStateOf(SettingsManager.serverAuthEnabled) }
@@ -116,6 +121,23 @@ fun SettingsScreen(onBack: () -> Unit) {
             java.io.FileOutputStream(file).use { output -> input.copyTo(output) }
           }
           mmprojPath = file.absolutePath
+        } catch (_: Exception) {}
+      }
+    }
+  }
+
+  val embeddingPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+    if (result.resultCode == Activity.RESULT_OK) {
+      result.data?.data?.let { uri ->
+        val name = getFileName(context, uri)
+        val dir = File(context.filesDir, "embedding_models").also { it.mkdirs() }
+        val file = File(dir, name)
+        try {
+          context.contentResolver.openInputStream(uri)?.use { input ->
+            java.io.FileOutputStream(file).use { output -> input.copyTo(output) }
+          }
+          embeddingModelPath = file.absolutePath
+          embeddingModelName = name
         } catch (_: Exception) {}
       }
     }
@@ -150,34 +172,17 @@ fun SettingsScreen(onBack: () -> Unit) {
     SettingsManager.serverAuthToken = serverAuthToken
     SettingsManager.serverWifiOnly = serverWifiOnly
     SettingsManager.ragEnabled = ragEnabled
-
-    if (engine.isLoaded) {
-      val modelPath = SettingsManager.lastModelPath
-      if (modelPath.isNotEmpty()) {
-        scope.launch {
-          engine.unload()
-          val result = engine.load(path = modelPath, config = SettingsManager.toEngineConfig())
-          if (result.isSuccess) {
-            snackbarHostState.showSnackbar("Model reloaded with new settings")
-          } else {
-            snackbarHostState.showSnackbar("Failed to reload model")
-          }
-        }
-      }
-    }
+    SettingsManager.ragTopK = ragTopK.toIntOrNull()?.coerceIn(1, 20) ?: 3
+    SettingsManager.ragMinScore = ragMinScore.toFloatOrNull()?.coerceIn(0f, 1f) ?: 0.3f
+    SettingsManager.useDedicatedEmbedding = useDedicatedEmbedding
+    SettingsManager.embeddingModelPath = embeddingModelPath
+    SettingsManager.embeddingModelName = embeddingModelName
   }
 
   BackHandler(onBack = {
     saveSettings()
     onBack()
   })
-
-  // Save settings when navigating away via tab switch
-  androidx.compose.runtime.DisposableEffect(Unit) {
-    onDispose {
-      saveSettings()
-    }
-  }
 
   Scaffold(
     topBar = {
@@ -204,13 +209,9 @@ fun SettingsScreen(onBack: () -> Unit) {
     ) {
       Text(
         "Sampling",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        letterSpacing = 2.sp
+        fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.Accent,
+        fontFamily = FontFamily.Monospace, letterSpacing = 2.sp
       )
-
       SettingField("Temperature", "0-2 (lower = more focused)", temp, { temp = it })
       SettingField("Top-P", "0-1 (nucleus sampling)", topP, { topP = it })
       SettingField("Min-P", "0-1 (filter unlikely tokens)", minP, { minP = it })
@@ -222,13 +223,9 @@ fun SettingsScreen(onBack: () -> Unit) {
 
       Text(
         "Generation",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        letterSpacing = 2.sp
+        fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.Accent,
+        fontFamily = FontFamily.Monospace, letterSpacing = 2.sp
       )
-
       SettingField("Context Window", "512-32768", nCtx, { nCtx = it })
       SettingField("Max Tokens", "64-8192", maxTok, { maxTok = it })
       SettingField("Batch Size", "512-8192", batch, { batch = it })
@@ -248,11 +245,8 @@ fun SettingsScreen(onBack: () -> Unit) {
 
       Text(
         "System",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        letterSpacing = 2.sp
+        fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.Accent,
+        fontFamily = FontFamily.Monospace, letterSpacing = 2.sp
       )
 
       OutlinedTextField(
@@ -274,9 +268,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
       Text(
         "Context/GPU changes need model reload.",
-        fontSize = 10.sp,
-        color = colors.Amber,
-        fontFamily = FontFamily.Monospace
+        fontSize = 10.sp, color = colors.Amber, fontFamily = FontFamily.Monospace
       )
 
       OutlinedButton(
@@ -295,8 +287,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         Spacer(Modifier.width(6.dp))
         Text(
           if (mmprojPath.isEmpty()) "Load Vision mmproj" else "mmproj: ${mmprojPath.substringAfterLast('/')}",
-          fontSize = 11.sp,
-          maxLines = 1
+          fontSize = 11.sp, maxLines = 1
         )
       }
 
@@ -305,18 +296,16 @@ fun SettingsScreen(onBack: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Amber)
-      ) {
-        Text("Reset Context", fontSize = 12.sp)
-      }
+      ) { Text("Reset Context", fontSize = 12.sp) }
 
       OutlinedButton(
-        onClick = { scope.launch { engine.unload() } },
+        onClick = { app.activeEngine.let { e ->
+          if (e.isLoaded) scope.launch { e.unload() }
+        } },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Red)
-      ) {
-        Text("Unload All Models", fontSize = 12.sp)
-      }
+      ) { Text("Unload Model", fontSize = 12.sp) }
 
       OutlinedButton(
         onClick = {
@@ -332,19 +321,14 @@ fun SettingsScreen(onBack: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent2)
-      ) {
-        Text("Apply Device Defaults", fontSize = 12.sp)
-      }
+      ) { Text("Apply Device Defaults", fontSize = 12.sp) }
 
       HorizontalDivider(color = colors.Border, thickness = 1.dp)
 
       Text(
         "Reasoning",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        letterSpacing = 2.sp
+        fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.Accent,
+        fontFamily = FontFamily.Monospace, letterSpacing = 2.sp
       )
 
       Row(verticalAlignment = Alignment.CenterVertically) {
@@ -359,12 +343,108 @@ fun SettingsScreen(onBack: () -> Unit) {
       HorizontalDivider(color = colors.Border, thickness = 1.dp)
 
       Text(
+        "RAG & Embeddings",
+        fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.Accent,
+        fontFamily = FontFamily.Monospace, letterSpacing = 2.sp
+      )
+
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Enable RAG", fontSize = 13.sp, color = colors.Text2, modifier = Modifier.weight(1f))
+        Switch(
+          checked = ragEnabled,
+          onCheckedChange = { ragEnabled = it },
+          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
+        )
+      }
+
+      SettingField("Top-K Results", "1-20", ragTopK, { ragTopK = it })
+      SettingField("Min Similarity", "0-1", ragMinScore, { ragMinScore = it })
+
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Dedicated Embedding Model", fontSize = 13.sp, color = colors.Text2, modifier = Modifier.weight(1f))
+        Switch(
+          checked = useDedicatedEmbedding,
+          onCheckedChange = { useDedicatedEmbedding = it },
+          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
+        )
+      }
+      Text(
+        "When off, the main model handles embeddings. When on, load a small GGUF embedding model.",
+        fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace
+      )
+
+      if (useDedicatedEmbedding) {
+        OutlinedButton(
+          onClick = {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+              addCategory(Intent.CATEGORY_OPENABLE)
+              type = "*/*"
+            }
+            embeddingPicker.launch(intent)
+          },
+          modifier = Modifier.fillMaxWidth(),
+          shape = RoundedCornerShape(10.dp),
+          colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent2)
+        ) {
+          Text(
+            if (embeddingModelName.isNotEmpty()) "Embedding: ${embeddingModelName.take(40)}" else "Select Embedding GGUF Model",
+            fontSize = 11.sp, maxLines = 1
+          )
+        }
+      }
+
+      HorizontalDivider(color = colors.Border, thickness = 1.dp)
+
+      Text(
+        "Prompt Cache",
+        fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.Accent,
+        fontFamily = FontFamily.Monospace, letterSpacing = 2.sp
+      )
+
+      OutlinedButton(
+        onClick = {
+          engine?.clearCache()
+          scope.launch { snackbarHostState.showSnackbar("Prompt cache cleared") }
+        },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Amber)
+      ) { Text("Clear Prompt Cache", fontSize = 12.sp) }
+
+      HorizontalDivider(color = colors.Border, thickness = 1.dp)
+
+      Text(
+        "StreamingLLM",
+        fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.Accent,
+        fontFamily = FontFamily.Monospace, letterSpacing = 2.sp
+      )
+
+      var sinkTokens by remember { mutableStateOf(SettingsManager.kvSinkTokens.toString()) }
+      var recentTokens by remember { mutableStateOf(SettingsManager.kvRecentTokens.toString()) }
+      var evictThreshold by remember { mutableStateOf(SettingsManager.kvEvictThreshold.toString()) }
+
+      SettingField("Sink Tokens", "1-32 (first tokens to keep)", sinkTokens, { sinkTokens = it })
+      SettingField("Recent Tokens", "64-2048 (last tokens to keep)", recentTokens, { recentTokens = it })
+      SettingField("Evict Threshold", "0.5-0.99 (% full before eviction)", evictThreshold, { evictThreshold = it })
+
+      OutlinedButton(
+        onClick = {
+          SettingsManager.kvSinkTokens = sinkTokens.toIntOrNull()?.coerceIn(1, 32) ?: 4
+          SettingsManager.kvRecentTokens = recentTokens.toIntOrNull()?.coerceIn(64, 2048) ?: 512
+          SettingsManager.kvEvictThreshold = evictThreshold.toFloatOrNull()?.coerceIn(0.5f, 0.99f) ?: 0.85f
+          scope.launch { snackbarHostState.showSnackbar("StreamingLLM settings saved") }
+        },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent2)
+      ) { Text("Save StreamingLLM", fontSize = 12.sp) }
+
+      HorizontalDivider(color = colors.Border, thickness = 1.dp)
+
+      Text(
         "Appearance",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        letterSpacing = 2.sp
+        fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.Accent,
+        fontFamily = FontFamily.Monospace, letterSpacing = 2.sp
       )
 
       Row(verticalAlignment = Alignment.CenterVertically) {
@@ -382,116 +462,9 @@ fun SettingsScreen(onBack: () -> Unit) {
       HorizontalDivider(color = colors.Border, thickness = 1.dp)
 
       Text(
-        "RAG (Retrieval)",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        letterSpacing = 2.sp
-      )
-
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Enable RAG", fontSize = 13.sp, color = colors.Text2, modifier = Modifier.weight(1f))
-        Switch(
-          checked = ragEnabled,
-          onCheckedChange = { ragEnabled = it },
-          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
-        )
-      }
-
-      var ragTopK by remember { mutableStateOf(SettingsManager.ragTopK.toString()) }
-      var ragMinScore by remember { mutableStateOf(SettingsManager.ragMinScore.toString()) }
-
-      SettingField("Top-K Results", "1-10", ragTopK, { ragTopK = it })
-      SettingField("Min Similarity", "0-1", ragMinScore, { ragMinScore = it })
-
-      OutlinedButton(
-        onClick = {
-          SettingsManager.ragEnabled = ragEnabled
-          val k = ragTopK.toIntOrNull()?.coerceIn(1, 10) ?: 3
-          val s = ragMinScore.toFloatOrNull()?.coerceIn(0f, 1f) ?: 0.3f
-          SettingsManager.ragTopK = k
-          SettingsManager.ragMinScore = s
-          engine?.setRagParams(k, s)
-          scope.launch { snackbarHostState.showSnackbar("RAG settings saved") }
-        },
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent2)
-      ) {
-        Text("Save RAG Settings", fontSize = 12.sp)
-      }
-
-      HorizontalDivider(color = colors.Border, thickness = 1.dp)
-
-      Text(
-        "Prompt Cache",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        letterSpacing = 2.sp
-      )
-
-      OutlinedButton(
-        onClick = {
-          engine?.clearCache()
-          scope.launch { snackbarHostState.showSnackbar("Prompt cache cleared") }
-        },
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Amber)
-      ) {
-        Text("Clear Prompt Cache", fontSize = 12.sp)
-      }
-
-      HorizontalDivider(color = colors.Border, thickness = 1.dp)
-
-      Text(
-        "StreamingLLM",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        letterSpacing = 2.sp
-      )
-
-      var sinkTokens by remember { mutableStateOf(SettingsManager.kvSinkTokens.toString()) }
-      var recentTokens by remember { mutableStateOf(SettingsManager.kvRecentTokens.toString()) }
-      var evictThreshold by remember { mutableStateOf(SettingsManager.kvEvictThreshold.toString()) }
-
-      SettingField("Sink Tokens", "1-32 (first tokens to keep)", sinkTokens, { sinkTokens = it })
-      SettingField("Recent Tokens", "64-2048 (last tokens to keep)", recentTokens, { recentTokens = it })
-      SettingField("Evict Threshold", "0.5-0.99 (% full before eviction)", evictThreshold, { evictThreshold = it })
-
-      OutlinedButton(
-        onClick = {
-          SettingsManager.kvSinkTokens = sinkTokens.toIntOrNull()?.coerceIn(1, 32) ?: 4
-          SettingsManager.kvRecentTokens = recentTokens.toIntOrNull()?.coerceIn(64, 2048) ?: 512
-          SettingsManager.kvEvictThreshold = evictThreshold.toFloatOrNull()?.coerceIn(0.5f, 0.99f) ?: 0.85f
-          engine?.setStreamingLLM(
-            SettingsManager.kvSinkTokens,
-            SettingsManager.kvRecentTokens,
-            SettingsManager.kvEvictThreshold,
-          )
-          scope.launch { snackbarHostState.showSnackbar("StreamingLLM settings saved") }
-        },
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent2)
-      ) {
-        Text("Save StreamingLLM", fontSize = 12.sp)
-      }
-
-      HorizontalDivider(color = colors.Border, thickness = 1.dp)
-
-      Text(
         "Server",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        letterSpacing = 2.sp
+        fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.Accent,
+        fontFamily = FontFamily.Monospace, letterSpacing = 2.sp
       )
 
       Row(verticalAlignment = Alignment.CenterVertically) {
@@ -521,15 +494,11 @@ fun SettingsScreen(onBack: () -> Unit) {
       if (app.modelServer.isRunning) {
         Text(
           "Server: ${app.modelServer.getServerUrl()}",
-          fontSize = 10.sp,
-          color = colors.Accent2,
-          fontFamily = FontFamily.Monospace
+          fontSize = 10.sp, color = colors.Accent2, fontFamily = FontFamily.Monospace
         )
         Text(
           "Anyone on your WiFi can access the web UI",
-          fontSize = 10.sp,
-          color = colors.Text3,
-          fontFamily = FontFamily.Monospace
+          fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace
         )
       }
 
@@ -551,24 +520,19 @@ fun SettingsScreen(onBack: () -> Unit) {
           modifier = Modifier.fillMaxWidth(),
           label = { Text("Auth Token", fontSize = 12.sp) },
           singleLine = true,
-          visualTransformation = if (showToken) VisualTransformation.None
-            else PasswordVisualTransformation(),
+          visualTransformation = if (showToken) VisualTransformation.None else PasswordVisualTransformation(),
           trailingIcon = {
             IconButton(onClick = { showToken = !showToken }) {
               Icon(
                 if (showToken) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                if (showToken) "Hide token" else "Show token",
-                tint = colors.Text3
+                if (showToken) "Hide token" else "Show token", tint = colors.Text3
               )
             }
           },
           shape = RoundedCornerShape(10.dp),
           colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = colors.Accent,
-            unfocusedBorderColor = colors.Border,
-            focusedTextColor = colors.Text,
-            unfocusedTextColor = colors.Text,
-            cursorColor = colors.Accent
+            focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
+            focusedTextColor = colors.Text, unfocusedTextColor = colors.Text, cursorColor = colors.Accent
           ),
           textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace)
         )
@@ -579,6 +543,15 @@ fun SettingsScreen(onBack: () -> Unit) {
         Switch(
           checked = serverWifiOnly,
           onCheckedChange = { serverWifiOnly = it },
+          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
+        )
+      }
+
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Auto-start on Boot", fontSize = 13.sp, color = colors.Text2, modifier = Modifier.weight(1f))
+        Switch(
+          checked = SettingsManager.serverEnabled,
+          onCheckedChange = { SettingsManager.serverEnabled = it },
           colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
         )
       }
@@ -603,57 +576,21 @@ fun SettingsScreen(onBack: () -> Unit) {
 
       Text(
         "About",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        letterSpacing = 2.sp
+        fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.Accent,
+        fontFamily = FontFamily.Monospace, letterSpacing = 2.sp
       )
 
-      Text(
-        "Developer: adeennour4-dot",
-        fontSize = 11.sp,
-        color = colors.Text3,
-        fontFamily = FontFamily.Monospace
-      )
-
-      Text(
-        "GitHub: github.com/adeennour4-dot/111",
-        fontSize = 11.sp,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        modifier = Modifier.clickable {
-          try {
-            context.startActivity(
-              android.content.Intent(
-                android.content.Intent.ACTION_VIEW,
-                android.net.Uri.parse("https://github.com/adeennour4-dot/111")
-              )
-            )
-          } catch (_: Exception) {}
-        }
-      )
-
-      Text(
-        "App Version: 1.0.2",
-        fontSize = 10.sp,
-        color = colors.Text3,
-        fontFamily = FontFamily.Monospace
-      )
-
+      Text("Developer: adeennour4-dot", fontSize = 11.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+      Text("GitHub: github.com/adeennour4-dot/111", fontSize = 11.sp, color = colors.Accent,
+        fontFamily = FontFamily.Monospace, modifier = Modifier.clickable {
+        try {
+          context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/adeennour4-dot/111")))
+        } catch (_: Exception) {}
+      })
+      Text("App Version: 1.0.2", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
       val deviceInfo = remember { app.deviceUtils.detect() }
-      Text(
-        "RAM: ${deviceInfo.totalRamMB / 1024} GB total",
-        fontSize = 10.sp,
-        color = colors.Text3,
-        fontFamily = FontFamily.Monospace
-      )
-      Text(
-        "Device: ${Build.MODEL}",
-        fontSize = 10.sp,
-        color = colors.Text3,
-        fontFamily = FontFamily.Monospace
-      )
+      Text("RAM: ${deviceInfo.totalRamMB / 1024} GB total", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+      Text("Device: ${Build.MODEL}", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
 
       Spacer(Modifier.height(32.dp))
     }
@@ -664,12 +601,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       onDismissRequest = { showResetConfirm = false },
       containerColor = colors.Card,
       title = { Text("Reset Context?", color = colors.Text) },
-      text = {
-        Text(
-          "This will clear the model's context window and conversation history. The model will remain loaded.",
-          color = colors.Text2
-        )
-      },
+      text = { Text("This will clear the model's context window. The model will remain loaded.", color = colors.Text2) },
       confirmButton = {
         TextButton(onClick = {
           scope.launch { engine.unload(); engine.load(SettingsManager.lastModelPath, SettingsManager.toEngineConfig()) }
@@ -677,11 +609,7 @@ fun SettingsScreen(onBack: () -> Unit) {
           scope.launch { snackbarHostState.showSnackbar("Model reloaded") }
         }) { Text("Reset", color = colors.Red) }
       },
-      dismissButton = {
-        TextButton(onClick = { showResetConfirm = false }) {
-          Text("Cancel", color = colors.Text2)
-        }
-      }
+      dismissButton = { TextButton(onClick = { showResetConfirm = false }) { Text("Cancel", color = colors.Text2) } }
     )
   }
 }
@@ -700,11 +628,8 @@ fun SettingField(label: String, hint: String, value: String, onChange: (String) 
       keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
       shape = RoundedCornerShape(10.dp),
       colors = OutlinedTextFieldDefaults.colors(
-        focusedBorderColor = colors.Accent,
-        unfocusedBorderColor = colors.Border,
-        focusedTextColor = colors.Text,
-        unfocusedTextColor = colors.Text,
-        cursorColor = colors.Accent
+        focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
+        focusedTextColor = colors.Text, unfocusedTextColor = colors.Text, cursorColor = colors.Accent
       ),
       textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, fontFamily = FontFamily.Monospace)
     )

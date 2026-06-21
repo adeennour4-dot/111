@@ -45,7 +45,7 @@ class ZeroCopyApp : Application() {
     deviceUtils = DeviceUtils(this)
     modelRepository = ModelRepository(this)
     chatRepository = ChatRepository(this)
-    modelServer = ModelServer()
+    modelServer = ModelServer(initialPort = SettingsManager.serverPort.coerceIn(1024, 65535))
 
     activeEngine = GGUFEngine(ggmlEngine)
     engineRegistry.register("gguf", activeEngine)

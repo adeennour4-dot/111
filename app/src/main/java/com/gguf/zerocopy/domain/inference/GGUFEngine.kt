@@ -71,4 +71,31 @@ class GGUFEngine(
 
     override fun setRagParams(topK: Int, minScore: Float) =
         engine.setRagParams(topK, minScore)
+
+    override val hasVision: Boolean
+        get() {
+            val info = engine.getModelInfoJson()
+            if (info != null) {
+                try {
+                    val json = org.json.JSONObject(info)
+                    if (json.optBoolean("has_vision", false)) return true
+                } catch (_: Exception) {}
+            }
+            return com.gguf.zerocopy.data.local.SettingsManager.mmprojPath.isNotEmpty()
+        }
+
+    override val hasVoice: Boolean
+        get() {
+            val info = engine.getModelInfoJson()
+            if (info != null) {
+                try {
+                    val json = org.json.JSONObject(info)
+                    return json.optBoolean("has_voice", false)
+                } catch (_: Exception) {}
+            }
+            return false
+        }
+
+    override val mmprojPath: String?
+        get() = com.gguf.zerocopy.data.local.SettingsManager.mmprojPath.ifEmpty { null }
 }

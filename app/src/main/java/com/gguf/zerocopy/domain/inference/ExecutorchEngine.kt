@@ -133,6 +133,10 @@ class ExecutorchEngine : InferenceEngine {
     override var ragEnabled: Boolean = false
     override fun setRagParams(topK: Int, minScore: Float) {}
 
+    override val hasVision: Boolean = false
+    override val hasVoice: Boolean = false
+    override val mmprojPath: String? = null
+
     private fun resolveModelFile(path: String): File {
         val file = File(path)
         if (file.isFile) return file

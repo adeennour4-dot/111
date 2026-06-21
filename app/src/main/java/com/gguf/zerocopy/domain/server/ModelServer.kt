@@ -19,7 +19,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
-class ModelServer(val port: Int = 8080) {
+class ModelServer(initialPort: Int = 8080) {
   private val tag = "ModelServer"
   private var serverSocket: ServerSocket? = null
   private var executor: ExecutorService? = null
@@ -31,6 +31,8 @@ class ModelServer(val port: Int = 8080) {
   private val rateLimiter = TokenBucket(capacity = 60, refillPerSec = 2)
   private val authFailTracker = ConcurrentHashMap<String, AuthFailEntry>()
   private val clientExecutor = Executors.newCachedThreadPool()
+
+  @Volatile var port: Int = initialPort
 
   @Volatile
   var notificationSetter: ((String) -> Unit)? = null
@@ -84,6 +86,16 @@ class ModelServer(val port: Int = 8080) {
     Log.i(tag, "Server starting on port $port")
   }
 
+  fun restart(newPort: Int? = null) {
+    val wasRunning = running.get()
+    stop()
+    if (newPort != null) port = newPort
+    if (wasRunning) {
+      Thread.sleep(200)
+      start()
+    }
+  }
+
   fun stop() {
     running.set(false)
     serverBound.set(false)
@@ -108,9 +120,20 @@ class ModelServer(val port: Int = 8080) {
     try {
       serverSocket = ServerSocket()
       serverSocket?.reuseAddress = true
-      serverSocket?.bind(InetSocketAddress(port))
+
+      val wifiOnly = try {
+        com.gguf.zerocopy.data.local.SettingsManager.serverWifiOnly
+      } catch (_: Exception) { false }
+
+      if (wifiOnly) {
+        val wifiIp = getLocalIp()
+        serverSocket?.bind(InetSocketAddress(wifiIp, port))
+        Log.i(tag, "Server listening on $wifiIp:$port (WiFi only)")
+      } else {
+        serverSocket?.bind(InetSocketAddress(port))
+        Log.i(tag, "Server listening on 0.0.0.0:$port")
+      }
       serverBound.set(true)
-      Log.i(tag, "Server listening on 0.0.0.0:$port")
       while (running.get()) {
         try {
           val client = serverSocket?.accept() ?: break

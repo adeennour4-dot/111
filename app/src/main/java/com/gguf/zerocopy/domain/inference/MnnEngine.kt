@@ -173,6 +173,10 @@ class MnnEngine : InferenceEngine {
 
     override fun setRagParams(topK: Int, minScore: Float) {}
 
+    override val hasVision: Boolean = false
+    override val hasVoice: Boolean = false
+    override val mmprojPath: String? = null
+
     private fun resolveModelDir(path: String): String {
         val file = File(path)
         if (file.isDirectory && File(file, "config.json").exists()) return path

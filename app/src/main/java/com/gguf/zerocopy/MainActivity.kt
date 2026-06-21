@@ -55,7 +55,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.ui.chat.ChatScreen
-import com.gguf.zerocopy.ui.cloud.CloudScreen
 import com.gguf.zerocopy.ui.models.ModelListScreen
 import com.gguf.zerocopy.ui.sessions.SessionListScreen
 import com.gguf.zerocopy.ui.rag.RagScreen
@@ -71,7 +70,6 @@ private val navItems = listOf(
   NavItem("Chat", Icons.Outlined.Chat),
   NavItem("Models", Icons.Outlined.SmartToy),
   NavItem("RAG", Icons.Outlined.LibraryBooks),
-  NavItem("Server", Icons.Outlined.Dns),
   NavItem("Settings", Icons.Filled.Settings)
 )
 
@@ -178,9 +176,8 @@ fun AppRoot() {
                   else currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
                 } else currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
               },
-              onSettings = { selectedTab = 4 },
+              onSettings = { selectedTab = 3 },
               onSessions = { showSessionList = true },
-              onCloud = { selectedTab = 3 },
               onRag = { selectedTab = 2 }
             )
           }
@@ -193,9 +190,8 @@ fun AppRoot() {
           },
           onBack = { selectedTab = 0 }
         )
-        2 -> RagScreen(onBack = { selectedTab = 0 })
-        3 -> CloudScreen(onBack = { selectedTab = 0 })
-        4 -> SettingsScreen(onBack = { selectedTab = 0 })
+         2 -> RagScreen(onBack = { selectedTab = 0 })
+         3 -> SettingsScreen(onBack = { selectedTab = 0 })
       }
     }
   }

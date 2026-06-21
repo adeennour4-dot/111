@@ -220,6 +220,10 @@ object SettingsManager {
     get() = prefs?.getString("embedding_model_name", "") ?: ""
     set(v) { prefs?.edit()?.putString("embedding_model_name", v)?.apply() }
 
+  var useDedicatedEmbedding: Boolean
+    get() = prefs?.getBoolean("use_dedicated_embedding", false) ?: false
+    set(v) { prefs?.edit()?.putBoolean("use_dedicated_embedding", v)?.apply() }
+
   // StreamingLLM
   var kvSinkTokens: Int
     get() = prefs?.getInt("kv_sink_tokens", 4) ?: 4

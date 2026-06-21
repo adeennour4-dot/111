@@ -35,7 +35,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
@@ -72,6 +71,7 @@ import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.data.repository.AttachmentType
 import com.gguf.zerocopy.data.repository.ChatMessage
 import com.gguf.zerocopy.data.repository.MessageRole
+import com.gguf.zerocopy.domain.ocr.PdfTextExtractor
 import com.gguf.zerocopy.ui.chat.components.ChatBubble
 import com.gguf.zerocopy.ui.chat.components.DeleteConfirmDialog
 import com.gguf.zerocopy.ui.chat.components.ExportSessionDialog
@@ -99,7 +99,6 @@ fun ChatScreen(
   onModelSelected: (path: String, name: String) -> Unit,
   onSettings: () -> Unit,
   onSessions: () -> Unit,
-  onCloud: () -> Unit,
   onRag: () -> Unit = {}
 ) {
   val context = LocalContext.current
@@ -110,7 +109,7 @@ fun ChatScreen(
   val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
   val snackbarHostState = remember { SnackbarHostState() }
 
-  val hasVision = false
+  val hasVision = app.activeEngine.hasVision
 
   var chatId by remember { mutableStateOf(sessionId) }
 
@@ -262,7 +261,9 @@ fun ChatScreen(
     scope.launch {
       val rawResponse = StringBuilder()
       val fp = buildConversationPrompt(prompt, reasoningEnabled)
-      app.activeEngine.generateFlow(fp, maxTokens = 4096)
+      val maxGenTokens = SettingsManager.maxTokens.coerceIn(64, 8192)
+      val generateTimeoutMs = 300_000L
+      app.activeEngine.generateFlow(fp, maxTokens = maxGenTokens)
         .catch { e ->
           android.util.Log.e("ChatScreen", "Flow error: ${e.message}")
           inferenceActive = false
@@ -271,10 +272,13 @@ fun ChatScreen(
         }
         .onCompletion {
           if (!inferenceActive) return@onCompletion
-          val elapsed = (System.currentTimeMillis() - startTime) / 1000f
-          val tpsVal = if (elapsed > 0) streamedTokens / elapsed else 0f
           val raw = rawResponse.toString()
+          streamedContent = ""
+          inferenceActive = false
+          isInferring = false
           if (raw.isNotEmpty()) {
+            val elapsed = (System.currentTimeMillis() - startTime) / 1000f
+            val tpsVal = if (elapsed > 0) streamedTokens / elapsed else 0f
             app.chatRepository.addMessage(
               sessionId,
               ChatMessage(
@@ -285,12 +289,16 @@ fun ChatScreen(
               )
             )
           }
-          streamedContent = ""
-          inferenceActive = false
-          isInferring = false
         }
         .collect { token ->
           if (!inferenceActive) return@collect
+          if (System.currentTimeMillis() - startTime > generateTimeoutMs) {
+            inferenceActive = false
+            isInferring = false
+            app.activeEngine.stopGeneration()
+            scope.launch { snackbarHostState.showSnackbar("Generation timed out after 5 min") }
+            return@collect
+          }
           rawResponse.append(token)
           streamedContent = rawResponse.toString()
           streamedTokens++
@@ -317,6 +325,7 @@ fun ChatScreen(
     val savedPaths = mutableListOf<String>()
     var attachType: AttachmentType? = null
     var extractedPdfText = ""
+    val pdfExtractor = PdfTextExtractor(context)
 
     uris.forEach { uri ->
       val mime = context.contentResolver.getType(uri) ?: ""
@@ -328,7 +337,21 @@ fun ChatScreen(
           }
         }
         mime == "application/pdf" -> {
-          extractedPdfText = "PDF content extracted"
+          val pdfText = pdfExtractor.extractText(uri) ?: ""
+          if (pdfText.length > 50) {
+            extractedPdfText = pdfText
+          } else {
+            extractedPdfText = "[PDF document attached: ${getFileName(context, uri)}]"
+          }
+          if (attachType == null) attachType = AttachmentType.DOCUMENT
+        }
+        mime == "text/plain" || mime == "text/markdown" -> {
+          val docText = context.contentResolver.openInputStream(uri)?.use { stream ->
+            stream.bufferedReader().readText()
+          } ?: ""
+          if (docText.isNotEmpty()) {
+            extractedPdfText = docText.take(50_000)
+          }
           if (attachType == null) attachType = AttachmentType.DOCUMENT
         }
         else -> {
@@ -510,9 +533,7 @@ fun ChatScreen(
         IconButton(onClick = onSettings) {
           Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = colors.Text2)
         }
-        IconButton(onClick = onCloud) {
-          Icon(Icons.Outlined.Cloud, contentDescription = "Cloud", tint = colors.Text2)
-        }
+        
       }
     },
     bottomBar = {

@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.local.SettingsManager
+import com.gguf.zerocopy.domain.ocr.PdfTextExtractor
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -88,13 +89,26 @@ fun RagScreen(onBack: () -> Unit) {
         isAdding = true
         scope.launch {
             var added = 0
+            val pdfExtractor = PdfTextExtractor(context)
             for (uri in uris) {
                 try {
                     val name = getFileName(context, uri)
-                    val text = context.contentResolver.openInputStream(uri)?.use { stream ->
-                        BufferedReader(InputStreamReader(stream)).readText()
-                    } ?: ""
-                    if (text.isNotEmpty()) {
+                    val mime = context.contentResolver.getType(uri) ?: ""
+                    val text = when {
+                        mime == "application/pdf" -> {
+                            pdfExtractor.extractText(uri) ?: ""
+                        }
+                        else -> {
+                            context.contentResolver.openInputStream(uri)?.use { stream ->
+                                BufferedReader(InputStreamReader(stream)).readText()
+                            } ?: ""
+                        }
+                    }
+                    if (text.length > 10_000_000) {
+                        statusMsg = "Skipped ${name.take(30)}: file too large (>10MB)"
+                        continue
+                    }
+                    if (text.isNotEmpty() && text.length > 50) {
                         val ok = engine.addDocument(text, name, ragChunkSize, ragOverlap)
                         if (ok) added++
                     }

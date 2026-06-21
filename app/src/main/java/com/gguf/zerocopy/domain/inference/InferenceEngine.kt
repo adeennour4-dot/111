@@ -28,4 +28,8 @@ interface InferenceEngine {
     fun clearDocuments()
     var ragEnabled: Boolean
     fun setRagParams(topK: Int, minScore: Float)
+
+    val hasVision: Boolean
+    val hasVoice: Boolean
+    val mmprojPath: String?
 }
