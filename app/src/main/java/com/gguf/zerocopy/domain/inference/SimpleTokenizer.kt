@@ -183,10 +183,10 @@ class SimpleTokenizer(
         }
 
         private fun varintLen(value: Int): Int {
-            if (value == 0L) return 1
+            if (value == 0) return 1
             var v = value
             var count = 0
-            while (v != 0L) {
+            while (v != 0) {
                 count++
                 v = v shr 7
             }

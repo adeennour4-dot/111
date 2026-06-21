@@ -81,7 +81,7 @@ class ExecutorchEngine : InferenceEngine {
                 val inputTensor = Tensor.fromBlob(data, longArrayOf(1L, seqLen.toLong()))
                 val outputEValues = mod.forward(EValue.from(inputTensor))
                 val outputTensor = outputEValues[0].toTensor()
-                val scores = outputTensor.dataAsFloatArray()
+                val scores = outputTensor.getDataAsFloatArray()
 
                 val vSize = vocabSize.coerceIn(1, scores.size)
                 val lastLogits = scores.copyOfRange(scores.size - vSize, scores.size)

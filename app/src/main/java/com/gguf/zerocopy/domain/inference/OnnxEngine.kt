@@ -109,7 +109,7 @@ class OnnxEngine : InferenceEngine {
                     else result.get(0) as? OnnxTensor
                 }
 
-                val logitsBuf = logitsTensor.floatBuffer
+                val logitsBuf = logitsTensor?.floatBuffer ?: continue
                 val logitsCapacity = logitsBuf.capacity()
                 val lastPosStart = logitsCapacity - vocabSize.coerceAtLeast(logitsCapacity)
                 val lastLogits = FloatArray(vocabSize.coerceAtMost(logitsCapacity - lastPosStart)) { idx ->
