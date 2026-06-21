@@ -10,7 +10,7 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
-#include "llm.hpp"
+#include "llm/llm.hpp"
 
 static MNN::Transformer::Llm *s_llm = nullptr;
 static std::mutex s_mutex;
