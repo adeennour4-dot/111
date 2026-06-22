@@ -98,7 +98,8 @@ fun ChatScreen(
   onModelSelected: (path: String, name: String) -> Unit,
   onSettings: () -> Unit,
   onSessions: () -> Unit,
-  onRag: () -> Unit = {}
+  onRag: () -> Unit = {},
+  onSessionChanged: ((String) -> Unit)? = null
 ) {
   val context = LocalContext.current
   val app = ZeroCopyApp.instance
@@ -116,9 +117,16 @@ fun ChatScreen(
     if (sessionId != null && sessionId != chatId) {
       chatId = sessionId
     }
+    if (chatId == null) {
+      val saved = SettingsManager.currentSessionId
+      if (saved.isNotEmpty() && app.chatRepository.sessionExists(saved)) {
+        chatId = saved
+      }
+    }
     chatId?.let {
       app.chatRepository.selectSession(it)
       SettingsManager.currentSessionId = it
+      onSessionChanged?.invoke(it)
     }
   }
 
@@ -345,6 +353,7 @@ fun ChatScreen(
       )
       SettingsManager.currentSessionId = s.id
       chatId = s.id
+      onSessionChanged?.invoke(s.id)
       android.util.Log.d("ChatScreen", "New session created: ${s.id}")
       s.id
     }

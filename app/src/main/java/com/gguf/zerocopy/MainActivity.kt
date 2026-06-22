@@ -186,7 +186,8 @@ fun AppRoot() {
               },
               onSettings = { selectedTab = 4 },
               onSessions = { showSessionList = true },
-              onRag = { selectedTab = 2 }
+              onRag = { selectedTab = 2 },
+              onSessionChanged = { id -> currentSessionId = id }
             )
           }
         }
