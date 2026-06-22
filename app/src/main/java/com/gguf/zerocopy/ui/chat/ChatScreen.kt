@@ -81,8 +81,8 @@ import com.gguf.zerocopy.ui.theme.currentPalette
 import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -278,6 +278,7 @@ fun ChatScreen(
     inferenceActive = true
     isInferring = true
     val startTime = System.currentTimeMillis()
+    val generateTimeoutMs = 300_000L
 
     val historyMsgs = app.chatRepository.getMessages(sessionId)
       .filter { it.role != MessageRole.SYSTEM }
@@ -291,55 +292,44 @@ fun ChatScreen(
       val rawResponse = StringBuilder()
       val fp = buildConversationPrompt(prompt, reasoningEnabled, historyMsgs)
       val maxGenTokens = SettingsManager.maxTokens.coerceIn(64, 8192)
-      val generateTimeoutMs = 300_000L
       var tokenCount = 0
-      var flowCompleted = false
-      app.activeEngine.generateFlow(fp, maxTokens = maxGenTokens)
-        .catch { e ->
-          android.util.Log.e("ChatScreen", "Flow error: ${e.message}")
-          scope.launch { snackbarHostState.showSnackbar("Inference error: ${e.message}") }
+      try {
+        withTimeout(generateTimeoutMs + 30_000L) {
+          app.activeEngine.generateFlow(fp, maxTokens = maxGenTokens)
+            .catch { e ->
+              android.util.Log.e("ChatScreen", "Flow error: ${e.message}")
+            }
+            .onCompletion {
+              if (tokenCount == 0 && rawResponse.isEmpty()) return@onCompletion
+              val raw = rawResponse.toString()
+              if (raw.isNotEmpty()) {
+                val elapsed = (System.currentTimeMillis() - startTime) / 1000f
+                val tpsVal = if (elapsed > 0 && tokenCount > 0) tokenCount / elapsed else 0f
+                app.chatRepository.replaceMessage(
+                  sessionId, streamingIndex,
+                  ChatMessage(role = MessageRole.ASSISTANT, content = raw, tps = tpsVal, tokens = tokenCount, timestamp = placeholder.timestamp)
+                )
+              }
+            }
+            .collect { token ->
+              if (!inferenceActive) return@collect
+              rawResponse.append(token)
+              tokenCount++
+              app.chatRepository.replaceMessage(
+                sessionId, streamingIndex,
+                ChatMessage(role = MessageRole.ASSISTANT, content = rawResponse.toString(), tps = 0f, tokens = tokenCount, timestamp = placeholder.timestamp),
+                persist = false
+              )
+            }
         }
-        .onCompletion {
-          if (flowCompleted) return@onCompletion
-          flowCompleted = true
-          val raw = rawResponse.toString()
-          if (raw.isNotEmpty()) {
-            val elapsed = (System.currentTimeMillis() - startTime) / 1000f
-            val tpsVal = if (elapsed > 0 && tokenCount > 0) tokenCount / elapsed else 0f
-            app.chatRepository.replaceMessage(
-              sessionId, streamingIndex,
-              ChatMessage(role = MessageRole.ASSISTANT, content = raw, tps = tpsVal, tokens = tokenCount, timestamp = placeholder.timestamp)
-            )
-          } else {
-            app.chatRepository.deleteMessage(sessionId, streamingIndex)
-          }
-          inferenceActive = false
-          isInferring = false
-        }
-        .collect { token ->
-          if (!inferenceActive || flowCompleted) return@collect
-          if (System.currentTimeMillis() - startTime > generateTimeoutMs) {
-            app.activeEngine.stopGeneration()
-            scope.launch { snackbarHostState.showSnackbar("Generation timed out after 5 min") }
-            return@collect
-          }
-          rawResponse.append(token)
-          tokenCount++
-          app.chatRepository.replaceMessage(
-            sessionId, streamingIndex,
-            ChatMessage(role = MessageRole.ASSISTANT, content = rawResponse.toString(), tps = 0f, tokens = tokenCount, timestamp = placeholder.timestamp),
-            persist = false
-          )
-        }
-    }
-
-    scope.launch {
-      delay(generateTimeoutMs + 15_000L)
-      if (!flowCompleted) {
+      } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
         app.activeEngine.stopGeneration()
+      } finally {
+        if (rawResponse.isEmpty()) {
+          app.chatRepository.deleteMessage(sessionId, streamingIndex)
+        }
         inferenceActive = false
         isInferring = false
-        scope.launch { snackbarHostState.showSnackbar("Generation timed out") }
       }
     }
   }
