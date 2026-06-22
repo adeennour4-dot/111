@@ -33,9 +33,13 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           api-level: 34
-          ndk-version: r26d
           build-tools-version: 34.0.0
           cmdline-tools-version: latest
+
+      - name: Install NDK r27
+        run: |
+          echo "y" | $ANDROID_HOME/tools/bin/sdkmanager --install "ndk;27.0.12077973" --sdk_root=$ANDROID_HOME
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> $GITHUB_ENV
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -59,8 +63,6 @@ jobs:
         run: |
           cd rust_core
           ./build_android.sh
-        env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_ROOT || format('{0}/ndk/26.1.10909125', env.ANDROID_SDK_ROOT) }}
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug
