@@ -11,10 +11,6 @@ import android.net.Uri
 import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -85,6 +81,7 @@ import com.gguf.zerocopy.ui.theme.currentPalette
 import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
@@ -282,9 +279,11 @@ fun ChatScreen(
     isInferring = true
     val startTime = System.currentTimeMillis()
 
-    val historyMsgs = app.chatRepository.getMessages(sessionId).filter { it.role != MessageRole.SYSTEM }
+    val historyMsgs = app.chatRepository.getMessages(sessionId)
+      .filter { it.role != MessageRole.SYSTEM }
+      .let { msgs -> if (msgs.lastOrNull()?.role == MessageRole.USER) msgs.dropLast(1) else msgs }
 
-    val placeholder = ChatMessage(role = MessageRole.ASSISTANT, content = "", tps = 0f, tokens = 0, timestamp = System.currentTimeMillis() + 1)
+    val placeholder = ChatMessage(role = MessageRole.ASSISTANT, content = "", tps = 0f, tokens = 0, timestamp = System.currentTimeMillis())
     app.chatRepository.addMessage(sessionId, placeholder)
     val streamingIndex = app.chatRepository.currentMessages.value.size - 1
 
@@ -294,12 +293,15 @@ fun ChatScreen(
       val maxGenTokens = SettingsManager.maxTokens.coerceIn(64, 8192)
       val generateTimeoutMs = 300_000L
       var tokenCount = 0
+      var flowCompleted = false
       app.activeEngine.generateFlow(fp, maxTokens = maxGenTokens)
         .catch { e ->
           android.util.Log.e("ChatScreen", "Flow error: ${e.message}")
           scope.launch { snackbarHostState.showSnackbar("Inference error: ${e.message}") }
         }
         .onCompletion {
+          if (flowCompleted) return@onCompletion
+          flowCompleted = true
           val raw = rawResponse.toString()
           if (raw.isNotEmpty()) {
             val elapsed = (System.currentTimeMillis() - startTime) / 1000f
@@ -315,7 +317,7 @@ fun ChatScreen(
           isInferring = false
         }
         .collect { token ->
-          if (!inferenceActive) return@collect
+          if (!inferenceActive || flowCompleted) return@collect
           if (System.currentTimeMillis() - startTime > generateTimeoutMs) {
             app.activeEngine.stopGeneration()
             scope.launch { snackbarHostState.showSnackbar("Generation timed out after 5 min") }
@@ -329,6 +331,16 @@ fun ChatScreen(
             persist = false
           )
         }
+    }
+
+    scope.launch {
+      delay(generateTimeoutMs + 15_000L)
+      if (!flowCompleted) {
+        app.activeEngine.stopGeneration()
+        inferenceActive = false
+        isInferring = false
+        scope.launch { snackbarHostState.showSnackbar("Generation timed out") }
+      }
     }
   }
 
@@ -701,13 +713,8 @@ fun ChatScreen(
         ) {
           itemsIndexed(
             items = messages,
-            key = { index, _ -> "msg_$index" }
+            key = { _, msg -> "msg_${msg.timestamp}" }
           ) { idx, msg ->
-            AnimatedVisibility(
-              visible = true,
-              enter = fadeIn(animationSpec = tween(300)) +
-                slideInVertically(animationSpec = tween(300)) { it / 8 }
-            ) {
               val isStreamingMsg = isInferring &&
                 msg.role == MessageRole.ASSISTANT &&
                 idx == messages.size - 1
