@@ -538,9 +538,9 @@ Java_com_gguf_zerocopy_lib_NativeBridge_nativeGenerateStream(
 
     std::string full_prompt;
     if (!rag_context.empty()) {
-        full_prompt = g_state.system_prompt + rag_context + "\nUser: " + user_prompt + "\nAssistant:";
+        full_prompt = g_state.system_prompt + rag_context + user_prompt + "\nAssistant:";
     } else {
-        full_prompt = g_state.system_prompt + "\nUser: " + user_prompt + "\nAssistant:";
+        full_prompt = g_state.system_prompt + user_prompt + "\nAssistant:";
     }
 
     // ── Prompt Cache ──

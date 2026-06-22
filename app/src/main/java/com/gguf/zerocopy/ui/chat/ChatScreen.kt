@@ -264,6 +264,7 @@ fun ChatScreen(
     if (!app.activeEngine.isLoaded) {
       app.activeEngine.load(path = modelPath, config = SettingsManager.toEngineConfig())
     }
+    app.activeEngine.setSystemPrompt(SettingsManager.systemPrompt)
     val cacheDir = File(context.filesDir, "prompt_cache").also { it.mkdirs() }.absolutePath
     app.activeEngine.setCacheDir(cacheDir)
     app.activeEngine.setStreamingLLM(
@@ -351,6 +352,7 @@ fun ChatScreen(
       )
       SettingsManager.currentSessionId = s.id
       chatId = s.id
+      sessionLoaded = true
       onSessionChanged?.invoke(s.id)
       android.util.Log.d("ChatScreen", "New session created: ${s.id}")
       s.id
