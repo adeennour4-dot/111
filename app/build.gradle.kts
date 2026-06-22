@@ -22,9 +22,12 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    kotlin { jvmToolchain(17) }
 
     buildFeatures {
         compose = true
@@ -63,6 +66,8 @@ dependencies {
 
     implementation(project(":zerocopy-lib"))
     implementation(project(":mnn-lib"))
+
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     debugImplementation(libs.compose.ui.tooling)
 

@@ -512,15 +512,6 @@ fun ChatScreen(
     }
   }
 
-  LaunchedEffect(userSentCount) {
-    if (userSentCount > 0 && messages.isNotEmpty()) {
-      val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return@LaunchedEffect
-      if (lastVisible >= messages.size - 3) {
-        listState.animateScrollToItem(messages.size - 1)
-      }
-    }
-  }
-
   val sessions by app.chatRepository.sessions.collectAsState()
   val sessionName = remember(chatId, sessions) {
     if (chatId != null) {
