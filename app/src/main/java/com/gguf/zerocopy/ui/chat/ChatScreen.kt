@@ -284,9 +284,9 @@ fun ChatScreen(
 
     val historyMsgs = app.chatRepository.getMessages(sessionId).filter { it.role != MessageRole.SYSTEM }
 
-    val assistantMsg = ChatMessage(role = MessageRole.ASSISTANT, content = "", tps = 0f, tokens = 0)
-    app.chatRepository.addMessage(sessionId, assistantMsg)
-    val msgIndex = app.chatRepository.currentMessages.value.size - 1
+    val placeholder = ChatMessage(role = MessageRole.ASSISTANT, content = "", tps = 0f, tokens = 0, timestamp = System.currentTimeMillis() + 1)
+    app.chatRepository.addMessage(sessionId, placeholder)
+    val streamingIndex = app.chatRepository.currentMessages.value.size - 1
 
     scope.launch {
       val rawResponse = StringBuilder()
@@ -305,11 +305,11 @@ fun ChatScreen(
             val elapsed = (System.currentTimeMillis() - startTime) / 1000f
             val tpsVal = if (elapsed > 0 && tokenCount > 0) tokenCount / elapsed else 0f
             app.chatRepository.replaceMessage(
-              sessionId, msgIndex,
-              ChatMessage(role = MessageRole.ASSISTANT, content = raw, tps = tpsVal, tokens = tokenCount)
+              sessionId, streamingIndex,
+              ChatMessage(role = MessageRole.ASSISTANT, content = raw, tps = tpsVal, tokens = tokenCount, timestamp = placeholder.timestamp)
             )
           } else {
-            app.chatRepository.deleteMessage(sessionId, msgIndex)
+            app.chatRepository.deleteMessage(sessionId, streamingIndex)
           }
           inferenceActive = false
           isInferring = false
@@ -324,8 +324,8 @@ fun ChatScreen(
           rawResponse.append(token)
           tokenCount++
           app.chatRepository.replaceMessage(
-            sessionId, msgIndex,
-            ChatMessage(role = MessageRole.ASSISTANT, content = rawResponse.toString(), tps = 0f, tokens = tokenCount),
+            sessionId, streamingIndex,
+            ChatMessage(role = MessageRole.ASSISTANT, content = rawResponse.toString(), tps = 0f, tokens = tokenCount, timestamp = placeholder.timestamp),
             persist = false
           )
         }
@@ -701,7 +701,7 @@ fun ChatScreen(
         ) {
           itemsIndexed(
             items = messages,
-            key = { index, msg -> "msg_${msg.timestamp}" }
+            key = { index, _ -> "msg_$index" }
           ) { idx, msg ->
             AnimatedVisibility(
               visible = true,
@@ -754,8 +754,6 @@ fun ChatScreen(
               )
             }
           }
-
-
         }
       }
     }
