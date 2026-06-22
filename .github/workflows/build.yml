@@ -53,7 +53,7 @@ jobs:
           workspaces: rust_core
 
       - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+        run: chmod +x gradlew && chmod +x rust_core/build_android.sh
 
       - name: Build Rust core for Android
         run: |
