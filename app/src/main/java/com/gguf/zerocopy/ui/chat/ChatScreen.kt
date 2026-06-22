@@ -749,7 +749,6 @@ fun ChatScreen(
                   { handleRegenerate(idx - 1) }
                 } else null
               )
-            }
           }
         }
       }
