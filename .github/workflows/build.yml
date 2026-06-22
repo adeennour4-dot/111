@@ -38,7 +38,10 @@ jobs:
 
       - name: Install NDK r27
         run: |
-          echo "y" | $ANDROID_HOME/tools/bin/sdkmanager --install "ndk;27.0.12077973" --sdk_root=$ANDROID_HOME
+          curl -sLo /tmp/ndk.zip https://dl.google.com/android/repository/android-ndk-r27-linux.zip
+          unzip -q /tmp/ndk.zip -d /tmp/
+          mkdir -p $ANDROID_HOME/ndk
+          mv /tmp/android-ndk-r27 $ANDROID_HOME/ndk/27.0.12077973
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> $GITHUB_ENV
 
       - name: Set up Rust
