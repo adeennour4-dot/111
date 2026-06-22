@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -74,6 +75,7 @@ fun ChatBubble(
   showThinking: Boolean = false,
   onToggleThinking: () -> Unit = {},
   onCopy: () -> Unit = {},
+  onEdit: (() -> Unit)? = null,
   onDelete: () -> Unit = {},
   onRegenerate: (() -> Unit)? = null
 ) {
@@ -197,6 +199,30 @@ fun ChatBubble(
                 modifier = Modifier.size(13.dp)
               )
             }
+          }
+          if (onEdit != null) {
+            IconButton(
+              onClick = onEdit,
+              modifier = Modifier.size(20.dp)
+            ) {
+              Icon(
+                Icons.Filled.Edit,
+                contentDescription = "Edit",
+                tint = colors.Text3.copy(alpha = 0.6f),
+                modifier = Modifier.size(13.dp)
+              )
+            }
+          }
+          IconButton(
+            onClick = onCopy,
+            modifier = Modifier.size(20.dp)
+          ) {
+            Icon(
+              Icons.Outlined.ContentCopy,
+              contentDescription = "Copy",
+              tint = colors.Text3.copy(alpha = 0.6f),
+              modifier = Modifier.size(13.dp)
+            )
           }
           Spacer(Modifier.weight(1f))
           if (onRegenerate != null) {

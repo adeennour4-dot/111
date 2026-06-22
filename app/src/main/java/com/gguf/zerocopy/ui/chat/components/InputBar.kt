@@ -40,6 +40,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,11 +74,15 @@ fun InputBar(
   onToggleReasoning: () -> Unit,
   ragEnabled: Boolean = false,
   onToggleRag: () -> Unit = {},
-  ragDocCount: Int = 0
+  ragDocCount: Int = 0,
+  editText: String? = null
 ) {
   val colors = currentPalette()
   val context = LocalContext.current
   var prompt by remember { mutableStateOf("") }
+  LaunchedEffect(editText) {
+    if (editText != null) prompt = editText
+  }
   val hasAttachments = attachmentUris.isNotEmpty()
   val sendScale by animateFloatAsState(
     targetValue = if (prompt.isNotBlank()) 1f else 0.92f,

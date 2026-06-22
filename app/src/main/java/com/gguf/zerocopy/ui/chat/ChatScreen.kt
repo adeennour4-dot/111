@@ -134,6 +134,7 @@ fun ChatScreen(
   var showExportDialog by remember { mutableStateOf(false) }
   var showRagDialog by remember { mutableStateOf(false) }
   var deleteMsgIndex by remember { mutableIntStateOf(-1) }
+  var editMsgIndex by remember { mutableIntStateOf(-1) }
   var userSentCount by remember { mutableIntStateOf(0) }
   var isVoiceListening by remember { mutableStateOf(false) }
   var speakingMessageTimestamp by remember { mutableStateOf(0L) }
@@ -393,6 +394,16 @@ fun ChatScreen(
       if (text.isNotEmpty()) "$text$pdfContent" else "Please analyze this PDF document:$pdfContent"
     } else text
 
+    if (editMsgIndex >= 0) {
+      val idx = editMsgIndex
+      editMsgIndex = -1
+      val allMsgs = app.chatRepository.currentMessages.value
+      if (idx + 1 < allMsgs.size && allMsgs[idx + 1].role == MessageRole.ASSISTANT) {
+        app.chatRepository.deleteMessage(id, idx + 1)
+      }
+      app.chatRepository.deleteMessage(id, idx)
+    }
+
     val userMsg = ChatMessage(
       role = MessageRole.USER,
       content = finalPrompt,
@@ -428,7 +439,7 @@ fun ChatScreen(
 
   fun handleRegenerate(userMsgIndex: Int) {
     val id = chatId ?: return
-    val allMsgs = app.chatRepository.getMessages(id)
+    val allMsgs = app.chatRepository.currentMessages.value
     val userMsg = allMsgs.getOrNull(userMsgIndex) ?: return
     app.chatRepository.deleteMessage(id, userMsgIndex + 1)
     sendMessage(userMsg.content, emptyList<Uri>(), emptyList<String>())
@@ -605,7 +616,8 @@ fun ChatScreen(
           },
           ragEnabled = ragEnabled,
           onToggleRag = { showRagDialog = true },
-          ragDocCount = app.activeEngine.numDocuments
+          ragDocCount = app.activeEngine.numDocuments,
+          editText = if (editMsgIndex >= 0) messages.getOrNull(editMsgIndex)?.content else null
         )
       }
     },
@@ -735,6 +747,9 @@ fun ChatScreen(
                 } else null,
                 thinkingContent = thinking,
                 onCopy = { copyToClipboard(display) },
+                onEdit = if (msg.role == MessageRole.USER) {
+                  { editMsgIndex = idx }
+                } else null,
                 onDelete = { deleteMsgIndex = idx },
                 onRegenerate = if (canRegenerate) {
                   { handleRegenerate(idx - 1) }
