@@ -5,9 +5,6 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.concurrent.locks.ReentrantReadWriteLock
-import kotlin.concurrent.read
-import kotlin.concurrent.write
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
@@ -47,34 +44,31 @@ class ChatRepository(private val context: Context) {
     private set
   private val _currentMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
   val currentMessages = _currentMessages.asStateFlow()
-  private val lock = ReentrantReadWriteLock()
 
   init {
     loadSessions()
   }
 
   private fun loadSessions() {
-    lock.read {
-      _sessions.value =
-        (sessionsDir.listFiles() ?: emptyArray())
-          .filter { it.name.endsWith("_meta.json") }
-          .mapNotNull { file ->
-            try {
-              val j = JSONObject(file.readText())
-              ChatSession(
-                id = j.getString("id"),
-                name = j.getString("name"),
-                createdAt = j.getLong("createdAt"),
-                lastMessageAt = j.getLong("lastMessageAt"),
-                messageCount = j.optInt("messageCount", 0),
-                modelPath = j.optString("modelPath", ""),
-                modelName = j.optString("modelName", "")
-              )
-            } catch (_: Exception) {
-              null
-            }
-          }.sortedByDescending { it.lastMessageAt }
-    }
+    _sessions.value =
+      (sessionsDir.listFiles() ?: emptyArray())
+        .filter { it.name.endsWith("_meta.json") }
+        .mapNotNull { file ->
+          try {
+            val j = JSONObject(file.readText())
+            ChatSession(
+              id = j.getString("id"),
+              name = j.getString("name"),
+              createdAt = j.getLong("createdAt"),
+              lastMessageAt = j.getLong("lastMessageAt"),
+              messageCount = j.optInt("messageCount", 0),
+              modelPath = j.optString("modelPath", ""),
+              modelName = j.optString("modelName", "")
+            )
+          } catch (_: Exception) {
+            null
+          }
+        }.sortedByDescending { it.lastMessageAt }
   }
 
   fun createSession(
@@ -98,87 +92,70 @@ class ChatRepository(private val context: Context) {
   }
 
   fun selectSession(id: String) {
-    android.util.Log.d("ChatRepository", "selectSession called with id: $id")
+    android.util.Log.d("ChatRepository", "selectSession: $id")
     currentSessionId = id
     _currentSessionId.value = id
-    val messages = getMessages(id)
-    android.util.Log.d("ChatRepository", "Loaded ${messages.size} messages for session: $id")
-    _currentMessages.value = messages
+    _currentMessages.value = getMessages(id)
   }
 
   fun getMessages(sessionId: String): List<ChatMessage> {
     val file = File(sessionsDir, "${sessionId}_messages.json")
     if (!file.exists()) return emptyList()
-    return lock.read {
-      try {
-        val arr = JSONArray(file.readText())
-        (0 until arr.length()).map { i ->
-          val obj = arr.getJSONObject(i)
-          ChatMessage(
-            role = MessageRole.valueOf(obj.getString("role").uppercase()),
-            content = obj.getString("content"),
-            timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
-            tps = obj.optDouble("tps", 0.0).toFloat(),
-            tokens = obj.optInt("tokens", 0),
-            attachmentPath = obj.optString("attachment", null).takeIf {
-              it != "null" && it.isNotEmpty()
-            },
-            attachmentType =
-            obj
-              .optString(
-                "attachmentType",
-                null
-              ).takeIf { it != "null" && it.isNotEmpty() }
-              ?.let { AttachmentType.valueOf(it) }
-          )
-        }
-      } catch (_: Exception) {
-        emptyList()
+    return try {
+      val arr = JSONArray(file.readText())
+      (0 until arr.length()).map { i ->
+        val obj = arr.getJSONObject(i)
+        ChatMessage(
+          role = MessageRole.valueOf(obj.getString("role").uppercase()),
+          content = obj.getString("content"),
+          timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+          tps = obj.optDouble("tps", 0.0).toFloat(),
+          tokens = obj.optInt("tokens", 0),
+          attachmentPath = obj.optString("attachment", null).takeIf {
+            it != "null" && it.isNotEmpty()
+          },
+          attachmentType =
+          obj
+            .optString(
+              "attachmentType",
+              null
+            ).takeIf { it != "null" && it.isNotEmpty() }
+            ?.let { AttachmentType.valueOf(it) }
+        )
       }
+    } catch (_: Exception) {
+      emptyList()
     }
   }
 
   fun replaceMessage(sessionId: String, index: Int, message: ChatMessage, persist: Boolean = true) {
-    lock.write {
-      val messages = if (persist) {
-        getMessages(sessionId).toMutableList()
-      } else {
-        _currentMessages.value.toMutableList()
-      }
+    if (sessionId != currentSessionId) {
+      val messages = getMessages(sessionId).toMutableList()
       if (index < 0 || index >= messages.size) return
       messages[index] = message
-      if (persist) atomicWrite(sessionId, messages)
-      if (sessionId == currentSessionId) {
-        _currentMessages.value = messages
-      }
+      atomicWrite(sessionId, messages)
+      return
     }
+    val list = _currentMessages.value.toMutableList()
+    if (index < 0 || index >= list.size) return
+    list[index] = message
+    _currentMessages.value = list
+    if (persist) atomicWrite(sessionId, list)
   }
 
   fun addMessage(sessionId: String, message: ChatMessage) {
     android.util.Log.d("ChatRepository", "addMessage to session: $sessionId, role: ${message.role}")
-    lock.write {
+    if (sessionId != currentSessionId) {
       val messages = getMessages(sessionId).toMutableList()
       messages.add(message)
       atomicWrite(sessionId, messages)
-      val metaFile = File(sessionsDir, "${sessionId}_meta.json")
-      if (metaFile.exists()) {
-        try {
-          val j = JSONObject(metaFile.readText())
-          j.put("lastMessageAt", message.timestamp)
-          j.put("messageCount", messages.size)
-          metaFile.writeText(j.toString())
-        } catch (_: Exception) {
-        }
-      }
-      if (sessionId == currentSessionId) {
-        android.util.Log.d("ChatRepository", "Updating currentMessages, count: ${messages.size}")
-        _currentMessages.value = messages
-      }
-      _sessions.value = _sessions.value.map {
-        if (it.id == sessionId) it.copy(lastMessageAt = message.timestamp, messageCount = messages.size)
-        else it
-      }.sortedByDescending { it.lastMessageAt }
+      updateSessionMeta(sessionId, message.timestamp, messages.size)
+      return
     }
+    val updated = _currentMessages.value + message
+    _currentMessages.value = updated
+    atomicWrite(sessionId, updated)
+    updateSessionMeta(sessionId, message.timestamp, updated.size)
   }
 
   fun renameSession(sessionId: String, name: String) {
@@ -210,24 +187,21 @@ class ChatRepository(private val context: Context) {
     }
   }
 
-  // Force refresh sessions list (call this when UI needs updated session info)
   fun refreshSessions() {
     loadSessions()
   }
 
   fun deleteSession(sessionId: String) {
-    lock.write {
-      val msgs = getMessages(sessionId)
-      msgs.forEach { msg ->
-        msg.attachmentPath?.let { File(it).delete() }
-      }
-      File(sessionsDir, "${sessionId}_meta.json").delete()
-      File(sessionsDir, "${sessionId}_messages.json").delete()
-      if (currentSessionId == sessionId) {
-        currentSessionId = null
-        _currentSessionId.value = null
-        _currentMessages.value = emptyList()
-      }
+    val msgs = getMessages(sessionId)
+    msgs.forEach { msg ->
+      msg.attachmentPath?.let { File(it).delete() }
+    }
+    File(sessionsDir, "${sessionId}_meta.json").delete()
+    File(sessionsDir, "${sessionId}_messages.json").delete()
+    if (currentSessionId == sessionId) {
+      currentSessionId = null
+      _currentSessionId.value = null
+      _currentMessages.value = emptyList()
     }
     loadSessions()
   }
@@ -236,15 +210,20 @@ class ChatRepository(private val context: Context) {
     File(sessionsDir, "${sessionId}_meta.json").exists()
 
   fun deleteMessage(sessionId: String, index: Int) {
-    lock.write {
+    if (sessionId != currentSessionId) {
       val messages = getMessages(sessionId).toMutableList()
       if (index < 0 || index >= messages.size) return
       messages[index].attachmentPath?.let { File(it).delete() }
       messages.removeAt(index)
       atomicWrite(sessionId, messages)
-      if (sessionId == currentSessionId) _currentMessages.value = messages
+      return
     }
-    // Don't call loadSessions() here - it causes unnecessary recomposition
+    val list = _currentMessages.value.toMutableList()
+    if (index < 0 || index >= list.size) return
+    list[index].attachmentPath?.let { File(it).delete() }
+    list.removeAt(index)
+    _currentMessages.value = list
+    atomicWrite(sessionId, list)
   }
 
   fun importSession(jsonContent: String): ChatSession? {
@@ -311,6 +290,22 @@ class ChatRepository(private val context: Context) {
     val tmp = File(sessionsDir, "${sessionId}_messages.json.tmp")
     tmp.writeText(json.toString())
     tmp.renameTo(file)
+  }
+
+  private fun updateSessionMeta(sessionId: String, timestamp: Long, messageCount: Int) {
+    val file = File(sessionsDir, "${sessionId}_meta.json")
+    if (file.exists()) {
+      try {
+        val j = JSONObject(file.readText())
+        j.put("lastMessageAt", timestamp)
+        j.put("messageCount", messageCount)
+        file.writeText(j.toString())
+      } catch (_: Exception) {}
+    }
+    _sessions.value = _sessions.value.map {
+      if (it.id == sessionId) it.copy(lastMessageAt = timestamp, messageCount = messageCount)
+      else it
+    }.sortedByDescending { it.lastMessageAt }
   }
 
   private fun saveSessionMeta(session: ChatSession) {

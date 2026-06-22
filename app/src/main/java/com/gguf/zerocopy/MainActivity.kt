@@ -112,12 +112,10 @@ fun AppRoot() {
   var showSessionList by remember { mutableStateOf(false) }
   var pendingModelSwitch by remember { mutableStateOf<Pair<String, String>?>(null) }
 
-  // Restore last session on startup
   LaunchedEffect(Unit) {
     val lastSessionId = SettingsManager.currentSessionId
     if (lastSessionId.isNotEmpty() && app.chatRepository.sessionExists(lastSessionId)) {
       currentSessionId = lastSessionId
-      app.chatRepository.selectSession(lastSessionId)
     }
   }
 
@@ -165,7 +163,6 @@ fun AppRoot() {
                 currentSessionId = session.id
                 SettingsManager.currentSessionId = session.id
                 if (session.modelPath.isNotEmpty()) { loadedModelPath = session.modelPath; loadedModelName = session.modelName }
-                app.chatRepository.selectSession(session.id)
                 showSessionList = false
               },
               onBack = { showSessionList = false }

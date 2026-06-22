@@ -111,23 +111,21 @@ fun ChatScreen(
 
   val hasVision = app.activeEngine.hasVision
 
-  var chatId by remember { mutableStateOf(sessionId) }
+  var chatId by remember { mutableStateOf<String?>(null) }
+  var sessionLoaded by remember { mutableStateOf(false) }
 
   LaunchedEffect(sessionId) {
-    if (sessionId != null && sessionId != chatId) {
-      chatId = sessionId
-    }
-    if (chatId == null) {
+    val targetId = sessionId ?: run {
       val saved = SettingsManager.currentSessionId
-      if (saved.isNotEmpty() && app.chatRepository.sessionExists(saved)) {
-        chatId = saved
-      }
+      if (saved.isNotEmpty() && app.chatRepository.sessionExists(saved)) saved else null
     }
-    chatId?.let {
-      app.chatRepository.selectSession(it)
-      SettingsManager.currentSessionId = it
-      onSessionChanged?.invoke(it)
-    }
+    if (targetId == null) return@LaunchedEffect
+    if (sessionLoaded && targetId == chatId) return@LaunchedEffect
+    sessionLoaded = true
+    chatId = targetId
+    app.chatRepository.selectSession(targetId)
+    SettingsManager.currentSessionId = targetId
+    onSessionChanged?.invoke(targetId)
   }
 
   val messages by app.chatRepository.currentMessages.collectAsState()
@@ -289,7 +287,7 @@ fun ChatScreen(
     val startTime = System.currentTimeMillis()
     val generateTimeoutMs = 300_000L
 
-    val historyMsgs = app.chatRepository.getMessages(sessionId)
+    val historyMsgs = app.chatRepository.currentMessages.value
       .filter { it.role != MessageRole.SYSTEM }
       .let { msgs -> if (msgs.lastOrNull()?.role == MessageRole.USER) msgs.dropLast(1) else msgs }
 
