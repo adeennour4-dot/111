@@ -156,6 +156,8 @@ fun AppRoot() {
               onSessionSelected = { session ->
                 // Reset inference engine context so previous session's KV cache doesn't bleed
                 app.engineManager.getActiveEngine()?.resetContext()
+                // Clear RAG document store from previous session
+                app.ragEngine.clear()
                 currentSessionId = session.id
                 SettingsManager.currentSessionId = session.id
                 if (session.modelPath.isNotEmpty()) { loadedModelPath = session.modelPath; loadedModelName = session.modelName }

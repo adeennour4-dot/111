@@ -63,7 +63,7 @@ import com.gguf.zerocopy.data.repository.AttachmentType
 import com.gguf.zerocopy.data.repository.ChatMessage
 import com.gguf.zerocopy.data.repository.MessageRole
 import com.gguf.zerocopy.domain.inference.TokenCallback
-import com.gguf.zerocopy.domain.ocr.PdfTextExtractor
+import com.gguf.zerocopy.domain.rag.RagEngine
 import com.gguf.zerocopy.ui.chat.components.ChatBubble
 import com.gguf.zerocopy.ui.chat.components.DeleteConfirmDialog
 import com.gguf.zerocopy.ui.chat.components.ExportSessionDialog
@@ -217,92 +217,92 @@ fun ChatScreen(
   fun sendMessage(text: String, uris: List<Uri>, names: List<String>) {
     android.util.Log.d("ChatScreen", "sendMessage called with chatId: $chatId")
     val id = chatId ?: run {
-      android.util.Log.d("ChatScreen", "Creating new session")
-      val s = app.chatRepository.createSession(
-        modelPath = modelPath,
-        modelName = modelName
-      )
+      val s = app.chatRepository.createSession(modelPath = modelPath, modelName = modelName)
       SettingsManager.currentSessionId = s.id
       chatId = s.id
-      android.util.Log.d("ChatScreen", "New session created: ${s.id}")
       s.id
     }
 
-    val savedPaths = mutableListOf<String>()
-    var attachType: AttachmentType? = null
-    var extractedPdfText = ""
-    val pdfExtractor = PdfTextExtractor(context)
-
-    uris.forEach { uri ->
-      val mime = context.contentResolver.getType(uri) ?: ""
-      when {
-        mime.startsWith("image/") -> {
-          // First save for vision inference, then also attempt OCR for RAG context
-          saveAttachmentToStorage(uri)?.let { path ->
-            savedPaths.add(path)
-            if (attachType == null) attachType = AttachmentType.IMAGE
-            // OCR the image so its text content is available as RAG context
-            val imgText = pdfExtractor.extractText(uri)
-            if (!imgText.isNullOrBlank()) {
-              extractedPdfText += if (extractedPdfText.isEmpty()) imgText
-                                  else "\n\n$imgText"
-            }
-          }
-        }
-        mime == "application/pdf" -> {
-          // Extract text from PDF
-          val pdfText = pdfExtractor.extractText(uri)
-          if (pdfText != null) {
-            extractedPdfText = pdfText
-            if (attachType == null) attachType = AttachmentType.DOCUMENT
-          }
-        }
-        else -> {
-          if (attachType == null) {
-            attachType = when {
-              mime.startsWith("audio/") -> AttachmentType.AUDIO
-              else -> AttachmentType.DOCUMENT
-            }
-          }
-        }
-      }
-    }
-
-    // Build final prompt with extracted PDF text
-    val finalPrompt = if (extractedPdfText.isNotEmpty()) {
-      val pdfContent = "\n\n[Extracted PDF Content]\n$extractedPdfText"
-      if (text.isNotEmpty()) "$text$pdfContent" else "Please analyze this PDF document:$pdfContent"
-    } else {
-      text
-    }
-
-    val userMsg = ChatMessage(
-      role = MessageRole.USER,
-      content = finalPrompt,
-      attachmentPath = savedPaths.firstOrNull(),
-      attachmentType = attachType
-    )
-    android.util.Log.d("ChatScreen", "Adding user message to session: $id")
-    app.chatRepository.addMessage(id, userMsg)
-
     val activeEngine = engine
     if (activeEngine?.isModelLoaded != true) {
-      android.util.Log.w("ChatScreen", "No model loaded")
       scope.launch { snackbarHostState.showSnackbar("No model loaded") }
       return
     }
 
-    android.util.Log.d("ChatScreen", "Starting inference, model loaded: ${activeEngine.isModelLoaded}")
     inferenceActive = true
+    isInferring = true
+    streamedContent = ""
+    streamedTokens = 0
+    streamedTps = 0f
 
     scope.launch {
-      isInferring = true
-      streamedContent = ""
-      streamedTokens = 0
-      streamedTps = 0f
-      val startTime = System.currentTimeMillis()
+      // ── 1. Process attachments on IO thread ──────────────────────────────
+      val savedPaths   = mutableListOf<String>()
+      var attachType: AttachmentType? = null
+      val ragEngine    = app.ragEngine
+      var ragContext   = ""
+
+      if (uris.isNotEmpty()) {
+        withContext(Dispatchers.IO) {
+          uris.forEach { uri ->
+            val mime = context.contentResolver.getType(uri) ?: ""
+            when {
+              mime.startsWith("image/") -> {
+                // Save for vision; also ingest into RAG for OCR text
+                saveAttachmentToStorage(uri)?.let { path ->
+                  savedPaths.add(path)
+                  if (attachType == null) attachType = AttachmentType.IMAGE
+                }
+                ragEngine.ingest(uri, context) // adds OCR text to chunk store
+              }
+              mime == "application/pdf" -> {
+                ragEngine.ingest(uri, context)
+                if (attachType == null) attachType = AttachmentType.DOCUMENT
+              }
+              mime.startsWith("text/") -> {
+                ragEngine.ingest(uri, context)
+                if (attachType == null) attachType = AttachmentType.DOCUMENT
+              }
+              mime.startsWith("audio/") -> {
+                if (attachType == null) attachType = AttachmentType.AUDIO
+              }
+              else -> {
+                if (attachType == null) attachType = AttachmentType.DOCUMENT
+              }
+            }
+          }
+        }
+      }
+
+      // ── 2. RAG retrieval: fetch relevant chunks for user query ────────────
+      if (ragEngine.hasDocuments) {
+        withContext(Dispatchers.IO) {
+          ragContext = ragEngine.retrieve(text)
+        }
+      }
+
+      // ── 3. Build final prompt ─────────────────────────────────────────────
+      val finalPrompt = buildString {
+        append(text)
+        if (ragContext.isNotEmpty()) {
+          appendLine()
+          appendLine()
+          append(ragContext)
+        }
+      }
+
+      // ── 4. Save user message ──────────────────────────────────────────────
+      val userMsg = ChatMessage(
+        role           = MessageRole.USER,
+        content        = if (ragContext.isEmpty()) text else finalPrompt,
+        attachmentPath = savedPaths.firstOrNull(),
+        attachmentType = attachType
+      )
+      app.chatRepository.addMessage(id, userMsg)
+
+      // ── 5. Run inference ──────────────────────────────────────────────────
+      val startTime   = System.currentTimeMillis()
       val rawResponse = StringBuilder()
-      // Capture chatId at the time of inference to avoid race conditions
       val currentChatId = id
 
       val callback = object : TokenCallback {
@@ -313,61 +313,41 @@ fun ChatScreen(
           streamedTokens++
           val elapsed = (System.currentTimeMillis() - startTime) / 1000f
           if (elapsed > 0) streamedTps = streamedTokens / elapsed
-          android.util.Log.d("ChatScreen", "onToken: ${token.take(30)}... (total: $streamedTokens)")
         }
-
         override fun onDone() {
-          android.util.Log.d("ChatScreen", "onDone called, rawResponse length: ${rawResponse.length}")
           if (!inferenceActive) return
           val elapsed = (System.currentTimeMillis() - startTime) / 1000f
-          val tpsVal = if (elapsed > 0) streamedTokens / elapsed else 0f
+          val tpsVal  = if (elapsed > 0) streamedTokens / elapsed else 0f
           val raw = rawResponse.toString()
           if (raw.isNotEmpty()) {
-            android.util.Log.d("ChatScreen", "Saving assistant response to session: $currentChatId")
             app.chatRepository.addMessage(
               currentChatId,
-              ChatMessage(
-                role = MessageRole.ASSISTANT,
-                content = raw,
-                tps = tpsVal,
-                tokens = streamedTokens
-              )
+              ChatMessage(role = MessageRole.ASSISTANT, content = raw, tps = tpsVal, tokens = streamedTokens)
             )
-          } else {
-            android.util.Log.w("ChatScreen", "Empty response from model")
           }
-          streamedContent = ""
-          inferenceActive = false
-          isInferring = false
+          streamedContent  = ""
+          inferenceActive  = false
+          isInferring      = false
         }
-
         override fun onError(error: String) {
-          android.util.Log.e("ChatScreen", "Inference error: $error")
           if (!inferenceActive) return
           inferenceActive = false
-          isInferring = false
+          isInferring     = false
           streamedContent = ""
           scope.launch { snackbarHostState.showSnackbar("Inference error: $error") }
         }
-
         override fun onKvUsage(percent: Int) {}
-
-        override fun onTokensGenerated(count: Int) {
-          streamedTokens = count
-        }
+        override fun onTokensGenerated(count: Int) { streamedTokens = count }
       }
 
       try {
         withContext(Dispatchers.IO) {
-          android.util.Log.d("ChatScreen", "Restoring history for session: $currentChatId")
-          val allHistoryMsgs = app.chatRepository.getMessages(currentChatId)
-          android.util.Log.d("ChatScreen", "History messages count: ${allHistoryMsgs.size}")
-          val historyMsgs = allHistoryMsgs.dropLast(1).map { msg ->
+          val allHistory = app.chatRepository.getMessages(currentChatId)
+          val historyPairs = allHistory.dropLast(1).map { msg ->
             msg.role.name.lowercase() to msg.content
           }
-          activeEngine.restoreHistory(historyMsgs)
+          activeEngine.restoreHistory(historyPairs)
           val prompt = buildConversationPrompt(finalPrompt, reasoningEnabled)
-          android.util.Log.d("ChatScreen", "Executing inference with prompt length: ${prompt.length}")
           if (savedPaths.isNotEmpty() && activeEngine.hasVisionCapability) {
             activeEngine.executeInferenceWithImage(prompt, savedPaths.first(), callback)
           } else {
@@ -378,13 +358,12 @@ fun ChatScreen(
         android.util.Log.e("ChatScreen", "Exception during inference: ${e.message}")
         if (inferenceActive) {
           inferenceActive = false
-          isInferring = false
+          isInferring     = false
           streamedContent = ""
         }
       }
     }
   }
-
   fun stopInference() {
     inferenceActive = false
     isInferring = false
