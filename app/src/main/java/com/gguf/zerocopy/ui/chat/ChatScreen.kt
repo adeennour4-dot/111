@@ -106,12 +106,10 @@ fun ChatScreen(
   
   // Initialize chatId from sessionId parameter only once
   LaunchedEffect(sessionId) {
-    if (sessionId != null && sessionId != chatId) {
+    if (sessionId != null) {
       chatId = sessionId
-    }
-    chatId?.let {
-      app.chatRepository.selectSession(it)
-      SettingsManager.currentSessionId = it
+      app.chatRepository.selectSession(sessionId)
+      SettingsManager.currentSessionId = sessionId
     }
   }
 
@@ -239,9 +237,16 @@ fun ChatScreen(
       val mime = context.contentResolver.getType(uri) ?: ""
       when {
         mime.startsWith("image/") -> {
+          // First save for vision inference, then also attempt OCR for RAG context
           saveAttachmentToStorage(uri)?.let { path ->
             savedPaths.add(path)
             if (attachType == null) attachType = AttachmentType.IMAGE
+            // OCR the image so its text content is available as RAG context
+            val imgText = pdfExtractor.extractText(uri)
+            if (!imgText.isNullOrBlank()) {
+              extractedPdfText += if (extractedPdfText.isEmpty()) imgText
+                                  else "\n\n$imgText"
+            }
           }
         }
         mime == "application/pdf" -> {

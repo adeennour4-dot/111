@@ -69,7 +69,20 @@ interface InferenceEngine {
   var mmprojPath: String
   val loadedModelPath: String?
   val hasVisionCapability: Boolean
-    get() = modelInfo?.isVisionModel == true || mmprojPath.isNotEmpty()
+    get() {
+      if (modelInfo?.isVisionModel == true || mmprojPath.isNotEmpty()) return true
+      // .litertlm multimodal models expose vision through the LiteRT-LM engine;
+      // detect by common name patterns since arch metadata may not be populated
+      val path = loadedModelPath?.lowercase() ?: return false
+      return path.contains("vision") || path.contains("vl") ||
+        path.contains("multimodal") || path.contains("mmproj") ||
+        path.contains("llava") || path.contains("clip") ||
+        path.contains("gemma3") || path.contains("paligemma") ||
+        path.contains("qwen2-vl") || path.contains("internvl") ||
+        path.contains("phi-4-v") || path.contains("phi-3-v") ||
+        path.contains("minicpm-v") || path.contains("smolvlm") ||
+        path.contains("img") || path.contains("image")
+    }
 
   suspend fun loadModel(path: String): Result<Unit>
 

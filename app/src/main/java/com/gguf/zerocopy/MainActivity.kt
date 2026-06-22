@@ -154,6 +154,8 @@ fun AppRoot() {
           if (showSessionList) {
             SessionListScreen(
               onSessionSelected = { session ->
+                // Reset inference engine context so previous session's KV cache doesn't bleed
+                app.engineManager.getActiveEngine()?.resetContext()
                 currentSessionId = session.id
                 SettingsManager.currentSessionId = session.id
                 if (session.modelPath.isNotEmpty()) { loadedModelPath = session.modelPath; loadedModelName = session.modelName }
@@ -175,7 +177,7 @@ fun AppRoot() {
                 } else currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
               },
               onSettings = { selectedTab = 3 },
-              onSessions = { showSessionList = true },
+              onSessions = { app.chatRepository.refreshSessions(); showSessionList = true },
               onCloud = { selectedTab = 2 }
             )
           }

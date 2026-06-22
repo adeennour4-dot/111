@@ -81,6 +81,8 @@ dependencies {
 
     debugImplementation(libs.compose.ui.tooling)
 
+    implementation(libs.mlkit.text.recognition)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.core)
 }

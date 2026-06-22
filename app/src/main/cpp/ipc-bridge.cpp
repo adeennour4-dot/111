@@ -184,19 +184,28 @@ static std::string build_chat_prompt() {
 
 // Stop sequences — chat template markers that signal the model is starting
 // a new turn (should stop generation and truncate at this point).
+// IMPORTANT: <|im_end|> MUST be here so generation stops immediately at the
+// end-of-assistant-turn token; without it the model continues and generates
+// a spurious follow-up Q&A pair.
 static const std::vector<std::string> g_stop_sequences = {
+    "<|im_end|>",
+    "<|im_start|>",
     "\n<|im_start|>user",
     "\n<|im_start|>assistant",
     "\n<|im_start|>system",
+    "<|end_of_turn|>",
+    "<|eot_id|>",
+    "<|end|>",
     "\n<start_of_turn>user",
     "\n<start_of_turn>model",
     "\n<start_of_turn>assistant",
     "\n<|user|>",
     "\n<|assistant|>",
-    "<|end|>",
     "<end>",
     "</s>",
     "<im_end>",
+    "[/INST]",
+    "<|EOT|>",
 };
 
 // Patterns to strip from generated output before saving
