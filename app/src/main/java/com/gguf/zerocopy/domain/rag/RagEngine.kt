@@ -39,11 +39,12 @@ class RagEngine(context: Context) {
 
     private val chunks      = mutableListOf<Chunk>()
     private val sourceNames = mutableListOf<String>()
+    private val lock        = Any()
 
-    val hasDocuments: Boolean    get() = chunks.isNotEmpty()
-    val documentNames: List<String> get() = sourceNames.toList()
+    val hasDocuments: Boolean    get() = synchronized(lock) { chunks.isNotEmpty() }
+    val documentNames: List<String> get() = synchronized(lock) { sourceNames.toList() }
 
-    fun clear() { chunks.clear(); sourceNames.clear() }
+    fun clear() { synchronized(lock) { chunks.clear(); sourceNames.clear() } }
 
     // ── Ingestion ─────────────────────────────────────────────────────────────
 
@@ -66,7 +67,6 @@ class RagEngine(context: Context) {
         val text = ocr.extractText(uri)
             ?: return IngestResult.Failed("PDF text extraction failed")
         addChunks(text, name)
-        if (name !in sourceNames) sourceNames.add(name)
         return IngestResult.Success(text, name)
     }
 
@@ -74,10 +74,8 @@ class RagEngine(context: Context) {
         val text = ocr.extractText(uri)
         return if (!text.isNullOrBlank()) {
             addChunks(text, name)
-            if (name !in sourceNames) sourceNames.add(name)
             IngestResult.Success(text, name)
         } else {
-            // Image with no readable text (e.g. photo) — still usable for vision
             IngestResult.ImageNoText(name)
         }
     }
@@ -89,7 +87,6 @@ class RagEngine(context: Context) {
                 ?: return IngestResult.Failed("Could not open text file")
             if (text.isBlank()) return IngestResult.Failed("File is empty")
             addChunks(text, name)
-            if (name !in sourceNames) sourceNames.add(name)
             IngestResult.Success(text, name)
         } catch (e: Exception) {
             IngestResult.Failed(e.message ?: "Text read error")
@@ -99,27 +96,29 @@ class RagEngine(context: Context) {
     // ── Chunking ──────────────────────────────────────────────────────────────
 
     private fun addChunks(text: String, source: String) {
-        // Honour page markers produced by PdfTextExtractor
         val pageRegex = Regex("--- Page (\\d+) ---")
         val matches   = pageRegex.findAll(text).toList()
 
+        val result = mutableListOf<Chunk>()
         if (matches.isEmpty()) {
-            chunkText(text, source, "").forEach { chunks.add(it) }
-            return
-        }
-
-        // Split text at each page marker
-        val boundaries = matches.map { it.range.first to it.groupValues[1] } +
-                         listOf(text.length to "")
-        var prev = 0
-        var prevPage = "1"
-        for ((start, page) in boundaries) {
-            val section = text.substring(prev, start).trim()
-            if (section.isNotEmpty()) {
-                chunkText(section, source, "Page $prevPage").forEach { chunks.add(it) }
+            result.addAll(chunkText(text, source, ""))
+        } else {
+            val boundaries = matches.map { it.range.first to it.groupValues[1] } +
+                             listOf(text.length to "")
+            var prev = 0
+            var prevPage = "1"
+            for ((start, page) in boundaries) {
+                val section = text.substring(prev, start).trim()
+                if (section.isNotEmpty()) {
+                    result.addAll(chunkText(section, source, "Page $prevPage"))
+                }
+                prev = start
+                if (page.isNotEmpty()) prevPage = page
             }
-            prev = start
-            if (page.isNotEmpty()) prevPage = page
+        }
+        synchronized(lock) {
+            chunks.addAll(result)
+            if (!sourceNames.contains(source)) sourceNames.add(source)
         }
     }
 
@@ -170,22 +169,22 @@ class RagEngine(context: Context) {
      * context block ready to be appended to the user's prompt.
      */
     fun retrieve(query: String): String {
-        if (chunks.isEmpty()) return ""
+        val snapshot: List<Chunk> = synchronized(lock) { chunks.toList() }
+        if (snapshot.isEmpty()) return ""
 
         val queryTerms = tokenize(query)
         val selected: List<Pair<Chunk, Float>>
 
         if (queryTerms.isEmpty()) {
-            // No meaningful query terms — inject the first couple of chunks
-            selected = chunks.take(2).map { it to 1f }
+            selected = snapshot.take(2).map { it to 1f }
         } else {
-            val scored = chunks.map { it to bm25Score(queryTerms, it.text) }
+            val scored = snapshot.map { it to bm25Score(queryTerms, it.text) }
             val relevant = scored
                 .filter  { (_, s) -> s >= MIN_SCORE }
                 .sortedByDescending { (_, s) -> s }
                 .take(MAX_CHUNKS_INJECT)
 
-            selected = if (relevant.isEmpty()) chunks.take(2).map { it to 1f }
+            selected = if (relevant.isEmpty()) snapshot.take(2).map { it to 1f }
                        else relevant
         }
 
