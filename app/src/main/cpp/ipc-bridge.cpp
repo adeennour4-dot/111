@@ -1,5 +1,4 @@
 #include <jni.h>
-#include <sys/mman.h>
 #include <sys/resource.h>
 #include <unistd.h>
 #include <string.h>
@@ -139,16 +138,16 @@ static void boost_priority() {
         LOGI("Inference thread priority set to -8");
 }
 
-static void lock_pages() {
-#ifdef __aarch64__
-    if (mlockall(MCL_CURRENT | MCL_FUTURE) == 0)
-        LOGI("Pages locked in RAM");
-#endif
-}
+// NOTE: mlockall(MCL_FUTURE) was removed — it caused persistent crash-on-launch
+// on Exynos 9825 (Note 10 Lite). MCL_FUTURE locks ALL future mmap() calls into
+// physical RAM, including JVM class loading on the next app launch. On 8GB devices
+// with a large model loaded, this exhausted RLIMIT_MEMLOCK and caused mmap() to
+// return ENOMEM inside the Android runtime on cold start, making the app
+// unlaunchable until the user cleared data. llama.cpp's own mmap for model weights
+// is sufficient — no additional page locking needed.
 
 static void apply_perf_optimizations() {
     boost_priority();
-    lock_pages();
     pin_to_big_cores();
 }
 

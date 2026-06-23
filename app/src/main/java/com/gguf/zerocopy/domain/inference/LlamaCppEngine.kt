@@ -1,6 +1,7 @@
 package com.gguf.zerocopy.domain.inference
 
 import android.util.Log
+import com.gguf.zerocopy.ZeroCopyApp
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +52,16 @@ class LlamaCppEngine : InferenceEngine {
         Exception("llama.cpp native library not available")
       )
     }
-    try {
+    // Write a sentinel file before touching native code.
+    // ZeroCopyApp.installNativeCrashGuard() deletes it on clean startup;
+    // if we crash inside native load the sentinel stays, and on next launch
+    // the guard clears lastModelPath to break the crash loop.
+    val sentinel = runCatching {
+      java.io.File(ZeroCopyApp.instance.filesDir, ".loading_sentinel")
+        .also { it.createNewFile() }
+    }.getOrNull()
+
+    val result = try {
       currentModelPath = path
       NativeBridge.setEngineConfigNative(
         config.nCtx,
@@ -90,6 +100,11 @@ class LlamaCppEngine : InferenceEngine {
     } catch (e: Exception) {
       Result.failure(e)
     }
+
+    // Delete sentinel — load completed (success or clean failure).
+    // Only a native crash (SIGILL/SIGSEGV) will leave it behind.
+    runCatching { sentinel?.delete() }
+    result
   }
 
   override fun unloadModel() {

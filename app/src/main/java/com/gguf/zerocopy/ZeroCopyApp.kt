@@ -2,6 +2,7 @@ package com.gguf.zerocopy
 
 import android.app.Application
 import android.content.Intent
+import android.util.Log
 import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.domain.server.ModelServerService
 import com.gguf.zerocopy.data.repository.ChatRepository
@@ -33,6 +34,14 @@ class ZeroCopyApp : Application() {
     instance = this
 
     SettingsManager.init(this)
+
+    // Install a crash guard BEFORE loading any native libraries.
+    // If a native crash (SIGSEGV/SIGILL) occurs during model load, Android
+    // restarts the app. On the next cold start we clear lastModelPath so the
+    // app doesn't attempt to auto-reload the same model that caused the crash,
+    // breaking the persistent crash loop seen on Exynos 9825 (Note 10 Lite).
+    installNativeCrashGuard()
+
     deviceUtils = DeviceUtils(this)
     engineManager = EngineManager(this)
     modelRepository = ModelRepository(this)
@@ -45,6 +54,31 @@ class ZeroCopyApp : Application() {
     if (SettingsManager.serverEnabled && SettingsManager.lastModelPath.isNotEmpty()) {
       modelServer.setAutoModel(SettingsManager.lastModelPath, SettingsManager.lastModelName)
       startService(Intent(this, ModelServerService::class.java))
+    }
+  }
+
+  /**
+   * Installs a crash sentinel file mechanism.
+   * On every cold start we check for a sentinel file written by the previous
+   * launch. If it exists, the previous session crashed before completing model
+   * load, so we clear the saved model path to break the crash loop.
+   */
+  private fun installNativeCrashGuard() {
+    val sentinel = java.io.File(filesDir, ".loading_sentinel")
+    if (sentinel.exists()) {
+      // Previous launch wrote sentinel but never deleted it → it crashed.
+      Log.w("ZeroCopyApp", "Crash sentinel found — previous launch crashed during model load. Clearing lastModelPath.")
+      SettingsManager.lastModelPath = ""
+      SettingsManager.lastModelName = ""
+      sentinel.delete()
+    }
+    // Also install an UncaughtExceptionHandler to write the sentinel when
+    // a JVM-visible crash happens (e.g. OOM, bad JNI return type).
+    val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+    Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+      Log.e("ZeroCopyApp", "Uncaught exception — writing crash sentinel", throwable)
+      try { sentinel.createNewFile() } catch (_: Exception) {}
+      defaultHandler?.uncaughtException(thread, throwable)
     }
   }
 
