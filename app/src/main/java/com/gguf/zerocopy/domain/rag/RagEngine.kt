@@ -194,7 +194,7 @@ class RagEngine(context: Context) {
 
     private val avgDocLen by lazy {
         if (chunks.isEmpty()) 250f
-        else chunks.sumOf { tokenize(it.text).size.toFloat() } / chunks.size
+        else chunks.sumOf { tokenize(it.text).size.toDouble() }.toFloat() / chunks.size
     }
 
     private fun bm25Score(queryTerms: List<String>, text: String): Float {

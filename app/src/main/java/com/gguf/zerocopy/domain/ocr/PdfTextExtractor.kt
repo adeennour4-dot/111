@@ -230,7 +230,9 @@ class PdfTextExtractor(private val context: Context) {
             }
         }
 
-        for ((yStart, yEnd) in lineRanges) {
+        for (range in lineRanges) {
+            val yStart = range.first
+            val yEnd = range.last
             val lineSb = StringBuilder()
             var wordStart = -1
             var gapLen = 0
