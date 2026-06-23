@@ -192,10 +192,15 @@ class RagEngine(context: Context) {
         return buildContextBlock(selected)
     }
 
+    private val avgDocLen by lazy {
+        if (chunks.isEmpty()) 250f
+        else chunks.sumOf { tokenize(it.text).size.toFloat() } / chunks.size
+    }
+
     private fun bm25Score(queryTerms: List<String>, text: String): Float {
         val docTerms = tokenize(text)
         val docLen   = docTerms.size.toFloat().coerceAtLeast(1f)
-        val avgLen   = 250f  // approximate average chunk length in tokens
+        val avgLen   = avgDocLen
         val k1 = 1.5f; val b = 0.75f
 
         return queryTerms.sumOf { term ->
@@ -211,9 +216,9 @@ class RagEngine(context: Context) {
 
     private fun tokenize(text: String): List<String> =
         text.lowercase()
-            .replace(Regex("[^a-z0-9\u0600-\u06FF\\s]"), " ")
+            .replace(Regex("[^\\w\u0600-\u06FF\\s]"), " ")
             .split(Regex("\\s+"))
-            .filter { it.length > 2 && it !in STOP_WORDS }
+            .filter { it.length > 1 && it !in STOP_WORDS }
 
     private fun buildContextBlock(scored: List<Pair<Chunk, Float>>): String {
         val sb = StringBuilder()

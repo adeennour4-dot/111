@@ -8,9 +8,11 @@ import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
+import java.util.zip.Inflater
 
 class PdfTextExtractor(private val context: Context) {
 
@@ -52,69 +54,93 @@ class PdfTextExtractor(private val context: Context) {
 
     private fun extractTextNative(file: File): String? {
         return try {
-            val raf = RandomAccessFile(file, "r")
+            val fileBytes = file.readBytes()
+            val fileStr = fileBytes.toString(Charsets.ISO_8859_1)
             val sb = StringBuilder()
-            val buf = ByteArray(8192)
-            var inStream = false
-            var depth = 0
-            var read: Int
-            while (raf.read(buf).also { read = it } != -1) {
-                var pos = 0
-                while (pos < read) {
-                    val b = buf[pos].toInt() and 0xFF
-                    val c = b.toInt().toChar()
-                    when {
-                        c == 's' && pos + 5 < read && buf[pos + 1].toInt().toChar() == 't' && buf[pos + 2].toInt().toChar() == 'r' && buf[pos + 3].toInt().toChar() == 'e' && buf[pos + 4].toInt().toChar() == 'a' && buf[pos + 5].toInt().toChar() == 'm' -> {
-                            inStream = true
-                            depth = 1
-                            pos += 6
-                        }
-                        c == 'E' && pos + 2 < read && buf[pos + 1].toInt().toChar() == 'n' && buf[pos + 2].toInt().toChar() == 'd' && pos + 3 < read && buf[pos + 3].toInt().toChar() == 's' && pos + 4 < read && buf[pos + 4].toInt().toChar() == 't' && pos + 5 < read && buf[pos + 5].toInt().toChar() == 'r' && pos + 6 < read && buf[pos + 6].toInt().toChar() == 'e' && pos + 7 < read && buf[pos + 7].toInt().toChar() == 'a' && pos + 8 < read && buf[pos + 8].toInt().toChar() == 'm' -> {
-                            inStream = false
-                            pos += 9
-                        }
-                        inStream && c == '(' -> depth++
-                        inStream && c == ')' -> {
-                            depth--
-                            if (depth == 0) inStream = false
-                        }
-                        else -> if (!inStream && c == '(') {
-                            val start = pos
-                            var end = pos
-                            var parenDepth = 1
-                            end++
-                            while (end < read && parenDepth > 0) {
-                                val ec = buf[end].toInt() and 0xFF
-                                when (ec.toInt().toChar()) {
-                                    '(' -> parenDepth++
-                                    ')' -> parenDepth--
-                                    '\\' -> end++
-                                }
-                                end++
-                            }
-                            if (parenDepth == 0) {
-                                val content = String(buf, start + 1, end - start - 2, Charsets.ISO_8859_1)
-                                val cleaned = content
-                                    .replace("\\n", "\n")
-                                    .replace("\\r", "\r")
-                                    .replace("\\t", "\t")
-                                    .replace(Regex("\\\\[0-7]{3}")) { m -> m.value.substring(1).toInt(8).toInt().toChar().toString() }
-                                    .replace("\\(", "(")
-                                    .replace("\\)", ")")
-                                    .replace("\\\\", "\\")
-                                if (cleaned.length > 3 && cleaned.any { it.isLetter() }) {
-                                    sb.append(cleaned).append(' ')
-                                }
-                            }
-                        }
+
+            // Find all objects with FlateDecode and their streams
+            val streamRegex = Regex(
+                "(?s)/Filter\\s*/FlateDecode.*?stream\\s(.+?)\\s*endstream",
+                RegexOption.IGNORE_CASE
+            )
+            for (match in streamRegex.findAll(fileStr)) {
+                val rawData = match.groupValues[1].toByteArray(Charsets.ISO_8859_1)
+                try {
+                    val inflater = Inflater()
+                    inflater.setInput(rawData)
+                    val decompressed = ByteArrayOutputStream()
+                    val buffer = ByteArray(4096)
+                    while (!inflater.finished()) {
+                        val count = inflater.inflate(buffer)
+                        decompressed.write(buffer, 0, count)
                     }
-                    pos++
+                    inflater.end()
+                    val text = extractParenthesizedText(decompressed.toString(Charsets.ISO_8859_1))
+                    if (text.isNotBlank()) sb.append(text).append(' ')
+                } catch (_: Exception) {
+                    // Fall through to uncompressed stream parsing
                 }
             }
-            raf.close()
+
+            // Also try uncompressed streams
+            val rawStreamRegex = Regex(
+                "(?s)stream\\s(.+?)\\s*endstream",
+                RegexOption.IGNORE_CASE
+            )
+            for (match in rawStreamRegex.findAll(fileStr)) {
+                val block = match.groupValues[1]
+                // Skip already-parsed FlateDecode streams (they appear as binary garbage without decompression)
+                val text = extractParenthesizedText(block)
+                if (text.length > 20) sb.append(text).append(' ')
+            }
+
+            // Also extract parenthesized text outside streams (object definitions, metadata)
+            val objText = extractParenthesizedText(fileStr)
+            if (objText.isNotBlank()) sb.append(objText).append(' ')
+
             val result = sb.toString().trim().replace(Regex("\\s+"), " ")
             result.takeIf { it.length > 20 }
         } catch (_: Exception) { null }
+    }
+
+    private fun extractParenthesizedText(input: String): String {
+        val sb = StringBuilder()
+        val chars = input.toCharArray()
+        var i = 0
+        while (i < chars.size) {
+            if (chars[i] == '(') {
+                val start = i + 1
+                var depth = 1
+                i++
+                while (i < chars.size && depth > 0) {
+                    when (chars[i]) {
+                        '(' -> depth++
+                        ')' -> depth--
+                        '\\' -> i++ // skip escaped char
+                    }
+                    i++
+                }
+                if (depth == 0) {
+                    val content = String(chars, start, i - start - 1)
+                    val cleaned = content
+                        .replace("\\n", "\n")
+                        .replace("\\r", "\r")
+                        .replace("\\t", "\t")
+                        .replace(Regex("\\\\[0-7]{3}")) { m ->
+                            m.value.substring(1).toInt(8).toChar().toString()
+                        }
+                        .replace("\\(", "(")
+                        .replace("\\)", ")")
+                        .replace("\\\\", "\\")
+                    if (cleaned.length > 2 && cleaned.any { it.isLetterOrDigit() }) {
+                        sb.append(cleaned).append(' ')
+                    }
+                }
+            } else {
+                i++
+            }
+        }
+        return sb.toString()
     }
 
     private fun extractTextViaRender(file: File): String? {
@@ -178,34 +204,61 @@ class PdfTextExtractor(private val context: Context) {
         val pixels = IntArray(width * height)
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
 
-        val rowText = StringBuilder()
         val lines = mutableListOf<String>()
         val gapThreshold = (height / 30).coerceAtLeast(3)
-        var lastNonEmptyRow = -1
+        var lastDarkRow = -1
+        val lineRanges = mutableListOf<IntRange>()
 
         for (y in 0 until height) {
-            var rowStart = -1
+            var darkCount = 0
             for (x in 0 until width) {
                 val pixel = pixels[y * width + x]
                 val r = (pixel shr 16) and 0xFF
                 val g = (pixel shr 8) and 0xFF
                 val b = pixel and 0xFF
-                val isDark = (r + g + b) / 3 < 180
-                if (isDark) {
-                    if (rowStart == -1) rowStart = x
+                if ((r + g + b) / 3 < 180) darkCount++
+            }
+            val isTextRow = darkCount > width * 0.02
+            if (isTextRow) {
+                if (lastDarkRow < 0 || y - lastDarkRow > gapThreshold) {
+                    lineRanges.add(IntRange(y, y))
+                } else {
+                    val last = lineRanges.lastOrNull()
+                    if (last != null) lineRanges[lineRanges.size - 1] = IntRange(last.first, y)
+                }
+                lastDarkRow = y
+            }
+        }
+
+        for ((yStart, yEnd) in lineRanges) {
+            val lineSb = StringBuilder()
+            var wordStart = -1
+            var gapLen = 0
+            for (x in 0 until width) {
+                var colDark = 0
+                for (y in yStart..yEnd) {
+                    val pixel = pixels[y * width + x]
+                    val r = (pixel shr 16) and 0xFF
+                    val g = (pixel shr 8) and 0xFF
+                    val b = pixel and 0xFF
+                    if ((r + g + b) / 3 < 180) colDark++
+                }
+                val isInk = colDark > (yEnd - yStart + 1) * 0.3
+                if (isInk) {
+                    if (wordStart < 0) wordStart = x
+                    gapLen = 0
+                } else if (wordStart >= 0) {
+                    gapLen++
+                    if (gapLen > width * 0.03) {
+                        val wordWidth = x - gapLen - wordStart
+                        if (wordWidth > width * 0.005) lineSb.append('\u2588')
+                        wordStart = -1
+                        gapLen = 0
+                    }
                 }
             }
-            if (rowStart >= 0) {
-                lastNonEmptyRow = y
-            }
-            if (lastNonEmptyRow >= 0 && y - lastNonEmptyRow > gapThreshold) {
-                if (rowText.isNotEmpty()) {
-                    val line = rowText.toString().trim()
-                    if (line.isNotEmpty()) lines.add(line)
-                    rowText.clear()
-                }
-                lastNonEmptyRow = -1
-            }
+            if (wordStart >= 0) lineSb.append('\u2588')
+            if (lineSb.isNotEmpty()) lines.add("[text line ${lines.size + 1}]")
         }
 
         return if (lines.isNotEmpty()) lines.joinToString("\n") else ""

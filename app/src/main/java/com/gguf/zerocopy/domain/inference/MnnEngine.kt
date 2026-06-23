@@ -124,6 +124,7 @@ class MnnEngine : InferenceEngine {
             partialStream.append(token)
             fullResponse.append(token)
           }
+          callback.onToken(token)
         }
 
         override fun onDone() {

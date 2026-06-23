@@ -129,7 +129,7 @@ class LlamaCppEngine : InferenceEngine {
               partialStream.append(token)
               fullResponse.append(token)
             }
-            android.util.Log.d("LlamaCppEngine", "onToken: ${token.take(50)}")
+            callback.onToken(token)
           }
 
           override fun onDone() {

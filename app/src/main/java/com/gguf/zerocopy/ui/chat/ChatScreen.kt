@@ -129,7 +129,7 @@ fun ChatScreen(
   var inferenceActive by remember { mutableStateOf(false) }
   var attachmentUris by remember { mutableStateOf(listOf<Uri>()) }
   var attachmentFileNames by remember { mutableStateOf(listOf<String>()) }
-  var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
+  var cameraImageUriStr by rememberSaveable { mutableStateOf("") }
   var reasoningEnabled by remember { mutableStateOf(SettingsManager.reasoningEnabled) }
   var ragEnabled by remember { mutableStateOf(SettingsManager.ragEnabled) }
   var showExportDialog by remember { mutableStateOf(false) }
@@ -159,11 +159,10 @@ fun ChatScreen(
   val cameraLauncher = rememberLauncherForActivityResult(
     ActivityResultContracts.StartActivityForResult()
   ) { result ->
-    if (result.resultCode == Activity.RESULT_OK) {
-      cameraImageUri?.let { uri ->
-        attachmentUris = attachmentUris + uri
-        attachmentFileNames = attachmentFileNames + getFileName(context, uri)
-      }
+    if (result.resultCode == Activity.RESULT_OK && cameraImageUriStr.isNotEmpty()) {
+      val uri = Uri.parse(cameraImageUriStr)
+      attachmentUris = attachmentUris + uri
+      attachmentFileNames = attachmentFileNames + getFileName(context, uri)
     }
   }
 
@@ -178,13 +177,13 @@ fun ChatScreen(
 
   fun launchCamera() {
     val photoFile = File(context.filesDir, "attachments").also { it.mkdirs() }
-      .let { File(it, "camera_${System.currentTimeMillis()}.jpg") }
+      .let { File(it, "camera_${System.nanoTime()}.jpg") }
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", photoFile)
-    cameraImageUri = uri
+    cameraImageUriStr = uri.toString()
     cameraLauncher.launch(
       Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
         putExtra(MediaStore.EXTRA_OUTPUT, uri)
-        addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
       }
     )
   }
@@ -216,10 +215,15 @@ fun ChatScreen(
     null
   }
 
-  fun buildConversationPrompt(currentUserText: String, useReasoning: Boolean): String {
-    return if (useReasoning) {
-      "Use <think> tags for step-by-step reasoning before answering.\n\n$currentUserText"
-    } else currentUserText
+  fun buildConversationPrompt(currentUserText: String, useReasoning: Boolean, useRag: Boolean): String {
+    var prompt = currentUserText
+    if (useRag && currentUserText.contains("[Relevant document excerpts]")) {
+      prompt = "Use the document excerpts above to answer the user's question. If the excerpts don't contain the answer, say so.\n\n$prompt"
+    }
+    if (useReasoning) {
+      prompt = "Use <think> tags for step-by-step reasoning before answering.\n\n$prompt"
+    }
+    return prompt
   }
 
   fun sendMessage(text: String, uris: List<Uri>, names: List<String>) {
@@ -283,13 +287,13 @@ fun ChatScreen(
       }
 
       // ── 2. RAG retrieval: fetch relevant chunks for user query ────────────
-      if (ragEngine.hasDocuments) {
+      if (ragEngine.hasDocuments && ragEnabled) {
         withContext(Dispatchers.IO) {
           ragContext = ragEngine.retrieve(text)
         }
       }
 
-      // ── 3. Build final prompt ─────────────────────────────────────────────
+      // ── 3. Build final prompt (RAG injected only for inference, not saved) ──
       val finalPrompt = buildString {
         append(text)
         if (ragContext.isNotEmpty()) {
@@ -299,10 +303,10 @@ fun ChatScreen(
         }
       }
 
-      // ── 4. Save user message ──────────────────────────────────────────────
+      // ── 4. Save user message (original text without RAG context to avoid bloat) ──
       val userMsg = ChatMessage(
         role           = MessageRole.USER,
-        content        = if (ragContext.isEmpty()) text else finalPrompt,
+        content        = text,
         attachmentPath = savedPaths.firstOrNull(),
         attachmentType = attachType
       )
@@ -355,7 +359,7 @@ fun ChatScreen(
             msg.role.name.lowercase() to msg.content
           }
           activeEngine.restoreHistory(historyPairs)
-          val prompt = buildConversationPrompt(finalPrompt, reasoningEnabled)
+          val prompt = buildConversationPrompt(finalPrompt, reasoningEnabled, ragContext.isNotEmpty())
           if (savedPaths.isNotEmpty() && activeEngine.hasVisionCapability) {
             activeEngine.executeInferenceWithImage(prompt, savedPaths.first(), callback)
           } else {

@@ -23,6 +23,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -31,6 +32,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Surface
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -359,6 +361,33 @@ fun SettingsScreen(onBack: () -> Unit) {
           onCheckedChange = { ragEnabled = it },
           colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
         )
+      }
+
+      val ragEngine = app.ragEngine
+      if (ragEngine.hasDocuments) {
+        Spacer(Modifier.height(6.dp))
+        Surface(
+          shape = RoundedCornerShape(8.dp),
+          color = colors.CardLight
+        ) {
+          Column(modifier = Modifier.padding(10.dp)) {
+            Text("Loaded documents (${ragEngine.documentNames.size})", fontSize = 11.sp, color = colors.Text2)
+            ragEngine.documentNames.forEach { name ->
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Description, null, tint = colors.Purple, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(name, fontSize = 10.sp, color = colors.Text3, maxLines = 1, modifier = Modifier.weight(1f))
+              }
+            }
+            Spacer(Modifier.height(4.dp))
+            TextButton(onClick = { ragEngine.clear() }) {
+              Text("Clear all documents", fontSize = 10.sp, color = colors.Red)
+            }
+          }
+        }
+      } else {
+        Spacer(Modifier.height(6.dp))
+        Text("No documents loaded — attach files in chat to build context", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
       }
 
       HorizontalDivider(color = colors.Border, thickness = 1.dp)
