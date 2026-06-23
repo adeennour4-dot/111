@@ -28,7 +28,7 @@ class LiteRtEngine : InferenceEngine {
   private var engine: Engine? = null
   private var conversation: Conversation? = null
   private var currentModelPath = ""
-  private var preferredBackend: Backend = Backend.CPU(null)
+  private var preferredBackend: Backend = Backend.CPU()
   private val inferenceDone = AtomicBoolean(true)
   private val tokensGenerated = AtomicInteger(0)
   private val partialStream = StringBuilder()

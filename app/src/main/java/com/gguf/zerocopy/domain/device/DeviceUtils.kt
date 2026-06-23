@@ -30,7 +30,10 @@ data class DeviceInfo(
         (cpuCores / 2).coerceIn(1, 4)
       }
 
-    val suggestedGpuLayers = if (hasVulkan) 99 else 0
+    // Exynos chips (Note 10 Lite = 9825, S23 FE = 2200) have Vulkan but
+    // the NDK cross-compilation for llama.cpp Vulkan is broken on Exynos Mali.
+    // Only suggest GPU layers on verified Snapdragon / Tensor with Vulkan.
+    val suggestedGpuLayers = if (hasVulkan && (isSnapdragon || isTensor)) 99 else 0
 
     val estimatedModelRAM = modelSizeB * 1024 * 0.6f
     val availableForContext = (availableRamMB - estimatedModelRAM).coerceAtLeast(256f)
@@ -91,13 +94,14 @@ class DeviceUtils(private val context: Context) {
       isSnapdragon =
       socModel.contains("snapdragon") ||
         socModel.contains("qcom") ||
-        Build.MANUFACTURER.lowercase().contains("qualcomm"),
-      isExynos = socModel.contains("exynos") || Build.MANUFACTURER.lowercase().contains("samsung"),
+        socModel.contains("sm8") ||   // Snapdragon 8xx series (e.g. sm8750 = 8 Elite)
+        socModel.contains("sm7"),     // Snapdragon 7xx series
+      isExynos =
+      socModel.contains("exynos"),    // Do NOT use manufacturer name — S25 Ultra is Samsung + Snapdragon
       isMediaTek =
       socModel.contains("mt") ||
-        socModel.contains("dimensity") ||
-        Build.MANUFACTURER.lowercase().contains("mediatek"),
-      isTensor = socModel.contains("tensor") || Build.MANUFACTURER.lowercase().contains("google"),
+        socModel.contains("dimensity"),
+      isTensor = socModel.contains("tensor"),
       hasVulkan = hasVulkanDevice(),
       hasOpenCL = hasOpenCLDevice()
     )

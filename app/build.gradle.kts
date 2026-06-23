@@ -14,13 +14,13 @@ android {
         applicationId = "com.gguf.zerocopy"
         minSdk        = 29
         targetSdk     = 36
-        versionCode   = 14
-        versionName   = "1.3"
+        versionCode   = 15
+        versionName   = "1.3.1"
 
         externalNativeBuild {
             cmake {
-cppFlags("-std=c++20 -O3 -flto=thin -march=armv8-a+dotprod -fstack-protector-strong")
-cFlags  ("-O3 -flto=thin -march=armv8-a+dotprod -fstack-protector-strong")
+cppFlags("-std=c++20 -O3 -flto=thin -fstack-protector-strong")
+cFlags  ("-O3 -flto=thin -fstack-protector-strong")
                 arguments(
                     "-DANDROID_STL=c++_shared",
                     "-DGGML_VULKAN=OFF",
@@ -34,8 +34,8 @@ cFlags  ("-O3 -flto=thin -march=armv8-a+dotprod -fstack-protector-strong")
             }
         }
 
-        buildConfigField("String", "VERSION_NAME", "\"1.3\"")
-        buildConfigField("int", "VERSION_CODE", "14")
+        buildConfigField("String", "VERSION_NAME", "\"1.3.1\"")
+        buildConfigField("int", "VERSION_CODE", "15")
     }
 
     compileOptions {

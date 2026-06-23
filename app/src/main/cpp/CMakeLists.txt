@@ -7,7 +7,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(FetchContent)
 
 if(ANDROID_ABI STREQUAL "arm64-v8a")
-    set(ARM_ARCH_FLAGS "-march=armv8.6-a+dotprod+i8mm+fp16")
+    # Use armv8.2-a as the baseline — this covers Exynos 9825 (Note 10 Lite),
+    # Exynos 2200 (S23 FE), and Snapdragon 8 Elite (S25 Ultra).
+    # armv8.6-a / i8mm are NOT safe here: Exynos 9825 is ARMv8.2-a only.
+    # llama.cpp auto-detects dotprod / i8mm / fp16 at runtime via HWCAP,
+    # so we only set the safe compile-time baseline.
+    set(ARM_ARCH_FLAGS "-march=armv8.2-a+fp16+dotprod")
     set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   ${ARM_ARCH_FLAGS}")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ARM_ARCH_FLAGS}")
 endif()
