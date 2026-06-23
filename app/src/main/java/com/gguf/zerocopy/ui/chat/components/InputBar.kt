@@ -64,6 +64,7 @@ fun InputBar(
   onCamera: () -> Unit,
   onAttach: () -> Unit,
   isInferring: Boolean,
+  hasVision: Boolean = false,
   attachmentUris: List<Uri>,
   attachmentFileNames: List<String>,
   onRemoveAttachment: (Int) -> Unit,
@@ -215,16 +216,18 @@ fun InputBar(
               modifier = Modifier.size(18.dp)
             )
           }
-          IconButton(
-            onClick = onCamera,
-            modifier = Modifier.size(36.dp)
-          ) {
-            Icon(
-              Icons.Filled.CameraAlt,
-              contentDescription = "Camera",
-              tint = colors.Accent,
-              modifier = Modifier.size(18.dp)
-            )
+          if (hasVision) {
+            IconButton(
+              onClick = onCamera,
+              modifier = Modifier.size(36.dp)
+            ) {
+              Icon(
+                Icons.Filled.CameraAlt,
+                contentDescription = "Camera",
+                tint = colors.Accent,
+                modifier = Modifier.size(18.dp)
+              )
+            }
           }
         }
         IconButton(

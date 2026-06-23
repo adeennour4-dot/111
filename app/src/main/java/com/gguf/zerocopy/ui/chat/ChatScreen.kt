@@ -600,6 +600,7 @@ fun ChatScreen(
             }
           },
           isInferring = isInferring,
+          hasVision = hasVision,
           attachmentUris = attachmentUris,
           attachmentFileNames = attachmentFileNames,
           onRemoveAttachment = { idx ->
