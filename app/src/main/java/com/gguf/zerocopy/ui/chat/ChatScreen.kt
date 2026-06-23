@@ -80,7 +80,9 @@ import com.gguf.zerocopy.ui.chat.components.getFileName
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -247,6 +249,28 @@ fun ChatScreen(
     streamedTokens = 0
     streamedTps = 0f
 
+    // Buffer for lock-free token accumulation.
+    // The native callback thread writes here; the UI flush loop reads it.
+    // This decouples Compose recomposition from the inference hot path —
+    // fixing the foreground slowdown on S25 Ultra where per-token recompose
+    // was competing with the inference thread for CPU time.
+    val tokenBuffer = AtomicReference("")
+    val startTime   = System.currentTimeMillis()
+    val rawResponse = StringBuilder()
+
+    // UI flush loop: push buffered tokens to Compose state at ~60 fps.
+    val flushJob = scope.launch {
+      while (isInferring || tokenBuffer.get().isNotEmpty()) {
+        val buffered = tokenBuffer.getAndSet("")
+        if (buffered.isNotEmpty()) {
+          streamedContent += buffered
+          val elapsed = (System.currentTimeMillis() - startTime) / 1000f
+          if (elapsed > 0) streamedTps = streamedTokens / elapsed
+        }
+        delay(16L) // ~60 fps
+      }
+    }
+
     scope.launch {
       // ── 1. Process attachments on IO thread ──────────────────────────────
       val savedPaths   = mutableListOf<String>()
@@ -313,18 +337,16 @@ fun ChatScreen(
       app.chatRepository.addMessage(id, userMsg)
 
       // ── 5. Run inference ──────────────────────────────────────────────────
-      val startTime   = System.currentTimeMillis()
-      val rawResponse = StringBuilder()
       val currentChatId = id
 
       val callback = object : TokenCallback {
         override fun onToken(token: String) {
           if (!inferenceActive) return
           rawResponse.append(token)
-          streamedContent = rawResponse.toString()
+          // Append to atomic buffer — UI flush loop drains this at 60 fps.
+          // No Compose state write here, so no recomposition on this thread.
+          tokenBuffer.getAndUpdate { it + token }
           streamedTokens++
-          val elapsed = (System.currentTimeMillis() - startTime) / 1000f
-          if (elapsed > 0) streamedTps = streamedTokens / elapsed
         }
         override fun onDone() {
           if (!inferenceActive) return
@@ -337,9 +359,11 @@ fun ChatScreen(
               ChatMessage(role = MessageRole.ASSISTANT, content = raw, tps = tpsVal, tokens = streamedTokens)
             )
           }
-          streamedContent  = ""
           inferenceActive  = false
           isInferring      = false
+          // flushJob will see isInferring=false and drain the last buffer chunk,
+          // then exit naturally — no need to cancel it manually.
+          streamedContent  = ""
         }
         override fun onError(error: String) {
           if (!inferenceActive) return

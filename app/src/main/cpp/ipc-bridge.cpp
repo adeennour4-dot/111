@@ -132,8 +132,11 @@ static void pin_to_all_cores() {
 }
 
 static void boost_priority() {
-    if (setpriority(PRIO_PROCESS, 0, -20) == 0)
-        LOGI("Priority boosted to -20");
+    // Raise priority of THIS thread only (tid 0 = calling thread).
+    // Using PRIO_PROCESS with tid=0 targets only the current thread on Linux/Android,
+    // which avoids starving the Compose UI compositor when in foreground.
+    if (setpriority(PRIO_PROCESS, 0, -8) == 0)
+        LOGI("Inference thread priority set to -8");
 }
 
 static void lock_pages() {
