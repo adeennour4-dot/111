@@ -406,8 +406,8 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
     cparams.n_ctx           = n_ctx;
     cparams.n_batch         = g_cfg.n_batch;
     cparams.n_ubatch        = 512;
-    cparams.n_threads       = n_threads;
-    cparams.n_threads_batch = n_threads;
+    cparams.n_threads       = std::max(1, n_threads / 2);  // decode: memory-bound, fewer threads reduces contention
+    cparams.n_threads_batch = n_threads;                     // prefill: compute-bound, use all cores
     cparams.flash_attn_type = g_cfg.flash_attn ? LLAMA_FLASH_ATTN_TYPE_ENABLED : LLAMA_FLASH_ATTN_TYPE_DISABLED;
 
     g_ctx = llama_init_from_model(g_model, cparams);
