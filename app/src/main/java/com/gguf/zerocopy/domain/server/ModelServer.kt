@@ -51,7 +51,10 @@ class ModelServer(val port: Int = 8080) {
     executor?.submit { runServer() }
     executor?.submit {
       val app = ZeroCopyApp.instance
-      val engine = app.engineManager.getActiveEngine()
+      var engine = app.engineManager.getActiveEngine()
+      if (engine == null && autoModelPath.isNotEmpty()) {
+        engine = app.engineManager.selectEngineForFormat(autoModelPath)
+      }
       val modelName = if (engine?.isModelLoaded != true && autoModelPath.isNotEmpty()) {
         val modelInfo = app.modelRepository.models.value.find { it.path == autoModelPath }
         if (modelInfo != null) {
@@ -379,7 +382,7 @@ pre:hover .copy-btn{opacity:1}
 <header>
 <h1>ZEROCOPY AI</h1>
 <p>ADEENNOUR4-DOT &bull; LOCAL INFERENCE SERVER &bull; OPENAI-COMPATIBLE</p>
-<div class="version-badge">v1.0.2 &bull; ${getServerUrl()}</div>
+<div class="version-badge">v1.3 &bull; ${getServerUrl()}</div>
 </header>
 <div class="container">
 <div class="card">
@@ -446,7 +449,7 @@ ${authHeader}  -H <span class="string">"Content-Type: application/json"</span> \
 </div>
 </div>
 
-<footer>ZeroCopy AI Server v1.0.2 &mdash; Built with &lt;3 by adeennour4-dot</footer>
+<footer>ZeroCopy AI Server v1.3 &mdash; Built with &lt;3 by adeennour4-dot</footer>
 
 <script>
 const msgs=document.getElementById('messages');
@@ -583,7 +586,7 @@ async function send(){
   private fun handleHealth(out: OutputStream) {
     val app = ZeroCopyApp.instance
     val engine = app.engineManager.getActiveEngine()
-    respond(out, 200, """{"status":"ok","model_loaded":${engine?.isModelLoaded == true},"version":"1.0.0"}""")
+    respond(out, 200, """{"status":"ok","model_loaded":${engine?.isModelLoaded == true},"version":"1.3"}""")
   }
 
   private fun handleModels(out: OutputStream) {

@@ -276,6 +276,7 @@ fun CloudScreen(onBack: () -> Unit) {
       onSelect = { model ->
         serverModelPath = model.path
         serverModelName = model.name
+        app.engineManager.selectEngineForFormat(model.path)
         showModelDialog = false
       },
       onDismiss = { showModelDialog = false }

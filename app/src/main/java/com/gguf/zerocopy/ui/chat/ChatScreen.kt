@@ -124,6 +124,7 @@ fun ChatScreen(
   var attachmentFileNames by remember { mutableStateOf(listOf<String>()) }
   var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
   var reasoningEnabled by remember { mutableStateOf(SettingsManager.reasoningEnabled) }
+  var ragEnabled by remember { mutableStateOf(SettingsManager.ragEnabled) }
   var showExportDialog by remember { mutableStateOf(false) }
   var deleteMsgIndex by remember { mutableIntStateOf(-1) }
   var showStreamingThinking by remember { mutableStateOf(false) }
@@ -531,6 +532,40 @@ fun ChatScreen(
           PromptSuggestions(suggestions = suggestions, onSelect = { text ->
             sendMessage(text, emptyList(), emptyList())
           })
+        }
+        val ragEngine = app.ragEngine
+        if (ragEngine.hasDocuments && ragEnabled) {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .horizontalScroll(rememberScrollState())
+              .padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            ragEngine.documentNames.forEach { name ->
+              Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = colors.CardLight
+              ) {
+                Row(
+                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Icon(Icons.Filled.Description, null, tint = colors.Purple, modifier = Modifier.size(14.dp))
+                  Spacer(Modifier.width(4.dp))
+                  Text(name, fontSize = 10.sp, color = colors.Text2, maxLines = 1)
+                }
+              }
+            }
+            Spacer(Modifier.width(4.dp))
+            TextButton(
+              onClick = { ragEngine.clear() },
+              modifier = Modifier.height(24.dp)
+            ) {
+              Text("Clear", fontSize = 10.sp, color = colors.Red)
+            }
+          }
         }
         InputBar(
           onSend = { text, uris, names -> sendMessage(text, uris, names) },

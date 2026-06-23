@@ -14,8 +14,8 @@ android {
         applicationId = "com.gguf.zerocopy"
         minSdk        = 29
         targetSdk     = 36
-        versionCode   = 13
-        versionName   = "1.0"
+        versionCode   = 14
+        versionName   = "1.3"
 
         externalNativeBuild {
             cmake {
@@ -34,8 +34,8 @@ cFlags  ("-O3 -flto=thin -march=armv8-a+dotprod -fstack-protector-strong")
             }
         }
 
-        buildConfigField("String", "VERSION_NAME", "\"1.0.2\"")
-        buildConfigField("int", "VERSION_CODE", "12")
+        buildConfigField("String", "VERSION_NAME", "\"1.3\"")
+        buildConfigField("int", "VERSION_CODE", "14")
     }
 
     compileOptions {
@@ -81,7 +81,7 @@ dependencies {
 
     debugImplementation(libs.compose.ui.tooling)
 
-    implementation(libs.mlkit.text.recognition)
+
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.core)

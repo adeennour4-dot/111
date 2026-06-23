@@ -116,6 +116,12 @@ object SettingsManager {
       prefs?.edit()?.putBoolean("reasoning_enabled", v)?.apply()
     }
 
+  var ragEnabled: Boolean
+    get() = prefs?.getBoolean("rag_enabled", true) ?: true
+    set(v) {
+      prefs?.edit()?.putBoolean("rag_enabled", v)?.apply()
+    }
+
   var serverEnabled: Boolean
     get() = prefs?.getBoolean("server_enabled", false) ?: false
     set(v) { prefs?.edit()?.putBoolean("server_enabled", v)?.apply() }

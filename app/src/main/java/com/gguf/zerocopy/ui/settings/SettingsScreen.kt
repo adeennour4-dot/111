@@ -97,6 +97,7 @@ fun SettingsScreen(onBack: () -> Unit) {
   var isDark by remember { mutableStateOf(SettingsManager.isDarkTheme) }
   var mmprojPath by remember { mutableStateOf(SettingsManager.mmprojPath) }
   var reasoningEnabled by remember { mutableStateOf(SettingsManager.reasoningEnabled) }
+  var ragEnabled by remember { mutableStateOf(SettingsManager.ragEnabled) }
   var showResetConfirm by remember { mutableStateOf(false) }
   var serverPort by remember { mutableStateOf(SettingsManager.serverPort.toString()) }
   var serverAuthEnabled by remember { mutableStateOf(SettingsManager.serverAuthEnabled) }
@@ -141,6 +142,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     SettingsManager.save(cfg, rp)
     SettingsManager.systemPrompt = sysPrompt
     SettingsManager.reasoningEnabled = reasoningEnabled
+    SettingsManager.ragEnabled = ragEnabled
     SettingsManager.serverPort = serverPort.toIntOrNull() ?: 8080
     SettingsManager.serverAuthEnabled = serverAuthEnabled
     SettingsManager.serverAuthToken = serverAuthToken
@@ -332,6 +334,29 @@ fun SettingsScreen(onBack: () -> Unit) {
         Switch(
           checked = reasoningEnabled,
           onCheckedChange = { reasoningEnabled = it },
+          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
+        )
+      }
+
+      HorizontalDivider(color = colors.Border, thickness = 1.dp)
+
+      Text(
+        "RAG & Documents",
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Bold,
+        color = colors.Accent,
+        fontFamily = FontFamily.Monospace,
+        letterSpacing = 2.sp
+      )
+
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+          Text("Retrieval-Augmented Generation", fontSize = 13.sp, color = colors.Text2)
+          Text("Inject document context into prompts", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+        }
+        Switch(
+          checked = ragEnabled,
+          onCheckedChange = { ragEnabled = it },
           colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
         )
       }

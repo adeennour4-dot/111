@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Lightbulb
@@ -116,17 +117,29 @@ fun InputBar(
                   )
                 }
               } else {
+                val mimeType = context.contentResolver.getType(uri) ?: ""
+                val isPdf = mimeType == "application/pdf"
+                val icon = if (isPdf) Icons.Filled.Description else Icons.Filled.AttachFile
                 Box(
                   modifier = Modifier
                     .size(64.dp)
                     .clip(RoundedCornerShape(10.dp)),
                   contentAlignment = Alignment.Center
                 ) {
-                  Text(
-                    text = attachmentFileNames.getOrElse(idx) { "file" }.take(8),
-                    fontSize = 10.sp,
-                    color = colors.Purple
-                  )
+                  Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                      icon,
+                      contentDescription = null,
+                      tint = if (isPdf) colors.Purple else colors.Accent2,
+                      modifier = Modifier.size(22.dp)
+                    )
+                    Text(
+                      text = attachmentFileNames.getOrElse(idx) { "file" },
+                      fontSize = 8.sp,
+                      color = colors.Text3,
+                      maxLines = 1
+                    )
+                  }
                 }
               }
               IconButton(
