@@ -62,14 +62,14 @@ class PdfTextExtractor(private val context: Context) {
                 var pos = 0
                 while (pos < read) {
                     val b = buf[pos].toInt() and 0xFF
-                    val c = b.toChar()
+                    val c = b.toInt().toChar()
                     when {
-                        c == 's' && pos + 5 < read && buf[pos + 1].toChar() == 't' && buf[pos + 2].toChar() == 'r' && buf[pos + 3].toChar() == 'e' && buf[pos + 4].toChar() == 'a' && buf[pos + 5].toChar() == 'm' -> {
+                        c == 's' && pos + 5 < read && buf[pos + 1].toInt().toChar() == 't' && buf[pos + 2].toInt().toChar() == 'r' && buf[pos + 3].toInt().toChar() == 'e' && buf[pos + 4].toInt().toChar() == 'a' && buf[pos + 5].toInt().toChar() == 'm' -> {
                             inStream = true
                             depth = 1
                             pos += 6
                         }
-                        c == 'E' && pos + 2 < read && buf[pos + 1].toChar() == 'n' && buf[pos + 2].toChar() == 'd' && pos + 3 < read && buf[pos + 3].toChar() == 's' && pos + 4 < read && buf[pos + 4].toChar() == 't' && pos + 5 < read && buf[pos + 5].toChar() == 'r' && pos + 6 < read && buf[pos + 6].toChar() == 'e' && pos + 7 < read && buf[pos + 7].toChar() == 'a' && pos + 8 < read && buf[pos + 8].toChar() == 'm' -> {
+                        c == 'E' && pos + 2 < read && buf[pos + 1].toInt().toChar() == 'n' && buf[pos + 2].toInt().toChar() == 'd' && pos + 3 < read && buf[pos + 3].toInt().toChar() == 's' && pos + 4 < read && buf[pos + 4].toInt().toChar() == 't' && pos + 5 < read && buf[pos + 5].toInt().toChar() == 'r' && pos + 6 < read && buf[pos + 6].toInt().toChar() == 'e' && pos + 7 < read && buf[pos + 7].toInt().toChar() == 'a' && pos + 8 < read && buf[pos + 8].toInt().toChar() == 'm' -> {
                             inStream = false
                             pos += 9
                         }
@@ -85,7 +85,7 @@ class PdfTextExtractor(private val context: Context) {
                             end++
                             while (end < read && parenDepth > 0) {
                                 val ec = buf[end].toInt() and 0xFF
-                                when (ec.toChar()) {
+                                when (ec.toInt().toChar()) {
                                     '(' -> parenDepth++
                                     ')' -> parenDepth--
                                     '\\' -> end++
@@ -98,7 +98,7 @@ class PdfTextExtractor(private val context: Context) {
                                     .replace("\\n", "\n")
                                     .replace("\\r", "\r")
                                     .replace("\\t", "\t")
-                                    .replace(Regex("\\\\[0-7]{3}")) { m -> m.value.substring(1).toInt(8).toChar().toString() }
+                                    .replace(Regex("\\\\[0-7]{3}")) { m -> m.value.substring(1).toInt(8).toInt().toChar().toString() }
                                     .replace("\\(", "(")
                                     .replace("\\)", ")")
                                     .replace("\\\\", "\\")
