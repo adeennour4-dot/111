@@ -77,6 +77,7 @@ import com.gguf.zerocopy.data.repository.AttachmentType
 import com.gguf.zerocopy.data.repository.ChatMessage
 import com.gguf.zerocopy.data.repository.MessageRole
 import com.gguf.zerocopy.domain.inference.TokenCallback
+import com.gguf.zerocopy.domain.inference.ToolManager
 import com.gguf.zerocopy.domain.rag.RagEngine
 import com.gguf.zerocopy.ui.chat.components.ChatBubble
 import com.gguf.zerocopy.ui.chat.components.DeleteConfirmDialog
@@ -129,6 +130,17 @@ fun ChatScreen(
     }
   }
 
+  // Enable / disable web_search tool on the engine when toggle changes
+  LaunchedEffect(webSearchEnabled) {
+    val eng = app.engineManager.getActiveEngine() ?: return@LaunchedEffect
+    if (webSearchEnabled) {
+      if (eng.getToolManager() == null) eng.setToolManager(ToolManager())
+    } else {
+      eng.setToolManager(null)
+    }
+    SettingsManager.webSearchEnabled = webSearchEnabled
+  }
+
   val messages by app.chatRepository.currentMessages.collectAsState()
 
   var isInferring by remember { mutableStateOf(false) }
@@ -141,6 +153,7 @@ fun ChatScreen(
   var cameraImageUriStr by rememberSaveable { mutableStateOf("") }
   var reasoningEnabled by remember { mutableStateOf(SettingsManager.reasoningEnabled) }
   var ragEnabled by remember { mutableStateOf(SettingsManager.ragEnabled) }
+  var webSearchEnabled by remember { mutableStateOf(SettingsManager.webSearchEnabled) }
   var showExportDialog by remember { mutableStateOf(false) }
   var kvUsagePercent by remember { mutableIntStateOf(0) }
 
@@ -712,7 +725,9 @@ fun ChatScreen(
           onToggleReasoning = {
             reasoningEnabled = !reasoningEnabled
             SettingsManager.reasoningEnabled = reasoningEnabled
-          }
+          },
+          webSearchEnabled = webSearchEnabled,
+          onToggleWebSearch = { webSearchEnabled = !webSearchEnabled }
         )
       }
     },
