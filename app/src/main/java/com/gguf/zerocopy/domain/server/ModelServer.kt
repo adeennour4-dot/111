@@ -622,7 +622,7 @@ async function send(){
       val modelName = engine.loadedModelPath?.substringAfterLast('/') ?: "unknown"
 
       if (stream) {
-        streamResponse(out, inferenceId, modelName, engine, prompt)
+        streamResponse(out, inferenceId, modelName, engine, prompt, ip)
       } else {
         syncResponse(out, inferenceId, modelName, engine, prompt)
       }
@@ -631,7 +631,7 @@ async function send(){
     }
   }
 
-  private fun streamResponse(out: OutputStream, id: String, model: String, engine: com.gguf.zerocopy.domain.inference.InferenceEngine, prompt: String) {
+  private fun streamResponse(out: OutputStream, id: String, model: String, engine: com.gguf.zerocopy.domain.inference.InferenceEngine, prompt: String, ip: String) {
     val headers = "HTTP/1.1 200 OK\r\n" +
       "Content-Type: text/event-stream\r\n" +
       "Cache-Control: no-cache\r\n" +
