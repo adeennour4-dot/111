@@ -130,17 +130,6 @@ fun ChatScreen(
     }
   }
 
-  // Enable / disable web_search tool on the engine when toggle changes
-  LaunchedEffect(webSearchEnabled) {
-    val eng = app.engineManager.getActiveEngine() ?: return@LaunchedEffect
-    if (webSearchEnabled) {
-      if (eng.getToolManager() == null) eng.setToolManager(ToolManager())
-    } else {
-      eng.setToolManager(null)
-    }
-    SettingsManager.webSearchEnabled = webSearchEnabled
-  }
-
   val messages by app.chatRepository.currentMessages.collectAsState()
 
   var isInferring by remember { mutableStateOf(false) }
@@ -154,6 +143,17 @@ fun ChatScreen(
   var reasoningEnabled by remember { mutableStateOf(SettingsManager.reasoningEnabled) }
   var ragEnabled by remember { mutableStateOf(SettingsManager.ragEnabled) }
   var webSearchEnabled by remember { mutableStateOf(SettingsManager.webSearchEnabled) }
+
+  // Enable / disable web_search tool on the engine when toggle changes
+  LaunchedEffect(webSearchEnabled) {
+    val eng = app.engineManager.getActiveEngine() ?: return@LaunchedEffect
+    if (webSearchEnabled) {
+      if (eng.getToolManager() == null) eng.setToolManager(ToolManager())
+    } else {
+      eng.setToolManager(null)
+    }
+    SettingsManager.webSearchEnabled = webSearchEnabled
+  }
   var showExportDialog by remember { mutableStateOf(false) }
   var kvUsagePercent by remember { mutableIntStateOf(0) }
 
