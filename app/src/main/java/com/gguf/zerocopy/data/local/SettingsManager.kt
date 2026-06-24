@@ -116,6 +116,10 @@ object SettingsManager {
       prefs?.edit()?.putBoolean("reasoning_enabled", v)?.apply()
     }
 
+  var webSearchEnabled: Boolean
+    get() = prefs?.getBoolean("web_search_enabled", false) ?: false
+    set(v) { prefs?.edit()?.putBoolean("web_search_enabled", v)?.apply() }
+
   var ragEnabled: Boolean
     get() = prefs?.getBoolean("rag_enabled", true) ?: true
     set(v) {
