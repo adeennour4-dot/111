@@ -168,18 +168,6 @@ fun ChatScreen(
     }
   }
 
-  // ── Voice input (SpeechRecognizer) ────────────────────────────────────────
-  val speechLauncher = rememberLauncherForActivityResult(
-    ActivityResultContracts.StartActivityForResult()
-  ) { result ->
-    if (result.resultCode == Activity.RESULT_OK) {
-      val results = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-      val text = results?.firstOrNull()?.trim()
-      if (!text.isNullOrEmpty()) {
-        sendMessage(text, emptyList(), emptyList())
-      }
-    }
-  }
   var deleteMsgIndex by remember { mutableIntStateOf(-1) }
   var showStreamingThinking by remember { mutableStateOf(false) }
 
@@ -445,6 +433,20 @@ fun ChatScreen(
       }
     }
   }
+
+  // ── Voice input (SpeechRecognizer) ────────────────────────────────────────
+  val speechLauncher = rememberLauncherForActivityResult(
+    ActivityResultContracts.StartActivityForResult()
+  ) { result ->
+    if (result.resultCode == Activity.RESULT_OK) {
+      val results = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+      val text = results?.firstOrNull()?.trim()
+      if (!text.isNullOrEmpty()) {
+        sendMessage(text, emptyList(), emptyList())
+      }
+    }
+  }
+
   fun stopInference() {
     inferenceActive = false
     isInferring = false
