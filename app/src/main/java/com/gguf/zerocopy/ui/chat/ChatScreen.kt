@@ -38,6 +38,10 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -138,6 +142,7 @@ fun ChatScreen(
   var reasoningEnabled by remember { mutableStateOf(SettingsManager.reasoningEnabled) }
   var ragEnabled by remember { mutableStateOf(SettingsManager.ragEnabled) }
   var showExportDialog by remember { mutableStateOf(false) }
+  var kvUsagePercent by remember { mutableIntStateOf(0) }
 
   // ── Text-to-Speech ────────────────────────────────────────────────────────
   var tts by remember { mutableStateOf<TextToSpeech?>(null) }
@@ -394,6 +399,7 @@ fun ChatScreen(
           }
           inferenceActive  = false
           isInferring      = false
+          kvUsagePercent   = 0
           // flushJob will see isInferring=false and drain the last buffer chunk,
           // then exit naturally — no need to cancel it manually.
           streamedContent  = ""
@@ -405,7 +411,7 @@ fun ChatScreen(
           streamedContent = ""
           scope.launch { snackbarHostState.showSnackbar("Inference error: $error") }
         }
-        override fun onKvUsage(percent: Int) {}
+        override fun onKvUsage(percent: Int) { kvUsagePercent = percent }
         override fun onTokensGenerated(count: Int) { streamedTokens = count }
       }
 
@@ -605,6 +611,12 @@ fun ChatScreen(
           IconButton(onClick = onCloud) {
             Icon(Icons.Outlined.Cloud, contentDescription = "Cloud", tint = colors.Text2)
           }
+          IconButton(
+            onClick = { if (chatId != null) showExportDialog = true },
+            enabled = chatId != null && messages.isNotEmpty()
+          ) {
+            Icon(Icons.Outlined.Share, contentDescription = "Export", tint = if (chatId != null && messages.isNotEmpty()) colors.Text2 else colors.Text3)
+          }
         }
       }
     },
@@ -712,6 +724,22 @@ fun ChatScreen(
         .padding(pad)
         .fillMaxSize()
     ) {
+      // KV cache usage bar — only visible when context is getting full (>50%)
+      if (kvUsagePercent > 50) {
+        LinearProgressIndicator(
+          progress = { kvUsagePercent / 100f },
+          modifier = androidx.compose.ui.Modifier
+            .fillMaxWidth()
+            .height(2.dp)
+            .align(Alignment.TopCenter),
+          color = when {
+            kvUsagePercent >= 90 -> colors.Red
+            kvUsagePercent >= 75 -> colors.Amber
+            else -> colors.Accent2
+          },
+          trackColor = colors.Border
+        )
+      }
       if (messages.isEmpty() && !isInferring) {
         Column(
           modifier = Modifier
