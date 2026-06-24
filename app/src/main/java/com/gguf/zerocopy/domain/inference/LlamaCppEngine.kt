@@ -218,13 +218,7 @@ $promptSuffix"
         val result = tm.executeTool(toolCall)
 
         // Append exchange so next round sees tool result
-        promptSuffix += "
-[Tool Call]:
-${response.trim()}
-" +
-                        "[Tool Result for ${toolCall.name}]:
-${result.result.trim()}
-"
+        promptSuffix += "\n[Tool Call]:\n" + response.trim() + "\n[Tool Result for " + toolCall.name + "]:\n" + result.result.trim() + "\n"
       }
     } finally {
       // Restore original system prompt
