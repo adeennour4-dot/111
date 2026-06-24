@@ -37,6 +37,7 @@ class LlamaCppEngine : InferenceEngine {
   private var partialStream = StringBuilder()
   private var fullResponse = StringBuilder()
   private val inferenceDone = AtomicBoolean(true)
+  private val inferenceAborted = AtomicBoolean(false)
   private val tokensGenerated = AtomicInteger(0)
   private var kvUsage = 0
   private var currentModelPath = ""
@@ -123,6 +124,116 @@ class LlamaCppEngine : InferenceEngine {
     }
   }
 
+  // ── Low-level single-turn inference (no tool loop) ─────────────────────────
+  private fun runNativeTurn(
+    prompt: String,
+    onToken: (String) -> Unit,
+    onKv: (Int) -> Unit,
+    onTokCount: (Int) -> Unit
+  ): Pair<String, String?> { // returns (response, errorOrNull)
+    val buf = StringBuilder()
+    var err: String? = null
+    val cb = object : NativeBridge.TokenCallback {
+      override fun onToken(token: String) { buf.append(token); onToken(token) }
+      override fun onDone() {}
+      override fun onError(e: String) { err = e }
+      override fun onKvCacheUsage(p: Int) { onKv(p) }
+      override fun onTokensGenerated(c: Int) { onTokCount(c) }
+    }
+    activeCallback = cb
+    NativeBridge.executeWithCallbackNative(prompt, cb)
+    activeCallback = null
+    return buf.toString() to err
+  }
+
+  // ── Tool-aware agentic loop ───────────────────────────────────────────────
+  private fun runWithTools(prompt: String, tm: ToolManager, callback: TokenCallback) {
+    val toolInstruction = buildString {
+      appendLine("You have access to tools. When you need real-time information, use a tool by")
+      appendLine("outputting ONLY a JSON block (no other text) in this exact format and then stop:")
+      appendLine("```json")
+      appendLine("{"name": "tool_name", "arguments": {"key": "value"}}")
+      appendLine("```")
+      appendLine("Available tools:")
+      appendLine(tm.getToolDefinitionsJson())
+      appendLine("After receiving a [Tool Result], answer the user using that information.")
+    }
+    val origSystemPrompt = systemPrompt
+    NativeBridge.setSystemPromptNative(
+      if (origSystemPrompt.isNotEmpty()) "$origSystemPrompt
+
+$toolInstruction"
+      else toolInstruction
+    )
+
+    var promptSuffix = "" // accumulated tool-call / tool-result turns
+    val MAX_ROUNDS = 4
+
+    try {
+      for (round in 0 until MAX_ROUNDS) {
+        if (inferenceAborted.get()) break
+
+        val fullPrompt = if (promptSuffix.isEmpty()) prompt else "$prompt
+$promptSuffix"
+        val responseBuf = StringBuilder()
+        var turnErr: String? = null
+
+        val innerCb = object : NativeBridge.TokenCallback {
+          override fun onToken(t: String) { responseBuf.append(t) }
+          override fun onDone() {}
+          override fun onError(e: String) { turnErr = e }
+          override fun onKvCacheUsage(p: Int) { callback.onKvUsage(p); kvUsage = p }
+          override fun onTokensGenerated(c: Int) { callback.onTokensGenerated(c); tokensGenerated.set(c) }
+        }
+        activeCallback = innerCb
+        NativeBridge.executeWithCallbackNative(fullPrompt, innerCb)
+        activeCallback = null
+
+        if (turnErr != null) { callback.onError(turnErr!!); return }
+
+        val response = responseBuf.toString()
+        val toolCall = tm.parseToolCall(response)
+
+        if (toolCall == null) {
+          // Final answer — stream to user char-by-char
+          for (ch in response) {
+            if (inferenceAborted.get()) break
+            callback.onToken(ch.toString())
+          }
+          break
+        }
+
+        // Tool call detected — show status, don't stream raw JSON
+        val query = toolCall.arguments.optString("query",
+          toolCall.arguments.keys().asSequence().firstOrNull()
+            ?.let { toolCall.arguments.optString(it) } ?: toolCall.name)
+        val status = "
+🔍 *Searching: "$query"…*
+
+"
+        for (ch in status) callback.onToken(ch.toString())
+        callback.onToolCall(toolCall.name, toolCall.arguments.toString())
+
+        // Execute tool synchronously (already on IO)
+        val result = tm.executeTool(toolCall)
+
+        // Append exchange so next round sees tool result
+        promptSuffix += "
+[Tool Call]:
+${response.trim()}
+" +
+                        "[Tool Result for ${toolCall.name}]:
+${result.result.trim()}
+"
+      }
+    } finally {
+      // Restore original system prompt
+      NativeBridge.setSystemPromptNative(origSystemPrompt)
+    }
+
+    callback.onDone()
+  }
+
   override suspend fun executeInference(prompt: String, callback: TokenCallback) {
     if (!nativeLibLoaded) {
       callback.onError("llama.cpp native library not available")
@@ -134,7 +245,16 @@ class LlamaCppEngine : InferenceEngine {
         fullResponse.clear()
       }
       inferenceDone.set(false)
+      inferenceAborted.set(false)
       tokensGenerated.set(0)
+
+      // If a ToolManager is attached, use the agentic loop
+      val tm = _toolManager
+      if (tm != null) {
+        runWithTools(prompt, tm, callback)
+        inferenceDone.set(true)
+        return@withContext
+      }
 
       // Create callback and hold strong reference to prevent GC
       val cb =
@@ -255,6 +375,7 @@ class LlamaCppEngine : InferenceEngine {
 
   override fun abortInference() {
     android.util.Log.d("LlamaCppEngine", "abortInference called")
+    inferenceAborted.set(true)
     NativeBridge.abortInferenceNative()
   }
 
