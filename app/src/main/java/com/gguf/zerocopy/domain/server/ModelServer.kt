@@ -681,8 +681,7 @@ async function send(){
       out.write("data: $finish\n\n".toByteArray())
       out.write("data: [DONE]\n\n".toByteArray())
       out.flush()
-    } catch (_: Exception) {}
-    finally { activeClients.remove(ip) }
+    } catch (_: Exception) {} finally { activeClients.remove(ip) }
   }
 
   private fun syncResponse(out: OutputStream, id: String, model: String, engine: com.gguf.zerocopy.domain.inference.InferenceEngine, prompt: String) {
