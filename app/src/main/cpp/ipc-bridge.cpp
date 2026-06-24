@@ -375,6 +375,9 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
     const char* filePath = env->GetStringUTFChars(path, nullptr);
     if (!filePath) return JNI_FALSE;
 
+    // llama_backend_init() must be called exactly once per process lifetime.
+    // Previously we reset g_backend_initialized on context failure, causing
+    // a second llama_backend_init() on retry which is undefined behaviour.
     if (!g_backend_initialized) { llama_backend_init(); g_backend_initialized = true; }
 
 #ifdef ZC_HAS_CLIP
@@ -397,34 +400,76 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
     if (total_cores < 1) total_cores = 4;
     int n_threads = (g_cfg.n_threads > 0) ? std::min(g_cfg.n_threads, total_cores) : total_cores;
 
-    // Low RAM mode: reduce n_ctx aggressively, use 4-bit KV cache if available
+    // Detect ARMv8.2-a devices (Exynos 9825, 9820, etc.) by reading cpuinfo.
+    // These chips have no hardware flash-attention support and enabling FA
+    // via context params causes a crash during llama_init_from_model() because
+    // the GGML kernel falls back to a code path that uses i8mm intrinsics
+    // which are absent on ARMv8.2-a (i8mm is ARMv8.4-a+).
+    bool has_i8mm = false;
+#ifdef __aarch64__
+    {
+        std::ifstream cpuinfo("/proc/cpuinfo");
+        std::string line;
+        while (std::getline(cpuinfo, line)) {
+            if (line.find("Features") != std::string::npos) {
+                has_i8mm = (line.find("i8mm") != std::string::npos);
+                break;
+            }
+        }
+    }
+#endif
+    // Only enable flash attention on chips that have i8mm (ARMv8.4-a+: Exynos 2200,
+    // Snapdragon 888+, etc.). Exynos 9825 (ARMv8.2-a) has no i8mm → disable FA.
+    bool use_flash_attn = g_cfg.flash_attn && has_i8mm;
+    LOGI("CPU i8mm=%d, flash_attn requested=%d, effective=%d", (int)has_i8mm, (int)g_cfg.flash_attn, (int)use_flash_attn);
+
+    // Low RAM mode: reduce n_ctx aggressively
     int n_ctx = g_cfg.n_ctx;
     if (g_cfg.low_ram_mode) {
         n_ctx = std::min(n_ctx, 2048);
         LOGI("Low RAM mode: n_ctx limited to %d", n_ctx);
     }
 
+    // n_batch must not exceed n_ctx; n_ubatch must not exceed n_batch.
+    // Exynos 9825 with ctx=2048 was crashing because n_batch=512 was fine
+    // but n_ubatch was also 512 — both are fine here, but guard anyway.
+    int n_batch  = std::min(g_cfg.n_batch, n_ctx);
+    int n_ubatch = std::min(512, n_batch);
+
     llama_context_params cparams = llama_context_default_params();
     cparams.n_ctx           = n_ctx;
-    cparams.n_batch         = g_cfg.n_batch;
-    cparams.n_ubatch        = 512;
-    cparams.n_threads       = std::max(1, n_threads / 2);  // decode: memory-bound, fewer threads reduces contention
-    cparams.n_threads_batch = n_threads;                     // prefill: compute-bound, use all cores
-    cparams.flash_attn_type = g_cfg.flash_attn ? LLAMA_FLASH_ATTN_TYPE_ENABLED : LLAMA_FLASH_ATTN_TYPE_DISABLED;
+    cparams.n_batch         = n_batch;
+    cparams.n_ubatch        = n_ubatch;
+    cparams.n_threads       = std::max(1, n_threads / 2);
+    cparams.n_threads_batch = n_threads;
+    // Use bool field (pre-b9600 API) — LLAMA_FLASH_ATTN_TYPE_ENABLED enum
+    // was added later and may not exist in b9581.
+    cparams.flash_attn      = use_flash_attn;
 
     g_ctx = llama_init_from_model(g_model, cparams);
     if (!g_ctx) {
+        // First attempt failed — retry with minimal safe context (1024)
+        // before giving up. This handles OOM on 6-8GB devices with large models.
+        LOGW("Context creation failed at n_ctx=%d, retrying with n_ctx=1024", n_ctx);
+        cparams.n_ctx    = 1024;
+        cparams.n_batch  = std::min(n_batch, 1024);
+        cparams.n_ubatch = std::min(n_ubatch, 512);
+        g_ctx = llama_init_from_model(g_model, cparams);
+    }
+    if (!g_ctx) {
+        // Do NOT reset g_backend_initialized — backend is still valid.
         llama_model_free(g_model); g_model = nullptr;
-        g_backend_initialized = false;
-        LOGE("Failed to create context");
+        LOGE("Failed to create context even at n_ctx=1024");
         return JNI_FALSE;
     }
 
     rebuild_sampler();
     apply_perf_optimizations();
 
-    LOGI("Model loaded: ctx=%d gpu=%d threads=%d cores=%d lowRam=%d",
-         n_ctx, g_cfg.n_gpu_layers, n_threads, total_cores, (int)g_cfg.low_ram_mode);
+    LOGI("Model loaded: ctx=%d batch=%d ubatch=%d gpu=%d threads=%d cores=%d lowRam=%d fa=%d",
+         cparams.n_ctx, cparams.n_batch, cparams.n_ubatch,
+         g_cfg.n_gpu_layers, n_threads, total_cores,
+         (int)g_cfg.low_ram_mode, (int)use_flash_attn);
     return JNI_TRUE;
 }
 

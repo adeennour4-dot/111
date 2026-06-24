@@ -9,6 +9,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.MediaStore
+import android.speech.RecognizerIntent
+import android.speech.tts.TextToSpeech
+import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -135,6 +138,48 @@ fun ChatScreen(
   var reasoningEnabled by remember { mutableStateOf(SettingsManager.reasoningEnabled) }
   var ragEnabled by remember { mutableStateOf(SettingsManager.ragEnabled) }
   var showExportDialog by remember { mutableStateOf(false) }
+
+  // ── Text-to-Speech ────────────────────────────────────────────────────────
+  var tts by remember { mutableStateOf<TextToSpeech?>(null) }
+  var isSpeaking by remember { mutableStateOf(false) }
+  androidx.compose.runtime.DisposableEffect(Unit) {
+    val t = TextToSpeech(context) { status ->
+      if (status == TextToSpeech.SUCCESS) {
+        tts?.language = Locale.getDefault()
+      }
+    }
+    tts = t
+    onDispose { t.stop(); t.shutdown() }
+  }
+
+  fun speakText(text: String) {
+    val t = tts ?: return
+    if (isSpeaking) {
+      t.stop()
+      isSpeaking = false
+    } else {
+      t.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+        override fun onStart(id: String?) { isSpeaking = true }
+        override fun onDone(id: String?) { isSpeaking = false }
+        override fun onError(id: String?) { isSpeaking = false }
+      })
+      t.speak(text, TextToSpeech.QUEUE_FLUSH, null, "zc_tts")
+      isSpeaking = true
+    }
+  }
+
+  // ── Voice input (SpeechRecognizer) ────────────────────────────────────────
+  val speechLauncher = rememberLauncherForActivityResult(
+    ActivityResultContracts.StartActivityForResult()
+  ) { result ->
+    if (result.resultCode == Activity.RESULT_OK) {
+      val results = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+      val text = results?.firstOrNull()?.trim()
+      if (!text.isNullOrEmpty()) {
+        sendMessage(text, emptyList(), emptyList())
+      }
+    }
+  }
   var deleteMsgIndex by remember { mutableIntStateOf(-1) }
   var showStreamingThinking by remember { mutableStateOf(false) }
 
@@ -623,6 +668,24 @@ fun ChatScreen(
               docPickLauncher.launch(arrayOf("text/plain", "text/markdown", "application/pdf"))
             }
           },
+          onVoice = {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+              putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+              putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+              putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak your message…")
+            }
+            try {
+              speechLauncher.launch(intent)
+            } catch (e: Exception) {
+              scope.launch { snackbarHostState.showSnackbar("Speech recognition not available on this device") }
+            }
+          },
+          onSpeak = {
+            val lastAssistant = messages.lastOrNull { it.role == com.gguf.zerocopy.data.repository.MessageRole.ASSISTANT }
+            if (lastAssistant != null) speakText(lastAssistant.content)
+            else scope.launch { snackbarHostState.showSnackbar("No response to read aloud yet") }
+          },
+          isSpeaking = isSpeaking,
           isInferring = isInferring,
           hasVision = hasVision,
           attachmentUris = attachmentUris,

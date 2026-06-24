@@ -22,9 +22,11 @@ option(GGML_OPENCL "Enable OpenCL" OFF)
 set(GGML_OPENMP        OFF CACHE BOOL "" FORCE)
 set(GGML_LLAMAFILE     OFF CACHE BOOL "" FORCE)
 set(GGML_BACKEND_DL    OFF CACHE BOOL "" FORCE)
+# KleidiAI uses i8mm intrinsics at runtime — SIGILL on Exynos 9825 (ARMv8.2-a, no i8mm)
+set(GGML_KLEIDIAI      OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-# Flash attention is enabled via context params, not cmake
+# Flash attention is enabled via context params at runtime, gated on i8mm detection
 
 # Vulkan headers from NDK
 if(GGML_VULKAN)

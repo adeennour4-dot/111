@@ -183,6 +183,7 @@ object SettingsManager {
     nGpuLayers = gpuLayers.coerceIn(0, 999),
     nThreads = threads.coerceIn(0, 16),
     lowRamMode = lowRamMode,
+    flashAttention = false, // Native code enables FA only when CPU has i8mm (ARMv8.4-a+)
     mmprojPath = mmprojPath
   )
 
