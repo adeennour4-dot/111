@@ -390,6 +390,7 @@ fun ChatScreen(
       // ── 5. Run inference ──────────────────────────────────────────────────
       val currentChatId = id
 
+      val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
       val callback = object : TokenCallback {
         override fun onToken(token: String) {
           if (!inferenceActive) return
@@ -400,31 +401,35 @@ fun ChatScreen(
           streamedTokens++
         }
         override fun onDone() {
-          if (!inferenceActive) return
           val elapsed = (System.currentTimeMillis() - startTime) / 1000f
           val tpsVal  = if (elapsed > 0) streamedTokens / elapsed else 0f
           val raw = rawResponse.toString()
-          if (raw.isNotEmpty()) {
-            app.chatRepository.addMessage(
-              currentChatId,
-              ChatMessage(role = MessageRole.ASSISTANT, content = raw, tps = tpsVal, tokens = streamedTokens)
-            )
+          mainHandler.post {
+            if (!inferenceActive) return@post
+            if (raw.isNotEmpty()) {
+              app.chatRepository.addMessage(
+                currentChatId,
+                ChatMessage(role = MessageRole.ASSISTANT, content = raw, tps = tpsVal, tokens = streamedTokens)
+              )
+            }
+            inferenceActive  = false
+            isInferring      = false
+            kvUsagePercent   = 0
+            // flushJob will see isInferring=false and drain the last buffer chunk,
+            // then exit naturally — no need to cancel it manually.
+            streamedContent  = ""
           }
-          inferenceActive  = false
-          isInferring      = false
-          kvUsagePercent   = 0
-          // flushJob will see isInferring=false and drain the last buffer chunk,
-          // then exit naturally — no need to cancel it manually.
-          streamedContent  = ""
         }
         override fun onError(error: String) {
-          if (!inferenceActive) return
-          inferenceActive = false
-          isInferring     = false
-          streamedContent = ""
-          scope.launch { snackbarHostState.showSnackbar("Inference error: $error") }
+          mainHandler.post {
+            if (!inferenceActive) return@post
+            inferenceActive = false
+            isInferring     = false
+            streamedContent = ""
+            scope.launch { snackbarHostState.showSnackbar("Inference error: $error") }
+          }
         }
-        override fun onKvUsage(percent: Int) { kvUsagePercent = percent }
+        override fun onKvUsage(percent: Int) { mainHandler.post { kvUsagePercent = percent } }
         override fun onTokensGenerated(count: Int) { streamedTokens = count }
       }
 
