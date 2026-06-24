@@ -32,6 +32,8 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -74,7 +76,9 @@ fun InputBar(
   attachmentFileNames: List<String>,
   onRemoveAttachment: (Int) -> Unit,
   reasoningEnabled: Boolean,
-  onToggleReasoning: () -> Unit
+  onToggleReasoning: () -> Unit,
+  webSearchEnabled: Boolean = false,
+  onToggleWebSearch: () -> Unit = {}
 ) {
   val colors = currentPalette()
   val context = LocalContext.current
@@ -243,6 +247,17 @@ fun InputBar(
             if (reasoningEnabled) Icons.Filled.Lightbulb else Icons.Outlined.Lightbulb,
             contentDescription = "Reasoning",
             tint = if (reasoningEnabled) colors.Amber else colors.Text3,
+            modifier = Modifier.size(18.dp)
+          )
+        }
+        IconButton(
+          onClick = onToggleWebSearch,
+          modifier = Modifier.size(36.dp)
+        ) {
+          Icon(
+            if (webSearchEnabled) Icons.Filled.Search else Icons.Outlined.Search,
+            contentDescription = if (webSearchEnabled) "Web search on" else "Web search off",
+            tint = if (webSearchEnabled) colors.Accent else colors.Text3,
             modifier = Modifier.size(18.dp)
           )
         }
