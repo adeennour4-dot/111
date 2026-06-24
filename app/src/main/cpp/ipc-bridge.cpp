@@ -442,9 +442,10 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
     cparams.n_ubatch        = n_ubatch;
     cparams.n_threads       = std::max(1, n_threads / 2);
     cparams.n_threads_batch = n_threads;
-    // Use bool field (pre-b9600 API) — LLAMA_FLASH_ATTN_TYPE_ENABLED enum
-    // was added later and may not exist in b9581.
-    cparams.flash_attn      = use_flash_attn;
+    // b9581 uses flash_attn_type enum, not a bool flash_attn field.
+    cparams.flash_attn_type = use_flash_attn
+                              ? LLAMA_FLASH_ATTN_TYPE_ENABLED
+                              : LLAMA_FLASH_ATTN_TYPE_DISABLED;
 
     g_ctx = llama_init_from_model(g_model, cparams);
     if (!g_ctx) {
@@ -1097,3 +1098,4 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
     LOGI("Image inference done: tokens=%d chars=%zu", tokens_generated, response.size());
     release_callback();
 }
+
