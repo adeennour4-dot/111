@@ -45,8 +45,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,6 +69,15 @@ import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.domain.server.ModelServerService
 import com.gguf.zerocopy.ui.models.ModelSelectionDialog
 import com.gguf.zerocopy.ui.theme.currentPalette
+
+private fun formatElapsed(ms: Long): String {
+  val s = (System.currentTimeMillis() - ms) / 1000
+  return when {
+    s < 60   -> "${s}s"
+    s < 3600 -> "${s / 60}m ${s % 60}s"
+    else     -> "${s / 3600}h ${(s % 3600) / 60}m"
+  }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,6 +98,16 @@ fun CloudScreen(onBack: () -> Unit) {
 
   val context = LocalContext.current
   val isRunning = app.modelServer.isRunning
+
+  // Poll active connections every 2 seconds
+  val activeClients = remember { mutableStateListOf<Pair<String, Long>>() }
+  LaunchedEffect(isRunning) {
+    while (true) {
+      activeClients.clear()
+      activeClients.addAll(app.modelServer.getActiveClients())
+      delay(2000)
+    }
+  }
   val localIp = app.modelServer.getLocalIp()
   val serverUrl = app.modelServer.getServerUrl()
 
@@ -155,8 +178,27 @@ fun CloudScreen(onBack: () -> Unit) {
 
       Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = colors.Card)) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          Text("Connected Clients", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.Text2)
-          Text("No active connections", fontSize = 11.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Connected Clients", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.Text2, modifier = Modifier.weight(1f))
+            Text("${activeClients.size} active", fontSize = 11.sp, color = if (activeClients.isEmpty()) colors.Text3 else colors.Accent2, fontFamily = FontFamily.Monospace)
+          }
+          if (activeClients.isEmpty()) {
+            Text("No active connections", fontSize = 11.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+          } else {
+            activeClients.forEach { (ip, connectedAt) ->
+              Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Box(
+                  modifier = Modifier.size(8.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(0xFF00E6A8))
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(ip, fontSize = 12.sp, color = colors.Text, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+                Text(formatElapsed(connectedAt), fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+              }
+            }
+          }
         }
       }
 
