@@ -18,7 +18,6 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 
 class ModelServer(val port: Int = 8080) {
   private val tag = "ModelServer"
@@ -229,15 +228,14 @@ class ModelServer(val port: Int = 8080) {
           return
         }
 
-        when {
-          path == "/" || path == "" -> handleIndex(out)
-          path == "/health" -> handleHealth(out)
-          path == "/v1/models" -> handleModels(out)
-          path == "/v1/chat/completions" && method == "POST" -> handleChatCompletions(out, body, ip)
-          path == "/v1/embeddings" && method == "POST" -> handleEmbeddings(out, body)
-          path.startsWith("/v1/") -> respond(out, 404, """{"error":"not_found","message":"Endpoint not found","type":"invalid_request_error"}""")
-          else -> respond(out, 404, """{"error":"not_found","message":"Not found"}""")
-        }
+when {
+  path == "/" || path == "" -> handleIndex(out)
+  path == "/health" -> handleHealth(out)
+  path == "/v1/models" -> handleModels(out)
+  path == "/v1/chat/completions" && method == "POST" -> handleChatCompletions(out, body, ip)
+  path.startsWith("/v1/") -> respond(out, 404, """{"error":"not_found","message":"Endpoint not found","type":"invalid_request_error"}""")
+  else -> respond(out, 404, """{"error":"not_found","message":"Not found"}""")
+}
         emitAudit(ip, method, path, 200, startTime)
       }
     } catch (e: Exception) {
@@ -402,7 +400,6 @@ pre:hover .copy-btn{opacity:1}
 <div class="endpoint"><span class="method get">GET</span><span class="path"><a href="/health" style="color:#E8E8F0;text-decoration:none">/health</a></span><span class="desc">Health check</span></div>
 <div class="endpoint"><span class="method get">GET</span><span class="path"><a href="/v1/models" style="color:#E8E8F0;text-decoration:none">/v1/models</a></span><span class="desc">List models</span></div>
 <div class="endpoint"><span class="method post">POST</span><span class="path">/v1/chat/completions</span><span class="desc">Chat completions</span></div>
-<div class="endpoint"><span class="method post">POST</span><span class="path">/v1/embeddings</span><span class="desc">Embeddings</span></div>
 </div>
 
 <div class="card">
@@ -418,10 +415,7 @@ ${authHeader}  -H <span class="string">"Content-Type: application/json"</span> \
 &nbsp;&nbsp;"messages": [{"role": "user", "content": "Hello!"}],<br>
 &nbsp;&nbsp;"stream": true<br>
 }'</span><br><br>
-<strong class="comment"># Embeddings</strong><br>
-<span class="method-highlight">curl</span> ${getServerUrl()}/embeddings \<br>
-${authHeader}  -H <span class="string">"Content-Type: application/json"</span> \<br>
-  -d <span class="string">'{"input": "Hello world"}'</span>
+
 </div>
 </div>
 </div>
@@ -444,7 +438,7 @@ ${authHeader}  -H <span class="string">"Content-Type: application/json"</span> \
 <div class="badge"><a href="/health">/health</a></div>
 <div class="badge"><a href="/v1/models">/v1/models</a></div>
 <div class="badge">POST /v1/chat/completions</div>
-<div class="badge">POST /v1/embeddings</div>
+
 <div class="badge" style="color:#7C73FF">${getServerUrl()}</div>
 </div>
 </div>
@@ -716,54 +710,6 @@ async function send(){
     val response = resultBuilder.toString()
     val json = """{"id":"$id","object":"chat.completion","created":${System.currentTimeMillis()/1000},"model":"$model","choices":[{"index":0,"message":{"role":"assistant","content":${jsonEncode(response)}},"finish_reason":"stop"}],"usage":{"total_tokens":${tokCount.get()}}}"""
     respond(out, 200, json)
-  }
-
-  private fun handleEmbeddings(out: OutputStream, body: String) {
-    try {
-      val app = ZeroCopyApp.instance
-      val engine = app.engineManager.getActiveEngine()
-      if (engine?.isModelLoaded != true) {
-        respond(out, 503, """{"error":"model_unavailable","message":"No model loaded","type":"server_error"}""")
-        return
-      }
-      val json = org.json.JSONObject(body)
-      val input = json.optString("input", json.optString("prompt", ""))
-      if (input.isBlank()) {
-        respond(out, 400, """{"error":"invalid_request","message":"input is required","type":"invalid_request_error"}""")
-        return
-      }
-      val done = AtomicBoolean(false)
-      var errorMsg: String? = null
-      val embeddingTokens = StringBuilder()
-      runBlocking {
-        engine.executeInference("Embed the following text and return its semantic meaning:\n$input", object : TokenCallback {
-          override fun onToken(token: String) { embeddingTokens.append(token) }
-          override fun onDone() { done.set(true) }
-          override fun onError(error: String) { errorMsg = error; done.set(true) }
-          override fun onKvUsage(percent: Int) {}
-          override fun onTokensGenerated(count: Int) {}
-        })
-      }
-      var waited = 0
-      while (!done.get() && waited < 120_000) {
-        Thread.sleep(100)
-        waited += 100
-      }
-      if (errorMsg != null) {
-        respond(out, 500, """{"error":"inference_error","message":"${errorMsg?.replace("\"","'")}","type":"server_error"}""")
-        return
-      }
-      val finalText = embeddingTokens.toString().trim()
-      val usage = """{"prompt_tokens":${input.length/4},"total_tokens":${input.length/4 + finalText.length/4}}"""
-      val embeddingArr = finalText.split(",").mapNotNull { it.trim().toFloatOrNull() }.take(512)
-      val vector = if (embeddingArr.isEmpty()) {
-        (1..128).map { kotlin.math.sin(it.toDouble()).toFloat() }
-      } else embeddingArr
-      val vectorJson = vector.joinToString(",")
-      respond(out, 200, """{"object":"list","data":[{"object":"embedding","index":0,"embedding":[$vectorJson]}],"model":"default","usage":$usage}""")
-    } catch (e: Exception) {
-      respond(out, 500, """{"error":"server_error","message":"${e.message?.replace("\"","'") ?: "Internal error"}","type":"internal_error"}""")
-    }
   }
 
   private fun buildPrompt(messages: org.json.JSONArray): String {

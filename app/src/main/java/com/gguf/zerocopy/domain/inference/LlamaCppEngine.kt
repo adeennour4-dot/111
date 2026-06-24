@@ -151,12 +151,14 @@ class LlamaCppEngine : InferenceEngine {
             android.util.Log.d("LlamaCppEngine", "onDone")
             callback.onDone()
             inferenceDone.set(true)
+            activeCallback = null
           }
 
           override fun onError(error: String) {
             android.util.Log.e("LlamaCppEngine", "onError: $error")
             callback.onError(error)
             inferenceDone.set(true)
+            activeCallback = null
           }
 
           override fun onKvCacheUsage(percent: Int) {
@@ -179,9 +181,9 @@ class LlamaCppEngine : InferenceEngine {
       } catch (e: Exception) {
         android.util.Log.e("LlamaCppEngine", "Exception during inference: ${e.message}")
         inferenceDone.set(true)
+        activeCallback = null
       } finally {
-        // Keep reference alive until inference completes
-        // Don't clear here - let onDone handle it
+        if (!inferenceDone.get()) activeCallback = null
       }
     }
   }
@@ -214,12 +216,14 @@ class LlamaCppEngine : InferenceEngine {
             android.util.Log.d("LlamaCppEngine", "onDone (image)")
             callback.onDone()
             inferenceDone.set(true)
+            activeCallback = null
           }
 
           override fun onError(error: String) {
             android.util.Log.e("LlamaCppEngine", "onError (image): $error")
             callback.onError(error)
             inferenceDone.set(true)
+            activeCallback = null
           }
 
           override fun onKvCacheUsage(percent: Int) {
@@ -242,8 +246,9 @@ class LlamaCppEngine : InferenceEngine {
       } catch (e: Exception) {
         android.util.Log.e("LlamaCppEngine", "Exception during image inference: ${e.message}")
         inferenceDone.set(true)
+        activeCallback = null
       } finally {
-        // Keep reference alive until inference completes
+        if (!inferenceDone.get()) activeCallback = null
       }
     }
   }

@@ -1,5 +1,10 @@
 package com.gguf.zerocopy.domain.inference
 
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -48,6 +53,29 @@ class ToolManager {
       description = "Get the current date",
       parameters = JSONObject()
     ) { getCurrentDate() }
+
+    register(
+      name = "web_search",
+      description = "Search the web for current information. Returns title, snippet, and URL for each result.",
+      parameters = JSONObject().apply {
+        put("type", "object")
+        put("properties", JSONObject().apply {
+          put("query", JSONObject().apply {
+            put("type", "string")
+            put("description", "The search query")
+          })
+          put("num_results", JSONObject().apply {
+            put("type", "integer")
+            put("description", "Number of results to return (1-10)")
+          })
+        })
+        put("required", JSONArray(listOf("query")))
+      }
+    ) { args ->
+      val query = args.optString("query", "")
+      val num = args.optInt("num_results", 5).coerceIn(1, 10)
+      webSearch(query, num)
+    }
 
     register(
       name = "calculate",
@@ -186,6 +214,77 @@ class ToolManager {
   private fun getCurrentDate(): String {
     val sdf = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.getDefault())
     return "Current date: ${sdf.format(Date())}"
+  }
+
+  private fun webSearch(query: String, numResults: Int): String {
+    try {
+      val encoded = URLEncoder.encode(query, "UTF-8")
+      val url = URL("https://html.duckduckgo.com/html/?q=$encoded")
+      val conn = url.openConnection() as HttpURLConnection
+      conn.apply {
+        requestMethod = "GET"
+        connectTimeout = 10000
+        readTimeout = 10000
+        setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
+      }
+      val html = conn.inputStream.bufferedReader().use { it.readText() }
+      conn.disconnect()
+
+      val sb = StringBuilder()
+      var count = 0
+      // Parse DuckDuckGo HTML results — extract result snippets
+      val resultRegex = Regex(
+        """<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>""",
+        RegexOption.DOT_MATCHES_ALL
+      )
+      val snippetRegex = Regex(
+        """<a[^>]+class="result__snippet"[^>]*>(.*?)</a>""",
+        RegexOption.DOT_MATCHES_ALL
+      )
+
+      val links = resultRegex.findAll(html).toList()
+      val snippets = snippetRegex.findAll(html).toList()
+
+      for (i in links.indices) {
+        if (count >= numResults) break
+        val link = links[i]
+        val urlStr = link.groupValues[1]
+          .replace(Regex("""&amp;"""), "&")
+          .replace(Regex("""&lt;"""), "<")
+          .replace(Regex("""&gt;"""), ">")
+          .replace(Regex("""<[^>]+>"""), "")
+        val title = link.groupValues[2]
+          .replace(Regex("""<[^>]+>"""), "")
+          .replace(Regex("""&amp;"""), "&")
+          .trim()
+        val snippet = snippets.getOrNull(i)?.groupValues?.getOrNull(1)
+          ?.replace(Regex("""<[^>]+>"""), "")
+          ?.replace(Regex("""&amp;"""), "&")
+          ?.trim() ?: ""
+
+        if (title.isNotEmpty()) {
+          if (sb.isNotEmpty()) sb.append("\n---\n")
+          sb.appendLine("Result ${count + 1}:")
+          sb.appendLine("Title: $title")
+          sb.appendLine("URL: $urlStr")
+          if (snippet.isNotEmpty()) sb.appendLine("Snippet: $snippet")
+          count++
+        }
+      }
+
+      if (sb.isEmpty()) {
+        val fallback = Regex("""<h2[^>]*>(.*?)</h2>""", RegexOption.DOT_MATCHES_ALL)
+        val fallbackMatch = fallback.find(html)
+        if (fallbackMatch != null) {
+          sb.appendLine("Search results may not have loaded. Try a more specific query.")
+        } else {
+          sb.appendLine("No results found for '$query'.")
+        }
+      }
+      return sb.toString().trim()
+    } catch (e: Exception) {
+      return "Web search failed: ${e.message}"
+    }
   }
 
   private fun evaluateExpression(expr: String): Double {

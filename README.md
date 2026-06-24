@@ -114,15 +114,3 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 ## License
 
 Apache 2.0. All dependencies (llama.cpp, MNN, LiteRT-LM, Compose) are open source. You can use this app commercially.
-
-## Version History
-
-### v8.0.0 - Public Release
-- 🎤 Voice input via Android SpeechRecognizer
-- 🔊 Text-to-speech for AI responses
-- 📤 One-tap conversation export as text
-- 🖼️ Experimental vision/multimodal support (mmproj)
-- 💡 Quick prompt suggestion chips
-- Fixed model deletion (directory models support)
-- Improved default sampling parameters (less nonsense)
-- Better error handling throughout

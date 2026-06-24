@@ -63,6 +63,9 @@ fun InputBar(
   onStop: () -> Unit,
   onCamera: () -> Unit,
   onAttach: () -> Unit,
+  onVoice: () -> Unit = {},
+  onSpeak: () -> Unit = {},
+  isSpeaking: Boolean = false,
   isInferring: Boolean,
   hasVision: Boolean = false,
   attachmentUris: List<Uri>,
@@ -242,13 +245,13 @@ fun InputBar(
           )
         }
         IconButton(
-          onClick = { /* voice placeholder */ },
+          onClick = onVoice,
           modifier = Modifier.size(36.dp)
         ) {
           Icon(
             Icons.Filled.Mic,
             contentDescription = "Voice",
-            tint = colors.Text2,
+            tint = if (isSpeaking) colors.Red else colors.Text2,
             modifier = Modifier.size(18.dp)
           )
         }

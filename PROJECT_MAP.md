@@ -1,4 +1,4 @@
-# PROJECT MAP — ZeroCopy v8.1.0
+# PROJECT MAP — ZeroCopy v0.5
 
 ## [TECH_STACK]
 
@@ -96,7 +96,7 @@ Rust Core (jni)
 └── memory.rs            (Memory pressure tracking)
 ```
 
-## [v8.1.0 CHANGES]
+## [v0.5 CHANGES]
 
 ### Bug Fixes
 1. **Model deletion** — Now handles directories (MNN models), returns success/failure
