@@ -152,7 +152,7 @@ class LlamaCppEngine : InferenceEngine {
       appendLine("You have access to tools. When you need real-time information, use a tool by")
       appendLine("outputting ONLY a JSON block (no other text) in this exact format and then stop:")
       appendLine("```json")
-      appendLine("{"name": "tool_name", "arguments": {"key": "value"}}")
+      appendLine("{\"name\": \"tool_name\", \"arguments\": {\"key\": \"value\"}}")
       appendLine("```")
       appendLine("Available tools:")
       appendLine(tm.getToolDefinitionsJson())
@@ -160,9 +160,7 @@ class LlamaCppEngine : InferenceEngine {
     }
     val origSystemPrompt = systemPrompt
     NativeBridge.setSystemPromptNative(
-      if (origSystemPrompt.isNotEmpty()) "$origSystemPrompt
-
-$toolInstruction"
+      if (origSystemPrompt.isNotEmpty()) "$origSystemPrompt\n\n$toolInstruction"
       else toolInstruction
     )
 
@@ -173,8 +171,7 @@ $toolInstruction"
       for (round in 0 until MAX_ROUNDS) {
         if (inferenceAborted.get()) break
 
-        val fullPrompt = if (promptSuffix.isEmpty()) prompt else "$prompt
-$promptSuffix"
+        val fullPrompt = if (promptSuffix.isEmpty()) prompt else "$prompt\n$promptSuffix"
         val responseBuf = StringBuilder()
         var turnErr: String? = null
 
@@ -207,10 +204,7 @@ $promptSuffix"
         val query = toolCall.arguments.optString("query",
           toolCall.arguments.keys().asSequence().firstOrNull()
             ?.let { toolCall.arguments.optString(it) } ?: toolCall.name)
-        val status = "
-🔍 *Searching: "$query"…*
-
-"
+        val status = "\n🔍 *Searching: \"$query\"…*\n\n"
         for (ch in status) callback.onToken(ch.toString())
         callback.onToolCall(toolCall.name, toolCall.arguments.toString())
 
