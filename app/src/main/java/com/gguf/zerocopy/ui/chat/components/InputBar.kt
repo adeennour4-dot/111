@@ -30,6 +30,8 @@ import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -250,7 +252,18 @@ fun InputBar(
         ) {
           Icon(
             Icons.Filled.Mic,
-            contentDescription = "Voice",
+            contentDescription = "Voice input",
+            tint = colors.Text2,
+            modifier = Modifier.size(18.dp)
+          )
+        }
+        IconButton(
+          onClick = onSpeak,
+          modifier = Modifier.size(36.dp)
+        ) {
+          Icon(
+            if (isSpeaking) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
+            contentDescription = if (isSpeaking) "Stop speaking" else "Read aloud",
             tint = if (isSpeaking) colors.Red else colors.Text2,
             modifier = Modifier.size(18.dp)
           )
