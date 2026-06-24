@@ -32,11 +32,13 @@ class ModelServer(val port: Int = 8080) {
   private val rateLimiter = TokenBucket(capacity = 60, refillPerSec = 2)
   private val authFailTracker = ConcurrentHashMap<String, AuthFailEntry>()
   private val clientExecutor = Executors.newCachedThreadPool()
+  private val activeClients = ConcurrentHashMap<String, Long>() // ip -> connect time ms
 
   @Volatile
   var notificationSetter: ((String) -> Unit)? = null
 
   val isRunning: Boolean get() = running.get()
+  fun getActiveClients(): List<Pair<String, Long>> = activeClients.entries.map { it.key to it.value }
 
   fun setAutoModel(path: String, name: String) {
     autoModelPath = path
@@ -172,6 +174,7 @@ class ModelServer(val port: Int = 8080) {
   private fun handleClient(client: Socket) {
     val ip = client.inetAddress?.hostAddress ?: "unknown"
     val startTime = System.currentTimeMillis()
+    activeClients[ip] = startTime
     try {
       client.use { socket ->
         socket.soTimeout = 60000
@@ -679,6 +682,7 @@ async function send(){
       out.write("data: [DONE]\n\n".toByteArray())
       out.flush()
     } catch (_: Exception) {}
+    finally { activeClients.remove(ip) }
   }
 
   private fun syncResponse(out: OutputStream, id: String, model: String, engine: com.gguf.zerocopy.domain.inference.InferenceEngine, prompt: String) {
