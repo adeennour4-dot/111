@@ -115,9 +115,7 @@ class ToolManager {
     tools[def.name] = ToolEntry(definition = def, executor = executor)
   }
 
-  fun unregister(name: String): Boolean {
-    return tools.remove(name) != null
-  }
+  fun unregister(name: String): Boolean = tools.remove(name) != null
 
   fun clearAll() {
     tools.clear()
@@ -177,33 +175,32 @@ class ToolManager {
   }
 
   private fun extractJsonBlock(text: String): String? {
-    val codeBlockRegex = Regex("```(?:json)?\\s*\\{.*?\\}\\s*```", RegexOption.DOT_MATCHES_ALL)
-    val match = codeBlockRegex.find(text)
-    if (match != null) {
-      val block = match.value
-      val json = block
-        .replace(Regex("```(?:json)?\\s*"), "")
-        .replace("```", "")
-        .trim()
-      return if (json.startsWith("{") && json.endsWith("}")) json else null
+    // Try fenced code block first (```json ... ``` or ``` ... ```)
+    val codeBlockRegex = Regex("""```(?:json)?\s*(\{.*?})\s*```""", RegexOption.DOT_MATCHES_ALL)
+    val cbMatch = codeBlockRegex.find(text)
+    if (cbMatch != null) {
+      val json = cbMatch.groupValues[1].trim()
+      if (json.startsWith("{") && json.endsWith("}")) return json
     }
 
-    val inlineRegex = Regex("\\{\\s*\"name\"\\s*:\\s*\"[^\"]+\"\\s*,", RegexOption.DOT_MATCHES_ALL)
-    val inlineMatch = inlineRegex.find(text)
-    if (inlineMatch != null) {
-      val start = inlineMatch.range.first
-      var depth = 0
-      var end = start
-      for (i in start until text.length) {
-        when (text[i]) {
-          '{' -> depth++
-          '}' -> { depth--; if (depth == 0) { end = i; break } }
+    // Try bare JSON object containing "name" key
+    val start = text.indexOf("{")
+    if (start < 0) return null
+    var depth = 0
+    var end = -1
+    for (i in start until text.length) {
+      when (text[i]) {
+        '{' -> depth++
+        '}' -> {
+          depth--
+          if (depth == 0) { end = i; break }
         }
       }
-      return if (end > start) text.substring(start, end + 1) else null
     }
-
-    return null
+    if (end < 0) return null
+    val candidate = text.substring(start, end + 1)
+    // Only accept if it has a "name" field pointing to a known tool
+    return if (candidate.contains("\"name\"")) candidate else null
   }
 
   private fun getCurrentTime(): String {
@@ -216,76 +213,149 @@ class ToolManager {
     return "Current date: ${sdf.format(Date())}"
   }
 
+  /**
+   * Web search via DuckDuckGo Lite (plain HTML, no JS, no redirect loop).
+   * Falls back to DuckDuckGo HTML endpoint if Lite returns nothing.
+   */
   private fun webSearch(query: String, numResults: Int): String {
-    try {
+    if (query.isBlank()) return "Error: empty search query."
+    return try {
       val encoded = URLEncoder.encode(query, "UTF-8")
-      val url = URL("https://html.duckduckgo.com/html/?q=$encoded")
-      val conn = url.openConnection() as HttpURLConnection
-      conn.apply {
-        requestMethod = "GET"
-        connectTimeout = 10000
-        readTimeout = 10000
-        setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
-      }
-      val html = conn.inputStream.bufferedReader().use { it.readText() }
-      conn.disconnect()
-
-      val sb = StringBuilder()
-      var count = 0
-      // Parse DuckDuckGo HTML results — extract result snippets
-      val resultRegex = Regex(
-        """<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>""",
-        RegexOption.DOT_MATCHES_ALL
-      )
-      val snippetRegex = Regex(
-        """<a[^>]+class="result__snippet"[^>]*>(.*?)</a>""",
-        RegexOption.DOT_MATCHES_ALL
-      )
-
-      val links = resultRegex.findAll(html).toList()
-      val snippets = snippetRegex.findAll(html).toList()
-
-      for (i in links.indices) {
-        if (count >= numResults) break
-        val link = links[i]
-        val urlStr = link.groupValues[1]
-          .replace(Regex("""&amp;"""), "&")
-          .replace(Regex("""&lt;"""), "<")
-          .replace(Regex("""&gt;"""), ">")
-          .replace(Regex("""<[^>]+>"""), "")
-        val title = link.groupValues[2]
-          .replace(Regex("""<[^>]+>"""), "")
-          .replace(Regex("""&amp;"""), "&")
-          .trim()
-        val snippet = snippets.getOrNull(i)?.groupValues?.getOrNull(1)
-          ?.replace(Regex("""<[^>]+>"""), "")
-          ?.replace(Regex("""&amp;"""), "&")
-          ?.trim() ?: ""
-
-        if (title.isNotEmpty()) {
-          if (sb.isNotEmpty()) sb.append("\n---\n")
-          sb.appendLine("Result ${count + 1}:")
-          sb.appendLine("Title: $title")
-          sb.appendLine("URL: $urlStr")
-          if (snippet.isNotEmpty()) sb.appendLine("Snippet: $snippet")
-          count++
-        }
-      }
-
-      if (sb.isEmpty()) {
-        val fallback = Regex("""<h2[^>]*>(.*?)</h2>""", RegexOption.DOT_MATCHES_ALL)
-        val fallbackMatch = fallback.find(html)
-        if (fallbackMatch != null) {
-          sb.appendLine("Search results may not have loaded. Try a more specific query.")
-        } else {
-          sb.appendLine("No results found for '$query'.")
-        }
-      }
-      return sb.toString().trim()
+      // DuckDuckGo Lite — returns simple table-based HTML, no JS
+      val result = fetchDdgLite(encoded, numResults)
+      if (result.isNotBlank()) result
+      else fetchDdgHtml(encoded, numResults)
     } catch (e: Exception) {
-      return "Web search failed: ${e.message}"
+      "Web search failed: ${e.message}"
     }
   }
+
+  private fun openConnection(urlStr: String): HttpURLConnection {
+    val conn = URL(urlStr).openConnection() as HttpURLConnection
+    conn.apply {
+      requestMethod = "GET"
+      connectTimeout = 15_000
+      readTimeout = 20_000
+      instanceFollowRedirects = true
+      setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/124.0 Mobile Safari/537.36")
+      setRequestProperty("Accept", "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8")
+      setRequestProperty("Accept-Language", "en-US,en;q=0.5")
+      setRequestProperty("Connection", "close")
+    }
+    return conn
+  }
+
+  /** DuckDuckGo Lite endpoint — simpler HTML, more reliable on Android */
+  private fun fetchDdgLite(encoded: String, numResults: Int): String {
+    val conn = openConnection("https://lite.duckduckgo.com/lite/?q=$encoded")
+    val responseCode = conn.responseCode
+    if (responseCode != 200) {
+      conn.disconnect()
+      return ""
+    }
+    val html = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+    conn.disconnect()
+    return parseDdgLite(html, numResults)
+  }
+
+  /** Parse the DuckDuckGo Lite table result page */
+  private fun parseDdgLite(html: String, numResults: Int): String {
+    // Each result: <a class="result-link" href="URL">Title</a> then <td class="result-snippet">Snippet</td>
+    val linkRegex = Regex("""<a[^>]+class="result-link"[^>]*href="([^"]+)"[^>]*>(.*?)</a>""", RegexOption.DOT_MATCHES_ALL)
+    val snippetRegex = Regex("""<td[^>]+class="result-snippet"[^>]*>(.*?)</td>""", RegexOption.DOT_MATCHES_ALL)
+
+    val links = linkRegex.findAll(html).toList()
+    val snippets = snippetRegex.findAll(html).toList()
+
+    if (links.isEmpty()) return ""
+
+    return buildString {
+      var count = 0
+      for (i in links.indices) {
+        if (count >= numResults) break
+        val url = decodeHtmlEntities(links[i].groupValues[1]).trim()
+        val title = stripTags(links[i].groupValues[2]).trim()
+        val snippet = snippets.getOrNull(i)?.let { stripTags(it.groupValues[1]).trim() } ?: ""
+        if (title.isEmpty()) continue
+        if (isNotEmpty()) append("\n---\n")
+        appendLine("Result ${count + 1}:")
+        appendLine("Title: $title")
+        appendLine("URL: $url")
+        if (snippet.isNotEmpty()) appendLine("Snippet: $snippet")
+        count++
+      }
+    }.trim()
+  }
+
+  /** Fallback: DuckDuckGo HTML endpoint */
+  private fun fetchDdgHtml(encoded: String, numResults: Int): String {
+    val conn = openConnection("https://html.duckduckgo.com/html/?q=$encoded")
+    val responseCode = conn.responseCode
+    if (responseCode != 200) {
+      conn.disconnect()
+      return "No results found (HTTP $responseCode)."
+    }
+    val html = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+    conn.disconnect()
+    return parseDdgHtml(html, numResults)
+  }
+
+  /** Parse DuckDuckGo HTML full result page */
+  private fun parseDdgHtml(html: String, numResults: Int): String {
+    // result links are inside <a class="result__a" ...>
+    val linkRegex = Regex("""<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>""", RegexOption.DOT_MATCHES_ALL)
+    val snippetRegex = Regex("""<a[^>]+class="result__snippet"[^>]*>(.*?)</a>""", RegexOption.DOT_MATCHES_ALL)
+
+    val links = linkRegex.findAll(html).toList()
+    val snippets = snippetRegex.findAll(html).toList()
+
+    if (links.isEmpty()) return "No results found for the query."
+
+    return buildString {
+      var count = 0
+      for (i in links.indices) {
+        if (count >= numResults) break
+        // DDG HTML wraps URLs in a redirect — extract uddg= param when present
+        val rawUrl = decodeHtmlEntities(links[i].groupValues[1])
+        val url = extractDdgUrl(rawUrl)
+        val title = stripTags(links[i].groupValues[2]).trim()
+        val snippet = snippets.getOrNull(i)?.let { stripTags(it.groupValues[1]).trim() } ?: ""
+        if (title.isEmpty()) continue
+        if (isNotEmpty()) append("\n---\n")
+        appendLine("Result ${count + 1}:")
+        appendLine("Title: $title")
+        appendLine("URL: $url")
+        if (snippet.isNotEmpty()) appendLine("Snippet: $snippet")
+        count++
+      }
+    }.trim().ifEmpty { "No results found for the query." }
+  }
+
+  /** Extract the actual URL from a DDG redirect like /l/?uddg=https%3A%2F%2F... */
+  private fun extractDdgUrl(raw: String): String {
+    return try {
+      if (raw.startsWith("/l/?") || raw.contains("uddg=")) {
+        val idx = raw.indexOf("uddg=")
+        if (idx >= 0) {
+          java.net.URLDecoder.decode(raw.substring(idx + 5).substringBefore("&"), "UTF-8")
+        } else raw
+      } else raw
+    } catch (_: Exception) { raw }
+  }
+
+  private fun stripTags(html: String): String =
+    html.replace(Regex("<[^>]+>"), "").let { decodeHtmlEntities(it) }
+
+  private fun decodeHtmlEntities(s: String): String =
+    s.replace("&amp;", "&")
+      .replace("&lt;", "<")
+      .replace("&gt;", ">")
+      .replace("&quot;", "\"")
+      .replace("&#39;", "'")
+      .replace("&nbsp;", " ")
+      .replace(Regex("&#(\\d+);")) { mr ->
+        mr.groupValues[1].toIntOrNull()?.toChar()?.toString() ?: mr.value
+      }
 
   private fun evaluateExpression(expr: String): Double {
     val sanitized = expr.replace("[^0-9+\\-*/().% ]".toRegex(), "").trim()
@@ -340,6 +410,8 @@ class ToolManager {
 
     private fun parsePrimary(): Double {
       if (pos >= input.length) throw IllegalArgumentException("Unexpected end")
+      // skip spaces
+      while (pos < input.length && input[pos] == ' ') pos++
       if (input[pos] == '(') {
         pos++
         val result = parseAddSub()
