@@ -30,6 +30,7 @@ private val TFLITE1_MAGIC = byteArrayOf(0x1A, 0x00, 0x00, 0x00)
 private val TFLITE2_MAGIC = byteArrayOf(0x54, 0x46, 0x4C, 0x33) // "TFL3"
 
 fun isValidModelFile(file: File): Boolean {
+  if (file.isDirectory) return File(file, "config.json").exists()
   if (!file.isFile || file.length() < 8) return false
   return try {
     RandomAccessFile(file, "r").use { raf ->
@@ -241,40 +242,71 @@ class ModelRepository(private val context: Context) {
 
   fun scanModels() {
     val files = modelsDir.listFiles() ?: emptyArray()
-    // Clean up abandoned .part files (leftover from interrupted downloads)
-    files.filter { it.name.endsWith(".part") && (System.currentTimeMillis() - it.lastModified() > 3600000) }.forEach { it.delete() }
-    _models.value =
-      (
-        files.filter {
-          it.isFile &&
-            it.extension.lowercase() in VALID_EXTENSIONS &&
-            isValidModelFile(it)
-        } +
-          files.filter { it.isDirectory && File(it, "config.json").exists() }
-            .map { dir ->
-              val entries = dir.listFiles() ?: emptyArray()
-              val dataFile = entries.find { it.extension.lowercase() in VALID_EXTENSIONS }
-              dataFile ?: dir
-            }
-        )
-        .map { file ->
-          val ext = if (file.isDirectory) "mnn" else file.extension.lowercase()
-          LocalModel(
+    // Clean up abandoned .part files older than 1 hour
+    files.filter { it.name.endsWith(".part") && (System.currentTimeMillis() - it.lastModified() > 3_600_000) }
+      .forEach { it.delete() }
+
+    val discovered = mutableListOf<LocalModel>()
+
+    for (file in files) {
+      when {
+        // ── MNN model directory ─────────────────────────────────────────────
+        // A folder that contains config.json is always an MNN model directory.
+        // Register the DIRECTORY as the model path (not any file inside it).
+        file.isDirectory && File(file, "config.json").exists() -> {
+          discovered += LocalModel(
+            id = "${file.name}_${file.lastModified()}",
+            name = file.name,
+            path = file.absolutePath,          // ← directory path, what MnnEngine needs
+            format = "mnn",
+            engine = EngineType.MNN,
+            sizeBytes = file.walkTopDown().filter { it.isFile }.sumOf { it.length() },
+            addedAt = file.lastModified(),
+            lastUsed = file.lastModified()
+          )
+        }
+
+        // ── Single model file (GGUF / TFLite / LiteRT) ──────────────────────
+        file.isFile && file.extension.lowercase() in VALID_EXTENSIONS && isValidModelFile(file) -> {
+          val ext = file.extension.lowercase()
+          discovered += LocalModel(
             id = "${file.name}_${file.lastModified()}",
             name = file.name,
             path = file.absolutePath,
             format = ext,
             engine = engineForExt(ext),
-            sizeBytes =
-            if (file.isDirectory) {
-              file.walkTopDown().filter { it.isFile }.sumOf { it.length() }
-            } else {
-              file.length()
-            },
+            sizeBytes = file.length(),
             addedAt = file.lastModified(),
             lastUsed = file.lastModified()
           )
-        }.sortedByDescending { it.lastUsed }
+        }
+
+        // ── Loose .mnn weight file NOT inside a config.json directory ────────
+        // (edge case: user dropped a bare .mnn shard; try to use its parent dir)
+        file.isFile && file.extension.lowercase() == "mnn" -> {
+          val parent = file.parentFile
+          if (parent != null && File(parent, "config.json").exists()) {
+            // already handled above when we iterated the parent dir
+          } else {
+            // Register the file anyway so the user sees it and gets a clear error
+            discovered += LocalModel(
+              id = "${file.name}_${file.lastModified()}",
+              name = file.name,
+              path = file.absolutePath,
+              format = "mnn",
+              engine = EngineType.MNN,
+              sizeBytes = file.length(),
+              addedAt = file.lastModified(),
+              lastUsed = file.lastModified()
+            )
+          }
+        }
+
+        else -> { /* skip .part files, unknown formats, etc. */ }
+      }
+    }
+
+    _models.value = discovered.sortedByDescending { it.lastUsed }
   }
 
   suspend fun importUri(uri: Uri, filename: String): Result<LocalModel> =
@@ -438,15 +470,14 @@ class ModelRepository(private val context: Context) {
 
   fun getModel(id: String): LocalModel? = _models.value.find { it.id == id }
 
-
   suspend fun importPath(path: String, name: String): Result<LocalModel> =
     withContext(Dispatchers.IO) {
       try {
         val file = File(path)
         if (!file.exists() || !isValidModelFile(file)) {
-          return@withContext Result.failure(Exception("Invalid model file: " + path))
+          return@withContext Result.failure(Exception("Invalid model file: $path"))
         }
-        val ext = path.substringAfterLast(".").lowercase()
+        val ext = if (file.isDirectory) "mnn" else file.extension.lowercase()
         val model =
           LocalModel(
             id = "${file.name}_${System.currentTimeMillis()}",
@@ -454,7 +485,8 @@ class ModelRepository(private val context: Context) {
             path = file.absolutePath,
             format = ext,
             engine = engineForExt(ext),
-            sizeBytes = file.length()
+            sizeBytes = if (file.isDirectory) file.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+                        else file.length()
           )
         _models.value = _models.value + model
         Result.success(model)
