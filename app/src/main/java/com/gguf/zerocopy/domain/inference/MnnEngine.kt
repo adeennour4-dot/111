@@ -74,6 +74,7 @@ class MnnEngine : InferenceEngine {
     }
     try {
       currentModelPath = path
+      // Resolve the model directory that MNN needs (the folder containing config.json)
       val modelDir = resolveModelDir(path)
       mnnSetConfigNative(
         config.nCtx,
@@ -88,7 +89,7 @@ class MnnEngine : InferenceEngine {
         modelInfo = parseModelInfo(mnnGetModelInfo())
         Result.success(Unit)
       } else {
-        Result.failure(Exception("MNN model load failed"))
+        Result.failure(Exception("MNN model load failed for dir: $modelDir"))
       }
     } catch (e: Exception) {
       Result.failure(e)
@@ -209,13 +210,41 @@ class MnnEngine : InferenceEngine {
 
   override fun readTokenStream(): String = synchronized(partialStream) { fullResponse.toString() }
 
+  /**
+   * Resolve the directory that MNN's Llm loader needs.
+   *
+   * MNN models are stored as a directory containing config.json (and weights/*.mnn files).
+   * The user/system may pass:
+   *   (a) the directory path itself  — already correct
+   *   (b) a .mnn weight file inside the directory  — go up one level
+   *   (c) a path whose name (minus .mnn suffix) is the directory  — try that
+   *
+   * Priority: check for config.json existence to confirm the correct directory.
+   */
   private fun resolveModelDir(path: String): String {
     val file = File(path)
-    if (file.isDirectory && File(file, "config.json").exists()) return path
+
+    // (a) Path IS the model directory
+    if (file.isDirectory && File(file, "config.json").exists()) return file.absolutePath
+
+    // (b) Path is a file inside the model directory (e.g. model.mnn weight shard)
     val parent = file.parentFile
     if (parent != null && File(parent, "config.json").exists()) return parent.absolutePath
-    val dir = File(file.absolutePath.removeSuffix(".mnn"))
-    if (dir.isDirectory && File(dir, "config.json").exists()) return dir.absolutePath
+
+    // (c) Path is something like /models/qwen/qwen.mnn — strip extension and check dir
+    val nameWithoutExt = file.nameWithoutExtension
+    val siblingDir = File(file.parent ?: "", nameWithoutExt)
+    if (siblingDir.isDirectory && File(siblingDir, "config.json").exists()) return siblingDir.absolutePath
+
+    // (d) Deeper search: scan up to 2 levels under the file's parent for any config.json
+    val searchRoot = parent ?: file
+    val found = searchRoot.walk()
+      .maxDepth(2)
+      .firstOrNull { it.name == "config.json" && it.parentFile?.isDirectory == true }
+    if (found != null) return found.parentFile!!.absolutePath
+
+    // Fallback: pass as-is and let the native layer decide
+    android.util.Log.w("MnnEngine", "Could not find config.json near $path — passing path directly")
     return path
   }
 
