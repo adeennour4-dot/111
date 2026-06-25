@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -118,10 +119,8 @@ fun ChatScreen(
   val engine = app.engineManager.getActiveEngine()
   val hasVision = engine?.hasVisionCapability == true
 
-  // Use a stable chatId that doesn't reset on recomposition
   var chatId by remember { mutableStateOf(sessionId) }
-  
-  // Initialize chatId from sessionId parameter only once
+
   LaunchedEffect(sessionId) {
     if (sessionId != null) {
       chatId = sessionId
@@ -144,7 +143,6 @@ fun ChatScreen(
   var ragEnabled by remember { mutableStateOf(SettingsManager.ragEnabled) }
   var webSearchEnabled by remember { mutableStateOf(SettingsManager.webSearchEnabled) }
 
-  // Enable / disable web_search tool on the engine when toggle changes
   LaunchedEffect(webSearchEnabled) {
     val eng = app.engineManager.getActiveEngine() ?: return@LaunchedEffect
     if (webSearchEnabled) {
@@ -201,13 +199,11 @@ fun ChatScreen(
 
   val thinkRegex = remember { Regex("<think>([\\s\\S]*?)</think>") }
 
-  fun extractThinking(content: String): String? {
-    return thinkRegex.find(content)?.groupValues?.getOrNull(1)
-  }
+  fun extractThinking(content: String): String? =
+    thinkRegex.find(content)?.groupValues?.getOrNull(1)
 
-  fun removeThinking(content: String): String {
-    return content.replace(thinkRegex, "").trim()
-  }
+  fun removeThinking(content: String): String =
+    content.replace(thinkRegex, "").trim()
 
   val cameraLauncher = rememberLauncherForActivityResult(
     ActivityResultContracts.StartActivityForResult()
@@ -300,16 +296,10 @@ fun ChatScreen(
     streamedTokens = 0
     streamedTps = 0f
 
-    // Buffer for lock-free token accumulation.
-    // The native callback thread writes here; the UI flush loop reads it.
-    // This decouples Compose recomposition from the inference hot path —
-    // fixing the foreground slowdown on S25 Ultra where per-token recompose
-    // was competing with the inference thread for CPU time.
     val tokenBuffer = AtomicReference("")
     val startTime   = System.currentTimeMillis()
     val rawResponse = StringBuilder()
 
-    // UI flush loop: push buffered tokens to Compose state at ~60 fps.
     val flushJob = scope.launch {
       while (isInferring || tokenBuffer.get().isNotEmpty()) {
         val buffered = tokenBuffer.getAndSet("")
@@ -318,12 +308,11 @@ fun ChatScreen(
           val elapsed = (System.currentTimeMillis() - startTime) / 1000f
           if (elapsed > 0) streamedTps = streamedTokens / elapsed
         }
-        delay(16L) // ~60 fps
+        delay(16L)
       }
     }
 
     scope.launch {
-      // ── 1. Process attachments on IO thread ──────────────────────────────
       val savedPaths   = mutableListOf<String>()
       var attachType: AttachmentType? = null
       val ragEngine    = app.ragEngine
@@ -335,12 +324,11 @@ fun ChatScreen(
             val mime = context.contentResolver.getType(uri) ?: ""
             when {
               mime.startsWith("image/") -> {
-                // Save for vision; also ingest into RAG for OCR text
                 saveAttachmentToStorage(uri)?.let { path ->
                   savedPaths.add(path)
                   if (attachType == null) attachType = AttachmentType.IMAGE
                 }
-                ragEngine.ingest(uri, context) // adds OCR text to chunk store
+                ragEngine.ingest(uri, context)
               }
               mime == "application/pdf" -> {
                 ragEngine.ingest(uri, context)
@@ -361,14 +349,12 @@ fun ChatScreen(
         }
       }
 
-      // ── 2. RAG retrieval: fetch relevant chunks for user query ────────────
       if (ragEngine.hasDocuments && ragEnabled) {
         withContext(Dispatchers.IO) {
           ragContext = ragEngine.retrieve(text)
         }
       }
 
-      // ── 3. Build final prompt (RAG injected only for inference, not saved) ──
       val finalPrompt = buildString {
         append(text)
         if (ragContext.isNotEmpty()) {
@@ -378,7 +364,6 @@ fun ChatScreen(
         }
       }
 
-      // ── 4. Save user message (original text without RAG context to avoid bloat) ──
       val userMsg = ChatMessage(
         role           = MessageRole.USER,
         content        = text,
@@ -387,7 +372,6 @@ fun ChatScreen(
       )
       app.chatRepository.addMessage(id, userMsg)
 
-      // ── 5. Run inference ──────────────────────────────────────────────────
       val currentChatId = id
 
       val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -395,8 +379,6 @@ fun ChatScreen(
         override fun onToken(token: String) {
           if (!inferenceActive) return
           rawResponse.append(token)
-          // Append to atomic buffer — UI flush loop drains this at 60 fps.
-          // No Compose state write here, so no recomposition on this thread.
           tokenBuffer.getAndUpdate { it + token }
           streamedTokens++
         }
@@ -415,8 +397,6 @@ fun ChatScreen(
             inferenceActive  = false
             isInferring      = false
             kvUsagePercent   = 0
-            // flushJob will see isInferring=false and drain the last buffer chunk,
-            // then exit naturally — no need to cancel it manually.
             streamedContent  = ""
           }
         }
@@ -458,7 +438,6 @@ fun ChatScreen(
     }
   }
 
-  // ── Voice input (SpeechRecognizer) ────────────────────────────────────────
   val speechLauncher = rememberLauncherForActivityResult(
     ActivityResultContracts.StartActivityForResult()
   ) { result ->
@@ -581,7 +560,6 @@ fun ChatScreen(
     }
   }
 
-  // Observe sessions StateFlow for reactive updates
   val sessions by app.chatRepository.sessions.collectAsState()
   val sessionName = remember(chatId, sessions) {
     if (chatId != null) {
@@ -589,7 +567,11 @@ fun ChatScreen(
     } else "New Chat"
   }
 
+  // ── imePadding on the Scaffold makes the entire layout (including bottomBar)
+  //   slide up with the software keyboard. This works alongside adjustResize in
+  //   the Manifest and enableEdgeToEdge() in MainActivity.
   Scaffold(
+    modifier = Modifier.imePadding(),
     topBar = {
       Surface(color = colors.Bg) {
         Row(
@@ -633,7 +615,8 @@ fun ChatScreen(
             onClick = { if (chatId != null) showExportDialog = true },
             enabled = chatId != null && messages.isNotEmpty()
           ) {
-            Icon(Icons.Outlined.Share, contentDescription = "Export", tint = if (chatId != null && messages.isNotEmpty()) colors.Text2 else colors.Text3)
+            Icon(Icons.Outlined.Share, contentDescription = "Export",
+              tint = if (chatId != null && messages.isNotEmpty()) colors.Text2 else colors.Text3)
           }
         }
       }
@@ -713,7 +696,7 @@ fun ChatScreen(
             }
           },
           onSpeak = {
-            val lastAssistant = messages.lastOrNull { it.role == com.gguf.zerocopy.data.repository.MessageRole.ASSISTANT }
+            val lastAssistant = messages.lastOrNull { it.role == MessageRole.ASSISTANT }
             if (lastAssistant != null) speakText(lastAssistant.content)
             else scope.launch { snackbarHostState.showSnackbar("No response to read aloud yet") }
           },
@@ -744,7 +727,6 @@ fun ChatScreen(
         .padding(pad)
         .fillMaxSize()
     ) {
-      // KV cache usage bar — only visible when context is getting full (>50%)
       if (kvUsagePercent > 50) {
         LinearProgressIndicator(
           progress = { kvUsagePercent / 100f },
