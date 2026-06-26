@@ -7,6 +7,8 @@ import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.MessageCallback
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
@@ -41,12 +43,11 @@ class LiteRtEngine : InferenceEngine {
       engine = Engine(extConfig)
       engine!!.initialize()
       isModelLoaded = true
-      modelInfo =
-        ModelInfo(
-          arch = "litert-lm",
-          engineType = EngineType.LITER_T,
-          modelPath = currentModelPath
-        )
+      modelInfo = ModelInfo(
+        arch = "litert-lm",
+        engineType = EngineType.LITER_T,
+        modelPath = currentModelPath
+      )
       Result.success(Unit)
     } catch (e: Exception) {
       tryFallbackLoad(path, e)
@@ -61,20 +62,12 @@ class LiteRtEngine : InferenceEngine {
     modelInfo = ModelInfo(engineType = EngineType.LITER_T, modelPath = currentModelPath)
     Result.success(Unit)
   } catch (e: Exception) {
-    Result.failure(
-      Exception("LiteRT-LM load failed (primary: ${originalError.message}, fallback: ${e.message})")
-    )
+    Result.failure(Exception("LiteRT-LM load failed (primary: ${originalError.message}, fallback: ${e.message})"))
   }
 
   override fun unloadModel() {
-    try {
-      conversation?.close()
-    } catch (_: Exception) {
-    }
-    try {
-      engine?.close()
-    } catch (_: Exception) {
-    }
+    try { conversation?.close() } catch (_: Exception) {}
+    try { engine?.close() } catch (_: Exception) {}
     engine = null
     conversation = null
     isModelLoaded = false
@@ -95,61 +88,68 @@ class LiteRtEngine : InferenceEngine {
       inferenceDone.set(false)
       tokensGenerated.set(0)
 
+      // CountDownLatch ensures we suspend until the async callback fires onDone/onError.
+      // Without this, executeInference() returned immediately and the ChatScreen
+      // marked inference complete before any tokens were generated.
+      val latch = CountDownLatch(1)
+
       try {
         if (conversation == null) {
           conversation = engine?.createConversation()
           if (systemPrompt.isNotEmpty()) {
             try {
               conversation?.sendMessage(Message.system(Contents.of(systemPrompt)), emptyMap())
-            } catch (_: Exception) {
-            }
+            } catch (_: Exception) {}
           }
         }
 
-        val msgCallback =
-          object : MessageCallback {
-            override fun onMessage(message: Message) {
-              val text = message.toString()
-              synchronized(partialStream) {
-                partialStream.append(text)
-                fullResponse.append(text)
-              }
-              tokensGenerated.incrementAndGet()
-              callback.onToken(text)
+        val msgCallback = object : MessageCallback {
+          override fun onMessage(message: Message) {
+            val text = message.toString()
+            synchronized(partialStream) {
+              partialStream.append(text)
+              fullResponse.append(text)
             }
-
-            override fun onDone() {
-              inferenceDone.set(true)
-              callback.onDone()
-            }
-
-            override fun onError(t: Throwable) {
-              inferenceDone.set(true)
-              callback.onError(t.message ?: "LiteRT-LM error")
-            }
+            val count = tokensGenerated.incrementAndGet()
+            callback.onToken(text)
+            callback.onTokensGenerated(count)
           }
 
+          override fun onDone() {
+            inferenceDone.set(true)
+            callback.onDone()
+            latch.countDown()
+          }
+
+          override fun onError(t: Throwable) {
+            inferenceDone.set(true)
+            callback.onError(t.message ?: "LiteRT-LM error")
+            latch.countDown()
+          }
+        }
+
         conversation?.sendMessageAsync(prompt, msgCallback, emptyMap())
+
+        // Wait up to 5 minutes for inference to complete
+        if (!latch.await(300, TimeUnit.SECONDS)) {
+          inferenceDone.set(true)
+          callback.onError("LiteRT-LM inference timed out")
+        }
       } catch (e: Exception) {
         inferenceDone.set(true)
         callback.onError(e.message ?: "LiteRT-LM error")
+        latch.countDown()
       }
     }
   }
 
   override fun abortInference() {
     inferenceDone.set(true)
-    try {
-      conversation?.cancelProcess()
-    } catch (_: Exception) {
-    }
+    try { conversation?.cancelProcess() } catch (_: Exception) {}
   }
 
   override fun resetContext() {
-    try {
-      conversation?.close()
-    } catch (_: Exception) {
-    }
+    try { conversation?.close() } catch (_: Exception) {}
     conversation = null
     synchronized(partialStream) {
       partialStream.clear()
@@ -159,8 +159,45 @@ class LiteRtEngine : InferenceEngine {
     tokensGenerated.set(0)
   }
 
-  override suspend fun benchmark(ppTokens: Int, tgTokens: Int): BenchmarkResult =
-    BenchmarkResult(engine = engineName)
+  override suspend fun benchmark(ppTokens: Int, tgTokens: Int): BenchmarkResult {
+    if (!isModelLoaded) return BenchmarkResult(engine = engineName)
+    return withContext(Dispatchers.IO) {
+      try {
+        val testPrompt = "The quick brown fox jumps over the lazy dog. ".repeat(maxOf(1, ppTokens / 10))
+        val ppStart = System.currentTimeMillis()
+        var firstTokenMs = -1L
+        var tokenCount = 0
+        val latch = CountDownLatch(1)
+        val benchConv = engine?.createConversation()
+        benchConv?.sendMessageAsync(testPrompt, object : MessageCallback {
+          override fun onMessage(message: Message) {
+            if (firstTokenMs < 0) firstTokenMs = System.currentTimeMillis()
+            tokenCount++
+            if (tokenCount >= tgTokens) benchConv.cancelProcess()
+          }
+          override fun onDone() { latch.countDown() }
+          override fun onError(t: Throwable) { latch.countDown() }
+        }, emptyMap())
+        latch.await(120, TimeUnit.SECONDS)
+        benchConv?.close()
+        val totalMs = (System.currentTimeMillis() - ppStart).toFloat()
+        val prefillMs = if (firstTokenMs > 0) (firstTokenMs - ppStart).toFloat() else totalMs
+        val decodeMs = if (firstTokenMs > 0) (totalMs - prefillMs) else 0f
+        val decodeTps = if (decodeMs > 0 && tokenCount > 1) (tokenCount - 1) / (decodeMs / 1000f) else 0f
+        BenchmarkResult(
+          engine = engineName,
+          prefillMs = prefillMs,
+          decodeMs = decodeMs,
+          prefillTps = if (prefillMs > 0) ppTokens / (prefillMs / 1000f) else 0f,
+          decodeTps = decodeTps,
+          prefillTokens = ppTokens,
+          decodeTokens = tokenCount
+        )
+      } catch (_: Exception) {
+        BenchmarkResult(engine = engineName)
+      }
+    }
+  }
 
   override fun supportsFormat(path: String): Boolean =
     path.endsWith(".tflite", true) || path.endsWith(".litertlm", true)
