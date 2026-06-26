@@ -171,10 +171,34 @@ class ModelServer(val port: Int = 8080) {
 
   private fun checkRateLimit(ip: String): Boolean = rateLimiter.tryConsume(ip)
 
+  private fun isWifiConnected(context: android.content.Context): Boolean {
+    val cm = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+    return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+      val net = cm.activeNetwork ?: return false
+      val caps = cm.getNetworkCapabilities(net) ?: return false
+      caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)
+    } else {
+      @Suppress("DEPRECATION")
+      cm.activeNetworkInfo?.type == android.net.ConnectivityManager.TYPE_WIFI
+    }
+  }
+
   private fun handleClient(client: Socket) {
     val ip = client.inetAddress?.hostAddress ?: "unknown"
     val startTime = System.currentTimeMillis()
     activeClients[ip] = startTime
+
+    // Enforce wifi-only setting: drop non-loopback connections when on cellular/none
+    val wifiOnly = com.gguf.zerocopy.data.local.SettingsManager.serverWifiOnly
+    if (wifiOnly && !ip.startsWith("127.") && !ip.startsWith("::1")) {
+      val ctx = ZeroCopyApp.instance.applicationContext
+      if (!isWifiConnected(ctx)) {
+        try { client.close() } catch (_: Exception) {}
+        android.util.Log.w(tag, "Rejected $ip: WiFi-only mode active, not on WiFi")
+        return
+      }
+    }
+
     try {
       client.use { socket ->
         socket.soTimeout = 60000
