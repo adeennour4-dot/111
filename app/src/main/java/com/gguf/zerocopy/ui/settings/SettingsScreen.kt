@@ -106,6 +106,8 @@ fun SettingsScreen(onBack: () -> Unit) {
   var serverAuthToken by remember { mutableStateOf(SettingsManager.serverAuthToken) }
   var serverWifiOnly by remember { mutableStateOf(SettingsManager.serverWifiOnly) }
   var showToken by remember { mutableStateOf(false) }
+  var topK by remember { mutableStateOf(SettingsManager.topK.toString()) }
+  var flashAttn by remember { mutableStateOf(SettingsManager.flashAttention) }
 
   val mmprojPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
     if (result.resultCode == Activity.RESULT_OK) {
@@ -149,6 +151,8 @@ fun SettingsScreen(onBack: () -> Unit) {
     SettingsManager.serverAuthEnabled = serverAuthEnabled
     SettingsManager.serverAuthToken = serverAuthToken
     SettingsManager.serverWifiOnly = serverWifiOnly
+    SettingsManager.topK = topK.toIntOrNull()?.coerceIn(1, 200) ?: 40
+    SettingsManager.flashAttention = flashAttn
 
     val active = engineManager.getActiveEngine()
     active?.let {
@@ -198,6 +202,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       SettingField("Temperature", "0-2 (lower = more focused)", temp, { temp = it })
       SettingField("Top-P", "0-1 (nucleus sampling)", topP, { topP = it })
       SettingField("Min-P", "0-1 (filter unlikely tokens)", minP, { minP = it })
+      SettingField("Top-K", "1-200 candidates, 0=disabled", topK, { topK = it })
       SettingField("Repeat Penalty", "1.0=off, >1 reduces repeats", repPen, { repPen = it })
       SettingField("Freq Penalty", "0=off, penalizes frequent tokens", freqPen, { freqPen = it })
       SettingField("Presence Penalty", "0=off, penalizes seen tokens", presPen, { presPen = it })
@@ -224,6 +229,18 @@ fun SettingsScreen(onBack: () -> Unit) {
         Switch(
           checked = lowRam,
           onCheckedChange = { lowRam = it },
+          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
+        )
+      }
+
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+          Text("Flash Attention", fontSize = 13.sp, color = colors.Text2)
+          Text("Faster inference on ARMv8.2+ CPUs (Snapdragon 888+)", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+        }
+        Switch(
+          checked = flashAttn,
+          onCheckedChange = { flashAttn = it },
           colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
         )
       }
