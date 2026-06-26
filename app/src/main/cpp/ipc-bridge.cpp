@@ -442,10 +442,8 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
     cparams.n_ubatch        = n_ubatch;
     cparams.n_threads       = std::max(1, n_threads / 2);
     cparams.n_threads_batch = n_threads;
-    // b9581 uses flash_attn_type enum, not a bool flash_attn field.
-    cparams.flash_attn_type = use_flash_attn
-                              ? LLAMA_FLASH_ATTN_TYPE_ENABLED
-                              : LLAMA_FLASH_ATTN_TYPE_DISABLED;
+    // Standard llama.cpp: cparams.flash_attn is a bool.
+    cparams.flash_attn = use_flash_attn;
 
     g_ctx = llama_init_from_model(g_model, cparams);
     if (!g_ctx) {
@@ -466,6 +464,29 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
 
     rebuild_sampler();
     apply_perf_optimizations();
+
+    // Warm up: pre-encode the system prompt into the KV cache immediately
+    // after loading. This eliminates first-token latency on the first user
+    // message because the system prompt tokens are already in cache.
+    if (!g_cfg.system_prompt.empty()) {
+        std::vector<llama_chat_message> warmup_msgs;
+        warmup_msgs.push_back({"system", g_cfg.system_prompt.c_str()});
+        const char* tmpl = llama_model_chat_template(g_model, nullptr);
+        if (!tmpl) tmpl = "chatml";
+        std::vector<char> wbuf(8192);
+        int wn = llama_chat_apply_template(tmpl, warmup_msgs.data(), 1, false, wbuf.data(), (int)wbuf.size());
+        if (wn > 0 && wn <= (int)wbuf.size()) {
+            std::vector<llama_token> wtoks(wn + 4);
+            int wnt = llama_tokenize(llama_model_get_vocab(g_model), wbuf.data(), wn, wtoks.data(), (int)wtoks.size(), true, true);
+            if (wnt > 0) {
+                wtoks.resize(wnt);
+                llama_batch wb = llama_batch_get_one(wtoks.data(), wnt);
+                if (llama_decode(g_ctx, wb) == 0) {
+                    LOGI("System prompt warm-up: %d tokens pre-encoded into KV cache", wnt);
+                }
+            }
+        }
+    }
 
     LOGI("Model loaded: ctx=%d batch=%d ubatch=%d gpu=%d threads=%d cores=%d lowRam=%d fa=%d",
          cparams.n_ctx, cparams.n_batch, cparams.n_ubatch,
@@ -623,39 +644,61 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_restoreHistoryNative(
     std::string input(json);
     env->ReleaseStringUTFChars(messagesJson, json);
 
+    // Robust JSON string extraction: handles escaped characters and nested braces.
+    // We find each {"role":"..."} object by tracking brace depth so that message
+    // content containing "}" (code, JSON, etc.) doesn't truncate the object.
     size_t pos = 0;
-    while ((pos = input.find("{\"role\"", pos)) != std::string::npos) {
-        size_t end = input.find("}", pos);
-        if (end == std::string::npos) break;
-        std::string obj = input.substr(pos, end - pos + 1);
-        pos = end + 1;
+    size_t len = input.size();
+    while (pos < len) {
+        // Find start of next object
+        pos = input.find('{', pos);
+        if (pos == std::string::npos) break;
 
-        size_t role_marker = obj.find("\"role\":\"");
-        if (role_marker == std::string::npos) continue;
-        auto role_start = role_marker + 8;
-        auto role_end = obj.find("\"", role_start);
-        if (role_start >= obj.size() || role_end == std::string::npos) continue;
-        std::string role = obj.substr(role_start, role_end - role_start);
+        // Walk forward tracking brace depth to find the matching closing brace
+        int depth = 0;
+        bool in_string = false;
+        bool escaped = false;
+        size_t obj_end = std::string::npos;
+        for (size_t i = pos; i < len; i++) {
+            char c = input[i];
+            if (escaped) { escaped = false; continue; }
+            if (c == '\\' && in_string) { escaped = true; continue; }
+            if (c == '"') { in_string = !in_string; continue; }
+            if (in_string) continue;
+            if (c == '{') depth++;
+            else if (c == '}') { depth--; if (depth == 0) { obj_end = i; break; } }
+        }
+        if (obj_end == std::string::npos) break;
+        std::string obj = input.substr(pos, obj_end - pos + 1);
+        pos = obj_end + 1;
 
-        size_t content_marker = obj.find("\"content\":\"");
-        std::string content;
-        if (content_marker != std::string::npos) {
-            auto content_start = content_marker + 11;
-            if (content_start < obj.size()) {
-                bool escaped = false;
-                for (size_t i = content_start; i < obj.size(); i++) {
-                    char c = obj[i];
-                    if (escaped) { content += c; escaped = false; continue; }
-                    if (c == '\\') { escaped = true; continue; }
-                    if (c == '\"') break;
-                    content += c;
+        // Extract "role" value
+        auto extract_str = [&](const std::string& key) -> std::string {
+            std::string needle = "\"" + key + "\":\"";
+            size_t k = obj.find(needle);
+            if (k == std::string::npos) return "";
+            size_t vs = k + needle.size();
+            std::string val;
+            bool esc = false;
+            for (size_t i = vs; i < obj.size(); i++) {
+                char c = obj[i];
+                if (esc) {
+                    if (c == 'n') val += '\n';
+                    else if (c == 'r') val += '\r';
+                    else if (c == 't') val += '\t';
+                    else val += c;
+                    esc = false; continue;
                 }
+                if (c == '\\') { esc = true; continue; }
+                if (c == '"') break;
+                val += c;
             }
-        }
+            return val;
+        };
 
-        if (!role.empty()) {
-            g_history.push_back({role, content});
-        }
+        std::string role    = extract_str("role");
+        std::string content = extract_str("content");
+        if (!role.empty()) g_history.push_back({role, content});
     }
     LOGI("Restored %zu history messages", g_history.size());
 }
