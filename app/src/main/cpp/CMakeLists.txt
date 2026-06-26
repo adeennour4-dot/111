@@ -28,6 +28,19 @@ set(LLAMA_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 # Flash attention is enabled via context params at runtime, gated on i8mm detection
 
+# Suppress warnings that come from upstream llama.cpp / ggml third-party headers.
+# We use add_compile_options so these apply to all targets in this directory,
+# but only AFTER FetchContent adds the llama subdirectory so it doesn't affect
+# the host toolchain checks inside llama.cmake.
+# The specific warning here is -Wdeprecated-enum-enum-conversion fired by
+# clip-graph.h's DEFAULT_INTERPOLATION_MODE macro (upstream issue, not ours).
+set(ZEROCOPY_SUPPRESS_WARNINGS
+    -Wno-deprecated-enum-enum-conversion
+    -Wno-deprecated-declarations
+    -Wno-unused-but-set-variable
+    -Wno-unused-parameter
+)
+
 # Vulkan headers from NDK
 if(GGML_VULKAN)
     find_path(VULKAN_HEADERS_INCLUDE_DIR
@@ -50,6 +63,15 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(llama)
+
+# After llama is added, suppress its deprecation warnings at the target level.
+# We do this post-MakeAvailable so we target only the llama/ggml/mtmd/clip libs,
+# not the cmake configure-time checks above.
+foreach(_target llama ggml ggml-base ggml-cpu mtmd clip)
+    if(TARGET ${_target})
+        target_compile_options(${_target} PRIVATE ${ZEROCOPY_SUPPRESS_WARNINGS})
+    endif()
+endforeach()
 
 set(MNN_BUILD_SHARED_LIBS ON  CACHE BOOL "" FORCE)
 set(MNN_BUILD_LLM         ON  CACHE BOOL "" FORCE)
@@ -94,13 +116,16 @@ set(CMAKE_SOURCE_DIR "${mnn_SOURCE_DIR}")
 add_subdirectory("${mnn_SOURCE_DIR}" "${mnn_BINARY_DIR}")
 set(CMAKE_SOURCE_DIR "${PROJECT_SOURCE_DIR}")
 
+# Suppress MNN warnings too
+if(TARGET MNN)
+    target_compile_options(MNN PRIVATE ${ZEROCOPY_SUPPRESS_WARNINGS})
+endif()
+
 find_library(log-lib     log)
 find_library(android-lib android)
 
 # Multimodal vision support (from llama.cpp tools/mtmd)
 # In b9581+, mtmd is the canonical multimodal library built by llama.cpp.
-# It includes CLIP + all vision model implementations (llava, qwen2vl, siglip, etc.)
-# We use it directly instead of building our own clip target.
 set(HAS_VISION_SUPPORT FALSE)
 
 if(TARGET mtmd)
@@ -135,6 +160,8 @@ else()
                     ${CLIP_DIR}
                     ${llama_SOURCE_DIR}/vendor
                 )
+                # Suppress deprecated-enum-enum-conversion from clip-graph.h
+                target_compile_options(clip PRIVATE ${ZEROCOPY_SUPPRESS_WARNINGS})
                 target_link_libraries(clip PUBLIC llama ggml stb)
                 set_property(TARGET clip PROPERTY POSITION_INDEPENDENT_CODE ON)
                 set(HAS_VISION_SUPPORT TRUE)
@@ -158,14 +185,12 @@ target_include_directories(ipc-bridge PRIVATE
 )
 if(HAS_VISION_SUPPORT)
     if(TARGET mtmd)
-        # mtmd includes all model implementations - link against it directly
         target_include_directories(ipc-bridge PRIVATE
             ${llama_SOURCE_DIR}/tools/mtmd
             ${llama_SOURCE_DIR}/vendor/stb
         )
         target_link_libraries(ipc-bridge PRIVATE llama ggml mtmd ${log-lib} ${android-lib})
     else()
-        # Fallback: standalone clip target with all model sources
         target_include_directories(ipc-bridge PRIVATE
             ${llama_SOURCE_DIR}/tools/mtmd
             ${llama_SOURCE_DIR}/examples/llava
