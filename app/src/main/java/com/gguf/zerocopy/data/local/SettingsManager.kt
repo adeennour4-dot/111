@@ -17,104 +17,78 @@ object SettingsManager {
 
   var nCtx: Int
     get() = prefs?.getInt("n_ctx", 2048) ?: 2048
-    set(v) {
-      prefs?.edit()?.putInt("n_ctx", v)?.apply()
-    }
+    set(v) { prefs?.edit()?.putInt("n_ctx", v)?.apply() }
 
   var maxTokens: Int
     get() = prefs?.getInt("max_tokens", 2048) ?: 2048
-    set(v) {
-      prefs?.edit()?.putInt("max_tokens", v)?.apply()
-    }
+    set(v) { prefs?.edit()?.putInt("max_tokens", v)?.apply() }
 
   var nBatch: Int
     get() = prefs?.getInt("n_batch", 512) ?: 512
-    set(v) {
-      prefs?.edit()?.putInt("n_batch", v)?.apply()
-    }
+    set(v) { prefs?.edit()?.putInt("n_batch", v)?.apply() }
 
   var temperature: Float
     get() = prefs?.getFloat("temperature", 0.6f) ?: 0.6f
-    set(v) {
-      prefs?.edit()?.putFloat("temperature", v)?.apply()
-    }
+    set(v) { prefs?.edit()?.putFloat("temperature", v)?.apply() }
 
   var topP: Float
     get() = prefs?.getFloat("top_p", 0.9f) ?: 0.9f
-    set(v) {
-      prefs?.edit()?.putFloat("top_p", v)?.apply()
-    }
+    set(v) { prefs?.edit()?.putFloat("top_p", v)?.apply() }
 
   var minP: Float
     get() = prefs?.getFloat("min_p", 0.05f) ?: 0.05f
-    set(v) {
-      prefs?.edit()?.putFloat("min_p", v)?.apply()
-    }
+    set(v) { prefs?.edit()?.putFloat("min_p", v)?.apply() }
+
+  var topK: Int
+    get() = prefs?.getInt("top_k", 40) ?: 40
+    set(v) { prefs?.edit()?.putInt("top_k", v)?.apply() }
 
   var gpuLayers: Int
     get() = prefs?.getInt("gpu_layers", 0) ?: 0
-    set(v) {
-      prefs?.edit()?.putInt("gpu_layers", v)?.apply()
-    }
+    set(v) { prefs?.edit()?.putInt("gpu_layers", v)?.apply() }
 
   var threads: Int
     get() = prefs?.getInt("threads", 4) ?: 4
-    set(v) {
-      prefs?.edit()?.putInt("threads", v)?.apply()
-    }
+    set(v) { prefs?.edit()?.putInt("threads", v)?.apply() }
 
   var repeatPenalty: Float
     get() = prefs?.getFloat("repeat_penalty", 1.1f) ?: 1.1f
-    set(v) {
-      prefs?.edit()?.putFloat("repeat_penalty", v)?.apply()
-    }
+    set(v) { prefs?.edit()?.putFloat("repeat_penalty", v)?.apply() }
 
   var freqPenalty: Float
     get() = prefs?.getFloat("freq_penalty", 0.0f) ?: 0.0f
-    set(v) {
-      prefs?.edit()?.putFloat("freq_penalty", v)?.apply()
-    }
+    set(v) { prefs?.edit()?.putFloat("freq_penalty", v)?.apply() }
 
   var presPenalty: Float
     get() = prefs?.getFloat("pres_penalty", 0.0f) ?: 0.0f
-    set(v) {
-      prefs?.edit()?.putFloat("pres_penalty", v)?.apply()
-    }
+    set(v) { prefs?.edit()?.putFloat("pres_penalty", v)?.apply() }
 
   var systemPrompt: String
-    get() =
-      prefs?.getString(
-        "system_prompt",
-        "You are a helpful, concise assistant running on-device. Respond clearly and directly."
-      )
+    get() = prefs?.getString("system_prompt",
+        "You are a helpful, concise assistant running on-device. Respond clearly and directly.")
         ?: "You are a helpful, concise assistant running on-device. Respond clearly and directly."
-    set(v) {
-      prefs?.edit()?.putString("system_prompt", v)?.apply()
-    }
+    set(v) { prefs?.edit()?.putString("system_prompt", v)?.apply() }
 
   var lowRamMode: Boolean
     get() = prefs?.getBoolean("low_ram", true) ?: true
-    set(v) {
-      prefs?.edit()?.putBoolean("low_ram", v)?.apply()
-    }
+    set(v) { prefs?.edit()?.putBoolean("low_ram", v)?.apply() }
+
+  // Flash attention: user can toggle; native code will further gate on i8mm detection
+  var flashAttention: Boolean
+    get() = prefs?.getBoolean("flash_attention", true) ?: true
+    set(v) { prefs?.edit()?.putBoolean("flash_attention", v)?.apply() }
 
   var mmprojPath: String
     get() = prefs?.getString("mmproj_path", "") ?: ""
-    set(v) {
-      prefs?.edit()?.putString("mmproj_path", v)?.apply()
-    }
+    set(v) { prefs?.edit()?.putString("mmproj_path", v)?.apply() }
 
   var currentSessionId: String
     get() = prefs?.getString("current_session_id", "") ?: ""
-    set(v) {
-      prefs?.edit()?.putString("current_session_id", v)?.apply()
-    }
+    set(v) { prefs?.edit()?.putString("current_session_id", v)?.apply() }
 
   var reasoningEnabled: Boolean
     get() = prefs?.getBoolean("reasoning_enabled", false) ?: false
-    set(v) {
-      prefs?.edit()?.putBoolean("reasoning_enabled", v)?.apply()
-    }
+    set(v) { prefs?.edit()?.putBoolean("reasoning_enabled", v)?.apply() }
 
   var webSearchEnabled: Boolean
     get() = prefs?.getBoolean("web_search_enabled", false) ?: false
@@ -122,9 +96,7 @@ object SettingsManager {
 
   var ragEnabled: Boolean
     get() = prefs?.getBoolean("rag_enabled", true) ?: true
-    set(v) {
-      prefs?.edit()?.putBoolean("rag_enabled", v)?.apply()
-    }
+    set(v) { prefs?.edit()?.putBoolean("rag_enabled", v)?.apply() }
 
   var serverEnabled: Boolean
     get() = prefs?.getBoolean("server_enabled", false) ?: false
@@ -187,7 +159,8 @@ object SettingsManager {
     nGpuLayers = gpuLayers.coerceIn(0, 999),
     nThreads = threads.coerceIn(0, 16),
     lowRamMode = lowRamMode,
-    flashAttention = false, // Native code enables FA only when CPU has i8mm (ARMv8.4-a+)
+    // Pass user preference; native code will further gate on i8mm CPU feature detection
+    flashAttention = flashAttention,
     mmprojPath = mmprojPath
   )
 
@@ -216,6 +189,7 @@ object SettingsManager {
     gpuLayers = config.nGpuLayers
     threads = config.nThreads
     lowRamMode = config.lowRamMode
+    flashAttention = config.flashAttention
     mmprojPath = config.mmprojPath
     repeatPenalty = rp.repeatPenalty
     freqPenalty = rp.freqPenalty
