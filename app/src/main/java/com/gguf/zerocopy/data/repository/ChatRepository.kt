@@ -51,18 +51,13 @@ class ChatRepository(private val context: Context) {
   private val _currentMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
   val currentMessages = _currentMessages.asStateFlow()
 
-  // Single lock for file I/O — NOT held while emitting StateFlow values.
-  // Using a simple ReentrantReadWriteLock; never call loadSessions() while
-  // holding a write lock (would deadlock since loadSessions acquires read).
   private val lock = ReentrantReadWriteLock()
 
   init { loadSessions() }
 
   // ── Session list ──────────────────────────────────────────────────────────
 
-  /** Re-read all _meta.json files and push the sorted list to the StateFlow. */
   private fun loadSessions() {
-    // Read under read lock, then emit outside the lock.
     val loaded = lock.read {
       (sessionsDir.listFiles() ?: emptyArray())
         .filter { it.name.endsWith("_meta.json") }
@@ -82,10 +77,9 @@ class ChatRepository(private val context: Context) {
         }
         .sortedByDescending { it.lastMessageAt }
     }
-    _sessions.value = loaded   // safe: StateFlow emission is thread-safe
+    _sessions.value = loaded
   }
 
-  /** Call from UI when the session list needs to be fresh (e.g. before showing it). */
   fun refreshSessions() = loadSessions()
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
@@ -140,9 +134,34 @@ class ChatRepository(private val context: Context) {
   }
 
   fun addMessage(sessionId: String, message: ChatMessage) {
-    // Read messages without holding write lock (getMessages uses read lock)
     val messages = getMessages(sessionId).toMutableList()
     messages.add(message)
+
+    // Auto-name session from first user message (truncated to 40 chars)
+    if (messages.size == 1 && message.role == MessageRole.USER) {
+      val autoName = message.content.trim()
+        .replace(Regex("\\s+"), " ")
+        .take(40)
+        .let { if (it.length == 40) "$it…" else it }
+      if (autoName.isNotEmpty()) {
+        lock.write {
+          val metaFile = File(sessionsDir, "${sessionId}_meta.json")
+          if (metaFile.exists()) {
+            try {
+              val j = JSONObject(metaFile.readText())
+              // Only overwrite the default "Chat MMM d, HH:mm" placeholder
+              val currentName = j.optString("name", "")
+              if (currentName.startsWith("Chat ")) {
+                j.put("name", autoName)
+                metaFile.writeText(j.toString())
+              }
+            } catch (_: Exception) {}
+          }
+        }
+        loadSessions()
+      }
+    }
+
     lock.write {
       atomicWrite(sessionId, messages)
       val metaFile = File(sessionsDir, "${sessionId}_meta.json")
@@ -155,11 +174,9 @@ class ChatRepository(private val context: Context) {
         } catch (_: Exception) {}
       }
     }
-    // Emit outside the lock
     if (sessionId == currentSessionId) {
       _currentMessages.value = messages
     }
-    // Don't call loadSessions() here — lazy refresh when session list opens
   }
 
   fun renameSession(sessionId: String, name: String) {
@@ -172,11 +189,10 @@ class ChatRepository(private val context: Context) {
         file.writeText(j.toString())
       } catch (_: Exception) { return }
     }
-    loadSessions() // safe — called after write lock released
+    loadSessions()
   }
 
   fun deleteSession(sessionId: String) {
-    // Collect attachment paths without holding write lock
     val attachPaths = getMessages(sessionId).mapNotNull { it.attachmentPath }
     var wasCurrentSession = false
     lock.write {
@@ -194,7 +210,6 @@ class ChatRepository(private val context: Context) {
   }
 
   fun deleteMessage(sessionId: String, index: Int) {
-    // Read messages WITHOUT the lock first, then write under lock
     val current = getMessages(sessionId).toMutableList()
     if (index < 0 || index >= current.size) return
     current[index].attachmentPath?.let { File(it).delete() }
@@ -234,7 +249,6 @@ class ChatRepository(private val context: Context) {
 
   // ── Private helpers ───────────────────────────────────────────────────────
 
-  /** Atomic write via temp file rename (prevents corrupt JSON on crash). */
   private fun atomicWrite(sessionId: String, messages: List<ChatMessage>) {
     val json = JSONArray()
     messages.forEach { msg ->
