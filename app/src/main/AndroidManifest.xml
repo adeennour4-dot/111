@@ -3,7 +3,6 @@
 
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
-    <!-- API 33+ (Android 13+) scoped media permissions — required on S25 Ultra (API 35) -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"
         android:minSdkVersion="33" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"
@@ -19,6 +18,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Required for BootReceiver to auto-start the server on device reboot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <uses-feature android:name="android.hardware.vulkan.level"   android:required="false" />
     <uses-feature android:name="android.hardware.vulkan.version"
@@ -61,6 +62,17 @@
             android:name="com.gguf.zerocopy.domain.server.ModelServerService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- Receives BOOT_COMPLETED to auto-start the server when enabled in Settings -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="false"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"
