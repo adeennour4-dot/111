@@ -9,49 +9,43 @@ import com.gguf.zerocopy.domain.ocr.PdfTextExtractor
  *
  * No embedding model required — uses BM25-lite scoring to rank overlapping
  * text chunks against the user query, then injects only the top-k relevant
- * chunks into the prompt.  Keeps context window lean even for large documents.
- *
- * Pipeline:
- *   attach file → extract text (OCR if needed) → split into overlapping chunks
- *   → store in memory → at query time: BM25-score all chunks → inject top-k
+ * chunks into the prompt.
  */
 class RagEngine(context: Context) {
 
     private val ocr = PdfTextExtractor(context)
 
-    // ── Config ────────────────────────────────────────────────────────────────
-
     companion object {
-        private const val CHUNK_SIZE        = 400   // characters per chunk
-        private const val CHUNK_OVERLAP     = 80    // overlap to preserve continuity
-        private const val MAX_CHUNKS_INJECT = 5     // max chunks injected per query
-        private const val MAX_INJECT_CHARS  = 3000  // hard cap on injected chars
-        private const val MIN_SCORE         = 0.05f // min BM25 score to include chunk
+        private const val CHUNK_SIZE        = 400
+        private const val CHUNK_OVERLAP     = 80
+        private const val MAX_CHUNKS_INJECT = 5
+        private const val MAX_INJECT_CHARS  = 3000
+        private const val MIN_SCORE         = 0.05f
     }
-
-    // ── Document store ────────────────────────────────────────────────────────
 
     data class Chunk(
         val text: String,
-        val source: String,    // filename
-        val pageHint: String   // "Page 2" or ""
+        val source: String,
+        val pageHint: String
     )
 
     private val chunks      = mutableListOf<Chunk>()
     private val sourceNames = mutableListOf<String>()
     private val lock        = Any()
 
-    val hasDocuments: Boolean    get() = synchronized(lock) { chunks.isNotEmpty() }
+    // avgDocLen is now computed on demand each time — never stale after
+    // documents are added post-first-retrieval (previously `by lazy` froze it).
+    private val avgDocLen: Float
+        get() = synchronized(lock) {
+            if (chunks.isEmpty()) 250f
+            else chunks.sumOf { tokenize(it.text).size.toDouble() }.toFloat() / chunks.size
+        }
+
+    val hasDocuments: Boolean       get() = synchronized(lock) { chunks.isNotEmpty() }
     val documentNames: List<String> get() = synchronized(lock) { sourceNames.toList() }
 
     fun clear() { synchronized(lock) { chunks.clear(); sourceNames.clear() } }
 
-    // ── Ingestion ─────────────────────────────────────────────────────────────
-
-    /**
-     * Process a URI and add its chunks to the in-memory store.
-     * Must be called from an IO coroutine (blocks on OCR).
-     */
     fun ingest(uri: Uri, context: Context): IngestResult {
         val mime = context.contentResolver.getType(uri) ?: ""
         val name = getFileName(uri, context)
@@ -64,8 +58,7 @@ class RagEngine(context: Context) {
     }
 
     private fun ingestPdf(uri: Uri, name: String): IngestResult {
-        val text = ocr.extractText(uri)
-            ?: return IngestResult.Failed("PDF text extraction failed")
+        val text = ocr.extractText(uri) ?: return IngestResult.Failed("PDF text extraction failed")
         addChunks(text, name)
         return IngestResult.Success(text, name)
     }
@@ -93,8 +86,6 @@ class RagEngine(context: Context) {
         }
     }
 
-    // ── Chunking ──────────────────────────────────────────────────────────────
-
     private fun addChunks(text: String, source: String) {
         val pageRegex = Regex("--- Page (\\d+) ---")
         val matches   = pageRegex.findAll(text).toList()
@@ -109,9 +100,7 @@ class RagEngine(context: Context) {
             var prevPage = "1"
             for ((start, page) in boundaries) {
                 val section = text.substring(prev, start).trim()
-                if (section.isNotEmpty()) {
-                    result.addAll(chunkText(section, source, "Page $prevPage"))
-                }
+                if (section.isNotEmpty()) result.addAll(chunkText(section, source, "Page $prevPage"))
                 prev = start
                 if (page.isNotEmpty()) prevPage = page
             }
@@ -127,15 +116,12 @@ class RagEngine(context: Context) {
             return if (text.isBlank()) emptyList()
             else listOf(Chunk(text.trim(), source, pageHint))
         }
-
         val result    = mutableListOf<Chunk>()
         val sentences = splitSentences(text)
         val buf       = StringBuilder()
-
         for (sentence in sentences) {
             if (buf.length + sentence.length > CHUNK_SIZE && buf.isNotEmpty()) {
                 result.add(Chunk(buf.toString().trim(), source, pageHint))
-                // Retain overlap to avoid cutting mid-idea
                 val keep = buf.toString().takeLast(CHUNK_OVERLAP)
                 buf.clear().append(keep)
             }
@@ -146,7 +132,6 @@ class RagEngine(context: Context) {
     }
 
     private fun splitSentences(text: String): List<String> {
-        // Split after sentence-ending punctuation or on blank lines
         val out  = mutableListOf<String>()
         val reg  = Regex("(?<=[.!?])\\s+|\\n{2,}")
         var last = 0
@@ -162,53 +147,41 @@ class RagEngine(context: Context) {
         return out
     }
 
-    // ── Retrieval (BM25-lite) ─────────────────────────────────────────────────
-
-    /**
-     * Retrieve the most relevant chunks for [query] and return a formatted
-     * context block ready to be appended to the user's prompt.
-     */
     fun retrieve(query: String): String {
         val snapshot: List<Chunk> = synchronized(lock) { chunks.toList() }
         if (snapshot.isEmpty()) return ""
 
         val queryTerms = tokenize(query)
-        val selected: List<Pair<Chunk, Float>>
+        val avg = avgDocLen  // compute once per retrieve, not per chunk
 
-        if (queryTerms.isEmpty()) {
-            selected = snapshot.take(2).map { it to 1f }
+        val selected: List<Pair<Chunk, Float>> = if (queryTerms.isEmpty()) {
+            snapshot.take(2).map { it to 1f }
         } else {
-            val scored = snapshot.map { it to bm25Score(queryTerms, it.text) }
+            val scored = snapshot.map { it to bm25Score(queryTerms, it.text, snapshot, avg) }
             val relevant = scored
                 .filter  { (_, s) -> s >= MIN_SCORE }
                 .sortedByDescending { (_, s) -> s }
                 .take(MAX_CHUNKS_INJECT)
-
-            selected = if (relevant.isEmpty()) snapshot.take(2).map { it to 1f }
-                       else relevant
+            if (relevant.isEmpty()) snapshot.take(2).map { it to 1f } else relevant
         }
-
         return buildContextBlock(selected)
     }
 
-    private val avgDocLen by lazy {
-        if (chunks.isEmpty()) 250f
-        else chunks.sumOf { tokenize(it.text).size.toDouble() }.toFloat() / chunks.size
-    }
-
-    private fun bm25Score(queryTerms: List<String>, text: String): Float {
+    private fun bm25Score(
+        queryTerms: List<String>,
+        text: String,
+        allChunks: List<Chunk>,
+        avg: Float
+    ): Float {
         val docTerms = tokenize(text)
         val docLen   = docTerms.size.toFloat().coerceAtLeast(1f)
-        val avgLen   = avgDocLen
         val k1 = 1.5f; val b = 0.75f
-
         return queryTerms.sumOf { term ->
             val tf = docTerms.count { it == term }.toFloat()
             if (tf == 0f) return@sumOf 0.0
-            // Simplified IDF — penalise terms that appear in many chunks
-            val df  = chunks.count { tokenize(it.text).contains(term) }.toFloat().coerceAtLeast(1f)
-            val idf = Math.log((chunks.size.toFloat() - df + 0.5) / (df + 0.5) + 1.0)
-            val tfNorm = (tf * (k1 + 1f)) / (tf + k1 * (1f - b + b * docLen / avgLen))
+            val df  = allChunks.count { tokenize(it.text).contains(term) }.toFloat().coerceAtLeast(1f)
+            val idf = Math.log((allChunks.size.toFloat() - df + 0.5) / (df + 0.5) + 1.0)
+            val tfNorm = (tf * (k1 + 1f)) / (tf + k1 * (1f - b + b * docLen / avg))
             idf * tfNorm
         }.toFloat()
     }
@@ -237,8 +210,6 @@ class RagEngine(context: Context) {
         return sb.toString().trim()
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
     private fun getFileName(uri: Uri, context: Context): String = try {
         context.contentResolver.query(uri, null, null, null, null)?.use { c ->
             val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
@@ -255,8 +226,6 @@ class RagEngine(context: Context) {
         "more","most","other","some","such","than","too","very","can","just",
         "what","how","when","where","who","which","why","all","any","its"
     )
-
-    // ── Result type ───────────────────────────────────────────────────────────
 
     sealed class IngestResult {
         data class Success(val text: String, val sourceName: String) : IngestResult()
