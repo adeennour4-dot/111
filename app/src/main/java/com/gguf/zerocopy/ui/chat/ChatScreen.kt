@@ -319,39 +319,68 @@ fun ChatScreen(
       var ragContext   = ""
 
       if (uris.isNotEmpty()) {
-        withContext(Dispatchers.IO) {
-          uris.forEach { uri ->
-            val mime = context.contentResolver.getType(uri) ?: ""
-            when {
-              mime.startsWith("image/") -> {
-                saveAttachmentToStorage(uri)?.let { path ->
-                  savedPaths.add(path)
-                  if (attachType == null) attachType = AttachmentType.IMAGE
+        try {
+          withContext(Dispatchers.IO) {
+            uris.forEach { uri ->
+              val mime = context.contentResolver.getType(uri) ?: ""
+              when {
+                mime.startsWith("image/") -> {
+                  saveAttachmentToStorage(uri)?.let { path ->
+                    savedPaths.add(path)
+                    if (attachType == null) attachType = AttachmentType.IMAGE
+                  }
+                  try { ragEngine.ingest(uri, context) } catch (_: OutOfMemoryError) {
+                    withContext(Dispatchers.Main) {
+                      snackbarHostState.showSnackbar("Document too large — only first portion indexed")
+                    }
+                  }
                 }
-                ragEngine.ingest(uri, context)
-              }
-              mime == "application/pdf" -> {
-                ragEngine.ingest(uri, context)
-                if (attachType == null) attachType = AttachmentType.DOCUMENT
-              }
-              mime.startsWith("text/") -> {
-                ragEngine.ingest(uri, context)
-                if (attachType == null) attachType = AttachmentType.DOCUMENT
-              }
-              mime.startsWith("audio/") -> {
-                if (attachType == null) attachType = AttachmentType.AUDIO
-              }
-              else -> {
-                if (attachType == null) attachType = AttachmentType.DOCUMENT
+                mime == "application/pdf" -> {
+                  if (attachType == null) attachType = AttachmentType.DOCUMENT
+                  try {
+                    ragEngine.ingest(uri, context)
+                  } catch (_: OutOfMemoryError) {
+                    withContext(Dispatchers.Main) {
+                      snackbarHostState.showSnackbar("PDF too large — only first portion indexed")
+                    }
+                  }
+                }
+                mime.startsWith("text/") -> {
+                  if (attachType == null) attachType = AttachmentType.DOCUMENT
+                  try { ragEngine.ingest(uri, context) } catch (_: OutOfMemoryError) {
+                    withContext(Dispatchers.Main) {
+                      snackbarHostState.showSnackbar("File too large — only first portion indexed")
+                    }
+                  }
+                }
+                mime.startsWith("audio/") -> {
+                  if (attachType == null) attachType = AttachmentType.AUDIO
+                }
+                else -> {
+                  if (attachType == null) attachType = AttachmentType.DOCUMENT
+                }
               }
             }
           }
+        } catch (oom: OutOfMemoryError) {
+          // Top-level OOM guard — clears chunks added so far and shows error
+          ragEngine.clear()
+          withContext(Dispatchers.Main) {
+            snackbarHostState.showSnackbar("Not enough memory to process this document")
+            inferenceActive = false
+            isInferring = false
+          }
+          return@launch
         }
       }
 
       if (ragEngine.hasDocuments && ragEnabled) {
         withContext(Dispatchers.IO) {
-          ragContext = ragEngine.retrieve(text)
+          try {
+            ragContext = ragEngine.retrieve(text)
+          } catch (_: OutOfMemoryError) {
+            ragContext = ""
+          }
         }
       }
 
