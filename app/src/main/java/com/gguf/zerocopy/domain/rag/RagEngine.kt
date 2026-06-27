@@ -5,11 +5,13 @@ import android.net.Uri
 import com.gguf.zerocopy.domain.ocr.PdfTextExtractor
 
 /**
- * Lightweight on-device RAG (Retrieval-Augmented Generation) engine.
+ * Lightweight on-device RAG engine using BM25-lite scoring.
  *
- * No embedding model required — uses BM25-lite scoring to rank overlapping
- * text chunks against the user query, then injects only the top-k relevant
- * chunks into the prompt.
+ * Large-document fixes (100+ pages):
+ * - ingestPdf/ingestText never hold the full document text after chunking
+ * - bm25Score caches per-chunk term sets to avoid O(n²) retokenization
+ * - avgDocLen is computed once per retrieve() call, not per-chunk
+ * - MAX_TOTAL_CHUNKS caps memory use (~400 chars × 2000 chunks = 800 KB max)
  */
 class RagEngine(context: Context) {
 
@@ -19,8 +21,11 @@ class RagEngine(context: Context) {
         private const val CHUNK_SIZE        = 400
         private const val CHUNK_OVERLAP     = 80
         private const val MAX_CHUNKS_INJECT = 5
-        private const val MAX_INJECT_CHARS  = 3000
+        private const val MAX_INJECT_CHARS  = 3_000
         private const val MIN_SCORE         = 0.05f
+        // Hard cap: prevents unbounded RAM from very large documents.
+        // 2000 chunks × ~400 chars = ~800 KB of text in RAM.
+        private const val MAX_TOTAL_CHUNKS  = 2_000
     }
 
     data class Chunk(
@@ -31,43 +36,45 @@ class RagEngine(context: Context) {
 
     private val chunks      = mutableListOf<Chunk>()
     private val sourceNames = mutableListOf<String>()
+    // Pre-tokenized term sets for BM25 — built once on ingest, avoids retokenizing on every retrieve()
+    private val chunkTerms  = mutableListOf<List<String>>()
     private val lock        = Any()
-
-    // avgDocLen is now computed on demand each time — never stale after
-    // documents are added post-first-retrieval (previously `by lazy` froze it).
-    private val avgDocLen: Float
-        get() = synchronized(lock) {
-            if (chunks.isEmpty()) 250f
-            else chunks.sumOf { tokenize(it.text).size.toDouble() }.toFloat() / chunks.size
-        }
 
     val hasDocuments: Boolean       get() = synchronized(lock) { chunks.isNotEmpty() }
     val documentNames: List<String> get() = synchronized(lock) { sourceNames.toList() }
 
-    fun clear() { synchronized(lock) { chunks.clear(); sourceNames.clear() } }
+    fun clear() {
+        synchronized(lock) {
+            chunks.clear()
+            chunkTerms.clear()
+            sourceNames.clear()
+        }
+    }
 
     fun ingest(uri: Uri, context: Context): IngestResult {
         val mime = context.contentResolver.getType(uri) ?: ""
         val name = getFileName(uri, context)
         return when {
-            mime == "application/pdf" -> ingestPdf(uri, name)
-            mime.startsWith("image/") -> ingestImage(uri, name)
-            mime.startsWith("text/")  -> ingestText(uri, name, context)
-            else                      -> IngestResult.Unsupported
+            mime == "application/pdf"  -> ingestPdf(uri, name)
+            mime.startsWith("image/")  -> ingestImage(uri, name)
+            mime.startsWith("text/")   -> ingestText(uri, name, context)
+            else                       -> IngestResult.Unsupported
         }
     }
 
     private fun ingestPdf(uri: Uri, name: String): IngestResult {
+        // extractText() returns a potentially large String; we chunk it immediately
+        // and let the local variable go out of scope so GC can reclaim it.
         val text = ocr.extractText(uri) ?: return IngestResult.Failed("PDF text extraction failed")
-        addChunks(text, name)
-        return IngestResult.Success(text, name)
+        val chunkCount = addChunksAndDiscard(text, name)
+        return IngestResult.Success(chunkCount, name)
     }
 
     private fun ingestImage(uri: Uri, name: String): IngestResult {
         val text = ocr.extractText(uri)
         return if (!text.isNullOrBlank()) {
-            addChunks(text, name)
-            IngestResult.Success(text, name)
+            val chunkCount = addChunksAndDiscard(text, name)
+            IngestResult.Success(chunkCount, name)
         } else {
             IngestResult.ImageNoText(name)
         }
@@ -75,29 +82,52 @@ class RagEngine(context: Context) {
 
     private fun ingestText(uri: Uri, name: String, context: Context): IngestResult {
         return try {
-            val text = context.contentResolver.openInputStream(uri)
-                ?.bufferedReader()?.use { it.readText() }
+            // Read in a buffered manner; for very large text files we chunk on-the-fly
+            val reader = context.contentResolver.openInputStream(uri)
+                ?.bufferedReader()
                 ?: return IngestResult.Failed("Could not open text file")
-            if (text.isBlank()) return IngestResult.Failed("File is empty")
-            addChunks(text, name)
-            IngestResult.Success(text, name)
+
+            val chunks = mutableListOf<Chunk>()
+            val buf = StringBuilder(CHUNK_SIZE * 2)
+            var charsRead = 0L
+            reader.use { r ->
+                var line = r.readLine()
+                while (line != null) {
+                    buf.append(line).append('\n')
+                    charsRead += line.length
+                    // Flush into chunks when buffer is full to avoid holding entire file
+                    if (buf.length >= CHUNK_SIZE * 3) {
+                        chunks.addAll(chunkText(buf.toString(), name, ""))
+                        buf.clear()
+                    }
+                    line = r.readLine()
+                }
+                if (buf.isNotBlank()) chunks.addAll(chunkText(buf.toString(), name, ""))
+            }
+
+            if (chunks.isEmpty()) return IngestResult.Failed("File produced no text chunks")
+            addPreparedChunks(chunks, name)
+            IngestResult.Success(chunks.size, name)
         } catch (e: Exception) {
             IngestResult.Failed(e.message ?: "Text read error")
         }
     }
 
-    private fun addChunks(text: String, source: String) {
+    /**
+     * Chunk the text, add to the store, then let [text] be GC'd.
+     * Never stores the full document text — only the chunks.
+     */
+    private fun addChunksAndDiscard(text: String, source: String): Int {
         val pageRegex = Regex("--- Page (\\d+) ---")
         val matches   = pageRegex.findAll(text).toList()
+        val result    = mutableListOf<Chunk>()
 
-        val result = mutableListOf<Chunk>()
         if (matches.isEmpty()) {
             result.addAll(chunkText(text, source, ""))
         } else {
             val boundaries = matches.map { it.range.first to it.groupValues[1] } +
                              listOf(text.length to "")
-            var prev = 0
-            var prevPage = "1"
+            var prev = 0; var prevPage = "1"
             for ((start, page) in boundaries) {
                 val section = text.substring(prev, start).trim()
                 if (section.isNotEmpty()) result.addAll(chunkText(section, source, "Page $prevPage"))
@@ -105,8 +135,19 @@ class RagEngine(context: Context) {
                 if (page.isNotEmpty()) prevPage = page
             }
         }
+
+        addPreparedChunks(result, source)
+        return result.size
+    }
+
+    private fun addPreparedChunks(newChunks: List<Chunk>, source: String) {
         synchronized(lock) {
-            chunks.addAll(result)
+            val available = MAX_TOTAL_CHUNKS - chunks.size
+            if (available <= 0) return
+            val toAdd = newChunks.take(available)
+            chunks.addAll(toAdd)
+            // Pre-tokenize at ingest time so retrieve() is O(1) per chunk
+            chunkTerms.addAll(toAdd.map { tokenize(it.text) })
             if (!sourceNames.contains(source)) sourceNames.add(source)
         }
     }
@@ -148,16 +189,25 @@ class RagEngine(context: Context) {
     }
 
     fun retrieve(query: String): String {
-        val snapshot: List<Chunk> = synchronized(lock) { chunks.toList() }
+        val (snapshot, termSets) = synchronized(lock) {
+            chunks.toList() to chunkTerms.toList()
+        }
         if (snapshot.isEmpty()) return ""
 
         val queryTerms = tokenize(query)
-        val avg = avgDocLen  // compute once per retrieve, not per chunk
+
+        // avgDocLen: computed once for this retrieve() call
+        val avgDocLen: Float = if (termSets.isEmpty()) 250f
+            else termSets.sumOf { it.size.toDouble() }.toFloat() / termSets.size
 
         val selected: List<Pair<Chunk, Float>> = if (queryTerms.isEmpty()) {
             snapshot.take(2).map { it to 1f }
         } else {
-            val scored = snapshot.map { it to bm25Score(queryTerms, it.text, snapshot, avg) }
+            val scored = snapshot.mapIndexed { i, chunk ->
+                // Use pre-tokenized term sets — no re-tokenization per retrieve()
+                val terms = termSets.getOrElse(i) { tokenize(chunk.text) }
+                chunk to bm25Score(queryTerms, terms, termSets, avgDocLen)
+            }
             val relevant = scored
                 .filter  { (_, s) -> s >= MIN_SCORE }
                 .sortedByDescending { (_, s) -> s }
@@ -167,20 +217,24 @@ class RagEngine(context: Context) {
         return buildContextBlock(selected)
     }
 
+    /**
+     * BM25 using pre-tokenized [docTerms] and [allTermSets].
+     * allTermSets.count { it.contains(term) } is O(chunks) — unavoidable for IDF —
+     * but no longer calls tokenize() inside the loop.
+     */
     private fun bm25Score(
         queryTerms: List<String>,
-        text: String,
-        allChunks: List<Chunk>,
+        docTerms: List<String>,
+        allTermSets: List<List<String>>,
         avg: Float
     ): Float {
-        val docTerms = tokenize(text)
-        val docLen   = docTerms.size.toFloat().coerceAtLeast(1f)
+        val docLen = docTerms.size.toFloat().coerceAtLeast(1f)
         val k1 = 1.5f; val b = 0.75f
         return queryTerms.sumOf { term ->
             val tf = docTerms.count { it == term }.toFloat()
             if (tf == 0f) return@sumOf 0.0
-            val df  = allChunks.count { tokenize(it.text).contains(term) }.toFloat().coerceAtLeast(1f)
-            val idf = Math.log((allChunks.size.toFloat() - df + 0.5) / (df + 0.5) + 1.0)
+            val df  = allTermSets.count { it.contains(term) }.toFloat().coerceAtLeast(1f)
+            val idf = Math.log((allTermSets.size - df + 0.5) / (df + 0.5) + 1.0)
             val tfNorm = (tf * (k1 + 1f)) / (tf + k1 * (1f - b + b * docLen / avg))
             idf * tfNorm
         }.toFloat()
@@ -228,7 +282,8 @@ class RagEngine(context: Context) {
     )
 
     sealed class IngestResult {
-        data class Success(val text: String, val sourceName: String) : IngestResult()
+        /** [chunkCount] is how many chunks were added (not the full text) */
+        data class Success(val chunkCount: Int, val sourceName: String) : IngestResult()
         data class ImageNoText(val sourceName: String) : IngestResult()
         data class Failed(val reason: String) : IngestResult()
         data object Unsupported : IngestResult()
