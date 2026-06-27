@@ -442,8 +442,10 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
     cparams.n_ubatch        = n_ubatch;
     cparams.n_threads       = std::max(1, n_threads / 2);
     cparams.n_threads_batch = n_threads;
-    // Standard llama.cpp: cparams.flash_attn is a bool.
-    cparams.flash_attn = use_flash_attn;
+    // b9581 uses flash_attn_type enum (LLAMA_FLASH_ATTN_TYPE_ENABLED/DISABLED/AUTO)
+    cparams.flash_attn_type = use_flash_attn
+                              ? LLAMA_FLASH_ATTN_TYPE_ENABLED
+                              : LLAMA_FLASH_ATTN_TYPE_DISABLED;
 
     g_ctx = llama_init_from_model(g_model, cparams);
     if (!g_ctx) {
