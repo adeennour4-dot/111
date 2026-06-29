@@ -38,6 +38,14 @@ class LlamaCppEngine : InferenceEngine {
   private var currentModelPath = ""
   private var _toolManager: ToolManager? = null
   private var activeCallback: NativeBridge.TokenCallback? = null
+
+  /**
+   * Snapshot of the last history JSON passed by ChatScreen via restoreHistory().
+   * runWithTools() uses this to properly re-seed the context on round > 0
+   * WITHOUT wiping the context on round 0 (which caused the immediate crash).
+   */
+  private var lastRestoredHistoryJson: String = "[]"
+
   override fun getToolManager() = _toolManager
   override fun setToolManager(tm: ToolManager?) { _toolManager = tm }
 
@@ -74,6 +82,7 @@ class LlamaCppEngine : InferenceEngine {
   override fun unloadModel() {
     NativeBridge.resetContextNative()
     isModelLoaded = false; modelInfo = null; currentModelPath = ""
+    lastRestoredHistoryJson = "[]"
   }
 
   override fun loadMmproj(path: String): Boolean {
@@ -82,110 +91,132 @@ class LlamaCppEngine : InferenceEngine {
   }
 
   // ── Tool-aware agentic loop ───────────────────────────────────────────────
-
-  /**
-   * Full rewrite of runWithTools to fix all four search failure root causes:
-   *
-   * 1. Tool instruction is injected as a FIRST USER MESSAGE (not via setSystemPromptNative)
-   *    so it doesn't fight the KV-cached system prompt from loadModel().
-   *
-   * 2. Tool results are fed back through NativeBridge.restoreHistoryNative() as proper
-   *    assistant + user role pairs, matching the chat template the model was trained on.
-   *
-   * 3. parseToolCall() now handles all common formats:
-   *    <tool_call>{...}</tool_call>, ```json{...}```, bare {...}, {"function":...}
-   *
-   * 4. After each round the context is NOT reset — we use history accumulation so the
-   *    model sees the full conversation including all tool exchanges.
-   */
+  //
+  // Design rules (to avoid the immediate-crash bug):
+  //
+  // Round 0:
+  //   ChatScreen already called restoreHistory() → native context is primed.
+  //   We DO NOT touch restoreHistoryNative here.  We call executeWithCallbackNative
+  //   directly with a tool-augmented version of the user prompt.
+  //
+  // Round N > 0 (tool follow-up):
+  //   We MUST reset the context first (resetContextNative), then re-seed it
+  //   with the saved history plus the tool exchange, then call
+  //   executeWithCallbackNative with the continuation prompt.
+  //
+  // This avoids:
+  //   • Calling restoreHistoryNative("[]") which wiped the ChatScreen context → crash
+  //   • Calling executeWithCallbackNative twice on the same live context → undefined behaviour
+  //
   private fun runWithTools(userPrompt: String, tm: ToolManager, callback: TokenCallback) {
     val toolDefs = tm.getToolDefinitionsJson()
 
-    // Build tool instruction as a system-level prefix that survives KV cache
-    // by including it in the very first user message content, not via setSystemPromptNative.
-    val toolInstruction = buildString {
-      appendLine("You have access to the following tools. Use them when you need real-time or external information.")
-      appendLine()
-      appendLine("TOOLS:")
-      appendLine(toolDefs)
-      appendLine()
-      appendLine("To use a tool, output EXACTLY this format on its own line (nothing before or after):")
-      appendLine("<tool_call>{\"name\": \"TOOL_NAME\", \"arguments\": {\"KEY\": \"VALUE\"}}</tool_call>")
-      appendLine()
-      appendLine("After you see a <tool_result>, use that information to answer the user.")
-      appendLine("If you don't need a tool, answer directly.")
-      appendLine()
-      appendLine("User request: $userPrompt")
+    // Compact tool instruction appended to the user's message on round 0.
+    // Kept short so it doesn't overflow small context windows.
+    val toolPreamble = buildString {
+      appendLine("You have tools. If you need live info, output EXACTLY (nothing else on that line):")
+      appendLine("<tool_call>{\"name\":\"web_search\",\"arguments\":{\"query\":\"YOUR QUERY\"}}</tool_call>")
+      appendLine("Then stop. After you see [Tool Result] continue your answer.")
+      appendLine("Tools: ${toolDefs.take(600)}")   // truncate for small contexts
     }
 
-    // History accumulates across rounds as proper role pairs
-    val history = mutableListOf<Pair<String, String>>() // (role, content)
-    val MAX_ROUNDS = 5
+    // The prompt for round 0 — tool instruction + original user message
+    val round0Prompt = "$toolPreamble\n\nUser: $userPrompt"
 
-    try {
-      var currentInput = toolInstruction
+    // Accumulated tool exchanges for context re-seeding on round > 0
+    data class Exchange(val assistantMsg: String, val toolResultMsg: String)
+    val exchanges = mutableListOf<Exchange>()
 
-      for (round in 0 until MAX_ROUNDS) {
-        if (inferenceAborted.get()) break
+    val MAX_ROUNDS = 4
 
-        // Restore history before each turn so the model has full context
-        NativeBridge.restoreHistoryNative(buildHistoryJson(history))
+    for (round in 0 until MAX_ROUNDS) {
+      if (inferenceAborted.get()) break
 
-        val responseBuf = StringBuilder()
-        var turnErr: String? = null
+      // ── Context setup ────────────────────────────────────────────────────
+      if (round == 0) {
+        // Context already primed by ChatScreen's restoreHistory call — do NOT reset it.
+        // Just proceed with the augmented prompt.
+      } else {
+        // Reset the native context cleanly before re-seeding.
+        NativeBridge.resetContextNative()
 
-        val innerCb = object : NativeBridge.TokenCallback {
-          override fun onToken(t: String) { responseBuf.append(t) }
-          override fun onDone() {}
-          override fun onError(e: String) { turnErr = e }
-          override fun onKvCacheUsage(p: Int) { callback.onKvUsage(p); kvUsage = p }
-          override fun onTokensGenerated(c: Int) { callback.onTokensGenerated(c); tokensGenerated.set(c) }
-        }
-        activeCallback = innerCb
-        NativeBridge.executeWithCallbackNative(currentInput, innerCb)
-        activeCallback = null
-
-        if (turnErr != null) { callback.onError(turnErr!!); return }
-
-        val response = responseBuf.toString().trim()
-        val toolCall = tm.parseToolCall(response)
-
-        if (toolCall == null) {
-          // No tool call — this is the final answer, stream it to the user
-          val clean = response
-            .replace(Regex("<tool_call>.*?</tool_call>", RegexOption.DOT_MATCHES_ALL), "")
-            .trim()
-          val toStream = clean.ifEmpty { response }
-          for (ch in toStream) {
-            if (inferenceAborted.get()) break
-            callback.onToken(ch.toString())
+        // Re-build history: original chat history + all tool exchanges so far
+        val fullHistory = JSONArray().apply {
+          // Original chat history entries
+          val origArr = try { JSONArray(lastRestoredHistoryJson) } catch (_: Exception) { JSONArray() }
+          for (i in 0 until origArr.length()) put(origArr.getJSONObject(i))
+          // Tool exchanges from previous rounds
+          exchanges.forEach { ex ->
+            put(JSONObject().apply { put("role", "assistant"); put("content", ex.assistantMsg) })
+            put(JSONObject().apply { put("role", "user");      put("content", ex.toolResultMsg) })
           }
-          break
         }
-
-        // Tool call detected — show live status to user
-        val queryPreview = toolCall.arguments.optString("query",
-          toolCall.arguments.keys().asSequence().firstOrNull()
-            ?.let { toolCall.arguments.optString(it) } ?: toolCall.name)
-        val statusMsg = "\n🔍 *Searching: \"$queryPreview\"…*\n\n"
-        for (ch in statusMsg) callback.onToken(ch.toString())
-        callback.onToolCall(toolCall.name, toolCall.arguments.toString())
-
-        // Execute the tool
-        val toolResult = tm.executeTool(toolCall)
-
-        // Add this exchange to history as proper role pairs
-        // assistant role = what the model said (the tool call)
-        history.add("assistant" to response)
-        // user/tool role = the tool result fed back
-        history.add("user" to "<tool_result>${toolResult.result}</tool_result>")
-
-        // Next round: ask model to continue with the tool result in context
-        currentInput = "Based on the tool result above, please answer the original request."
+        NativeBridge.restoreHistoryNative(fullHistory.toString())
       }
-    } finally {
-      // Restore history to just what was there before (caller handles full history)
-      NativeBridge.restoreHistoryNative("[]")
+
+      // ── Pick the prompt for this round ───────────────────────────────────
+      val currentPrompt = if (round == 0) round0Prompt
+                          else "Continue answering the user based on the tool result above."
+
+      // ── Run one inference turn ───────────────────────────────────────────
+      val responseBuf = StringBuilder()
+      var turnErr: String? = null
+
+      val innerCb = object : NativeBridge.TokenCallback {
+        override fun onToken(t: String) { responseBuf.append(t) }
+        override fun onDone() {}
+        override fun onError(e: String) { turnErr = e }
+        override fun onKvCacheUsage(p: Int) { callback.onKvUsage(p); kvUsage = p }
+        override fun onTokensGenerated(c: Int) { callback.onTokensGenerated(c); tokensGenerated.set(c) }
+      }
+      activeCallback = innerCb
+      try {
+        NativeBridge.executeWithCallbackNative(currentPrompt, innerCb)
+      } catch (e: Exception) {
+        callback.onError("Inference error: ${e.message}")
+        activeCallback = null
+        return
+      }
+      activeCallback = null
+
+      if (turnErr != null) { callback.onError(turnErr!!); return }
+
+      val response = responseBuf.toString().trim()
+      val toolCall = tm.parseToolCall(response)
+
+      if (toolCall == null) {
+        // No tool call — stream the final answer
+        val clean = response
+          .replace(Regex("<tool_call>.*?</tool_call>", RegexOption.DOT_MATCHES_ALL), "")
+          .trim()
+        val toStream = clean.ifEmpty { response }
+        for (ch in toStream) {
+          if (inferenceAborted.get()) break
+          callback.onToken(ch.toString())
+        }
+        break
+      }
+
+      // ── Tool call detected ───────────────────────────────────────────────
+      val queryPreview = toolCall.arguments.optString("query",
+        toolCall.arguments.keys().asSequence().firstOrNull()
+          ?.let { toolCall.arguments.optString(it) } ?: toolCall.name)
+      val statusMsg = "\n🔍 *Searching: \"$queryPreview\"…*\n\n"
+      for (ch in statusMsg) callback.onToken(ch.toString())
+      callback.onToolCall(toolCall.name, toolCall.arguments.toString())
+
+      val toolResult = try {
+        tm.executeTool(toolCall)
+      } catch (e: Exception) {
+        callback.onError("Tool execution failed: ${e.message}")
+        return
+      }
+
+      // Record this exchange for context re-seeding on the next round
+      exchanges.add(Exchange(
+        assistantMsg = response,
+        toolResultMsg = "[Tool Result for ${toolCall.name}]:\n${toolResult.result}"
+      ))
     }
 
     callback.onDone()
@@ -271,13 +302,16 @@ class LlamaCppEngine : InferenceEngine {
   }
 
   override fun restoreHistory(messages: List<Pair<String, String>>) {
-    NativeBridge.restoreHistoryNative(buildHistoryJson(messages))
+    val json = buildHistoryJson(messages)
+    lastRestoredHistoryJson = json          // save snapshot for runWithTools round > 0
+    NativeBridge.restoreHistoryNative(json)
   }
 
   override fun resetContext() {
     NativeBridge.resetContextNative()
     synchronized(lock) { partialStream.clear(); fullResponse.clear() }
     inferenceDone.set(true); tokensGenerated.set(0); kvUsage = 0
+    lastRestoredHistoryJson = "[]"
   }
 
   override suspend fun benchmark(ppTokens: Int, tgTokens: Int): BenchmarkResult = withContext(Dispatchers.IO) {
