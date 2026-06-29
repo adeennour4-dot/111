@@ -777,6 +777,21 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
     }
     tokens.resize(n_toks);
 
+    // Truncate prompt tokens if they exceed the configured context window.
+    // The prompt buffer was sized by llama_model_n_ctx_train() which can be
+    // much larger (e.g. 8192) than g_cfg.n_ctx (as low as 1024 on old devices).
+    // llama_decode() would crash if we pass a batch larger than n_ctx.
+    // We keep the LAST g_cfg.n_ctx - 1 tokens (preserving the assistant header
+    // at the end) and discard earlier context.
+    if ((int)tokens.size() >= g_cfg.n_ctx) {
+      int discard = (int)tokens.size() - (g_cfg.n_ctx - 1);
+      if (discard < 16) discard = 16;
+      std::rotate(tokens.begin(), tokens.begin() + discard, tokens.end());
+      tokens.resize(g_cfg.n_ctx - 1);
+      LOGW("Prompt truncated: discarded %d tokens, kept %d (n_ctx=%d)",
+           discard, (int)tokens.size(), g_cfg.n_ctx);
+    }
+
     // build_chat_prompt() always renders the FULL conversation (system +
     // entire g_history) from scratch on every call. The KV cache, however,
     // is persistent across calls. If we don't clear it here, the freshly
@@ -931,6 +946,17 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
         return;
     }
     tokens.resize(n_toks);
+
+    // Same token truncation as executeWithCallbackNative — cap at n_ctx to
+    // prevent llama_decode from crashing on batches larger than the context.
+    if ((int)tokens.size() >= g_cfg.n_ctx) {
+      int discard = (int)tokens.size() - (g_cfg.n_ctx - 1);
+      if (discard < 16) discard = 16;
+      std::rotate(tokens.begin(), tokens.begin() + discard, tokens.end());
+      tokens.resize(g_cfg.n_ctx - 1);
+      LOGW("Image prompt truncated: discarded %d tokens (n_ctx=%d)",
+           discard, g_cfg.n_ctx);
+    }
 
     // Same fix as executeWithCallbackNative: build_chat_prompt() renders the
     // full conversation from scratch every call, so the KV cache must be
