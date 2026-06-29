@@ -87,103 +87,31 @@ class LlamaCppEngine : InferenceEngine {
     return runCatching { NativeBridge.loadMmprojNative(path) }.getOrDefault(false)
   }
 
-  // ── Tool-aware agentic loop ───────────────────────────────────────────────
-  //
-  // Design rules (to avoid the immediate-crash bug):
-  //
-  // Round 0:
-  //   ChatScreen already called restoreHistory() → native context is primed.
-  //   We DO NOT touch restoreHistoryNative here.  We call executeWithCallbackNative
-  //   directly with a tool-augmented version of the user prompt.
-  //
-  // Round N > 0 (tool follow-up):
-  //   We MUST reset the context first (resetContextNative), then re-seed it
-  //   with the saved history plus the tool exchange, then call
-  //   executeWithCallbackNative with the continuation prompt.
-  //
-  // This avoids:
-  //   • Calling restoreHistoryNative("[]") which wiped the ChatScreen context → crash
-  //   • Calling executeWithCallbackNative twice on the same live context → undefined behaviour
-  //
-  private fun runWithTools(prompt: String, tm: ToolManager, callback: TokenCallback) {
-    val toolInstruction = buildString {
-      appendLine("You have access to tools. When you need real-time information, use a tool by")
-      appendLine("outputting ONLY a JSON block (no other text) in this exact format and then stop:")
-      appendLine("```json")
-      appendLine("{\"name\": \"tool_name\", \"arguments\": {\"key\": \"value\"}}")
-      appendLine("```")
-      appendLine("Available tools:")
-      appendLine(tm.getToolDefinitionsJson())
-      appendLine("After receiving a [Tool Result], answer the user using that information.")
-    }
-    val origSystemPrompt = systemPrompt
-    NativeBridge.setSystemPromptNative(
-      if (origSystemPrompt.isNotEmpty()) "$origSystemPrompt\n\n$toolInstruction" else toolInstruction
-    )
-
-    var promptSuffix = ""
-    val MAX_ROUNDS = 4
-
-    try {
-      for (round in 0 until MAX_ROUNDS) {
-        val fullPrompt = if (promptSuffix.isEmpty()) prompt else "$prompt\n$promptSuffix"
-        val responseBuf = StringBuilder()
-        var turnErr: String? = null
-
+  // ── Tool-aware agentic loop — delegates to shared ToolAwareInference ─────
+  private suspend fun runWithTools(prompt: String, tm: ToolManager, callback: TokenCallback) {
+    ToolAwareInference.execute(
+      userPrompt = prompt,
+      originalSystemPrompt = systemPrompt,
+      toolManager = tm,
+      setSystemPrompt = { NativeBridge.setSystemPromptNative(it) },
+      runInference = { p, cb ->
         val innerCb = object : NativeBridge.TokenCallback {
-          override fun onToken(t: String) { responseBuf.append(t) }
-          override fun onDone() {}
-          override fun onError(e: String) { turnErr = e }
-          override fun onKvCacheUsage(p: Int) { callback.onKvUsage(p); kvUsage = p }
-          override fun onTokensGenerated(c: Int) { callback.onTokensGenerated(c); tokensGenerated.set(c) }
+          override fun onToken(t: String) { cb.onToken(t) }
+          override fun onDone() { cb.onDone() }
+          override fun onError(e: String) { cb.onError(e) }
+          override fun onKvCacheUsage(pct: Int) { cb.onKvUsage(pct); kvUsage = pct }
+          override fun onTokensGenerated(cnt: Int) { cb.onTokensGenerated(cnt); tokensGenerated.set(cnt) }
         }
         activeCallback = innerCb
         try {
-          NativeBridge.executeWithCallbackNative(fullPrompt, innerCb)
-        } catch (e: Exception) {
-          callback.onError("Inference error: ${e.message}")
-          callback.onDone()
-          return
+          NativeBridge.executeWithCallbackNative(p, innerCb)
         } finally {
           activeCallback = null
         }
-
-        if (turnErr != null) { callback.onError(turnErr!!); callback.onDone(); return }
-
-        val response = responseBuf.toString()
-        val toolCall = tm.parseToolCall(response)
-
-        if (toolCall == null) {
-          // No tool call — stream the response and we're done
-          for (ch in response) {
-            if (inferenceAborted.get()) break
-            callback.onToken(ch.toString())
-          }
-          break
-        }
-
-        // Tool call detected — show status message
-        val query = toolCall.arguments.optString("query",
-          toolCall.arguments.keys().asSequence().firstOrNull()
-            ?.let { toolCall.arguments.optString(it) } ?: toolCall.name)
-        val status = "\n🔍 *Searching: \"$query\"…*\n\n"
-        for (ch in status) callback.onToken(ch.toString())
-        callback.onToolCall(toolCall.name, toolCall.arguments.toString())
-
-        try {
-          val result = tm.executeTool(toolCall)
-          promptSuffix += "\n[Tool Call]:\n" + response.trim() +
-            "\n[Tool Result for ${toolCall.name}]:\n" + result.result.trim() + "\n"
-        } catch (e: Exception) {
-          callback.onError("Tool execution failed: ${e.message}")
-          callback.onDone()
-          return
-        }
-      }
-    } finally {
-      NativeBridge.setSystemPromptNative(origSystemPrompt)
-    }
-    callback.onDone()
+      },
+      callback = callback,
+      isAborted = { inferenceAborted.get() }
+    )
   }
 
   private fun buildHistoryJson(history: List<Pair<String, String>>): String {

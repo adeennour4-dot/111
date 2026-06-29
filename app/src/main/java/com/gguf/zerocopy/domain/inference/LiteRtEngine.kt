@@ -35,6 +35,10 @@ class LiteRtEngine : InferenceEngine {
   private val tokensGenerated = AtomicInteger(0)
   private val partialStream = StringBuilder()
   private val fullResponse = StringBuilder()
+  private var _toolManager: ToolManager? = null
+
+  override fun getToolManager() = _toolManager
+  override fun setToolManager(tm: ToolManager?) { _toolManager = tm }
 
   override suspend fun loadModel(path: String): Result<Unit> = withContext(Dispatchers.IO) {
     try {
@@ -87,6 +91,58 @@ class LiteRtEngine : InferenceEngine {
       }
       inferenceDone.set(false)
       tokensGenerated.set(0)
+
+      // Tool-aware agentic loop via shared utility
+      val tm = _toolManager
+      if (tm != null) {
+        ToolAwareInference.execute(
+          userPrompt = prompt,
+          originalSystemPrompt = systemPrompt,
+          toolManager = tm,
+          setSystemPrompt = { /* LiteRT-LM has no native system prompt setter — rebuild conversation */
+            try {
+              conversation?.close()
+            } catch (_: Exception) {}
+            conversation = engine?.createConversation()
+            if (it.isNotEmpty()) {
+              try {
+                conversation?.sendMessage(Message.system(Contents.of(it)), emptyMap())
+              } catch (_: Exception) {}
+            }
+          },
+          runInference = { p, cb ->
+            val latch = CountDownLatch(1)
+            try {
+              if (conversation == null) {
+                conversation = engine?.createConversation()
+              }
+              val msgCallback = object : MessageCallback {
+                override fun onMessage(message: Message) {
+                  cb.onToken(message.toString())
+                }
+                override fun onDone() {
+                  cb.onDone()
+                  latch.countDown()
+                }
+                override fun onError(t: Throwable) {
+                  cb.onError(t.message ?: "LiteRT-LM error")
+                  latch.countDown()
+                }
+              }
+              conversation?.sendMessageAsync(p, msgCallback, emptyMap())
+              if (!latch.await(300, TimeUnit.SECONDS)) {
+                cb.onError("LiteRT-LM inference timed out")
+              }
+            } catch (e: Exception) {
+              cb.onError(e.message ?: "LiteRT-LM error")
+              latch.countDown()
+            }
+          },
+          callback = callback
+        )
+        inferenceDone.set(true)
+        return@withContext
+      }
 
       // CountDownLatch ensures we suspend until the async callback fires onDone/onError.
       // Without this, executeInference() returned immediately and the ChatScreen

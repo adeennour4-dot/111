@@ -87,98 +87,25 @@ class MnnEngine : InferenceEngine {
     executeInference("[Image: $imagePath]\n$prompt", callback)
   }
 
-  // ── Low-level single native turn ──────────────────────────────────────────
-  private fun runNativeTurn(
-    prompt: String,
-    onToken: (String) -> Unit,
-    onKv: (Int) -> Unit,
-    onTokCount: (Int) -> Unit
-  ): Pair<String, String?> {
-    val buf = StringBuilder()
-    var err: String? = null
-    val cb = object : NativeBridge.TokenCallback {
-      override fun onToken(token: String) { buf.append(token); onToken(token) }
-      override fun onDone() {}
-      override fun onError(e: String) { err = e }
-      override fun onKvCacheUsage(p: Int) { onKv(p) }
-      override fun onTokensGenerated(c: Int) { onTokCount(c) }
-    }
-    mnnExecuteInference(prompt, cb)
-    return buf.toString() to err
-  }
-
-  // ── Tool-aware agentic loop (mirrors LlamaCppEngine) ──────────────────────
-  private fun runWithTools(prompt: String, tm: ToolManager, callback: TokenCallback) {
-    val toolInstruction = buildString {
-      appendLine("You have access to tools. When you need real-time information, use a tool by")
-      appendLine("outputting ONLY a JSON block (no other text) in this exact format and then stop:")
-      appendLine("```json")
-      appendLine("{\"name\": \"tool_name\", \"arguments\": {\"key\": \"value\"}}")
-      appendLine("```")
-      appendLine("Available tools:")
-      appendLine(tm.getToolDefinitionsJson())
-      appendLine("After receiving a [Tool Result], answer the user using that information.")
-    }
-    val origSystemPrompt = systemPrompt
-    mnnSetSystemPromptNative(
-      if (origSystemPrompt.isNotEmpty()) "$origSystemPrompt\n\n$toolInstruction" else toolInstruction
-    )
-
-    var promptSuffix = ""
-    val MAX_ROUNDS = 4
-
-    try {
-      for (round in 0 until MAX_ROUNDS) {
-        val fullPrompt = if (promptSuffix.isEmpty()) prompt else "$prompt\n$promptSuffix"
-        val responseBuf = StringBuilder()
-        var turnErr: String? = null
-
+  // ── Tool-aware agentic loop — delegates to shared ToolAwareInference ─────
+  private suspend fun runWithTools(prompt: String, tm: ToolManager, callback: TokenCallback) {
+    ToolAwareInference.execute(
+      userPrompt = prompt,
+      originalSystemPrompt = systemPrompt,
+      toolManager = tm,
+      setSystemPrompt = { mnnSetSystemPromptNative(it) },
+      runInference = { p, cb ->
         val innerCb = object : NativeBridge.TokenCallback {
-          override fun onToken(t: String) { responseBuf.append(t) }
-          override fun onDone() {}
-          override fun onError(e: String) { turnErr = e }
-          override fun onKvCacheUsage(p: Int) { callback.onKvUsage(p); kvUsage = p }
-          override fun onTokensGenerated(c: Int) { callback.onTokensGenerated(c); tokensGenerated.set(c) }
+          override fun onToken(t: String) { cb.onToken(t) }
+          override fun onDone() { cb.onDone() }
+          override fun onError(e: String) { cb.onError(e) }
+          override fun onKvCacheUsage(pct: Int) { cb.onKvUsage(pct); kvUsage = pct }
+          override fun onTokensGenerated(cnt: Int) { cb.onTokensGenerated(cnt); tokensGenerated.set(cnt) }
         }
-        try {
-          mnnExecuteInference(fullPrompt, innerCb)
-        } catch (e: Exception) {
-          callback.onError("MNN inference error: ${e.message}")
-          callback.onDone()
-          return
-        }
-
-        if (turnErr != null) { callback.onError(turnErr!!); callback.onDone(); return }
-
-        val response = responseBuf.toString()
-        val toolCall = tm.parseToolCall(response)
-
-        if (toolCall == null) {
-          for (ch in response) callback.onToken(ch.toString())
-          break
-        }
-
-        val query = toolCall.arguments.optString("query",
-          toolCall.arguments.keys().asSequence().firstOrNull()
-            ?.let { toolCall.arguments.optString(it) } ?: toolCall.name)
-        val status = "\n🔍 *Searching: \"$query\"…*\n\n"
-        for (ch in status) callback.onToken(ch.toString())
-        callback.onToolCall(toolCall.name, toolCall.arguments.toString())
-
-        try {
-          val result = tm.executeTool(toolCall)
-          promptSuffix += "\n[Tool Call]:\n" + response.trim() +
-            "\n[Tool Result for ${toolCall.name}]:\n" + result.result.trim() + "\n"
-        } catch (e: Exception) {
-          callback.onError("Tool execution failed: ${e.message}")
-          callback.onDone()
-          return
-        }
-      }
-    } finally {
-      mnnSetSystemPromptNative(origSystemPrompt)
-    }
-    callback.onDone()
+        mnnExecuteInference(p, innerCb)
+      },
+      callback = callback
+    )
   }
 
   override suspend fun executeInference(prompt: String, callback: TokenCallback) {
