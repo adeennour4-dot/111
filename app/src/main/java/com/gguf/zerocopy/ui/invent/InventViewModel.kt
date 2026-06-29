@@ -74,6 +74,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         sameModelMode: Boolean
     ) {
         viewModelScope.launch(Dispatchers.IO) {
+            // 🛡️ clear any lingering tool manager from ChatScreen
+            // This must happen BEFORE any inference — for both new AND restored sessions.
+            clearToolManagerOnEngines()
+
             val existing = InventStorage.listSessions(ctx).firstOrNull()
             if (existing != null) {
                 val saved = InventStorage.loadSession(ctx, existing)
@@ -103,9 +107,6 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             val m1Ctx = GgufMetaReader.readContextLength(model1Path).let { if (it <= 0) 2048 else it }
             val m2Ctx = if (sameModelMode) m1Ctx
                         else GgufMetaReader.readContextLength(model2Path).let { if (it <= 0) 2048 else it }
-
-            // 🛡️ clear any lingering tool manager from ChatScreen
-            clearToolManagerOnEngines()
 
             // Apply the model's native context size to the engine config so the
             // model isn't artificially limited by the default 2048.
@@ -612,11 +613,15 @@ Model 2 context: $model2Ctx tokens. Chunk plan to fit ${(model2Ctx * 0.7).toInt(
         history.forEach { (role, content) ->
             val mappedRole = if (role == "user") "user" else "assistant"
             appendLine("<|im_start|>$mappedRole")
-            appendLine(content)
+            // Truncate excessively long history entries to prevent OOM
+            val truncated = if (content.length > 16_000) content.take(16_000) + "…" else content
+            appendLine(truncated)
             appendLine("<|im_end|>")
         }
         appendLine("<|im_start|>user")
-        appendLine(user)
+        // Also truncate user message to prevent prompt overflow
+        val truncatedUser = if (user.length > 16_000) user.take(16_000) + "…" else user
+        appendLine(truncatedUser)
         appendLine("<|im_end|>")
         append("<|im_start|>assistant")
     }
