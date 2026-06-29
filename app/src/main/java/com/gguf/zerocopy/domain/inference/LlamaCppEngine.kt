@@ -105,57 +105,29 @@ class LlamaCppEngine : InferenceEngine {
   //   • Calling restoreHistoryNative("[]") which wiped the ChatScreen context → crash
   //   • Calling executeWithCallbackNative twice on the same live context → undefined behaviour
   //
-  private fun runWithTools(userPrompt: String, tm: ToolManager, callback: TokenCallback) {
-    val toolDefs = tm.getToolDefinitionsJson()
+  private fun runWithTools(userPrompt: String, callback: TokenCallback) {
+    // ── Auto-detect search intent and run search ──────────────────────────
+    // Small models (Gemma 3 1B, etc.) can't reliably output structured
+    // <tool_call> XML. Instead we detect search-like queries automatically
+    // and prepend results to the prompt as context — no tool call needed.
+    val searchContext = detectAndRunSearch(userPrompt)
 
-    // Compact tool instruction appended to the user's message on round 0.
-    // Kept short so it doesn't overflow small context windows.
-    val toolPreamble = buildString {
-      appendLine("You have tools. If you need live info, output EXACTLY (nothing else on that line):")
-      appendLine("<tool_call>{\"name\":\"web_search\",\"arguments\":{\"query\":\"YOUR QUERY\"}}</tool_call>")
-      appendLine("Then stop. After you see [Tool Result] continue your answer.")
-      appendLine("Tools: ${toolDefs.take(600)}")   // truncate for small contexts
-    }
-
-    // The prompt for round 0 — tool instruction + original user message
-    val round0Prompt = "$toolPreamble\n\nUser: $userPrompt"
-
-    // Accumulated tool exchanges for context re-seeding on round > 0
-    data class Exchange(val assistantMsg: String, val toolResultMsg: String)
-    val exchanges = mutableListOf<Exchange>()
-
-    val MAX_ROUNDS = 4
-
-    for (round in 0 until MAX_ROUNDS) {
-      if (inferenceAborted.get()) break
-
-      // ── Context setup ────────────────────────────────────────────────────
-      if (round == 0) {
-        // Context already primed by ChatScreen's restoreHistory call — do NOT reset it.
-        // Just proceed with the augmented prompt.
-      } else {
-        // Reset the native context cleanly before re-seeding.
-        NativeBridge.resetContextNative()
-
-        // Re-build history: original chat history + all tool exchanges so far
-        val fullHistory = JSONArray().apply {
-          // Original chat history entries
-          val origArr = try { JSONArray(lastRestoredHistoryJson) } catch (_: Exception) { JSONArray() }
-          for (i in 0 until origArr.length()) put(origArr.getJSONObject(i))
-          // Tool exchanges from previous rounds
-          exchanges.forEach { ex ->
-            put(JSONObject().apply { put("role", "assistant"); put("content", ex.assistantMsg) })
-            put(JSONObject().apply { put("role", "user");      put("content", ex.toolResultMsg) })
-          }
-        }
-        NativeBridge.restoreHistoryNative(fullHistory.toString())
+    // ── Augment system prompt with search results ─────────────────────────
+    val origSystemPrompt = systemPrompt
+    val augmentedSysPrompt = buildString {
+      if (origSystemPrompt.isNotEmpty()) appendLine(origSystemPrompt)
+      if (searchContext != null) {
+        appendLine()
+        appendLine("Here is up-to-date web search information:")
+        appendLine(searchContext)
+        appendLine()
+        appendLine("Use the above information to answer the user if relevant.")
       }
+    }
+    NativeBridge.setSystemPromptNative(augmentedSysPrompt)
 
-      // ── Pick the prompt for this round ───────────────────────────────────
-      val currentPrompt = if (round == 0) round0Prompt
-                          else "Continue answering the user based on the tool result above."
-
-      // ── Run one inference turn ───────────────────────────────────────────
+    // ── Single inference round ────────────────────────────────────────────
+    try {
       val responseBuf = StringBuilder()
       var turnErr: String? = null
 
@@ -168,58 +140,136 @@ class LlamaCppEngine : InferenceEngine {
       }
       activeCallback = innerCb
       try {
-        NativeBridge.executeWithCallbackNative(currentPrompt, innerCb)
+        NativeBridge.executeWithCallbackNative(userPrompt, innerCb)
       } catch (e: Exception) {
         callback.onError("Inference error: ${e.message}")
         callback.onDone()
-        activeCallback = null
         return
+      } finally {
+        activeCallback = null
       }
-      activeCallback = null
 
       if (turnErr != null) { callback.onError(turnErr!!); callback.onDone(); return }
 
+      // Stream the response
       val response = responseBuf.toString().trim()
-      val toolCall = tm.parseToolCall(response)
-
-      if (toolCall == null) {
-        // No tool call — stream the final answer
-        val clean = response
-          .replace(Regex("<tool_call>.*?</tool_call>", RegexOption.DOT_MATCHES_ALL), "")
-          .trim()
-        val toStream = clean.ifEmpty { response }
-        for (ch in toStream) {
-          if (inferenceAborted.get()) break
-          callback.onToken(ch.toString())
-        }
-        break
+      for (ch in response) {
+        if (inferenceAborted.get()) break
+        callback.onToken(ch.toString())
       }
-
-      // ── Tool call detected ───────────────────────────────────────────────
-      val queryPreview = toolCall.arguments.optString("query",
-        toolCall.arguments.keys().asSequence().firstOrNull()
-          ?.let { toolCall.arguments.optString(it) } ?: toolCall.name)
-      val statusMsg = "\n🔍 *Searching: \"$queryPreview\"…*\n\n"
-      for (ch in statusMsg) callback.onToken(ch.toString())
-      callback.onToolCall(toolCall.name, toolCall.arguments.toString())
-
-      val toolResult = try {
-        tm.executeTool(toolCall)
-      } catch (e: Exception) {
-        callback.onError("Tool execution failed: ${e.message}")
-        callback.onDone()  // must call onDone or caller hangs
-        return
-      }
-
-      // Record this exchange for context re-seeding on the next round
-      exchanges.add(Exchange(
-        assistantMsg = response,
-        toolResultMsg = "[Tool Result for ${toolCall.name}]:\n${toolResult.result}"
-      ))
+    } finally {
+      NativeBridge.setSystemPromptNative(origSystemPrompt)
     }
-
     callback.onDone()
   }
+
+  /**
+   * Detects whether the user message implies a web search, runs it,
+   * and returns a formatted results string (or null if no search needed).
+   */
+  private fun detectAndRunSearch(userPrompt: String): String? {
+    val lower = userPrompt.lowercase()
+    val triggers = listOf(
+      "search", "find", "look up", "google",
+      "what is", "what are", "who is", "who are",
+      "when", "where is", "where are",
+      "latest", "current", "news", "weather",
+      "price", "prices", "stock", "stocks",
+      "forecast", "today", "now",
+      "how much", "how many", "tell me about"
+    )
+    if (!triggers.any { lower.contains(it) }) return null
+
+    // Extract a concise query from the message
+    var query = userPrompt.trim()
+      .replace(Regex("^(?:search\\s+(?:for\\s+)?|find\\s+|look\\s+up\\s+|google\\s+)", RegexOption.IGNORE_CASE), "")
+      .trim()
+      .take(200)
+    if (query.length < 3) query = userPrompt.take(200)
+
+    return try {
+      val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+      val results = fetchDuckDuckGo(encoded)
+      if (results.isNotBlank()) results else null
+    } catch (_: Exception) { null }
+  }
+
+  /**
+   * Fetches web results from DuckDuckGo (lite API first, HTML fallback).
+   * Called on background thread (from within runWithTools which is on Dispatchers.IO).
+   */
+  private fun fetchDuckDuckGo(encoded: String): String {
+    val lite = fetchDdgLite(encoded)
+    if (lite.isNotBlank()) return lite
+    return fetchDdgHtml(encoded)
+  }
+
+  private fun openDdgConn(url: String): java.net.HttpURLConnection =
+    (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+      requestMethod = "GET"
+      connectTimeout = 10_000
+      readTimeout = 10_000
+      instanceFollowRedirects = true
+      setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
+      setRequestProperty("Accept", "text/html,*/*;q=0.8")
+      setRequestProperty("Connection", "close")
+    }
+
+  private fun fetchDdgLite(encoded: String): String {
+    val conn = openDdgConn("https://lite.duckduckgo.com/lite/?q=$encoded")
+    if (conn.responseCode != 200) { conn.disconnect(); return "" }
+    val html = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+    conn.disconnect()
+    return formatDdgResults(parseDdgLinks(html, "result-link", "result-snippet"), 5)
+  }
+
+  private fun fetchDdgHtml(encoded: String): String {
+    val conn = openDdgConn("https://html.duckduckgo.com/html/?q=$encoded")
+    if (conn.responseCode != 200) { conn.disconnect(); return "" }
+    val html = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+    conn.disconnect()
+    return formatDdgResults(parseDdgLinks(html, "result__a", "result__snippet"), 5)
+  }
+
+  private data class DdgResult(val title: String, val url: String, val snippet: String)
+
+  private fun parseDdgLinks(html: String, linkClass: String, snipClass: String): List<DdgResult> {
+    val linkPat = Regex("""<a[^>]+class="$linkClass"[^>]*href="([^"]+)"[^>]*>(.*?)</a>""", RegexOption.DOT_MATCHES_ALL)
+    val snipPat = Regex("""<[^>]+class="$snipClass"[^>]*>(.*?)</[^>]+>""", RegexOption.DOT_MATCHES_ALL)
+    val links = linkPat.findAll(html).toList()
+    val snips = snipPat.findAll(html).toList()
+    val results = mutableListOf<DdgResult>()
+    for (i in links.indices) {
+      val title = stripHtml(links[i].groupValues[2]).trim()
+      if (title.isEmpty()) continue
+      var url = decodeHtml(links[i].groupValues[1])
+      if ("uddg=" in url) {
+        url = try { java.net.URLDecoder.decode(url.substringAfter("uddg=").substringBefore("&"), "UTF-8") }
+        catch (_: Exception) { url }
+      }
+      val snip = snips.getOrNull(i)?.let { stripHtml(it.groupValues[1]).trim() } ?: ""
+      results.add(DdgResult(title, url, snip))
+    }
+    return results
+  }
+
+  private fun formatDdgResults(results: List<DdgResult>, max: Int): String {
+    if (results.isEmpty()) return ""
+    return results.take(max).joinToString("\n---\n") { r ->
+      buildString {
+        appendLine(r.title)
+        appendLine("URL: ${r.url}")
+        if (r.snippet.isNotEmpty()) appendLine(r.snippet)
+      }
+    }
+  }
+
+  private fun stripHtml(s: String) = s.replace(Regex("<[^>]+>"), "").let { decodeHtml(it) }
+
+  private fun decodeHtml(s: String) = s
+    .replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+    .replace("&quot;", "\"").replace("&#39;", "'").replace("&nbsp;", " ")
+    .replace(Regex("&#(\\d+);")) { it.groupValues[1].toIntOrNull()?.toChar()?.toString() ?: it.value }
 
   private fun buildHistoryJson(history: List<Pair<String, String>>): String {
     val arr = JSONArray()
@@ -242,18 +292,18 @@ class LlamaCppEngine : InferenceEngine {
       inferenceDone.set(false)
       tokensGenerated.set(0)
 
-      val tm = _toolManager
-      if (tm != null) {
-        // Only use runWithTools if the prompt doesn't already contain chat-template
-        // markup (e.g. system/user/assistant tokens).  Invent builds its own
-        // fully-formatted prompt and must NOT be re-wrapped with tool preamble.
+      val webSearchEnabled = com.gguf.zerocopy.data.local.SettingsManager.webSearchEnabled
+      if (webSearchEnabled) {
+        // Auto-search strategy: detect search intent from user message,
+        // run web search if needed, feed results as system prompt context.
+        // No tool call output required from the model.
         val alreadyWrapped = prompt.startsWith("<|system|") ||
           prompt.startsWith("<|im_start|") ||
           prompt.startsWith("<|begin_of_text|") ||
           prompt.contains("\n<|user|>\n") ||
           prompt.contains("\n<|im_start|>user\n")
         if (!alreadyWrapped) {
-          runWithTools(prompt, tm, callback)
+          runWithTools(prompt, callback)
           inferenceDone.set(true)
           return@withContext
         }
