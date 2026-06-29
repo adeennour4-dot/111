@@ -88,39 +88,24 @@ class ToolManager {
     return arr.toString(2)
   }
 
-  /**
-   * Detects tool calls in ALL formats emitted by common open-weight models:
-   *
-   * 1. <tool_call>{"name":"web_search","arguments":{"query":"..."}}</tool_call>   ← Qwen3, Llama3.1+
-   * 2. ```json\n{"name":"web_search","arguments":{...}}\n```                      ← many instruct models
-   * 3. {"name":"web_search","arguments":{...}}                                     ← bare JSON
-   * 4. {"function":"web_search","arguments":{...}}                                 ← some ChatML models
-   * 5. {"type":"function","function":{"name":"web_search","arguments":{...}}}      ← OpenAI-style
-   * 6. Partial matches: model outputs "web_search" as a string near a JSON block
-   */
   fun parseToolCall(text: String): ToolCall? {
-    // 1. <tool_call>...</tool_call>
     val tagRegex = Regex("<tool_call>(.*?)</tool_call>", RegexOption.DOT_MATCHES_ALL)
     tagRegex.find(text)?.groupValues?.getOrNull(1)?.trim()
       ?.let { tryParseJson(it) }
       ?.let { return it }
 
-    // 2. ```json ... ``` or ``` ... ```
     val fenceRegex = Regex("```(?:json)?\\s*\\{(.*?)\\}\\s*```", RegexOption.DOT_MATCHES_ALL)
     fenceRegex.find(text)?.let { m ->
       tryParseJson("{${m.groupValues[1]}}")?.let { return it }
     }
 
-    // 3 & 4 & 5. Extract first complete JSON object from the text
     extractFirstJsonObject(text)?.let { json ->
       tryParseJson(json)?.let { return it }
     }
 
-    // 6. Fuzzy: model mentions a known tool name near any JSON
     for (toolName in tools.keys) {
       if (text.contains(toolName, ignoreCase = true)) {
         extractFirstJsonObject(text)?.let { json ->
-          // Build a synthetic tool call with the args from the JSON
           return try {
             val obj = JSONObject(json)
             val args = obj.optJSONObject("arguments")
@@ -130,7 +115,6 @@ class ToolManager {
             ToolCall("call_${System.currentTimeMillis()}", toolName, args)
           } catch (_: Exception) { null }
         }
-        // Even if no JSON, if tool name is mentioned and it's web_search, infer query from text
         if (toolName == "web_search") {
           val args = inferArgsFromText(text, toolName)
           if (args.length() > 0) return ToolCall("call_${System.currentTimeMillis()}", toolName, args)
@@ -142,7 +126,6 @@ class ToolManager {
 
   private fun tryParseJson(json: String): ToolCall? = try {
     val obj = JSONObject(json)
-    // Format 5: {"type":"function","function":{"name":...,"arguments":...}}
     val inner = obj.optJSONObject("function")
     val resolved = inner ?: obj
 
@@ -151,7 +134,6 @@ class ToolManager {
       .ifEmpty { obj.optString("tool", "") }
     if (name.isEmpty() || !tools.containsKey(name)) return null
 
-    // arguments can be a JSONObject or a JSON string
     val argsRaw = resolved.opt("arguments") ?: resolved.opt("parameters") ?: resolved.opt("args")
     val args = when (argsRaw) {
       is JSONObject -> argsRaw
@@ -183,11 +165,9 @@ class ToolManager {
     return null
   }
 
-  /** Try to extract a search query from natural language when no JSON was found */
   private fun inferArgsFromText(text: String, toolName: String): JSONObject {
     val args = JSONObject()
     if (toolName == "web_search") {
-      // Patterns like: search for "X", search "X", look up X, find X
       val patterns = listOf(
         Regex("""search(?:\s+for)?\s+"([^"]+)"""", RegexOption.IGNORE_CASE),
         Regex("""search(?:\s+for)?\s+'([^']+)'""", RegexOption.IGNORE_CASE),
@@ -217,14 +197,32 @@ class ToolManager {
   private fun getCurrentDate() =
     "Current date: ${SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.getDefault()).format(Date())}"
 
+  /**
+   * Performs a DuckDuckGo web search.
+   * Ensures execution on a background thread so that JNI/native inference
+   * callbacks calling this from the main thread never get
+   * NetworkOnMainThreadException.
+   */
   private fun webSearch(query: String, numResults: Int): String {
     if (query.isBlank()) return "Error: empty search query"
-    return try {
-      val encoded = URLEncoder.encode(query, "UTF-8")
-      val lite = fetchDdgLite(encoded, numResults)
-      if (lite.isNotBlank()) lite else fetchDdgHtml(encoded, numResults)
-    } catch (e: Exception) {
-      "Web search failed: ${e.message}"
+    val doSearch = fun(): String {
+      return try {
+        val encoded = URLEncoder.encode(query, "UTF-8")
+        val lite = fetchDdgLite(encoded, numResults)
+        if (lite.isNotBlank()) lite else fetchDdgHtml(encoded, numResults)
+      } catch (e: Exception) {
+        "Web search failed: ${e.message}"
+      }
+    }
+    return if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+      doSearch()
+    } else {
+      // Offload to avoid NetworkOnMainThreadException from JNI callbacks
+      var result = "Web search timed out after 25 s"
+      val t = Thread { result = doSearch() }
+      t.start()
+      try { t.join(25_000L) } catch (_: InterruptedException) {}
+      result
     }
   }
 
