@@ -53,9 +53,6 @@ class LlamaCppEngine : InferenceEngine {
 
   override suspend fun loadModel(path: String): Result<Unit> = withContext(Dispatchers.IO) {
     if (!nativeLibLoaded) return@withContext Result.failure(Exception("llama.cpp native library not available"))
-    val sentinel = runCatching {
-      java.io.File(ZeroCopyApp.instance.filesDir, ".loading_sentinel").also { it.createNewFile() }
-    }.getOrNull()
     val result = try {
       currentModelPath = path
       NativeBridge.setEngineConfigNative(
@@ -75,7 +72,6 @@ class LlamaCppEngine : InferenceEngine {
         Result.failure(Exception("Failed to load GGUF model"))
       }
     } catch (e: Exception) { Result.failure(e) }
-    runCatching { sentinel?.delete() }
     result
   }
 

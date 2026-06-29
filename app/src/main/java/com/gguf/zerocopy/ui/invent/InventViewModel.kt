@@ -147,15 +147,11 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun startModel1Questioning() {
         val state = sessionState ?: return
         setSwap("Loading ${state.model1Name}…")
-        val loadResult = withContext(Dispatchers.IO) {
-            engineManager.unloadAll()
-            engineManager.selectEngineForFormat(state.model1Path)
-            engineManager.getActiveEngine()?.loadModel(state.model1Path)
-        }
-        if (loadResult?.isFailure == true) {
+        val ok = loadOrKeepModel(state.model1Path)
+        if (!ok) {
             setSwap("")
             _ui.value = _ui.value.copy(
-                error = "Failed to load ${state.model1Name}: ${loadResult.exceptionOrNull()?.message}"
+                error = "Failed to load ${state.model1Name}"
             )
             return
         }
@@ -251,16 +247,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             val fetchedContent = fetchSearchContent()
 
             setSwap("Loading ${state.researcherName}…")
-            val researcherLoad = withContext(Dispatchers.IO) {
-                engineManager.unloadAll()
-                engineManager.selectEngineForFormat(state.researcherPath)
-                engineManager.getActiveEngine()?.loadModel(state.researcherPath)
-            }
-            if (researcherLoad?.isFailure == true) {
+            val researcherOk = loadOrKeepModel(state.researcherPath)
+            if (!researcherOk) {
                 setSwap("")
-                _ui.value = _ui.value.copy(
-                    error = "Failed to load researcher: ${researcherLoad.exceptionOrNull()?.message}"
-                )
+                _ui.value = _ui.value.copy(error = "Failed to load researcher")
                 return
             }
             setSwap("")
@@ -271,18 +261,12 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             )
 
             InventStorage.saveSearchLog(ctx, sessionId, extracted)
-            withContext(Dispatchers.IO) { engineManager.unloadAll() }
 
             setSwap("Loading ${state.model1Name} to review results…")
-            val model1Load = withContext(Dispatchers.IO) {
-                engineManager.selectEngineForFormat(state.model1Path)
-                engineManager.getActiveEngine()?.loadModel(state.model1Path)
-            }
-            if (model1Load?.isFailure == true) {
+            val model1Ok = loadOrKeepModel(state.model1Path)
+            if (!model1Ok) {
                 setSwap("")
-                _ui.value = _ui.value.copy(
-                    error = "Failed to load ${state.model1Name}: ${model1Load.exceptionOrNull()?.message}"
-                )
+                _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name}")
                 return
             }
             setSwap("")
@@ -315,16 +299,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         val state = sessionState ?: return
         updatePhase(InventPhase.PLANNING)
         setSwap("Loading ${state.model1Name} for planning…")
-        val loadResult = withContext(Dispatchers.IO) {
-            engineManager.unloadAll()
-            engineManager.selectEngineForFormat(state.model1Path)
-            engineManager.getActiveEngine()?.loadModel(state.model1Path)
-        }
-        if (loadResult?.isFailure == true) {
+        val ok = loadOrKeepModel(state.model1Path)
+        if (!ok) {
             setSwap("")
-            _ui.value = _ui.value.copy(
-                error = "Failed to load ${state.model1Name} for planning: ${loadResult.exceptionOrNull()?.message}"
-            )
+            _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name} for planning")
             return
         }
         setSwap("")
@@ -355,30 +333,24 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
         // In same-model mode the planner IS the coder — no separate load needed
         val isSame = state.sameModelMode || state.model1Path == state.model2Path
-        val loadResult: Result<Unit>?
+        val targetPath: String
+        val targetName: String
         if (!isSame) {
-            setSwap("Loading ${state.model2Name}…")
-            loadResult = withContext(Dispatchers.IO) {
-                engineManager.unloadAll()
-                engineManager.selectEngineForFormat(state.model2Path)
-                engineManager.getActiveEngine()?.loadModel(state.model2Path)
-            }
-            setSwap("")
+            targetPath = state.model2Path
+            targetName = state.model2Name
         } else {
-            setSwap("Loading ${state.model1Name} (coder role)…")
-            loadResult = withContext(Dispatchers.IO) {
-                engineManager.unloadAll()
-                engineManager.selectEngineForFormat(state.model1Path)
-                engineManager.getActiveEngine()?.loadModel(state.model1Path)
-            }
-            setSwap("")
+            targetPath = state.model1Path
+            targetName = state.model1Name
         }
-        if (loadResult?.isFailure == true) {
-            _ui.value = _ui.value.copy(
-                error = "Failed to load model for confirmation: ${loadResult.exceptionOrNull()?.message}"
-            )
+
+        setSwap("Loading $targetName (coder role)…")
+        val ok = loadOrKeepModel(targetPath)
+        if (!ok) {
+            setSwap("")
+            _ui.value = _ui.value.copy(error = "Failed to load $targetName for confirmation")
             return
         }
+        setSwap("")
 
         val understanding = runInference(
             systemPrompt = "You are a senior software engineer. Read the project spec and describe exactly what you will build — files, architecture, implementation approach. Be specific. Follow the spec exactly.",
@@ -462,6 +434,30 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ── Inference ─────────────────────────────────────────────────────────────
+
+    /**
+     * If [path] is already loaded (same engine, same model), just reset KV cache
+     * instead of doing a full unload + reload.  Saves 2-5 seconds per transition.
+     */
+    private suspend fun loadOrKeepModel(path: String): Boolean {
+        val engine = engineManager.getActiveEngine()
+        if (engine != null && engine.isModelLoaded && engine.loadedModelPath == path) {
+            // Same model already loaded — just clear the KV cache context
+            withContext(Dispatchers.IO) { engine.resetContext() }
+            return true
+        }
+        // Different model — do the full load
+        return withContext(Dispatchers.IO) {
+            try {
+                engineManager.unloadAll()
+                engineManager.selectEngineForFormat(path)
+                val result = engineManager.getActiveEngine()?.loadModel(path)
+                result?.isSuccess == true
+            } catch (e: Exception) {
+                false
+            }
+        }
+    }
 
     /**
      * Ensure the active engine has the right model loaded.

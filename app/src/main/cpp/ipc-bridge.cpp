@@ -85,6 +85,10 @@ static std::string g_current_image_path = "";
 struct Message { std::string role; std::string content; };
 static std::vector<Message> g_history;
 
+// Cached big-core list — read once, reuse across model reloads
+static std::vector<int> g_big_cores;
+static bool g_big_cores_cached = false;
+
 static std::vector<int> detect_big_cores() {
     std::vector<int> big_cores;
     std::vector<std::pair<int, int>> core_freqs;
@@ -107,14 +111,14 @@ static std::vector<int> detect_big_cores() {
 
 static void pin_to_big_cores() {
 #ifdef __aarch64__
-    auto big_cores = detect_big_cores();
-    if (big_cores.empty()) return;
+    if (!g_big_cores_cached) { g_big_cores = detect_big_cores(); g_big_cores_cached = true; }
+    if (g_big_cores.empty()) return;
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    for (int core : big_cores) CPU_SET(core, &cpuset);
+    for (int core : g_big_cores) CPU_SET(core, &cpuset);
     pid_t tid = syscall(SYS_gettid);
     if (sched_setaffinity(tid, sizeof(cpuset), &cpuset) == 0)
-        LOGI("Pinned to %zu big cores", big_cores.size());
+        LOGI("Pinned to %zu big cores", g_big_cores.size());
 #endif
 }
 
