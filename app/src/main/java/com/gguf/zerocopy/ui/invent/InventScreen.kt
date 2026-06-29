@@ -38,6 +38,7 @@ fun InventScreen(
     researcherPath: String,
     researcherName: String,
     offlineMode: Boolean,
+    sameModelMode: Boolean,
     onBack: () -> Unit
 ) {
     val vm: InventViewModel = viewModel()
@@ -52,7 +53,8 @@ fun InventScreen(
                 model1Path, model1Name,
                 model2Path, model2Name,
                 researcherPath, researcherName,
-                offlineMode
+                offlineMode,
+                sameModelMode
             )
         }
     }
@@ -547,3 +549,4 @@ fun phaseLabel(phase: InventPhase) = when (phase) {
     InventPhase.DONE        -> "Done ✓"
     InventPhase.NOT_SURE    -> "Refining"
 }
+
