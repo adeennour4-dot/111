@@ -10,7 +10,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
@@ -18,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ZeroCopyApp
+import com.gguf.zerocopy.data.repository.LocalModel
 import com.gguf.zerocopy.ui.theme.currentPalette
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -30,9 +30,10 @@ fun InventSetupScreen(
     val colors = currentPalette()
     val app = ZeroCopyApp.instance
 
-    // Load available models
-    val models by remember {
-        mutableStateOf(app.modelRepository.getLocalModels().filter { it.path.endsWith(".gguf") })
+    // Observe models from StateFlow — properly typed
+    val allModels by app.modelRepository.models.collectAsState()
+    val ggufModels: List<LocalModel> = remember(allModels) {
+        allModels.filter { it.format == "gguf" }
     }
 
     var model1Path by remember { mutableStateOf("") }
@@ -42,8 +43,7 @@ fun InventSetupScreen(
     var researcherPath by remember { mutableStateOf("") }
     var researcherName by remember { mutableStateOf("") }
     var offlineMode by remember { mutableStateOf(false) }
-
-    var showPicker by remember { mutableStateOf<String?>(null) } // "m1", "m2", "res"
+    var showPicker by remember { mutableStateOf<String?>(null) } // "m1","m2","res"
 
     val canStart = model1Path.isNotEmpty() && model2Path.isNotEmpty() && researcherPath.isNotEmpty()
 
@@ -67,78 +67,98 @@ fun InventSetupScreen(
         Column(
             Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState())
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
 
-            // Header
+            // ── Header card ─────────────────────────────────────────────────
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth(),
                 color = Color.Transparent,
-                border = BorderStroke(1.dp, colors.Accent.copy(alpha = 0.3f))
+                border = BorderStroke(1.dp, colors.Accent.copy(alpha = 0.3f)),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Box(
                     Modifier.background(
-                        Brush.horizontalGradient(listOf(colors.GradientStart.copy(0.08f), colors.GradientEnd.copy(0.08f))),
-                        RoundedCornerShape(16.dp)
+                        Brush.horizontalGradient(
+                            listOf(colors.GradientStart.copy(0.08f), colors.GradientEnd.copy(0.08f))
+                        ), RoundedCornerShape(16.dp)
                     ).padding(16.dp)
                 ) {
                     Column {
-                        Text("🧠 Invent", fontSize = 20.sp, fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace,
-                            color = colors.Text)
+                        Text("🧠 Invent", fontSize = 22.sp, fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace, color = colors.Text)
                         Spacer(Modifier.height(4.dp))
                         Text("3 AIs. Your idea. Full project structure.",
-                            fontSize = 13.sp, color = colors.Text2,
-                            fontFamily = FontFamily.Monospace)
-                        Spacer(Modifier.height(8.dp))
-                        Text("GGUF models only", fontSize = 10.sp, color = colors.Accent,
-                            fontFamily = FontFamily.Monospace)
+                            fontSize = 13.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+                        Spacer(Modifier.height(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = colors.Accent.copy(alpha = 0.15f)
+                        ) {
+                            Text("  GGUF only  ", fontSize = 10.sp, color = colors.Accent,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
+                        }
                     }
                 }
             }
 
-            // Model 1 — Planner
-            ModelPickerCard(
-                label = "⚙ Planner Model",
-                subtitle = "Logic model — asks questions & plans",
+            // ── GGUF not found warning ──────────────────────────────────────
+            if (ggufModels.isEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = colors.Amber.copy(alpha = 0.1f),
+                    border = BorderStroke(1.dp, colors.Amber.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Warning, null, tint = colors.Amber, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text("No GGUF models found. Import at least 3 GGUF models to use Invent.",
+                            fontSize = 12.sp, color = colors.Amber, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            }
+
+            // ── Model pickers ───────────────────────────────────────────────
+            InventModelPickerCard(
+                label = "⚙  Planner Model",
+                subtitle = "Logic — asks questions & plans the project",
                 selected = model1Name,
                 onPick = { showPicker = "m1" },
                 colors = colors
             )
 
-            // Model 2 — Coder
-            ModelPickerCard(
-                label = "💻 Coder Model",
-                subtitle = "Code-specialized — builds the project plan",
+            InventModelPickerCard(
+                label = "💻  Coder Model",
+                subtitle = "Code-specialized — builds the implementation plan",
                 selected = model2Name,
                 onPick = { showPicker = "m2" },
                 colors = colors
             )
 
-            // Researcher — 1B
-            ModelPickerCard(
-                label = "🔍 Researcher Model",
-                subtitle = "~1B model — searches & extracts info",
+            InventModelPickerCard(
+                label = "🔍  Researcher Model",
+                subtitle = "~1B — searches web & extracts info",
                 selected = researcherName,
                 onPick = { showPicker = "res" },
                 colors = colors
             )
 
-            // Offline toggle
+            // ── Offline toggle ──────────────────────────────────────────────
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = colors.Card,
                 border = BorderStroke(1.dp, colors.Border),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(if (offlineMode) Icons.Outlined.WifiOff else Icons.Outlined.Wifi,
-                        null, tint = if (offlineMode) colors.Amber else colors.Text2,
-                        modifier = Modifier.size(20.dp))
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        if (offlineMode) Icons.Outlined.WifiOff else Icons.Outlined.Wifi,
+                        null,
+                        tint = if (offlineMode) colors.Amber else colors.Text2,
+                        modifier = Modifier.size(20.dp)
+                    )
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text("Offline Mode", fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
@@ -160,42 +180,36 @@ fun InventSetupScreen(
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
 
-            // Start button
-            Button(
-                onClick = {
-                    onStart(model1Path, model1Name, model2Path, model2Name,
-                        researcherPath, researcherName, offlineMode)
-                },
-                enabled = canStart,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                border = if (canStart) BorderStroke(1.dp, colors.Accent.copy(0.5f)) else null
+            // ── Start button ────────────────────────────────────────────────
+            Box(
+                Modifier.fillMaxWidth().height(52.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(
+                        if (canStart)
+                            Brush.horizontalGradient(listOf(colors.GradientStart, colors.GradientEnd))
+                        else Brush.horizontalGradient(listOf(colors.Border, colors.Border))
+                    )
+                    .then(if (canStart) Modifier.clickable {
+                        onStart(model1Path, model1Name, model2Path, model2Name,
+                            researcherPath, researcherName, offlineMode)
+                    } else Modifier),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    Modifier.fillMaxSize().background(
-                        if (canStart) Brush.horizontalGradient(listOf(colors.GradientStart, colors.GradientEnd))
-                        else Brush.horizontalGradient(listOf(colors.Border, colors.Border)),
-                        RoundedCornerShape(14.dp)
-                    ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.PlayArrow, null, tint = Color.White,
-                            modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Start Inventing", color = Color.White,
-                            fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp)
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.PlayArrow, null, tint = Color.White,
+                        modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Start Inventing", color = Color.White,
+                        fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp)
                 }
             }
         }
     }
 
-    // Model picker dialog
+    // ── Model picker dialog ─────────────────────────────────────────────────
     if (showPicker != null) {
         AlertDialog(
             onDismissRequest = { showPicker = null },
@@ -204,18 +218,18 @@ fun InventSetupScreen(
                     when (showPicker) {
                         "m1" -> "Pick Planner Model"
                         "m2" -> "Pick Coder Model"
-                        else -> "Pick Researcher Model"
+                        else -> "Pick Researcher (~1B)"
                     },
                     color = colors.Text, fontFamily = FontFamily.Monospace
                 )
             },
             text = {
-                if (models.isEmpty()) {
-                    Text("No GGUF models found. Add models first.",
-                        color = colors.Text2, fontFamily = FontFamily.Monospace)
+                if (ggufModels.isEmpty()) {
+                    Text("No GGUF models found.", color = colors.Text2,
+                        fontFamily = FontFamily.Monospace)
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        models.forEach { model ->
+                        ggufModels.forEach { model: LocalModel ->
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
                                 color = colors.CardLight,
@@ -231,8 +245,9 @@ fun InventSetupScreen(
                             ) {
                                 Column(Modifier.padding(12.dp)) {
                                     Text(model.name, fontSize = 13.sp, color = colors.Text,
-                                        fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium)
-                                    Text(model.path.substringAfterLast("/"), fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Medium)
+                                    Text(model.sizeFormatted, fontSize = 10.sp,
                                         color = colors.Text3, fontFamily = FontFamily.Monospace)
                                 }
                             }
@@ -251,7 +266,7 @@ fun InventSetupScreen(
 }
 
 @Composable
-fun ModelPickerCard(
+fun InventModelPickerCard(
     label: String,
     subtitle: String,
     selected: String,
@@ -264,7 +279,7 @@ fun ModelPickerCard(
         border = BorderStroke(1.dp, if (selected.isNotEmpty()) colors.Accent.copy(0.4f) else colors.Border),
         modifier = Modifier.fillMaxWidth().clickable { onPick() }
     ) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                     color = colors.Text, fontFamily = FontFamily.Monospace)
@@ -272,7 +287,7 @@ fun ModelPickerCard(
                     fontFamily = FontFamily.Monospace)
                 if (selected.isNotEmpty()) {
                     Spacer(Modifier.height(4.dp))
-                    Text("✓ $selected", fontSize = 11.sp, color = colors.Accent2,
+                    Text("✓  $selected", fontSize = 11.sp, color = colors.Accent2,
                         fontFamily = FontFamily.Monospace)
                 }
             }
