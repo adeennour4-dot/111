@@ -115,6 +115,7 @@ fun AppRoot() {
   var inventResPath by remember { mutableStateOf("") }
   var inventResName by remember { mutableStateOf("") }
   var inventOffline by remember { mutableStateOf(false) }
+  var inventSameModel by remember { mutableStateOf(false) }
 
   // Restore last session on startup
   LaunchedEffect(Unit) {
@@ -213,15 +214,16 @@ fun AppRoot() {
               model2Path = inventModel2Path, model2Name = inventModel2Name,
               researcherPath = inventResPath, researcherName = inventResName,
               offlineMode = inventOffline,
+              sameModelMode = inventSameModel,
               onBack = { selectedTab = 0 }
             )
           } else {
             InventSetupScreen(
-              onStart = { m1p, m1n, m2p, m2n, rp, rn, offline ->
+              onStart = { m1p, m1n, m2p, m2n, rp, rn, offline, sameModel ->
                 inventModel1Path = m1p; inventModel1Name = m1n
                 inventModel2Path = m2p; inventModel2Name = m2n
                 inventResPath = rp; inventResName = rn
-                inventOffline = offline; inventStarted = true
+                inventOffline = offline; inventSameModel = sameModel; inventStarted = true
               },
               onBack = { selectedTab = 0 }
             )
@@ -260,3 +262,4 @@ fun SplashScreen(onDone: () -> Unit) {
     }
   }
 }
+
