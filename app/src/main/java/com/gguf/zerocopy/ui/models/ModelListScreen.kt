@@ -419,32 +419,7 @@ fun ModelListScreen(
           }
         )
       }
-  model: LocalModel,
-  onModelSelected: (String, String) -> Unit
-) {
-  val app = ZeroCopyApp.instance
-  val engine = app.engineManager.selectEngineForFormat(model.path)
-
-  // Auto-detect GGUF native context length and use it as the upper bound.
-  val config = SettingsManager.toConfig()
-  val tunedConfig = if (model.format == "gguf") {
-    val nativeCtx = com.gguf.zerocopy.domain.invent.GgufMetaReader.readContextLength(model.path)
-    if (nativeCtx > 0 && (config.nCtx <= 0 || config.nCtx > nativeCtx)) {
-      config.copy(nCtx = nativeCtx)
-    } else config
-  } else config
-
-  engine.config = tunedConfig
-  engine.repeatPenalty = SettingsManager.toRepeatPenalty()
-  engine.systemPrompt = SettingsManager.systemPrompt
-  engine.mmprojPath = SettingsManager.mmprojPath
-  withContext(Dispatchers.IO) {
-    engine.loadModel(model.path)
-  }.onSuccess {
-    app.modelRepository.markUsed(model.id)
-    onModelSelected(model.path, model.name)
-  }.onFailure { e ->
-    Log.e("ModelList", "Failed to load model: ${e.message}")
+    }
   }
 }
 
