@@ -121,6 +121,10 @@ fun ModelListScreen(
       return
     }
     val targetEngine = app.engineManager.selectEngineForFormat(model.path)
+    if (targetEngine == null) {
+      // Format not supported on this device (e.g. TFLite on x86_64 without LiteRT)
+      return
+    }
     if (isModelLoaded && activeEngine != targetEngine) {
       engineSwitchWarningModel = model
       return
@@ -346,7 +350,7 @@ private suspend fun loadModel(
   onModelSelected: (String, String) -> Unit
 ) {
   val app = ZeroCopyApp.instance
-  val engine = app.engineManager.selectEngineForFormat(model.path)
+  val engine = app.engineManager.selectEngineForFormat(model.path) ?: return
   engine.config = SettingsManager.toConfig()
   engine.repeatPenalty = SettingsManager.toRepeatPenalty()
   engine.systemPrompt = SettingsManager.systemPrompt

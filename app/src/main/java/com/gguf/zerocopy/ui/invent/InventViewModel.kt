@@ -61,7 +61,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     private fun clearToolManagerOnEngines() {
       engineManager.llamaCpp.setToolManager(null)
       engineManager.mnn.setToolManager(null)
-      engineManager.liteRt.setToolManager(null)
+      engineManager.liteRt?.setToolManager(null)
     }
 
     // ── Setup ────────────────────────────────────────────────────────────────
@@ -475,9 +475,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         return withContext(Dispatchers.IO) {
             try {
                 engineManager.unloadAll()
-                engineManager.selectEngineForFormat(path)
-                val result = engineManager.getActiveEngine()?.loadModel(path)
-                result?.isSuccess == true
+                val engine = engineManager.selectEngineForFormat(path)
+                if (engine == null) return@withContext false
+                val result = engine.loadModel(path)
+                result.isSuccess
             } catch (e: Exception) {
                 false
             }

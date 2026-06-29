@@ -4,6 +4,7 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import com.gguf.zerocopy.domain.inference.EngineType
 import com.gguf.zerocopy.domain.inference.InferenceConfig
 import java.io.File
@@ -27,7 +28,8 @@ data class DeviceInfo(
       if (bigCores.isNotEmpty()) {
         bigCores.size.coerceIn(1, 4)
       } else {
-        (cpuCores / 2).coerceIn(1, 4)
+        // If freq-based detection failed, assume 4 threads max for old devices
+        (cpuCores / 2).coerceIn(2, 4)
       }
 
     // Exynos chips (Note 10 Lite = 9825, S23 FE = 2200) have Vulkan but
@@ -37,17 +39,20 @@ data class DeviceInfo(
 
     val estimatedModelRAM = modelSizeB * 1024 * 0.6f
     val availableForContext = (availableRamMB - estimatedModelRAM).coerceAtLeast(256f)
+
+    // More conservative context sizing for old devices
     val suggestedCtx =
       when {
         modelSizeB <= 1f -> 4096
         modelSizeB <= 3f -> 2048
         modelSizeB <= 7f -> 1024
         else -> 512
-      }.coerceAtMost((availableForContext / 2).toInt()).coerceAtLeast(512)
+      }.coerceAtMost((availableForContext / 2).toInt())
+        .coerceIn(256, 8192)  // never go below 256, never above 8192
 
     return InferenceConfig(
       nCtx = suggestedCtx,
-      nBatch = 512,
+      nBatch = suggestedCtx.coerceAtMost(2048).coerceAtLeast(128),
       maxNewTokens = suggestedCtx.coerceAtMost(1024),
       nGpuLayers = suggestedGpuLayers,
       nThreads = suggestedThreads,
@@ -69,6 +74,10 @@ data class DeviceInfo(
 }
 
 class DeviceUtils(private val context: Context) {
+  companion object {
+    private const val TAG = "DeviceUtils"
+  }
+
   fun detect(): DeviceInfo {
     val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
     val memInfo = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
@@ -78,11 +87,7 @@ class DeviceUtils(private val context: Context) {
     val cpuCores = Runtime.getRuntime().availableProcessors()
     val cpuMaxFreq = readCpuMaxFreq()
     val bigCores = detectBigCores()
-    val socModel =
-      Build.SOC_MODEL
-        .ifEmpty { Build.HARDWARE }
-        .ifEmpty { "unknown" }
-        .lowercase()
+    val socModel = detectSocModel()
 
     return DeviceInfo(
       socModel = socModel,
@@ -91,28 +96,27 @@ class DeviceUtils(private val context: Context) {
       bigCores = bigCores,
       totalRamMB = totalRamMB,
       availableRamMB = availableRamMB,
-      isSnapdragon =
-      socModel.contains("snapdragon") ||
-        socModel.contains("qcom") ||
-        socModel.contains("sm8") ||   // Snapdragon 8xx series (e.g. sm8750 = 8 Elite)
-        socModel.contains("sm7"),     // Snapdragon 7xx series
-      isExynos =
-      socModel.contains("exynos"),    // Do NOT use manufacturer name — S25 Ultra is Samsung + Snapdragon
-      isMediaTek =
-      socModel.contains("mt") ||
-        socModel.contains("dimensity"),
-      isTensor = socModel.contains("tensor"),
+      isSnapdragon = isSnapdragon(socModel),
+      isExynos = isExynos(socModel),
+      isMediaTek = isMediaTek(socModel),
+      isTensor = isTensor(socModel),
       hasVulkan = hasVulkanDevice(),
       hasOpenCL = hasOpenCLDevice()
     )
   }
 
   fun readCpuFreq(cpu: Int): Int = try {
-    File("/sys/devices/system/cpu/cpu$cpu/cpufreq/cpuinfo_max_freq")
-      .readText()
-      .trim()
-      .toIntOrNull() ?: 0
-  } catch (_: Exception) {
+    val f = File("/sys/devices/system/cpu/cpu$cpu/cpufreq/cpuinfo_max_freq")
+    if (f.exists()) {
+      f.readText().trim().toIntOrNull() ?: 0
+    } else {
+      // On emulators and some kernels, cpufreq directory might not exist.
+      // Fall back to /sys/devices/system/cpu/cpu$cpu/cpufreq/scaling_max_freq
+      val alt = File("/sys/devices/system/cpu/cpu$cpu/cpufreq/scaling_max_freq")
+      if (alt.exists()) alt.readText().trim().toIntOrNull() ?: 0 else 0
+    }
+  } catch (e: Exception) {
+    Log.w(TAG, "Failed to read CPU freq for core $cpu: ${e.message}")
     0
   }
 
@@ -131,14 +135,79 @@ class DeviceUtils(private val context: Context) {
       val f = readCpuFreq(cpu)
       if (f > 0) coreFreqs.add(cpu to f)
     }
-    if (coreFreqs.isEmpty()) return emptyList()
+    // If we couldn't read any CPU frequencies (emulator, restricted kernel, etc.),
+    // assume all cores are equal and return nothing (caller uses default threads).
+    if (coreFreqs.isEmpty()) {
+      Log.d(TAG, "Could not detect CPU frequencies — assuming homogeneous cores")
+      return emptyList()
+    }
     val maxFreq = coreFreqs.maxOf { it.second }
     val threshold = maxFreq * 80 / 100
-    return coreFreqs.filter { it.second >= threshold }.map { it.first }
+    val big = coreFreqs.filter { it.second >= threshold }.map { it.first }
+    Log.d(TAG, "Detected ${big.size} big cores out of ${coreFreqs.size}")
+    return big
   }
 
+  /**
+   * Detect SoC model with robust fallback for older API levels.
+   * Build.SOC_MODEL was added in API 31 (Android 12).
+   * On API 29-30, fall back to Build.HARDWARE, then Build.BOARD.
+   */
+  private fun detectSocModel(): String {
+    return if (Build.VERSION.SDK_INT >= 31) {
+      Build.SOC_MODEL.ifEmpty { Build.HARDWARE }.ifEmpty { Build.BOARD }.lowercase()
+    } else {
+      Build.HARDWARE.ifEmpty { Build.BOARD }.ifEmpty { "unknown" }.lowercase()
+    }
+  }
+
+  private fun isSnapdragon(soc: String): Boolean =
+    soc.contains("snapdragon") ||
+      soc.contains("qcom") ||
+      soc.contains("kryo") ||
+      soc.contains("sm8") || // Snapdragon 8xx (e.g. sm8750 = 8 Elite)
+      soc.contains("sm7") || // Snapdragon 7xx
+      soc.contains("sdm") || // Snapdragon 6xx/8xx (e.g. sdm845)
+      soc.contains("sun") || // Snapdragon 8 Gen 1 (sun = taro)
+      soc.contains("lahaina") || // Snapdragon 888
+      soc.contains("waipio") // Snapdragon 8 Gen 1
+
+  private fun isExynos(soc: String): Boolean =
+    soc.contains("exynos") ||
+      soc.contains("s5e") || // Exynos chip IDs (e.g. s5e9925 = Exynos 2200)
+      soc.contains("universal")
+
+  private fun isMediaTek(soc: String): Boolean =
+    soc.contains("mt") ||
+      soc.contains("dimensity") ||
+      soc.contains("helio") ||
+      soc.contains("kompanio")
+
+  private fun isTensor(soc: String): Boolean =
+    soc.contains("tensor") ||
+      soc.contains("gs1") || // Google Tensor
+      soc.contains("gs2") || // Google Tensor G2
+      soc.contains("gs3") || // Google Tensor G3
+      soc.contains("zuma") || // Google Tensor G4
+      soc.contains("zumapro") // Google Tensor G5
+
   private fun hasVulkanDevice(): Boolean {
-    return context.packageManager.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_LEVEL)
+    return try {
+      if (Build.VERSION.SDK_INT >= 29) {
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_LEVEL)
+      } else {
+        // Fallback: check for Vulkan by trying to dlopen libvulkan.so
+        try {
+          System.loadLibrary("vulkan")
+          true
+        } catch (_: UnsatisfiedLinkError) {
+          false
+        }
+      }
+    } catch (e: Exception) {
+      Log.w(TAG, "Vulkan detection failed: ${e.message}")
+      false
+    }
   }
 
   private fun hasOpenCLDevice(): Boolean = false

@@ -409,6 +409,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
     // via context params causes a crash during llama_init_from_model() because
     // the GGML kernel falls back to a code path that uses i8mm intrinsics
     // which are absent on ARMv8.2-a (i8mm is ARMv8.4-a+).
+    // Also handle emulators and kernels where /proc/cpuinfo lacks Features.
     bool has_i8mm = false;
 #ifdef __aarch64__
     {
@@ -417,10 +418,21 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
         while (std::getline(cpuinfo, line)) {
             if (line.find("Features") != std::string::npos) {
                 has_i8mm = (line.find("i8mm") != std::string::npos);
+                // Also check for sve (Scalable Vector Extension) which
+                // implies a modern ARM core that should have i8mm too
+                if (!has_i8mm) {
+                    has_i8mm = (line.find("sve") != std::string::npos);
+                }
                 break;
             }
         }
+        // If /proc/cpuinfo had no Features line at all (emulator, restricted
+        // container, etc.), assume no i8mm to be safe.
+        LOGI("CPU feature detection: i8mm=%d", (int)has_i8mm);
     }
+#else
+    // Non-ARM architectures (x86_64) — flash attention might use AVX which is fine
+    has_i8mm = true;
 #endif
     // Only enable flash attention on chips that have i8mm (ARMv8.4-a+: Exynos 2200,
     // Snapdragon 888+, etc.). Exynos 9825 (ARMv8.2-a) has no i8mm → disable FA.
@@ -460,6 +472,14 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
         cparams.n_batch  = std::min(n_batch, 1024);
         cparams.n_ubatch = std::min(n_ubatch, 512);
         g_ctx = llama_init_from_model(g_model, cparams);
+        if (!g_ctx) {
+            // Still OOM? Go even smaller (512). This handles 4GB devices with 7B+ models.
+            LOGW("Context failed at n_ctx=1024 too, retrying with n_ctx=512");
+            cparams.n_ctx    = 512;
+            cparams.n_batch  = std::min(n_batch, 512);
+            cparams.n_ubatch = std::min(n_ubatch, 256);
+            g_ctx = llama_init_from_model(g_model, cparams);
+        }
     }
     if (!g_ctx) {
         // Do NOT reset g_backend_initialized — backend is still valid.
