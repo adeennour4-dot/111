@@ -54,6 +54,16 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     private var zcp: ZcpProtocol = ZcpProtocol()
     private var sessionId: String = ""
 
+    /**
+     * Clear any lingering tool manager from ChatScreen so Invent's own
+     * fully-formatted prompts don't get re-wrapped with tool preamble.
+     */
+    private fun clearToolManagerOnEngines() {
+      engineManager.llamaCpp.setToolManager(null)
+      engineManager.mnn.setToolManager(null)
+      engineManager.liteRt.setToolManager(null)
+    }
+
     // ── Setup ────────────────────────────────────────────────────────────────
 
     fun setupSession(
@@ -93,6 +103,9 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             val m1Ctx = GgufMetaReader.readContextLength(model1Path).let { if (it <= 0) 2048 else it }
             val m2Ctx = if (sameModelMode) m1Ctx
                         else GgufMetaReader.readContextLength(model2Path).let { if (it <= 0) 2048 else it }
+
+            // 🛡️ clear any lingering tool manager from ChatScreen
+            clearToolManagerOnEngines()
 
             sessionId = UUID.randomUUID().toString().take(8)
             zcp = ZcpProtocol(model2ContextSize = m2Ctx, offlineMode = offlineMode)
@@ -134,10 +147,17 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun startModel1Questioning() {
         val state = sessionState ?: return
         setSwap("Loading ${state.model1Name}…")
-        withContext(Dispatchers.IO) {
+        val loadResult = withContext(Dispatchers.IO) {
             engineManager.unloadAll()
             engineManager.selectEngineForFormat(state.model1Path)
             engineManager.getActiveEngine()?.loadModel(state.model1Path)
+        }
+        if (loadResult?.isFailure == true) {
+            setSwap("")
+            _ui.value = _ui.value.copy(
+                error = "Failed to load ${state.model1Name}: ${loadResult.exceptionOrNull()?.message}"
+            )
+            return
         }
         setSwap("")
 
@@ -231,10 +251,17 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             val fetchedContent = fetchSearchContent()
 
             setSwap("Loading ${state.researcherName}…")
-            withContext(Dispatchers.IO) {
+            val researcherLoad = withContext(Dispatchers.IO) {
                 engineManager.unloadAll()
                 engineManager.selectEngineForFormat(state.researcherPath)
                 engineManager.getActiveEngine()?.loadModel(state.researcherPath)
+            }
+            if (researcherLoad?.isFailure == true) {
+                setSwap("")
+                _ui.value = _ui.value.copy(
+                    error = "Failed to load researcher: ${researcherLoad.exceptionOrNull()?.message}"
+                )
+                return
             }
             setSwap("")
 
@@ -247,9 +274,16 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             withContext(Dispatchers.IO) { engineManager.unloadAll() }
 
             setSwap("Loading ${state.model1Name} to review results…")
-            withContext(Dispatchers.IO) {
+            val model1Load = withContext(Dispatchers.IO) {
                 engineManager.selectEngineForFormat(state.model1Path)
                 engineManager.getActiveEngine()?.loadModel(state.model1Path)
+            }
+            if (model1Load?.isFailure == true) {
+                setSwap("")
+                _ui.value = _ui.value.copy(
+                    error = "Failed to load ${state.model1Name}: ${model1Load.exceptionOrNull()?.message}"
+                )
+                return
             }
             setSwap("")
 
@@ -281,10 +315,17 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         val state = sessionState ?: return
         updatePhase(InventPhase.PLANNING)
         setSwap("Loading ${state.model1Name} for planning…")
-        withContext(Dispatchers.IO) {
+        val loadResult = withContext(Dispatchers.IO) {
             engineManager.unloadAll()
             engineManager.selectEngineForFormat(state.model1Path)
             engineManager.getActiveEngine()?.loadModel(state.model1Path)
+        }
+        if (loadResult?.isFailure == true) {
+            setSwap("")
+            _ui.value = _ui.value.copy(
+                error = "Failed to load ${state.model1Name} for planning: ${loadResult.exceptionOrNull()?.message}"
+            )
+            return
         }
         setSwap("")
 
@@ -314,9 +355,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
         // In same-model mode the planner IS the coder — no separate load needed
         val isSame = state.sameModelMode || state.model1Path == state.model2Path
+        val loadResult: Result<Unit>?
         if (!isSame) {
             setSwap("Loading ${state.model2Name}…")
-            withContext(Dispatchers.IO) {
+            loadResult = withContext(Dispatchers.IO) {
                 engineManager.unloadAll()
                 engineManager.selectEngineForFormat(state.model2Path)
                 engineManager.getActiveEngine()?.loadModel(state.model2Path)
@@ -324,12 +366,18 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             setSwap("")
         } else {
             setSwap("Loading ${state.model1Name} (coder role)…")
-            withContext(Dispatchers.IO) {
+            loadResult = withContext(Dispatchers.IO) {
                 engineManager.unloadAll()
                 engineManager.selectEngineForFormat(state.model1Path)
                 engineManager.getActiveEngine()?.loadModel(state.model1Path)
             }
             setSwap("")
+        }
+        if (loadResult?.isFailure == true) {
+            _ui.value = _ui.value.copy(
+                error = "Failed to load model for confirmation: ${loadResult.exceptionOrNull()?.message}"
+            )
+            return
         }
 
         val understanding = runInference(
@@ -431,6 +479,17 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             return@withContext "[No engine loaded]"
         }
 
+        // 🛡️ Restore conversation history into native context so the engine
+        // sees the full conversation.  This also prevents runWithTools from
+        // seeing an empty lastRestoredHistoryJson on round 0.
+        if (history.isNotEmpty()) {
+            try {
+                engine.restoreHistory(history)
+            } catch (_: Exception) {
+                // best-effort; some engines throw if no model is loaded yet
+            }
+        }
+
         val callback = object : TokenCallback {
             override fun onToken(token: String) { sb.append(token) }
             override fun onDone() {}
@@ -513,9 +572,21 @@ Model 2 context: $model2Ctx tokens. Chunk plan to fit ${(model2Ctx * 0.7).toInt(
         history: List<Pair<String, String>>,
         user: String
     ): String = buildString {
-        append("<|system|>\n$system\n")
-        history.forEach { (role, content) -> append("<|$role|>\n$content\n") }
-        append("<|user|>\n$user\n<|assistant|>\n")
+        // Use a general-purpose chat-template format that works with most
+        // instruction-tuned GGUF models (ChatML-derived).
+        appendLine("<|im_start|>system")
+        appendLine(system)
+        appendLine("<|im_end|>")
+        history.forEach { (role, content) ->
+            val mappedRole = if (role == "user") "user" else "assistant"
+            appendLine("<|im_start|>$mappedRole")
+            appendLine(content)
+            appendLine("<|im_end|>")
+        }
+        appendLine("<|im_start|>user")
+        appendLine(user)
+        appendLine("<|im_end|>")
+        append("<|im_start|>assistant")
     }
 
     /**

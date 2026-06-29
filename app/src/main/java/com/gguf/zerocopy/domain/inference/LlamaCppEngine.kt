@@ -83,6 +83,7 @@ class LlamaCppEngine : InferenceEngine {
     NativeBridge.resetContextNative()
     isModelLoaded = false; modelInfo = null; currentModelPath = ""
     lastRestoredHistoryJson = "[]"
+    _toolManager = null  // clear tool manager so it doesn't leak into Invent
   }
 
   override fun loadMmproj(path: String): Boolean {
@@ -209,6 +210,7 @@ class LlamaCppEngine : InferenceEngine {
         tm.executeTool(toolCall)
       } catch (e: Exception) {
         callback.onError("Tool execution failed: ${e.message}")
+        callback.onDone()  // must call onDone or caller hangs
         return
       }
 
@@ -234,17 +236,31 @@ class LlamaCppEngine : InferenceEngine {
 
   override suspend fun executeInference(prompt: String, callback: TokenCallback) {
     if (!nativeLibLoaded) { callback.onError("llama.cpp native library not available"); return }
+    if (!isModelLoaded) { callback.onError("No model is loaded — load a GGUF file first"); return }
+    // Reset the abort flag so a previously-aborted inference doesn't
+    // kill this new one.  The other state fields are reset below.
+    inferenceAborted.set(false)
     withContext(Dispatchers.IO) {
       synchronized(lock) { partialStream.clear(); fullResponse.clear() }
       inferenceDone.set(false)
-      inferenceAborted.set(false)
       tokensGenerated.set(0)
 
       val tm = _toolManager
       if (tm != null) {
-        runWithTools(prompt, tm, callback)
-        inferenceDone.set(true)
-        return@withContext
+        // Only use runWithTools if the prompt doesn't already contain chat-template
+        // markup (e.g. system/user/assistant tokens).  Invent builds its own
+        // fully-formatted prompt and must NOT be re-wrapped with tool preamble.
+        val alreadyWrapped = prompt.startsWith("<|system|") ||
+          prompt.startsWith("<|im_start|") ||
+          prompt.startsWith("<|begin_of_text|") ||
+          prompt.contains("\n<|user|>\n") ||
+          prompt.contains("\n<|im_start|>user\n")
+        if (!alreadyWrapped) {
+          runWithTools(prompt, tm, callback)
+          inferenceDone.set(true)
+          return@withContext
+        }
+        // fall through — prompt is already fully formatted, run directly
       }
 
       val cb = object : NativeBridge.TokenCallback {
