@@ -107,6 +107,13 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             // 🛡️ clear any lingering tool manager from ChatScreen
             clearToolManagerOnEngines()
 
+            // Apply the model's native context size to the engine config so the
+            // model isn't artificially limited by the default 2048.
+            val userCtx = SettingsManager.nCtx  // user may have customized this
+            val effectiveCtx = if (userCtx <= 0) m1Ctx else userCtx.coerceAtMost(m1Ctx)
+            val userConfig = SettingsManager.toConfig()
+            engineManager.llamaCpp.config = userConfig.copy(nCtx = effectiveCtx)
+
             sessionId = UUID.randomUUID().toString().take(8)
             zcp = ZcpProtocol(model2ContextSize = m2Ctx, offlineMode = offlineMode)
 

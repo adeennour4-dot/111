@@ -49,6 +49,13 @@ class ZeroCopyApp : Application() {
     modelServer = ModelServer()
     ragEngine = RagEngine(this)
 
+    // Apply device-optimized inference settings on FIRST launch.
+    // After the user has customized their settings, we never override.
+    if (!SettingsManager.welcomeDone) {
+      val deviceInfo = deviceUtils.detect()
+      SettingsManager.applyDeviceDefaults(deviceInfo)
+    }
+
     syncSettingsToEngines()
 
     if (SettingsManager.serverEnabled && SettingsManager.lastModelPath.isNotEmpty()) {
