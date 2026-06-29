@@ -8,7 +8,7 @@ class EngineManager(context: Context) {
 
   val llamaCpp: LlamaCppEngine = LlamaCppEngine()
   val mnn: MnnEngine = MnnEngine()
-  val liteRt: LiteRtEngine = try {
+  val liteRt: InferenceEngine = try {
     LiteRtEngine()
   } catch (e: Throwable) {
     // LiteRT-LM may not be available on all devices/architectures.

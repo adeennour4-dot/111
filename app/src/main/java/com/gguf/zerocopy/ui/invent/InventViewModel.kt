@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.invent.*
+import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.data.repository.LocalModel
 import com.gguf.zerocopy.domain.invent.GgufMetaReader
 import com.gguf.zerocopy.domain.inference.InferenceConfig
