@@ -463,13 +463,53 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── Inference ─────────────────────────────────────────────────────────────
 
+    /**
+     * Ensure the active engine has the right model loaded.
+     * Returns true if inference can proceed, false if a model needs (re)loading.
+     */
+    private fun ensureEngineReady(expectedPath: String): Boolean {
+        val engine = engineManager.getActiveEngine()
+        if (engine != null && engine.isModelLoaded && engine.loadedModelPath == expectedPath) {
+            return true  // correct model already loaded
+        }
+        return false
+    }
+
+    private suspend fun reloadEngineFor(path: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                engineManager.unloadAll()
+                engineManager.selectEngineForFormat(path)
+                val result = engineManager.getActiveEngine()?.loadModel(path)
+                result?.isSuccess == true
+            } catch (e: Exception) {
+                false
+            }
+        }
+    }
+
     private suspend fun runInference(
         systemPrompt: String,
         userMessage: String,
-        history: List<Pair<String, String>> = emptyList()
+        history: List<Pair<String, String>> = emptyList(),
+        /**
+         * If non-null, ensure this model is loaded before inference.
+         * Prevents crashes when the engine was swapped by another screen
+         * (e.g., ChatScreen) while Invent was paused.
+         */
+        expectedModelPath: String? = null
     ): String = withContext(Dispatchers.IO) {
         _ui.value = _ui.value.copy(isGenerating = true)
         val sb = StringBuilder()
+
+        // If we expect a specific model but it's not loaded, reload it first.
+        if (expectedModelPath != null && !ensureEngineReady(expectedModelPath)) {
+            val reloaded = reloadEngineFor(expectedModelPath)
+            if (!reloaded) {
+                _ui.value = _ui.value.copy(isGenerating = false, error = "Failed to load $expectedModelPath")
+                return@withContext "[Failed to load model]"
+            }
+        }
 
         val fullPrompt = buildPrompt(systemPrompt, history, userMessage)
         val engine = engineManager.getActiveEngine()
