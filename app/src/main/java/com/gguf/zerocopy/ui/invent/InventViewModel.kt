@@ -6,8 +6,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.invent.*
+import com.gguf.zerocopy.data.repository.LocalModel
 import com.gguf.zerocopy.domain.invent.GgufMetaReader
-import com.gguf.zerocopy.domain.inference.EngineType
 import com.gguf.zerocopy.domain.inference.InferenceConfig
 import com.gguf.zerocopy.domain.inference.TokenCallback
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +22,7 @@ data class InventUiState(
     val phase: InventPhase = InventPhase.QUESTIONING,
     val messages: List<InventMessage> = emptyList(),
     val isGenerating: Boolean = false,
-    val swapInfo: String = "",        // e.g. "Loading researcher model..."
+    val swapInfo: String = "",
     val searchRound: Int = 0,
     val mergeCount: Int = 0,
     val showSureButtons: Boolean = false,
@@ -47,6 +47,9 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     private val _ui = MutableStateFlow(InventUiState())
     val ui: StateFlow<InventUiState> = _ui
 
+    // expose for delete confirm toggle from screen
+    fun setShowDeleteConfirm(v: Boolean) { _ui.value = _ui.value.copy(showDeleteConfirm = v) }
+
     private var sessionState: InventSessionState? = null
     private var zcp: ZcpProtocol = ZcpProtocol()
     private var sessionId: String = ""
@@ -60,7 +63,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         offlineMode: Boolean
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            // Check for existing incomplete session
+            // Resume existing incomplete session if present
             val existing = InventStorage.listSessions(ctx).firstOrNull()
             if (existing != null) {
                 val saved = InventStorage.loadSession(ctx, existing)
@@ -85,7 +88,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
-            // Read context sizes from GGUF headers
+            // Read context sizes from GGUF headers — pure file parsing, no model needed
             val m1Ctx = GgufMetaReader.readContextLength(model1Path)
             val m2Ctx = GgufMetaReader.readContextLength(model2Path)
 
@@ -118,7 +121,6 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 offlineMode = offlineMode
             )
 
-            // Start Model 1 questioning
             startModel1Questioning()
         }
     }
@@ -127,101 +129,78 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun startModel1Questioning() {
         val state = sessionState ?: return
-        setSwap("Loading ${state.model1Name}...")
+        setSwap("Loading ${state.model1Name}…")
         withContext(Dispatchers.IO) {
             engineManager.unloadAll()
             engineManager.selectEngineForFormat(state.model1Path)
-            engineManager.getActiveEngine()?.loadModel(
-                state.model1Path,
-                buildConfig(state.model1ContextSize)
-            )
+            engineManager.getActiveEngine()?.loadModel(state.model1Path)
         }
         setSwap("")
 
-        val systemPrompt = buildModel1SystemPrompt(zcp.model2ContextSize)
         val firstQuestion = runInference(
-            systemPrompt = systemPrompt,
-            userMessage = "Start by asking the user the first question about their project. Ask only ONE question at a time.",
-            role = "model1"
+            systemPrompt = buildModel1SystemPrompt(zcp.model2ContextSize),
+            userMessage = "Start by asking the user the first question about their project. ONE question only."
         )
         addMessage("model1", firstQuestion, InventPhase.QUESTIONING)
     }
 
     fun sendUserMessage(text: String) {
-        val state = sessionState ?: return
         if (_ui.value.isGenerating) return
-
         addMessage("user", text, _ui.value.phase)
-
         viewModelScope.launch(Dispatchers.IO) {
             when (_ui.value.phase) {
                 InventPhase.QUESTIONING -> handleQuestioningReply(text)
-                InventPhase.CONFIRMING -> {} // handled by buttons
                 else -> {}
             }
         }
     }
 
     private suspend fun handleQuestioningReply(userText: String) {
-        val state = sessionState ?: return
-        val history = buildConversationHistory()
-
         val response = runInference(
             systemPrompt = buildModel1SystemPrompt(zcp.model2ContextSize),
             userMessage = userText,
-            role = "model1",
-            history = history
+            history = buildConversationHistory()
         )
-
-        // Check if Model 1 signals it has enough info
-        if (response.contains("[READY_TO_SEARCH]", ignoreCase = true) ||
-            response.contains("[INFO_COMPLETE]", ignoreCase = true)) {
-            addMessage("model1", response.replace("[READY_TO_SEARCH]","").replace("[INFO_COMPLETE]","").trim(), InventPhase.QUESTIONING)
+        if (response.contains("[INFO_COMPLETE]", ignoreCase = true) ||
+            response.contains("[READY_TO_SEARCH]", ignoreCase = true)) {
+            addMessage("model1",
+                response.replace("[INFO_COMPLETE]", "").replace("[READY_TO_SEARCH]", "").trim(),
+                InventPhase.QUESTIONING)
             triggerSearchPhase()
         } else {
             addMessage("model1", response, InventPhase.QUESTIONING)
         }
     }
 
-    // User hits the Search button manually
     fun onSearchButtonPressed() {
         if (_ui.value.isGenerating) return
-        viewModelScope.launch(Dispatchers.IO) {
-            triggerSearchPhase()
-        }
+        viewModelScope.launch(Dispatchers.IO) { triggerSearchPhase() }
     }
 
-    // ── Phase 2: Write ZCP + Search Intents then hand to Researcher ──────────
+    // ── Phase 2: Write ZCP + Search ──────────────────────────────────────────
 
     private suspend fun triggerSearchPhase() {
-        val state = sessionState ?: return
         updatePhase(InventPhase.SEARCHING)
+        val state = sessionState ?: return
 
-        // Model 1 writes ZCP v1 and search intents
-        val zcpWritePrompt = buildZcpWritePrompt()
         val zcpRaw = runInference(
             systemPrompt = buildModel1SystemPrompt(zcp.model2ContextSize),
-            userMessage = zcpWritePrompt,
-            role = "model1",
+            userMessage = "Based on everything discussed, write the complete ZCP protocol. Include §APP, §IDEA, §VIABLE, all §SEARCH intents, and §TREE blocks.",
             history = buildConversationHistory()
         )
 
-        // Parse ZCP fields from model output
         zcp = parseZcpFromModel1(zcpRaw, zcp)
         InventStorage.saveZcp(ctx, sessionId, zcp)
-        addMessage("system", "ZCP v1 saved. Starting search phase...", InventPhase.SEARCHING)
+        addMessage("system", "ZCP v1 saved ✓  Starting research…", InventPhase.SEARCHING)
 
-        // Unload Model 1
         withContext(Dispatchers.IO) { engineManager.unloadAll() }
 
         if (zcp.offlineMode) {
-            // Skip to planning with offline-flagged intents
             reloadModel1ForPlanning()
             return
         }
 
-        // Run search rounds (max dynamic: min(intentCount, 5))
-        val maxRounds = (zcp.searchIntents.size).coerceIn(1, 5)
+        val maxRounds = zcp.searchIntents.size.coerceIn(1, 5)
         runSearchRounds(maxRounds)
     }
 
@@ -232,98 +211,76 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         while (round < maxRounds) {
             round++
             updateSearchRound(round)
-            setSwap("Loading researcher (round $round/$maxRounds)...")
+            setSwap("Fetching sources (round $round/$maxRounds)…")
 
-            // Fetch URLs in parallel using app code
             val fetchedContent = fetchSearchContent()
 
-            // Load 1B researcher
+            setSwap("Loading ${state.researcherName}…")
             withContext(Dispatchers.IO) {
                 engineManager.unloadAll()
                 engineManager.selectEngineForFormat(state.researcherPath)
-                engineManager.getActiveEngine()?.loadModel(
-                    state.researcherPath,
-                    buildConfig(2048)
-                )
+                engineManager.getActiveEngine()?.loadModel(state.researcherPath)
             }
             setSwap("")
 
-            // Researcher extracts relevant info
-            val extractionPrompt = buildResearcherPrompt(fetchedContent, zcp.searchIntents)
             val extracted = runInference(
-                systemPrompt = "You are a precise information extractor. Fill the given slots exactly. Output only structured text with slot names and values. No explanations.",
-                userMessage = extractionPrompt,
-                role = "researcher"
+                systemPrompt = "You are a precise information extractor. Fill given slots with exact values from the provided content. Output ONLY slot:value pairs. No explanations.",
+                userMessage = buildResearcherPrompt(fetchedContent, zcp.searchIntents)
             )
 
-            // Save to search log
             InventStorage.saveSearchLog(ctx, sessionId, extracted)
-
             withContext(Dispatchers.IO) { engineManager.unloadAll() }
 
-            // Reload Model 1 to check if more search needed
-            setSwap("Loading ${state.model1Name} to review results...")
+            setSwap("Loading ${state.model1Name} to review results…")
             withContext(Dispatchers.IO) {
                 engineManager.selectEngineForFormat(state.model1Path)
-                engineManager.getActiveEngine()?.loadModel(
-                    state.model1Path,
-                    buildConfig(state.model1ContextSize)
-                )
+                engineManager.getActiveEngine()?.loadModel(state.model1Path)
             }
             setSwap("")
 
             val reviewResponse = runInference(
                 systemPrompt = buildModel1SystemPrompt(zcp.model2ContextSize),
-                userMessage = "Search results:\n$extracted\n\nDo you have all the info needed to plan the project? If yes, output [SEARCH_DONE]. If you need more, output new [SEARCH_INTENT] blocks only.",
-                role = "model1"
+                userMessage = "Search results:\n$extracted\n\nDo you have all info needed? If yes output [SEARCH_DONE]. If not, output new §SEARCH blocks only."
             )
 
             if (reviewResponse.contains("[SEARCH_DONE]", ignoreCase = true) || round >= maxRounds) {
-                // Update ZCP with search results
                 zcp = zcp.copy(searchResults = parseSearchResults(extracted, zcp.searchIntents))
                 InventStorage.saveZcp(ctx, sessionId, zcp)
                 withContext(Dispatchers.IO) { engineManager.unloadAll() }
                 reloadModel1ForPlanning()
                 break
             } else {
-                // Parse new intents and continue
                 val newIntents = parseSearchIntents(reviewResponse)
-                zcp = zcp.copy(searchIntents = zcp.searchIntents + newIntents)
-                InventStorage.saveZcp(ctx, sessionId, zcp)
+                if (newIntents.isNotEmpty()) {
+                    zcp = zcp.copy(searchIntents = zcp.searchIntents + newIntents)
+                    InventStorage.saveZcp(ctx, sessionId, zcp)
+                }
                 withContext(Dispatchers.IO) { engineManager.unloadAll() }
             }
         }
     }
 
-    // ── Phase 3: Model 1 Plans File Tree ─────────────────────────────────────
+    // ── Phase 3: Planning ────────────────────────────────────────────────────
 
     private suspend fun reloadModel1ForPlanning() {
         val state = sessionState ?: return
         updatePhase(InventPhase.PLANNING)
-        setSwap("Loading ${state.model1Name} for planning...")
-
+        setSwap("Loading ${state.model1Name} for planning…")
         withContext(Dispatchers.IO) {
             engineManager.unloadAll()
             engineManager.selectEngineForFormat(state.model1Path)
-            engineManager.getActiveEngine()?.loadModel(
-                state.model1Path,
-                buildConfig(state.model1ContextSize)
-            )
+            engineManager.getActiveEngine()?.loadModel(state.model1Path)
         }
         setSwap("")
 
-        val usableContext = (zcp.model2ContextSize * 0.7).toInt() // 30% reserved for overhead
-        val planningPrompt = buildPlanningPrompt(usableContext)
-
+        val usableCtx = (zcp.model2ContextSize * 0.7).toInt()
         val plan = runInference(
             systemPrompt = buildModel1SystemPrompt(zcp.model2ContextSize),
-            userMessage = planningPrompt,
-            role = "model1"
+            userMessage = "You have all information. Write the complete project file tree using §TREE blocks. Then write implementation plan in §CHUNK{n:1} §CHUNK{n:2} sections, each max $usableCtx tokens."
         )
 
-        // Parse file tree and chunks
         val fileTree = parseFileTree(plan)
-        val chunks = chunkPlan(plan, usableContext)
+        val chunks = chunkPlan(plan, usableCtx)
         zcp = zcp.copy(fileTree = fileTree, chunks = chunks, phase = InventPhase.CONFIRMING)
         InventStorage.saveZcp(ctx, sessionId, zcp)
         InventStorage.deleteSearchLog(ctx, sessionId)
@@ -331,7 +288,6 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         addMessage("model1", plan, InventPhase.PLANNING)
         withContext(Dispatchers.IO) { engineManager.unloadAll() }
 
-        // Hand to Model 2
         loadModel2ForConfirmation()
     }
 
@@ -340,23 +296,17 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun loadModel2ForConfirmation() {
         val state = sessionState ?: return
         updatePhase(InventPhase.CONFIRMING)
-        setSwap("Loading ${state.model2Name}...")
-
+        setSwap("Loading ${state.model2Name}…")
         withContext(Dispatchers.IO) {
             engineManager.unloadAll()
             engineManager.selectEngineForFormat(state.model2Path)
-            engineManager.getActiveEngine()?.loadModel(
-                state.model2Path,
-                buildConfig(state.model2ContextSize)
-            )
+            engineManager.getActiveEngine()?.loadModel(state.model2Path)
         }
         setSwap("")
 
-        val zcpSummary = buildZcpSummaryForModel2()
         val understanding = runInference(
-            systemPrompt = "You are a senior software engineer. Read the project spec carefully and describe exactly what you will build. Be specific about files, architecture, and implementation approach. Follow the spec exactly as given.",
-            userMessage = "Read this project spec and describe your full understanding of what needs to be built:\n\n$zcpSummary",
-            role = "model2"
+            systemPrompt = "You are a senior software engineer. Read the project spec and describe exactly what you will build — files, architecture, implementation approach. Be specific. Follow the spec exactly.",
+            userMessage = "Read this project spec and describe your full understanding:\n\n${buildZcpSummaryForModel2()}"
         )
 
         addMessage("model2", understanding, InventPhase.CONFIRMING)
@@ -364,37 +314,28 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         saveCurrentState()
     }
 
-    // ── User presses Sure ─────────────────────────────────────────────────────
+    // ── Sure / Not Sure ───────────────────────────────────────────────────────
 
     fun onSure() {
         viewModelScope.launch(Dispatchers.IO) {
             _ui.value = _ui.value.copy(showSureButtons = false)
             updatePhase(InventPhase.DONE)
 
-            // Validate file tree matches ZCP before writing
-            val tree = zcp.fileTree
-            addMessage("system", "✓ File tree validated. Creating project structure...", InventPhase.DONE)
-
-            // Write folders to internal storage (no empty files)
-            val projectDir = java.io.File(ctx.filesDir, "invent_projects/${zcp.projectName.ifEmpty { sessionId }}")
-            tree.filter { it.isDir }.forEach { node ->
+            val projectDir = java.io.File(ctx.filesDir,
+                "invent_projects/${zcp.projectName.ifEmpty { sessionId }}")
+            zcp.fileTree.filter { it.isDir }.forEach { node ->
                 java.io.File(projectDir, node.path).mkdirs()
             }
 
-            // Final ZCP saved, old sessions cleaned
             zcp = zcp.copy(phase = InventPhase.DONE)
             InventStorage.saveZcp(ctx, sessionId, zcp)
 
-            _ui.value = _ui.value.copy(
-                fileTree = tree,
-                phase = InventPhase.DONE
-            )
-
-            addMessage("system", "✓ Project structure created at invent_projects/${zcp.projectName.ifEmpty { sessionId }}", InventPhase.DONE)
+            _ui.value = _ui.value.copy(fileTree = zcp.fileTree, phase = InventPhase.DONE)
+            addMessage("system",
+                "✓ Project structure created at invent_projects/${zcp.projectName.ifEmpty { sessionId }}",
+                InventPhase.DONE)
         }
     }
-
-    // ── User presses Not Sure ─────────────────────────────────────────────────
 
     fun onNotSure() {
         if (_ui.value.mergeCount >= 2) {
@@ -404,18 +345,13 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             )
             return
         }
-        _ui.value = _ui.value.copy(
-            showSureButtons = false,
-            showMergeBanner = true
-        )
+        _ui.value = _ui.value.copy(showSureButtons = false, showMergeBanner = true)
     }
 
     fun onMergeConfirmed() {
         viewModelScope.launch(Dispatchers.IO) {
             _ui.value = _ui.value.copy(showMergeBanner = false)
             val newMergeCount = _ui.value.mergeCount + 1
-
-            // Both sessions get protocoled into merged ZCP
             val mergedZcp = zcp.copy(
                 phase = InventPhase.QUESTIONING,
                 mergeCount = newMergeCount,
@@ -423,23 +359,19 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 fileTree = emptyList(),
                 chunks = emptyList()
             )
-
-            // Delete old session files, start new session with merged context
             InventStorage.deleteSession(ctx, sessionId)
             sessionId = UUID.randomUUID().toString().take(8)
             zcp = mergedZcp
             InventStorage.saveZcp(ctx, sessionId, zcp)
 
-            val newMessages = _ui.value.messages.takeLast(6) // carry last context
             _ui.value = _ui.value.copy(
                 phase = InventPhase.QUESTIONING,
-                messages = newMessages,
+                messages = _ui.value.messages.takeLast(6),
                 mergeCount = newMergeCount,
                 showSureButtons = false,
                 showMergeBanner = false,
                 fileTree = emptyList()
             )
-
             withContext(Dispatchers.IO) { engineManager.unloadAll() }
             startModel1Questioning()
         }
@@ -449,31 +381,38 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             InventStorage.deleteSession(ctx, sessionId)
             engineManager.unloadAll()
-            _ui.value = InventUiState() // reset to blank
+            _ui.value = InventUiState()
         }
     }
 
-    // ── Inference Helper ──────────────────────────────────────────────────────
+    // ── Inference ─────────────────────────────────────────────────────────────
 
     private suspend fun runInference(
         systemPrompt: String,
         userMessage: String,
-        role: String,
-        history: List<Pair<String,String>> = emptyList()
+        history: List<Pair<String, String>> = emptyList()
     ): String = withContext(Dispatchers.IO) {
         _ui.value = _ui.value.copy(isGenerating = true)
         val sb = StringBuilder()
 
         val fullPrompt = buildPrompt(systemPrompt, history, userMessage)
+        val engine = engineManager.getActiveEngine()
+
+        if (engine == null) {
+            _ui.value = _ui.value.copy(isGenerating = false)
+            return@withContext "[No engine loaded]"
+        }
+
         val callback = object : TokenCallback {
-            override fun onToken(token: String): Boolean {
-                sb.append(token)
-                return true
-            }
+            override fun onToken(token: String) { sb.append(token) }
+            override fun onDone() {}
+            override fun onError(error: String) { sb.append("[ERROR: $error]") }
+            override fun onKvUsage(percent: Int) {}
+            override fun onTokensGenerated(count: Int) {}
         }
 
         try {
-            engineManager.getActiveEngine()?.generateTokens(fullPrompt, callback)
+            engine.executeInference(fullPrompt, callback)
         } catch (e: Exception) {
             sb.append("[ERROR: ${e.message}]")
         }
@@ -485,85 +424,70 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     // ── Prompt Builders ───────────────────────────────────────────────────────
 
     private fun buildModel1SystemPrompt(model2Ctx: Int): String = """
-You are a project planning AI. Your job is to gather all information about a software project through conversation.
-
+You are a project planning AI. Gather all information about a software project through conversation.
 Ask ONE question at a time. Cover: platform, language/framework, core idea, main features, unique point.
+When you have complete information, output [INFO_COMPLETE] then write ZCP.
 
-When you have complete information, output [INFO_COMPLETE] before writing the ZCP.
-
-When writing ZCP, use this exact format:
+ZCP format:
 §APP{name:X|platform:X|language:X|framework:X}
 §IDEA{core:X|features:X,Y,Z|unique:X}
 §VIABLE{status:yes/no|note:X}
 §SEARCH{topic:X|platform:X|question:X|category:X}
 §TREE{path:X|type:dir/file|desc:X}
 
-Model 2 context window: $model2Ctx tokens. Chunk implementation plan to fit ${(model2Ctx * 0.7).toInt()} tokens per chunk.
+Model 2 context: $model2Ctx tokens. Chunk plan to fit ${(model2Ctx * 0.7).toInt()} tokens per §CHUNK.
 """.trimIndent()
 
-    private fun buildZcpWritePrompt(): String =
-        "Based on everything discussed, write the complete ZCP protocol for this project. Include §APP, §IDEA, §VIABLE, all §SEARCH intents needed, and §TREE for the file structure."
-
-    private fun buildPlanningPrompt(usableCtx: Int): String =
-        "You now have all search results. Write the complete project file tree using §TREE blocks. Then write the implementation plan chunked into sections of max $usableCtx tokens each, labeled §CHUNK{n:1} §CHUNK{n:2} etc."
-
     private fun buildResearcherPrompt(content: Map<String, String>, intents: List<SearchIntent>): String {
-        val sb = StringBuilder("Extract the following information from the fetched content:\n\n")
+        val sb = StringBuilder("Extract the following from fetched content:\n\n")
         intents.forEachIndexed { i, intent ->
-            sb.append("SLOT_${i+1}: ${intent.question} (from ${intent.category})\n")
-            sb.append("Content: ${content[intent.domain]?.take(2000) ?: "No content fetched"}\n\n")
+            sb.append("SLOT_${i + 1}: ${intent.question} (${intent.category})\n")
+            sb.append("Content: ${content[intent.category]?.take(1500) ?: "No content"}\n\n")
         }
-        sb.append("\nOutput format:\nSLOT_1: [extracted answer]\nSLOT_2: [extracted answer]\n...")
+        sb.append("\nOutput:\nSLOT_1: [answer]\nSLOT_2: [answer]\n…")
         return sb.toString()
     }
 
-    private fun buildZcpSummaryForModel2(): String {
-        return """
-§APP{name:${zcp.projectName}|platform:${zcp.platform.joinToString(",")}|language:${zcp.language.joinToString(",")}|framework:${zcp.framework}}
-§IDEA{core:${zcp.coreIdea}|features:${zcp.mainFeatures.joinToString(",")}|unique:${zcp.uniquePoint}}
-§VIABLE{status:${if(zcp.viable) "yes" else "no"}|note:${zcp.viabilityNote}}
-§TREE{
-${zcp.fileTree.joinToString("\n") { "  ${if(it.isDir)"[DIR]" else "[FILE]"} ${it.path} // ${it.description}" }}
-}
-§CHUNKS_TOTAL{count:${zcp.chunks.size}}
-        """.trimIndent()
-    }
-
-    private fun buildPrompt(system: String, history: List<Pair<String,String>>, user: String): String {
-        val sb = StringBuilder()
-        sb.append("<|system|>\n$system\n")
-        history.forEach { (role, content) ->
-            sb.append("<|${role}|>\n$content\n")
+    private fun buildZcpSummaryForModel2(): String = buildString {
+        appendLine("§APP{name:${zcp.projectName}|platform:${zcp.platform.joinToString(",")}|language:${zcp.language.joinToString(",")}|framework:${zcp.framework}}")
+        appendLine("§IDEA{core:${zcp.coreIdea}|features:${zcp.mainFeatures.joinToString(",")}|unique:${zcp.uniquePoint}}")
+        appendLine("§VIABLE{status:${if (zcp.viable) "yes" else "no"}|note:${zcp.viabilityNote}}")
+        appendLine("§TREE{")
+        zcp.fileTree.forEach {
+            appendLine("  ${if (it.isDir) "[DIR]" else "[FILE]"} ${it.path} // ${it.description}")
         }
-        sb.append("<|user|>\n$user\n<|assistant|>\n")
-        return sb.toString()
+        appendLine("}")
+        appendLine("§CHUNKS_TOTAL{count:${zcp.chunks.size}}")
     }
 
-    private fun buildConversationHistory(): List<Pair<String,String>> {
-        return _ui.value.messages.takeLast(10).map { Pair(it.role, it.content) }
+    private fun buildPrompt(
+        system: String,
+        history: List<Pair<String, String>>,
+        user: String
+    ): String = buildString {
+        append("<|system|>\n$system\n")
+        history.forEach { (role, content) -> append("<|$role|>\n$content\n") }
+        append("<|user|>\n$user\n<|assistant|>\n")
     }
+
+    private fun buildConversationHistory(): List<Pair<String, String>> =
+        _ui.value.messages.takeLast(10).map { it.role to it.content }
 
     // ── Parsers ───────────────────────────────────────────────────────────────
 
     private fun parseZcpFromModel1(raw: String, existing: ZcpProtocol): ZcpProtocol {
-        fun extract(tag: String, field: String): String {
-            val pattern = Regex("§$tag\\{[^}]*$field:([^|}]+)")
-            return pattern.find(raw)?.groupValues?.get(1)?.trim() ?: ""
-        }
-        fun extractList(tag: String, field: String): List<String> =
+        fun extract(tag: String, field: String): String =
+            Regex("§$tag\\{[^}]*$field:([^|}]+)").find(raw)?.groupValues?.get(1)?.trim() ?: ""
+
+        fun extractList(tag: String, field: String) =
             extract(tag, field).split(",").map { it.trim() }.filter { it.isNotEmpty() }
 
         val intents = Regex("§SEARCH\\{([^}]+)\\}").findAll(raw).map { m ->
             val kv = m.groupValues[1].split("|").associate {
-                val parts = it.split(":", limit = 2)
-                parts[0].trim() to (parts.getOrNull(1)?.trim() ?: "")
+                val p = it.split(":", limit = 2)
+                p[0].trim() to (p.getOrNull(1)?.trim() ?: "")
             }
-            SearchIntent(
-                topic = kv["topic"] ?: "",
-                platform = kv["platform"] ?: "",
-                question = kv["question"] ?: "",
-                category = kv["category"] ?: "general"
-            )
+            SearchIntent(kv["topic"] ?: "", kv["platform"] ?: "", kv["question"] ?: "", kv["category"] ?: "general")
         }.toList()
 
         return existing.copy(
@@ -580,67 +504,53 @@ ${zcp.fileTree.joinToString("\n") { "  ${if(it.isDir)"[DIR]" else "[FILE]"} ${it
         )
     }
 
-    private fun parseFileTree(raw: String): List<FileNode> {
-        return Regex("§TREE\\{([^}]+)\\}").findAll(raw).map { m ->
+    private fun parseFileTree(raw: String): List<FileNode> =
+        Regex("§TREE\\{([^}]+)\\}").findAll(raw).map { m ->
             val kv = m.groupValues[1].split("|").associate {
-                val parts = it.split(":", limit = 2)
-                parts[0].trim() to (parts.getOrNull(1)?.trim() ?: "")
+                val p = it.split(":", limit = 2)
+                p[0].trim() to (p.getOrNull(1)?.trim() ?: "")
             }
-            FileNode(
-                path = kv["path"] ?: "",
-                isDir = kv["type"] == "dir",
-                description = kv["desc"] ?: ""
-            )
+            FileNode(path = kv["path"] ?: "", isDir = kv["type"] == "dir", description = kv["desc"] ?: "")
         }.filter { it.path.isNotEmpty() }.toList()
-    }
 
-    private fun parseSearchIntents(raw: String): List<SearchIntent> {
-        return Regex("§SEARCH\\{([^}]+)\\}").findAll(raw).map { m ->
+    private fun parseSearchIntents(raw: String): List<SearchIntent> =
+        Regex("§SEARCH\\{([^}]+)\\}").findAll(raw).map { m ->
             val kv = m.groupValues[1].split("|").associate {
-                val parts = it.split(":", limit = 2)
-                parts[0].trim() to (parts.getOrNull(1)?.trim() ?: "")
+                val p = it.split(":", limit = 2)
+                p[0].trim() to (p.getOrNull(1)?.trim() ?: "")
             }
-            SearchIntent(kv["topic"]?:"", kv["platform"]?:"", kv["question"]?:"", kv["category"]?:"general")
+            SearchIntent(kv["topic"] ?: "", kv["platform"] ?: "", kv["question"] ?: "", kv["category"] ?: "general")
         }.toList()
-    }
 
-    private fun parseSearchResults(extracted: String, intents: List<SearchIntent>): List<SearchResult> {
-        return intents.mapIndexed { i, intent ->
-            val pattern = Regex("SLOT_${i+1}:\\s*(.+)", RegexOption.IGNORE_CASE)
-            val content = pattern.find(extracted)?.groupValues?.get(1)?.trim() ?: ""
+    private fun parseSearchResults(extracted: String, intents: List<SearchIntent>): List<SearchResult> =
+        intents.mapIndexed { i, intent ->
+            val content = Regex("SLOT_${i + 1}:\\s*(.+)", RegexOption.IGNORE_CASE)
+                .find(extracted)?.groupValues?.get(1)?.trim() ?: ""
             SearchResult(intent, content, intent.category, true)
         }
-    }
 
-    private fun chunkPlan(plan: String, maxTokens: Int): List<String> {
-        // Approximate 1 token ≈ 4 chars
-        val chunkSize = maxTokens * 4
-        return plan.chunked(chunkSize)
-    }
+    private fun chunkPlan(plan: String, maxTokens: Int): List<String> =
+        plan.chunked(maxTokens * 4) // ~4 chars per token
 
-    // ── URL Fetcher (app code, no model) ─────────────────────────────────────
+    // ── URL Fetcher ───────────────────────────────────────────────────────────
 
     private suspend fun fetchSearchContent(): Map<String, String> = withContext(Dispatchers.IO) {
         val result = mutableMapOf<String, String>()
-        val intents = zcp.searchIntents
-
-        intents.forEach { intent ->
+        zcp.searchIntents.forEach { intent ->
             val domains = InventStorage.resolveDomainsForCategory(ctx, intent.category)
             domains.forEach { domain ->
-                if (!result.containsKey(domain)) {
+                if (!result.containsKey(intent.category)) {
                     try {
-                        val url = "https://$domain"
-                        val connection = URL(url).openConnection()
-                        connection.connectTimeout = 5000
-                        connection.readTimeout = 5000
-                        val text = connection.getInputStream().bufferedReader().readText()
-                        // Strip HTML tags roughly
-                        val stripped = text.replace(Regex("<[^>]+>"), " ")
+                        val conn = URL("https://$domain").openConnection()
+                        conn.connectTimeout = 5000
+                        conn.readTimeout = 5000
+                        val text = conn.getInputStream().bufferedReader().readText()
+                        result[intent.category] = text
+                            .replace(Regex("<[^>]+>"), " ")
                             .replace(Regex("\\s+"), " ")
                             .take(3000)
-                        result[domain] = stripped
                     } catch (e: Exception) {
-                        result[domain] = "[fetch failed: ${e.message}]"
+                        result[intent.category] = "[fetch failed: ${e.message}]"
                     }
                 }
             }
@@ -651,8 +561,7 @@ ${zcp.fileTree.joinToString("\n") { "  ${if(it.isDir)"[DIR]" else "[FILE]"} ${it
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun addMessage(role: String, content: String, phase: InventPhase) {
-        val msg = InventMessage(role, content, phase)
-        val updated = _ui.value.messages + msg
+        val updated = _ui.value.messages + InventMessage(role, content, phase)
         _ui.value = _ui.value.copy(messages = updated)
         sessionState = sessionState?.copy(messages = updated)
         saveCurrentState()
@@ -670,27 +579,11 @@ ${zcp.fileTree.joinToString("\n") { "  ${if(it.isDir)"[DIR]" else "[FILE]"} ${it
         saveCurrentState()
     }
 
-    private fun setSwap(info: String) {
-        _ui.value = _ui.value.copy(swapInfo = info)
-    }
+    private fun setSwap(info: String) { _ui.value = _ui.value.copy(swapInfo = info) }
 
     private fun saveCurrentState() {
         sessionState?.let { InventStorage.saveSession(ctx, it) }
     }
-
-    private fun buildConfig(ctx: Int) = InferenceConfig(
-        nCtx = ctx,
-        nBatch = 512,
-        maxNewTokens = 1024,
-        temperature = 0.3f,
-        topP = 0.9f,
-        minP = 0.05f,
-        nGpuLayers = 0,
-        nThreads = 4,
-        lowRamMode = true,
-        flashAttention = false,
-        mmprojPath = ""
-    )
 
     override fun onCleared() {
         super.onCleared()
