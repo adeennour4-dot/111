@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.data.repository.LocalModel
+import com.gguf.zerocopy.domain.inference.BenchmarkResult
 import com.gguf.zerocopy.domain.inference.EngineType
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.text.SimpleDateFormat
@@ -89,6 +90,8 @@ fun ModelListScreen(
   var modelToDetail by remember { mutableStateOf<LocalModel?>(null) }
   var engineSwitchWarningModel by remember { mutableStateOf<LocalModel?>(null) }
   var longPressModel by remember { mutableStateOf<LocalModel?>(null) }
+  var benchmarkResult by remember { mutableStateOf<BenchmarkResult?>(null) }
+  var benchmarking by remember { mutableStateOf(false) }
 
   val activeEngine = app.engineManager.getActiveEngine()
   val isModelLoaded = activeEngine?.isModelLoaded == true
@@ -236,6 +239,28 @@ fun ModelListScreen(
               Icon(Icons.Filled.Info, null, tint = colors.Accent2, modifier = Modifier.size(18.dp))
             }
           )
+          if (activeEngine?.isModelLoaded == true && activeEngine?.loadedModelPath == model.path) {
+            HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
+            DropdownMenuItem(
+              text = { Text("Benchmark", color = colors.Text, fontSize = 14.sp) },
+              onClick = {
+                longPressModel = null
+                benchmarking = true
+                benchmarkResult = null
+                scope.launch {
+                  val engine = app.engineManager.getActiveEngine()
+                  val result = withContext(Dispatchers.IO) {
+                    engine?.benchmark(128, 128)
+                  }
+                  benchmarkResult = result
+                  benchmarking = false
+                }
+              },
+              leadingIcon = {
+                Icon(Icons.Filled.Refresh, null, tint = colors.Accent2, modifier = Modifier.size(18.dp))
+              }
+            )
+          }
           HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
           DropdownMenuItem(
             text = { Text("Delete", color = colors.Red, fontSize = 14.sp) },
@@ -337,11 +362,63 @@ fun ModelListScreen(
           }
         )
       }
-    }
-  }
-}
 
-private suspend fun loadModel(
+      // ── Benchmark dialog ────────────────────────────────────────────
+      if (benchmarking) {
+        AlertDialog(
+          onDismissRequest = { benchmarking = false },
+          containerColor = colors.Card,
+          title = { Text("Benchmarking…", color = colors.Text) },
+          text = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              CircularProgressIndicator(modifier = Modifier.size(24.dp), color = colors.Accent)
+              Spacer(Modifier.width(12.dp))
+              Text("Running benchmark (128 PP + 128 TG)…", color = colors.Text2, fontSize = 13.sp)
+            }
+          },
+          confirmButton = {}
+        )
+      }
+
+      benchmarkResult?.let { result ->
+        AlertDialog(
+          onDismissRequest = { benchmarkResult = null },
+          containerColor = colors.Card,
+          title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Icon(Icons.Filled.Refresh, null, tint = colors.Accent2, modifier = Modifier.size(18.dp))
+              Spacer(Modifier.width(8.dp))
+              Text("Benchmark Results", color = colors.Text, fontWeight = FontWeight.Bold)
+            }
+          },
+          text = {
+            Column {
+              DetailRow("Engine", result.engine)
+              if (result.prefillTps > 0f) {
+                Spacer(Modifier.height(8.dp))
+                Text("Prefill", color = colors.Accent2, fontSize = 12.sp,
+                  fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
+                DetailRow("  Time", "%.1f ms".format(result.prefillMs))
+                DetailRow("  Tokens", "%d tokens".format(result.prefillTokens))
+                DetailRow("  Speed", "%.1f t/s".format(result.prefillTps))
+              }
+              if (result.decodeTps > 0f) {
+                Spacer(Modifier.height(8.dp))
+                Text("Decode", color = colors.Accent, fontSize = 12.sp,
+                  fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
+                DetailRow("  Time", "%.1f ms".format(result.decodeMs))
+                DetailRow("  Tokens", "%d tokens".format(result.decodeTokens))
+                DetailRow("  Speed", "%.1f t/s".format(result.decodeTps))
+              }
+            }
+          },
+          confirmButton = {
+            TextButton(onClick = { benchmarkResult = null }) {
+              Text("Close", color = colors.Accent)
+            }
+          }
+        )
+      }
   model: LocalModel,
   onModelSelected: (String, String) -> Unit
 ) {

@@ -33,8 +33,8 @@ fun InventSetupScreen(
 
     // Observe models from StateFlow — properly typed
     val allModels by app.modelRepository.models.collectAsState()
-    val ggufModels: List<LocalModel> = remember(allModels) {
-        allModels.filter { it.format == "gguf" || it.format == "tflite" }
+    val compatibleModels: List<LocalModel> = remember(allModels) {
+        allModels.filter { it.format in setOf("gguf", "mnn", "tflite", "litertlm") }
     }
 
     var model1Path by remember { mutableStateOf("") }
@@ -97,7 +97,7 @@ fun InventSetupScreen(
                             shape = RoundedCornerShape(6.dp),
                             color = colors.Accent.copy(alpha = 0.15f)
                         ) {
-                            Text("  GGUF / TFLite  ", fontSize = 10.sp, color = colors.Accent,
+                            Text("  GGUF / MNN / TFLite  ", fontSize = 10.sp, color = colors.Accent,
                                 fontFamily = FontFamily.Monospace,
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
                         }
@@ -106,7 +106,7 @@ fun InventSetupScreen(
             }
 
             // ── GGUF not found warning ──────────────────────────────────────
-            if (ggufModels.isEmpty()) {
+            if (compatibleModels.isEmpty()) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = colors.Amber.copy(alpha = 0.1f),
@@ -116,7 +116,7 @@ fun InventSetupScreen(
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.Warning, null, tint = colors.Amber, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(10.dp))
-                        Text("No compatible models found. Import at least 2 GGUF or TFLite models to use Invent.",
+                        Text("No compatible models found. Import at least 2 GGUF, MNN, or TFLite models to use Invent.",
                             fontSize = 12.sp, color = colors.Amber, fontFamily = FontFamily.Monospace)
                     }
                 }
@@ -258,12 +258,12 @@ fun InventSetupScreen(
                 )
             },
             text = {
-                if (ggufModels.isEmpty()) {
-                    Text("No GGUF models found.", color = colors.Text2,
+                if (compatibleModels.isEmpty()) {
+                    Text("No compatible models found.", color = colors.Text2,
                         fontFamily = FontFamily.Monospace)
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ggufModels.forEach { model: LocalModel ->
+                        compatibleModels.forEach { model: LocalModel ->
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
                                 color = colors.CardLight,

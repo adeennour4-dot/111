@@ -114,7 +114,12 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             val userCtx = SettingsManager.nCtx  // user may have customized this
             val effectiveCtx = if (userCtx <= 0) m1Ctx else userCtx.coerceAtMost(m1Ctx)
             val userConfig = SettingsManager.toConfig()
-            engineManager.llamaCpp.config = userConfig.copy(nCtx = effectiveCtx)
+            val tunedConfig = userConfig.copy(nCtx = effectiveCtx)
+            // Apply config to ALL engines so TFLite / MNN models also get
+            // the correct context size when loaded via loadOrKeepModel().
+            engineManager.llamaCpp.config = tunedConfig
+            engineManager.mnn.config = tunedConfig
+            engineManager.liteRt.config = tunedConfig
 
             sessionId = UUID.randomUUID().toString().take(8)
             zcp = ZcpProtocol(model2ContextSize = m2Ctx, offlineMode = offlineMode)
