@@ -479,17 +479,6 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             return@withContext "[No engine loaded]"
         }
 
-        // 🛡️ Restore conversation history into native context so the engine
-        // sees the full conversation.  This also prevents runWithTools from
-        // seeing an empty lastRestoredHistoryJson on round 0.
-        if (history.isNotEmpty()) {
-            try {
-                engine.restoreHistory(history)
-            } catch (_: Exception) {
-                // best-effort; some engines throw if no model is loaded yet
-            }
-        }
-
         val callback = object : TokenCallback {
             override fun onToken(token: String) { sb.append(token) }
             override fun onDone() {}
