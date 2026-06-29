@@ -25,7 +25,7 @@ import com.gguf.zerocopy.ui.theme.currentPalette
 @Composable
 fun InventSetupScreen(
     onStart: (m1Path: String, m1Name: String, m2Path: String, m2Name: String,
-              resPath: String, resName: String, offline: Boolean) -> Unit,
+              resPath: String, resName: String, offline: Boolean, sameModel: Boolean) -> Unit,
     onBack: () -> Unit
 ) {
     val colors = currentPalette()
@@ -34,7 +34,7 @@ fun InventSetupScreen(
     // Observe models from StateFlow — properly typed
     val allModels by app.modelRepository.models.collectAsState()
     val ggufModels: List<LocalModel> = remember(allModels) {
-        allModels.filter { it.format == "gguf" }
+        allModels.filter { it.format == "gguf" || it.format == "tflite" }
     }
 
     var model1Path by remember { mutableStateOf("") }
@@ -44,9 +44,10 @@ fun InventSetupScreen(
     var researcherPath by remember { mutableStateOf("") }
     var researcherName by remember { mutableStateOf("") }
     var offlineMode by remember { mutableStateOf(false) }
+    var sameModelMode by remember { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf<String?>(null) } // "m1","m2","res"
 
-    val canStart = model1Path.isNotEmpty() && model2Path.isNotEmpty() && researcherPath.isNotEmpty()
+    val canStart = model1Path.isNotEmpty() && (sameModelMode || model2Path.isNotEmpty()) && researcherPath.isNotEmpty()
 
     Scaffold(
         topBar = {
@@ -96,7 +97,7 @@ fun InventSetupScreen(
                             shape = RoundedCornerShape(6.dp),
                             color = colors.Accent.copy(alpha = 0.15f)
                         ) {
-                            Text("  GGUF only  ", fontSize = 10.sp, color = colors.Accent,
+                            Text("  GGUF / TFLite  ", fontSize = 10.sp, color = colors.Accent,
                                 fontFamily = FontFamily.Monospace,
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
                         }
@@ -115,7 +116,7 @@ fun InventSetupScreen(
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.Warning, null, tint = colors.Amber, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(10.dp))
-                        Text("No GGUF models found. Import at least 3 GGUF models to use Invent.",
+                        Text("No compatible models found. Import at least 2 GGUF or TFLite models to use Invent.",
                             fontSize = 12.sp, color = colors.Amber, fontFamily = FontFamily.Monospace)
                     }
                 }
@@ -130,7 +131,37 @@ fun InventSetupScreen(
                 colors = colors
             )
 
-            InventModelPickerCard(
+
+            // ── Same model toggle ───────────────────────────────────────────────────
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = colors.Card,
+                border = BorderStroke(1.dp, if (sameModelMode) colors.Accent.copy(0.4f) else colors.Border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Use same model for Planner + Coder", fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold, color = colors.Text,
+                            fontFamily = FontFamily.Monospace)
+                        Text(
+                            if (sameModelMode) "Planner model handles both roles — saves RAM."
+                            else "Separate coder model for code-heavy projects.",
+                            fontSize = 11.sp, color = colors.Text3, fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    Switch(
+                        checked = sameModelMode,
+                        onCheckedChange = { sameModelMode = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = colors.Accent,
+                            checkedTrackColor = colors.Accent.copy(alpha = 0.3f)
+                        )
+                    )
+                }
+            }
+
+            if (!sameModelMode) InventModelPickerCard(
                 label = "💻  Coder Model",
                 subtitle = "Code-specialized — builds the implementation plan",
                 selected = model2Name,
@@ -193,8 +224,10 @@ fun InventSetupScreen(
                         else Brush.horizontalGradient(listOf(colors.Border, colors.Border))
                     )
                     .then(if (canStart) Modifier.clickable {
-                        onStart(model1Path, model1Name, model2Path, model2Name,
-                            researcherPath, researcherName, offlineMode)
+                        onStart(model1Path, model1Name,
+                            if (sameModelMode) model1Path else model2Path,
+                            if (sameModelMode) model1Name else model2Name,
+                            researcherPath, researcherName, offlineMode, sameModelMode)
                     } else Modifier),
                 contentAlignment = Alignment.Center
             ) {
@@ -301,3 +334,4 @@ fun InventModelPickerCard(
         }
     }
 }
+
