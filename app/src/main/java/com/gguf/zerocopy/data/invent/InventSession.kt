@@ -74,6 +74,8 @@ data class InventSessionState(
     val searchRound: Int = 0,
     val mergeCount: Int = 0,
     val offlineMode: Boolean = false,
+    // true = model1 is reused for the coder role; no separate model2 load needed
+    val sameModelMode: Boolean = false,
     val messages: List<InventMessage> = emptyList()
 )
 
@@ -156,6 +158,7 @@ object InventStorage {
             put("searchRound", state.searchRound)
             put("mergeCount", state.mergeCount)
             put("offlineMode", state.offlineMode)
+            put("sameModelMode", state.sameModelMode)
             val msgs = JSONArray()
             state.messages.forEach { m ->
                 msgs.put(JSONObject().apply {
@@ -197,6 +200,7 @@ object InventStorage {
                 searchRound = obj.optInt("searchRound", 0),
                 mergeCount = obj.optInt("mergeCount", 0),
                 offlineMode = obj.optBoolean("offlineMode", false),
+                sameModelMode = obj.optBoolean("sameModelMode", false),
                 messages = msgList
             )
         } catch (e: Exception) { null }
