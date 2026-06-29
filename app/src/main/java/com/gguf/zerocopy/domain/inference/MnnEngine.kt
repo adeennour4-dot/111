@@ -142,7 +142,7 @@ class MnnEngine : InferenceEngine {
         }
         mnnExecuteInference(fullPrompt, innerCb)
 
-        if (turnErr != null) { callback.onError(turnErr!!); return }
+        if (turnErr != null) { callback.onError(turnErr!!); callback.onDone(); return }
 
         val response = responseBuf.toString()
         val toolCall = tm.parseToolCall(response)
@@ -159,9 +159,15 @@ class MnnEngine : InferenceEngine {
         for (ch in status) callback.onToken(ch.toString())
         callback.onToolCall(toolCall.name, toolCall.arguments.toString())
 
-        val result = tm.executeTool(toolCall)
-        promptSuffix += "\n[Tool Call]:\n" + response.trim() +
-          "\n[Tool Result for ${toolCall.name}]:\n" + result.result.trim() + "\n"
+        try {
+          val result = tm.executeTool(toolCall)
+          promptSuffix += "\n[Tool Call]:\n" + response.trim() +
+            "\n[Tool Result for ${toolCall.name}]:\n" + result.result.trim() + "\n"
+        } catch (e: Exception) {
+          callback.onError("Tool execution failed: ${e.message}")
+          callback.onDone()
+          return
+        }
       }
     } finally {
       mnnSetSystemPromptNative(origSystemPrompt)
@@ -170,7 +176,7 @@ class MnnEngine : InferenceEngine {
   }
 
   override suspend fun executeInference(prompt: String, callback: TokenCallback) {
-    if (!nativeLibLoaded) { callback.onError("MNN native library not available"); return }
+    if (!nativeLibLoaded) { callback.onError("MNN native library not available"); callback.onDone(); return }
     withContext(Dispatchers.IO) {
       synchronized(partialStream) { partialStream.clear(); fullResponse.clear() }
       inferenceDone.set(false)

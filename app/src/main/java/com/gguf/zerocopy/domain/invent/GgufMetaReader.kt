@@ -95,5 +95,5 @@ object GgufMetaReader {
         return ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).int
     }
 
-    const val DEFAULT_CONTEXT = 4096
+    const val DEFAULT_CONTEXT = 0
 }

@@ -61,7 +61,15 @@ class ModelServer(val port: Int = 8080) {
         val modelInfo = app.modelRepository.models.value.find { it.path == autoModelPath }
         if (modelInfo != null) {
           engine?.let { e ->
-            e.config = com.gguf.zerocopy.data.local.SettingsManager.toConfig()
+            val config = com.gguf.zerocopy.data.local.SettingsManager.toConfig()
+            // Apply native GGUF context length as upper bound
+            val tunedConfig = if (autoModelPath.endsWith(".gguf")) {
+              val nativeCtx = com.gguf.zerocopy.domain.invent.GgufMetaReader.readContextLength(autoModelPath)
+              if (nativeCtx > 0 && (config.nCtx <= 0 || config.nCtx > nativeCtx)) {
+                config.copy(nCtx = nativeCtx)
+              } else config
+            } else config
+            e.config = tunedConfig
             e.systemPrompt = com.gguf.zerocopy.data.local.SettingsManager.systemPrompt
             e.repeatPenalty = com.gguf.zerocopy.data.local.SettingsManager.toRepeatPenalty()
             val result = runBlocking { e.loadModel(modelInfo.path) }

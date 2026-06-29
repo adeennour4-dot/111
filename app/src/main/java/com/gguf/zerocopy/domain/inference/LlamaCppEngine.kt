@@ -176,7 +176,7 @@ class LlamaCppEngine : InferenceEngine {
       }
       activeCallback = null
 
-      if (turnErr != null) { callback.onError(turnErr!!); return }
+      if (turnErr != null) { callback.onError(turnErr!!); callback.onDone(); return }
 
       val response = responseBuf.toString().trim()
       val toolCall = tm.parseToolCall(response)
@@ -231,8 +231,8 @@ class LlamaCppEngine : InferenceEngine {
   // ── executeInference ──────────────────────────────────────────────────────
 
   override suspend fun executeInference(prompt: String, callback: TokenCallback) {
-    if (!nativeLibLoaded) { callback.onError("llama.cpp native library not available"); return }
-    if (!isModelLoaded) { callback.onError("No model is loaded — load a GGUF file first"); return }
+    if (!nativeLibLoaded) { callback.onError("llama.cpp native library not available"); callback.onDone(); return }
+    if (!isModelLoaded) { callback.onError("No model is loaded — load a GGUF file first"); callback.onDone(); return }
     // Reset the abort flag so a previously-aborted inference doesn't
     // kill this new one.  The other state fields are reset below.
     inferenceAborted.set(false)
@@ -282,7 +282,7 @@ class LlamaCppEngine : InferenceEngine {
   }
 
   override suspend fun executeInferenceWithImage(prompt: String, imagePath: String, callback: TokenCallback) {
-    if (!nativeLibLoaded) { callback.onError("llama.cpp native library not available"); return }
+    if (!nativeLibLoaded) { callback.onError("llama.cpp native library not available"); callback.onDone(); return }
     withContext(Dispatchers.IO) {
       synchronized(lock) { partialStream.clear(); fullResponse.clear() }
       inferenceDone.set(false); tokensGenerated.set(0)
