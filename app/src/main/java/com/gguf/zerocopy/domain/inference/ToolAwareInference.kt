@@ -1,44 +1,45 @@
 package com.gguf.zerocopy.domain.inference
 
 import android.util.Log
+import java.net.URLEncoder
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
  * Shared tool-calling agentic loop used by ALL inference engines.
  *
- * Each engine provides:
- *  - [runInference] – runs a single inference round with the given prompt.
- *    The lambda MUST call `onDone()` or `onError()` on the provided callback
- *    when inference completes, and should return only after the callback has
- *    fired (i.e., it is responsible for its own synchronization).
- *  - [setSystemPrompt] – sets the system prompt on the native/engine side.
+ * Strategy (two-phase):
  *
- * This utility handles the multi-round loop: inject tool definitions, run
- * inference, parse tool calls from the response, execute tools, and re-run
- * with results (up to [MAX_ROUNDS] times).
+ * **Phase 1 — Auto-detect (works for ALL models):**
+ * Before adding any tool instruction, check the user message for search-like
+ * intent using keyword triggers. If found, run the web search immediately
+ * via [ToolManager], inject results into the system prompt (NO tool
+ * instruction), and run a single inference round. This is the "implicit
+ * search" path that works with every model regardless of tool-calling ability.
+ *
+ * **Phase 2 — Tool-calling loop (for models that support it):**
+ * If Phase 1 did NOT trigger (no search intent detected via keywords), add
+ * the tool instruction to the system prompt and run the multi-round agentic
+ * loop. The model may output a `<tool_call>` JSON to trigger a search, or
+ * answer directly.
  */
 object ToolAwareInference {
 
     private const val TAG = "ToolAwareInference"
     private const val MAX_ROUNDS = 4
 
-    /**
-     * Execute the tool-aware agentic loop.
-     *
-     * The [runInference] lambda receives:
-     *  - `prompt` — the text to feed to the model
-     *  - `tokenSink` — a [TokenCallback] the engine MUST forward each token
-     *    to as they are generated (this buffers them inside the loop for
-     *    tool call parsing).
-     *  - `doneSignal` — an [InferenceDoneSignal] the engine MUST call
-     *    `signalDone()` or `signalError()` on exactly once when inference
-     *    completes. The lambda MUST NOT return before calling one of those.
-     *
-     * The [tokenSink] does NOT forward tokens to the outer [callback]; it
-     * buffers them internally for tool call parsing. The final response is
-     * delivered to [callback] after the loop ends.
-     */
+    /** Keywords that signal a search / real-time-info query. */
+    private val SEARCH_TRIGGERS = listOf(
+        "search", "find", "look up", "google",
+        "what is", "what are", "who is", "who are",
+        "when did", "when was", "where is", "where are",
+        "latest", "current", "news", "weather",
+        "price", "prices", "stock", "stocks",
+        "forecast", "today", "now",
+        "how much", "how many", "tell me about",
+        "recent", "update", "status of"
+    )
+
     fun execute(
         userPrompt: String,
         originalSystemPrompt: String,
@@ -48,6 +49,28 @@ object ToolAwareInference {
         callback: TokenCallback,
         isAborted: () -> Boolean = { false }
     ) {
+        // ── Phase 1: Auto-detect search intent ─────────────────────────────
+        val searchResults = detectAndRunSearch(userPrompt, toolManager)
+        if (searchResults != null) {
+            // Inject search results directly into the system prompt —
+            // no tool instruction needed, works with EVERY model.
+            val augmentedSysPrompt = if (originalSystemPrompt.isNotEmpty()) {
+                "$originalSystemPrompt\n\nHere is up-to-date web search information:\n$searchResults\n\nUse the above information to answer the user if relevant."
+            } else {
+                "Here is up-to-date web search information:\n$searchResults\n\nUse the above information to answer the user if relevant."
+            }
+            setSystemPrompt(augmentedSysPrompt)
+
+            try {
+                runSingleRound(userPrompt, runInference, callback, isAborted)
+            } finally {
+                setSystemPrompt(originalSystemPrompt)
+            }
+            callback.onDone()
+            return
+        }
+
+        // ── Phase 2: Tool-calling agentic loop ────────────────────────────
         val toolInstruction = buildString {
             appendLine("You have access to tools. When you need real-time information, use a tool by")
             appendLine("outputting ONLY a JSON block (no other text) in this exact format and then stop:")
@@ -79,85 +102,34 @@ object ToolAwareInference {
                     "$userPrompt\n$promptSuffix"
                 }
 
-                // ── Run one inference round, buffer all tokens ────────────
                 val responseBuf = StringBuilder()
                 val roundDone = InferenceDoneSignal()
 
                 val tokenSink = object : TokenCallback {
-                    override fun onToken(token: String) {
-                        responseBuf.append(token)
-                    }
-
-                    override fun onDone() {
-                        // completion is signalled via roundDone, not here
-                    }
-
-                    override fun onError(error: String) {
-                        // errors are signalled via roundDone, not here
-                    }
-
-                    override fun onKvUsage(percent: Int) {
-                        callback.onKvUsage(percent)
-                    }
-
-                    override fun onTokensGenerated(count: Int) {
-                        callback.onTokensGenerated(count)
-                    }
-
-                    override fun onToolCall(toolName: String, toolArgs: String) {
-                        callback.onToolCall(toolName, toolArgs)
-                    }
+                    override fun onToken(token: String) { responseBuf.append(token) }
+                    override fun onDone() { /* completion via roundDone */ }
+                    override fun onError(error: String) { /* errors via roundDone */ }
+                    override fun onKvUsage(percent: Int) { callback.onKvUsage(percent) }
+                    override fun onTokensGenerated(count: Int) { callback.onTokensGenerated(count) }
+                    override fun onToolCall(toolName: String, toolArgs: String) { callback.onToolCall(toolName, toolArgs) }
                 }
 
-                try {
-                    runInference(fullPrompt, tokenSink, roundDone)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Inference round $round failed: ${e.message}")
-                    callback.onError("Inference error: ${e.message}")
-                    callback.onDone()
-                    return
-                }
-
-                // Wait for the engine to signal completion via the doneSignal.
-                // The engine's runInference lambda MUST call signalDone() or
-                // signalError() on the doneSignal and MUST NOT return before
-                // doing so.  If the engine fails to signal within 5 minutes,
-                // we time out.
-                val timedOut = !roundDone.await(5, TimeUnit.MINUTES)
-                if (timedOut) {
-                    Log.e(TAG, "Inference round $round timed out")
-                    callback.onError("Inference timed out")
-                    callback.onDone()
-                    return
-                }
-
-                if (roundDone.error != null) {
-                    callback.onError(roundDone.error!!)
-                    callback.onDone()
-                    return
-                }
-
+                runRound(fullPrompt, tokenSink, roundDone, runInference, callback, round)
+                if (roundDone.error != null) { callback.onError(roundDone.error!!); callback.onDone(); return }
                 if (isAborted()) break
 
                 val response = responseBuf.toString()
                 val toolCall = toolManager.parseToolCall(response)
 
                 if (toolCall == null) {
-                    // ── No tool call — stream the final response ──────────
                     callback.onToken(response)
                     break
                 }
 
-                // ── Tool call detected — execute and continue ─────────────
                 anyToolCall = true
-
-                // Extract a human-readable query description
-                val query = toolCall.arguments.optString(
-                    "query",
+                val query = toolCall.arguments.optString("query",
                     toolCall.arguments.keys().asSequence().firstOrNull()
-                        ?.let { toolCall.arguments.optString(it) }
-                        ?: toolCall.name
-                )
+                        ?.let { toolCall.arguments.optString(it) } ?: toolCall.name)
                 val statusMsg = "\n🔍 *Searching: \"$query\"…*\n\n"
                 callback.onToken(statusMsg)
                 callback.onToolCall(toolCall.name, toolCall.arguments.toString())
@@ -181,19 +153,118 @@ object ToolAwareInference {
         } finally {
             setSystemPrompt(originalSystemPrompt)
         }
-
         callback.onDone()
     }
+
+    // ── Phase 1 helpers ────────────────────────────────────────────────────
+
+    /**
+     * Run a SINGLE inference round and stream the response to [callback].
+     * No tool instruction is injected — this is the "implicit search" path
+     * where search results are already in the system prompt.
+     */
+    private fun runSingleRound(
+        prompt: String,
+        runInference: (String, TokenCallback, InferenceDoneSignal) -> Unit,
+        callback: TokenCallback,
+        isAborted: () -> Boolean
+    ) {
+        val responseBuf = StringBuilder()
+        val roundDone = InferenceDoneSignal()
+
+        val tokenSink = object : TokenCallback {
+            override fun onToken(token: String) { responseBuf.append(token) }
+            override fun onDone() { /* completion via roundDone */ }
+            override fun onError(error: String) { /* errors via roundDone */ }
+            override fun onKvUsage(percent: Int) { callback.onKvUsage(percent) }
+            override fun onTokensGenerated(count: Int) { callback.onTokensGenerated(count) }
+            override fun onToolCall(toolName: String, toolArgs: String) {}
+        }
+
+        runRound(prompt, tokenSink, roundDone, runInference, callback, 0)
+        if (roundDone.error != null) { callback.onError(roundDone.error!!); return }
+        if (!isAborted()) {
+            callback.onToken(responseBuf.toString())
+        }
+    }
+
+    /**
+     * Detect whether the user message implies a web search, run it, and
+     * return formatted results (or null if no search needed).
+     */
+    private fun detectAndRunSearch(userPrompt: String, toolManager: ToolManager): String? {
+        val lower = userPrompt.lowercase()
+        if (!SEARCH_TRIGGERS.any { lower.contains(it) }) return null
+
+        // Build a search query from the user message
+        val query = userPrompt.trim()
+            .replace(Regex("^(?:search\\s+(?:for\\s+)?|find\\s+|look\\s+up\\s+|google\\s+)", RegexOption.IGNORE_CASE), "")
+            .trim()
+            .take(200)
+            .ifEmpty { userPrompt.take(200) }
+
+        if (query.length < 3) return null
+
+        // Execute the web_search tool via ToolManager
+        val args = org.json.JSONObject().apply {
+            put("query", query)
+            put("num_results", 5)
+        }
+        val toolCall = ToolCall("auto_${System.currentTimeMillis()}", "web_search", args)
+        return try {
+            val result = toolManager.executeTool(toolCall)
+            val text = result.result.trim()
+            text.ifBlank { null }
+        } catch (e: Exception) {
+            Log.w(TAG, "Auto-search failed: ${e.message}")
+            null
+        }
+    }
+
+    // ── Shared round runner ────────────────────────────────────────────────
+
+    /**
+     * Call [runInference], wait for the [doneSignal], and handle timeouts.
+     */
+    private fun runRound(
+        prompt: String,
+        tokenSink: TokenCallback,
+        doneSignal: InferenceDoneSignal,
+        runInference: (String, TokenCallback, InferenceDoneSignal) -> Unit,
+        callback: TokenCallback,
+        round: Int
+    ) {
+        try {
+            runInference(prompt, tokenSink, doneSignal)
+        } catch (e: Exception) {
+            Log.e(TAG, "Inference round $round failed: ${e.message}")
+            callback.onError("Inference error: ${e.message}")
+            callback.onDone()
+            return
+        }
+
+        val timedOut = !doneSignal.await(5, TimeUnit.MINUTES)
+        if (timedOut) {
+            Log.e(TAG, "Inference round $round timed out")
+            callback.onError("Inference timed out")
+            callback.onDone()
+            return
+        }
+    }
+
+    // ── InferenceDoneSignal ────────────────────────────────────────────────
 
     /**
      * A lightweight one-shot signal that an inference round has completed.
      * The engine's [runInference] lambda must call [signalDone] or [signalError]
-     * exactly once before returning.  [await] blocks until one of those is called
+     * exactly once before returning. [await] blocks until one of those is called
      * (or the timeout expires).
      */
     class InferenceDoneSignal {
         private val latch = CountDownLatch(1)
-        @Volatile var error: String? = null
+
+        @Volatile
+        var error: String? = null
             private set
 
         fun signalDone() {
