@@ -171,18 +171,31 @@ static void rebuild_sampler() {
 
 static std::string build_chat_prompt() {
     std::vector<llama_chat_message> msgs;
-    msgs.push_back({"system", g_cfg.system_prompt.c_str()});
+    if (g_cfg.system_prompt[0] != '\0') {
+        msgs.push_back({"system", g_cfg.system_prompt.c_str()});
+    }
     for (auto& m : g_history) msgs.push_back({m.role.c_str(), m.content.c_str()});
     // Use the model's actual chat template from metadata, fall back to chatml
     const char * tmpl = g_model ? llama_model_chat_template(g_model, nullptr) : nullptr;
     if (!tmpl) tmpl = "chatml";
     std::vector<char> buf(65536);
     int n = llama_chat_apply_template(tmpl, msgs.data(), (int)msgs.size(), true, buf.data(), (int)buf.size());
-    // If template detection failed, fall back to chatml
+    // Gemma 3 (and some other models) reject system messages — retry without.
+    if (n < 0 && strcmp(tmpl, "chatml") != 0) {
+        LOGW("Template with system prompt failed, retrying without system");
+        std::vector<llama_chat_message> msgs_no_sys;
+        for (auto& m : g_history) msgs_no_sys.push_back({m.role.c_str(), m.content.c_str()});
+        n = llama_chat_apply_template(tmpl, msgs_no_sys.data(), (int)msgs_no_sys.size(), true, buf.data(), (int)buf.size());
+        if (n >= 0) { msgs = std::move(msgs_no_sys); }
+    }
+    // If template still fails, fall back to chatml
     if (n < 0 && strcmp(tmpl, "chatml") != 0) {
         LOGW("Chat template detection failed, falling back to chatml");
         tmpl = "chatml";
-        n = llama_chat_apply_template(tmpl, msgs.data(), (int)msgs.size(), true, buf.data(), (int)buf.size());
+        std::vector<llama_chat_message> chatml_msgs;
+        for (auto& m : g_history) chatml_msgs.push_back({m.role.c_str(), m.content.c_str()});
+        n = llama_chat_apply_template(tmpl, chatml_msgs.data(), (int)chatml_msgs.size(), true, buf.data(), (int)buf.size());
+        if (n >= 0) { msgs = std::move(chatml_msgs); }
     }
     if (n > (int)buf.size()) { buf.resize(n + 1); n = llama_chat_apply_template(tmpl, msgs.data(), (int)msgs.size(), true, buf.data(), (int)buf.size()); }
     if (n < 0) n = 0;
