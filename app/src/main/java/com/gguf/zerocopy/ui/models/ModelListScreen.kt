@@ -121,10 +121,6 @@ fun ModelListScreen(
       return
     }
     val targetEngine = app.engineManager.selectEngineForFormat(model.path)
-    if (targetEngine == null) {
-      // Format not supported on this device (e.g. TFLite on x86_64 without LiteRT)
-      return
-    }
     if (isModelLoaded && activeEngine != targetEngine) {
       engineSwitchWarningModel = model
       return
@@ -350,11 +346,9 @@ private suspend fun loadModel(
   onModelSelected: (String, String) -> Unit
 ) {
   val app = ZeroCopyApp.instance
-  val engine = app.engineManager.selectEngineForFormat(model.path) ?: return
+  val engine = app.engineManager.selectEngineForFormat(model.path)
 
   // Auto-detect GGUF native context length and use it as the upper bound.
-  // Users can still lower the context in Settings, but the model is no longer
-  // artificially limited to 2048 when it supports e.g. 8192 or 128K.
   val config = SettingsManager.toConfig()
   val tunedConfig = if (model.format == "gguf") {
     val nativeCtx = com.gguf.zerocopy.domain.invent.GgufMetaReader.readContextLength(model.path)

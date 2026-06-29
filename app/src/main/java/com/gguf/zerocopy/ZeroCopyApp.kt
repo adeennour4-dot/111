@@ -100,11 +100,9 @@ class ZeroCopyApp : Application() {
     engineManager.mnn.config = config
     engineManager.mnn.repeatPenalty = rp
     engineManager.mnn.systemPrompt = prompt
-    engineManager.liteRt?.let {
-      it.config = config
-      it.repeatPenalty = rp
-      it.systemPrompt = prompt
-    }
+    engineManager.liteRt.config = config
+    engineManager.liteRt.repeatPenalty = rp
+    engineManager.liteRt.systemPrompt = prompt
   }
 
   companion object {
