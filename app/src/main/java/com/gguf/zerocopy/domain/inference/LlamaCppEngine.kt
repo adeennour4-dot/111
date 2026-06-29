@@ -171,6 +171,7 @@ class LlamaCppEngine : InferenceEngine {
         NativeBridge.executeWithCallbackNative(currentPrompt, innerCb)
       } catch (e: Exception) {
         callback.onError("Inference error: ${e.message}")
+        callback.onDone()
         activeCallback = null
         return
       }
@@ -274,6 +275,7 @@ class LlamaCppEngine : InferenceEngine {
         NativeBridge.executeWithCallbackNative(prompt, cb)
       } catch (e: Exception) {
         Log.e("LlamaCppEngine", "Exception during inference: ${e.message}")
+        callback.onDone()
         inferenceDone.set(true); activeCallback = null
       } finally {
         if (!inferenceDone.get()) activeCallback = null
@@ -301,6 +303,7 @@ class LlamaCppEngine : InferenceEngine {
         NativeBridge.executeWithImageNative(prompt, imagePath, cb)
       } catch (e: Exception) {
         Log.e("LlamaCppEngine", "Exception during image inference: ${e.message}")
+        callback.onDone()
         inferenceDone.set(true); activeCallback = null
       } finally {
         if (!inferenceDone.get()) activeCallback = null
