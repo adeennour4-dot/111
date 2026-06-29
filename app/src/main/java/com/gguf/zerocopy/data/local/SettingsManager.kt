@@ -149,6 +149,36 @@ object SettingsManager {
       com.gguf.zerocopy.ui.theme.ThemeState.isDark = v
     }
 
+
+  // ── Invent settings ──────────────────────────────────────────────────────
+  var inventOfflineMode: Boolean
+    get() = prefs?.getBoolean("invent_offline", false) ?: false
+    set(v) { prefs?.edit()?.putBoolean("invent_offline", v)?.apply() }
+
+  var inventModel1Path: String
+    get() = prefs?.getString("invent_model1_path", "") ?: ""
+    set(v) { prefs?.edit()?.putString("invent_model1_path", v)?.apply() }
+
+  var inventModel1Name: String
+    get() = prefs?.getString("invent_model1_name", "") ?: ""
+    set(v) { prefs?.edit()?.putString("invent_model1_name", v)?.apply() }
+
+  var inventModel2Path: String
+    get() = prefs?.getString("invent_model2_path", "") ?: ""
+    set(v) { prefs?.edit()?.putString("invent_model2_path", v)?.apply() }
+
+  var inventModel2Name: String
+    get() = prefs?.getString("invent_model2_name", "") ?: ""
+    set(v) { prefs?.edit()?.putString("invent_model2_name", v)?.apply() }
+
+  var inventResearcherPath: String
+    get() = prefs?.getString("invent_researcher_path", "") ?: ""
+    set(v) { prefs?.edit()?.putString("invent_researcher_path", v)?.apply() }
+
+  var inventResearcherName: String
+    get() = prefs?.getString("invent_researcher_name", "") ?: ""
+    set(v) { prefs?.edit()?.putString("invent_researcher_name", v)?.apply() }
+
   fun toConfig() = InferenceConfig(
     nCtx = nCtx,
     nBatch = nBatch.coerceIn(512, 8192),
