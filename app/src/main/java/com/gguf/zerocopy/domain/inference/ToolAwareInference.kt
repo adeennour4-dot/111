@@ -210,4 +210,3 @@ object ToolAwareInference {
         }
     }
 }
-}
