@@ -49,8 +49,6 @@ fun InventScreen(
     val ui by vm.ui.collectAsState()
     val colors = currentPalette()
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
     var inputText by remember { mutableStateOf("") }
 
@@ -96,7 +94,6 @@ fun InventScreen(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Surface)
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = colors.Bg
     ) { pad ->
         Box(Modifier.fillMaxSize().padding(pad)) {
@@ -175,17 +172,18 @@ fun InventScreen(
                     if (ui.phase == InventPhase.DONE && ui.fileTree.isNotEmpty()) {
                         item { InventFileTreeCard(ui.fileTree, colors) }
                         item {
-                            InventExportCard(
-                                onExportZip = {
+                            val onExportZip: () -> Unit = remember {
+                                val appCtx = context
+                                {
                                     val zipFile = vm.exportProjectZip()
                                     if (zipFile != null) {
                                         try {
                                             val uri = FileProvider.getUriForFile(
-                                                context,
-                                                "${context.packageName}.fileprovider",
+                                                appCtx,
+                                                "${appCtx.packageName}.fileprovider",
                                                 zipFile
                                             )
-                                            context.startActivity(
+                                            appCtx.startActivity(
                                                 Intent.createChooser(
                                                     Intent(Intent.ACTION_SEND).apply {
                                                         type = "application/zip"
@@ -196,16 +194,13 @@ fun InventScreen(
                                                 )
                                             )
                                         } catch (_: Exception) {
-                                            scope.launch {
-                                                snackbarHostState.showSnackbar("Failed to share zip file")
-                                            }
-                                        }
-                                    } else {
-                                        scope.launch {
-                                            snackbarHostState.showSnackbar("No project to export")
+                                            // Share failed silently — zip file still exists in cache
                                         }
                                     }
-                                },
+                                }
+                            }
+                            InventExportCard(
+                                onExportZip = onExportZip,
                                 colors = colors
                             )
                         }
