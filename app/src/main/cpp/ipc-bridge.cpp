@@ -11,6 +11,7 @@
 #include <thread>
 #include <android/log.h>
 #include <fstream>
+#include <algorithm>
 
 #ifdef __aarch64__
 #include <sched.h>
