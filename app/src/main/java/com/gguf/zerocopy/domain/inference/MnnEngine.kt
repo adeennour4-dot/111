@@ -140,7 +140,13 @@ class MnnEngine : InferenceEngine {
           override fun onKvCacheUsage(p: Int) { callback.onKvUsage(p); kvUsage = p }
           override fun onTokensGenerated(c: Int) { callback.onTokensGenerated(c); tokensGenerated.set(c) }
         }
-        mnnExecuteInference(fullPrompt, innerCb)
+        try {
+          mnnExecuteInference(fullPrompt, innerCb)
+        } catch (e: Exception) {
+          callback.onError("MNN inference error: ${e.message}")
+          callback.onDone()
+          return
+        }
 
         if (turnErr != null) { callback.onError(turnErr!!); callback.onDone(); return }
 
@@ -204,6 +210,7 @@ class MnnEngine : InferenceEngine {
       } catch (e: Exception) {
         inferenceDone.set(true)
         callback.onError(e.message ?: "MNN inference failed")
+        callback.onDone()
       }
     }
   }
