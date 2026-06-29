@@ -36,6 +36,7 @@ data class InventUiState(
     val model2Name: String = "",
     val researcherName: String = "",
     val offlineMode: Boolean = false,
+    val sameModelMode: Boolean = false,
     val error: String = ""
 )
 
@@ -47,7 +48,6 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     private val _ui = MutableStateFlow(InventUiState())
     val ui: StateFlow<InventUiState> = _ui
 
-    // expose for delete confirm toggle from screen
     fun setShowDeleteConfirm(v: Boolean) { _ui.value = _ui.value.copy(showDeleteConfirm = v) }
 
     private var sessionState: InventSessionState? = null
@@ -60,10 +60,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         model1Path: String, model1Name: String,
         model2Path: String, model2Name: String,
         researcherPath: String, researcherName: String,
-        offlineMode: Boolean
+        offlineMode: Boolean,
+        sameModelMode: Boolean
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            // Resume existing incomplete session if present
             val existing = InventStorage.listSessions(ctx).firstOrNull()
             if (existing != null) {
                 val saved = InventStorage.loadSession(ctx, existing)
@@ -80,6 +80,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                         model2Name = saved.model2Name,
                         researcherName = saved.researcherName,
                         offlineMode = saved.offlineMode,
+                        sameModelMode = saved.sameModelMode,
                         fileTree = savedZcp.fileTree,
                         searchRound = saved.searchRound,
                         mergeCount = saved.mergeCount
@@ -88,9 +89,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
-            // Read context sizes from GGUF headers — pure file parsing, no model needed
-            val m1Ctx = GgufMetaReader.readContextLength(model1Path)
-            val m2Ctx = GgufMetaReader.readContextLength(model2Path)
+            // Context size from GGUF header; TFLite models return 0 → default 2048
+            val m1Ctx = GgufMetaReader.readContextLength(model1Path).let { if (it <= 0) 2048 else it }
+            val m2Ctx = if (sameModelMode) m1Ctx
+                        else GgufMetaReader.readContextLength(model2Path).let { if (it <= 0) 2048 else it }
 
             sessionId = UUID.randomUUID().toString().take(8)
             zcp = ZcpProtocol(model2ContextSize = m2Ctx, offlineMode = offlineMode)
@@ -100,13 +102,14 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 phase = InventPhase.QUESTIONING,
                 model1Path = model1Path,
                 model1Name = model1Name,
-                model2Path = model2Path,
-                model2Name = model2Name,
+                model2Path = if (sameModelMode) model1Path else model2Path,
+                model2Name = if (sameModelMode) model1Name else model2Name,
                 researcherPath = researcherPath,
                 researcherName = researcherName,
                 model1ContextSize = m1Ctx,
                 model2ContextSize = m2Ctx,
-                offlineMode = offlineMode
+                offlineMode = offlineMode,
+                sameModelMode = sameModelMode
             )
 
             InventStorage.saveSession(ctx, sessionState!!)
@@ -116,9 +119,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 phase = InventPhase.QUESTIONING,
                 sessionId = sessionId,
                 model1Name = model1Name,
-                model2Name = model2Name,
+                model2Name = if (sameModelMode) model1Name else model2Name,
                 researcherName = researcherName,
-                offlineMode = offlineMode
+                offlineMode = offlineMode,
+                sameModelMode = sameModelMode
             )
 
             startModel1Questioning()
@@ -138,8 +142,8 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         setSwap("")
 
         val firstQuestion = runInference(
-            systemPrompt = buildModel1SystemPrompt(zcp.model2ContextSize),
-            userMessage = "Start by asking the user the first question about their project. ONE question only."
+            systemPrompt = buildQuestioningPrompt(),
+            userMessage = "Hi! I want to build a software project and need your help planning it. Please start by asking me the first question — one question only."
         )
         addMessage("model1", firstQuestion, InventPhase.QUESTIONING)
     }
@@ -156,19 +160,29 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun handleQuestioningReply(userText: String) {
+        val history = buildConversationHistory()
         val response = runInference(
-            systemPrompt = buildModel1SystemPrompt(zcp.model2ContextSize),
+            systemPrompt = buildQuestioningPrompt(),
             userMessage = userText,
-            history = buildConversationHistory()
+            history = history
         )
-        if (response.contains("[INFO_COMPLETE]", ignoreCase = true) ||
-            response.contains("[READY_TO_SEARCH]", ignoreCase = true)) {
-            addMessage("model1",
-                response.replace("[INFO_COMPLETE]", "").replace("[READY_TO_SEARCH]", "").trim(),
-                InventPhase.QUESTIONING)
+
+        // Check if the model signals it has enough info (from explicit trigger or keywords)
+        val lowerResp = response.lowercase()
+        val isDone = response.contains("[INFO_COMPLETE]", ignoreCase = true) ||
+            response.contains("[READY_TO_SEARCH]", ignoreCase = true) ||
+            (lowerResp.contains("have all") && lowerResp.contains("information")) ||
+            (lowerResp.contains("ready to") && (lowerResp.contains("plan") || lowerResp.contains("search")))
+
+        val cleaned = response
+            .replace("[INFO_COMPLETE]", "", ignoreCase = true)
+            .replace("[READY_TO_SEARCH]", "", ignoreCase = true)
+            .trim()
+
+        addMessage("model1", cleaned, InventPhase.QUESTIONING)
+
+        if (isDone) {
             triggerSearchPhase()
-        } else {
-            addMessage("model1", response, InventPhase.QUESTIONING)
         }
     }
 
@@ -183,9 +197,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         updatePhase(InventPhase.SEARCHING)
         val state = sessionState ?: return
 
+        // Switch to planning prompt now that we have enough context
         val zcpRaw = runInference(
-            systemPrompt = buildModel1SystemPrompt(zcp.model2ContextSize),
-            userMessage = "Based on everything discussed, write the complete ZCP protocol. Include §APP, §IDEA, §VIABLE, all §SEARCH intents, and §TREE blocks.",
+            systemPrompt = buildPlanningPrompt(zcp.model2ContextSize),
+            userMessage = "Based on everything we discussed, write the complete ZCP protocol now. Include §APP, §IDEA, §VIABLE, all §SEARCH intents, and §TREE blocks.",
             history = buildConversationHistory()
         )
 
@@ -239,7 +254,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             setSwap("")
 
             val reviewResponse = runInference(
-                systemPrompt = buildModel1SystemPrompt(zcp.model2ContextSize),
+                systemPrompt = buildPlanningPrompt(zcp.model2ContextSize),
                 userMessage = "Search results:\n$extracted\n\nDo you have all info needed? If yes output [SEARCH_DONE]. If not, output new §SEARCH blocks only."
             )
 
@@ -275,7 +290,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
         val usableCtx = (zcp.model2ContextSize * 0.7).toInt()
         val plan = runInference(
-            systemPrompt = buildModel1SystemPrompt(zcp.model2ContextSize),
+            systemPrompt = buildPlanningPrompt(zcp.model2ContextSize),
             userMessage = "You have all information. Write the complete project file tree using §TREE blocks. Then write implementation plan in §CHUNK{n:1} §CHUNK{n:2} sections, each max $usableCtx tokens."
         )
 
@@ -296,13 +311,26 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun loadModel2ForConfirmation() {
         val state = sessionState ?: return
         updatePhase(InventPhase.CONFIRMING)
-        setSwap("Loading ${state.model2Name}…")
-        withContext(Dispatchers.IO) {
-            engineManager.unloadAll()
-            engineManager.selectEngineForFormat(state.model2Path)
-            engineManager.getActiveEngine()?.loadModel(state.model2Path)
+
+        // In same-model mode the planner IS the coder — no separate load needed
+        val isSame = state.sameModelMode || state.model1Path == state.model2Path
+        if (!isSame) {
+            setSwap("Loading ${state.model2Name}…")
+            withContext(Dispatchers.IO) {
+                engineManager.unloadAll()
+                engineManager.selectEngineForFormat(state.model2Path)
+                engineManager.getActiveEngine()?.loadModel(state.model2Path)
+            }
+            setSwap("")
+        } else {
+            setSwap("Loading ${state.model1Name} (coder role)…")
+            withContext(Dispatchers.IO) {
+                engineManager.unloadAll()
+                engineManager.selectEngineForFormat(state.model1Path)
+                engineManager.getActiveEngine()?.loadModel(state.model1Path)
+            }
+            setSwap("")
         }
-        setSwap("")
 
         val understanding = runInference(
             systemPrompt = "You are a senior software engineer. Read the project spec and describe exactly what you will build — files, architecture, implementation approach. Be specific. Follow the spec exactly.",
@@ -423,17 +451,37 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── Prompt Builders ───────────────────────────────────────────────────────
 
-    private fun buildModel1SystemPrompt(model2Ctx: Int): String = """
-You are a project planning AI. Gather all information about a software project through conversation.
-Ask ONE question at a time. Cover: platform, language/framework, core idea, main features, unique point.
-When you have complete information, output [INFO_COMPLETE] then write ZCP.
+    /**
+     * Lightweight conversational prompt for the QUESTIONING phase.
+     * No ZCP schema here — small models stop following a conversation when they
+     * see the output format in the same prompt.
+     */
+    private fun buildQuestioningPrompt(): String = """
+You are a friendly software project advisor. Your job is to understand what the user wants to build.
 
-ZCP format:
+Rules:
+- Ask ONE short, clear question at a time. Never ask multiple questions at once.
+- Listen carefully to the answers before asking the next question.
+- Topics to cover (in any natural order): what the app does, who it's for, which platform (Android/Web/iOS/etc.), preferred language or framework, key features, anything that makes it unique.
+- Keep your questions conversational — like a developer colleague chatting, not a form.
+- Once you feel you have enough to plan the project (usually 5–8 questions), say something like "Great, I think I have everything I need. When you're ready, hit the search button and I'll start planning!"
+- Do NOT output JSON, ZCP, or any structured format during this phase.
+- Do NOT list multiple questions. ONE question only per turn.
+""".trimIndent()
+
+    /**
+     * Full ZCP-aware prompt used only during SEARCHING, PLANNING, and CONFIRMING phases.
+     */
+    private fun buildPlanningPrompt(model2Ctx: Int): String = """
+You are a senior software architect and project planner.
+
+ZCP output format:
 §APP{name:X|platform:X|language:X|framework:X}
 §IDEA{core:X|features:X,Y,Z|unique:X}
 §VIABLE{status:yes/no|note:X}
 §SEARCH{topic:X|platform:X|question:X|category:X}
 §TREE{path:X|type:dir/file|desc:X}
+§CHUNK{n:1}...implementation details...§CHUNK{n:2}...
 
 Model 2 context: $model2Ctx tokens. Chunk plan to fit ${(model2Ctx * 0.7).toInt()} tokens per §CHUNK.
 """.trimIndent()
@@ -470,8 +518,21 @@ Model 2 context: $model2Ctx tokens. Chunk plan to fit ${(model2Ctx * 0.7).toInt(
         append("<|user|>\n$user\n<|assistant|>\n")
     }
 
+    /**
+     * Maps internal roles to standard prompt roles so the model's KV cache
+     * doesn't get corrupted by unknown role tokens like <|model1|>.
+     * "model1" / "model2" / "researcher" → "assistant"
+     * "user" → "user"
+     * "system" messages are skipped (already baked into system prompt)
+     */
     private fun buildConversationHistory(): List<Pair<String, String>> =
-        _ui.value.messages.takeLast(10).map { it.role to it.content }
+        _ui.value.messages
+            .filter { it.role != "system" }
+            .takeLast(10)
+            .map { msg ->
+                val role = if (msg.role == "user") "user" else "assistant"
+                role to msg.content
+            }
 
     // ── Parsers ───────────────────────────────────────────────────────────────
 
