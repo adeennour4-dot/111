@@ -61,6 +61,9 @@ import com.gguf.zerocopy.ui.settings.SettingsScreen
 import com.gguf.zerocopy.ui.theme.ZeroCopyTheme
 import com.gguf.zerocopy.ui.theme.currentPalette
 import com.gguf.zerocopy.ui.welcome.WelcomeScreen
+import com.gguf.zerocopy.ui.invent.InventSetupScreen
+import com.gguf.zerocopy.ui.invent.InventScreen
+import androidx.compose.material.icons.outlined.Lightbulb
 import kotlinx.coroutines.delay
 
 data class NavItem(val label: String, val icon: ImageVector)
@@ -69,7 +72,8 @@ private val navItems = listOf(
   NavItem("Chat", Icons.Outlined.Chat),
   NavItem("Models", Icons.Outlined.SmartToy),
   NavItem("Server", Icons.Outlined.Dns),
-  NavItem("Settings", Icons.Filled.Settings)
+  NavItem("Settings", Icons.Filled.Settings),
+  NavItem("Invent", Icons.Outlined.Lightbulb)
 )
 
 class MainActivity : ComponentActivity() {
@@ -103,6 +107,14 @@ fun AppRoot() {
   var currentSessionId by remember { mutableStateOf<String?>(SettingsManager.currentSessionId.ifEmpty { null }) }
   var selectedTab by rememberSaveable { mutableIntStateOf(0) }
   var showSessionList by remember { mutableStateOf(false) }
+  var inventStarted by remember { mutableStateOf(false) }
+  var inventModel1Path by remember { mutableStateOf("") }
+  var inventModel1Name by remember { mutableStateOf("") }
+  var inventModel2Path by remember { mutableStateOf("") }
+  var inventModel2Name by remember { mutableStateOf("") }
+  var inventResPath by remember { mutableStateOf("") }
+  var inventResName by remember { mutableStateOf("") }
+  var inventOffline by remember { mutableStateOf(false) }
 
   // Restore last session on startup
   LaunchedEffect(Unit) {
@@ -194,6 +206,27 @@ fun AppRoot() {
         )
         2 -> CloudScreen(onBack = { selectedTab = 0 })
         3 -> SettingsScreen(onBack = { selectedTab = 0 })
+        4 -> {
+          if (inventStarted) {
+            InventScreen(
+              model1Path = inventModel1Path, model1Name = inventModel1Name,
+              model2Path = inventModel2Path, model2Name = inventModel2Name,
+              researcherPath = inventResPath, researcherName = inventResName,
+              offlineMode = inventOffline,
+              onBack = { selectedTab = 0 }
+            )
+          } else {
+            InventSetupScreen(
+              onStart = { m1p, m1n, m2p, m2n, rp, rn, offline ->
+                inventModel1Path = m1p; inventModel1Name = m1n
+                inventModel2Path = m2p; inventModel2Name = m2n
+                inventResPath = rp; inventResName = rn
+                inventOffline = offline; inventStarted = true
+              },
+              onBack = { selectedTab = 0 }
+            )
+          }
+        }
       }
     }
   }
