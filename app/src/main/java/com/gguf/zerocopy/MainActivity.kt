@@ -102,8 +102,8 @@ fun AppRoot() {
   val app = ZeroCopyApp.instance
   var showSplash by remember { mutableStateOf(true) }
   var showWelcome by rememberSaveable { mutableStateOf(!SettingsManager.welcomeDone) }
-  var loadedModelPath by remember { mutableStateOf(SettingsManager.lastModelPath) }
-  var loadedModelName by remember { mutableStateOf(SettingsManager.lastModelName) }
+  var loadedModelPath by remember { mutableStateOf("") }
+  var loadedModelName by remember { mutableStateOf("") }
   var currentSessionId by remember { mutableStateOf<String?>(SettingsManager.currentSessionId.ifEmpty { null }) }
   var selectedTab by rememberSaveable { mutableIntStateOf(0) }
   var showSessionList by remember { mutableStateOf(false) }
@@ -116,15 +116,6 @@ fun AppRoot() {
   var inventResName by remember { mutableStateOf("") }
   var inventOffline by remember { mutableStateOf(false) }
   var inventSameModel by remember { mutableStateOf(false) }
-
-  // Restore last session on startup
-  LaunchedEffect(Unit) {
-    val lastSessionId = SettingsManager.currentSessionId
-    if (lastSessionId.isNotEmpty() && app.chatRepository.sessionExists(lastSessionId)) {
-      currentSessionId = lastSessionId
-      app.chatRepository.selectSession(lastSessionId)
-    }
-  }
 
   if (showSplash) {
     SplashScreen(onDone = { showSplash = false })

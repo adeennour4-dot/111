@@ -520,22 +520,22 @@ private fun ModelCard(
               fontFamily = FontFamily.Monospace
             )
           }
-          if (isLoaded) {
-            Spacer(Modifier.width(8.dp))
-            Surface(
-              shape = RoundedCornerShape(4.dp),
-              color = colors.Accent2.copy(alpha = 0.2f)
-            ) {
-              Text(
-                "LOADED",
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                fontSize = 9.sp,
-                color = colors.Accent2,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold
-              )
-            }
-          }
+        }
+      }
+      if (isLoaded) {
+        IconButton(
+          onClick = {
+            val engine = ZeroCopyApp.instance.engineManager.getActiveEngine()
+            if (engine?.loadedModelPath == model.path) engine?.unloadModel()
+          },
+          modifier = Modifier.size(36.dp)
+        ) {
+          Icon(
+            Icons.Filled.Delete,
+            "Unload",
+            tint = colors.Red.copy(alpha = 0.7f),
+            modifier = Modifier.size(18.dp)
+          )
         }
       }
     }
