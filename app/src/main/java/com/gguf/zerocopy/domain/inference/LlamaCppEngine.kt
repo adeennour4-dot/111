@@ -105,171 +105,86 @@ class LlamaCppEngine : InferenceEngine {
   //   • Calling restoreHistoryNative("[]") which wiped the ChatScreen context → crash
   //   • Calling executeWithCallbackNative twice on the same live context → undefined behaviour
   //
-  private fun runWithTools(userPrompt: String, callback: TokenCallback) {
-    // ── Auto-detect search intent and run search ──────────────────────────
-    // Small models (Gemma 3 1B, etc.) can't reliably output structured
-    // <tool_call> XML. Instead we detect search-like queries automatically
-    // and prepend results to the prompt as context — no tool call needed.
-    val searchContext = detectAndRunSearch(userPrompt)
-
-    // ── Augment system prompt with search results ─────────────────────────
-    val origSystemPrompt = systemPrompt
-    val augmentedSysPrompt = buildString {
-      if (origSystemPrompt.isNotEmpty()) appendLine(origSystemPrompt)
-      if (searchContext != null) {
-        appendLine()
-        appendLine("Here is up-to-date web search information:")
-        appendLine(searchContext)
-        appendLine()
-        appendLine("Use the above information to answer the user if relevant.")
-      }
+  private fun runWithTools(prompt: String, tm: ToolManager, callback: TokenCallback) {
+    val toolInstruction = buildString {
+      appendLine("You have access to tools. When you need real-time information, use a tool by")
+      appendLine("outputting ONLY a JSON block (no other text) in this exact format and then stop:")
+      appendLine("```json")
+      appendLine("{\"name\": \"tool_name\", \"arguments\": {\"key\": \"value\"}}")
+      appendLine("```")
+      appendLine("Available tools:")
+      appendLine(tm.getToolDefinitionsJson())
+      appendLine("After receiving a [Tool Result], answer the user using that information.")
     }
-    NativeBridge.setSystemPromptNative(augmentedSysPrompt)
+    val origSystemPrompt = systemPrompt
+    NativeBridge.setSystemPromptNative(
+      if (origSystemPrompt.isNotEmpty()) "$origSystemPrompt\n\n$toolInstruction" else toolInstruction
+    )
 
-    // ── Single inference round ────────────────────────────────────────────
+    var promptSuffix = ""
+    val MAX_ROUNDS = 4
+
     try {
-      val responseBuf = StringBuilder()
-      var turnErr: String? = null
+      for (round in 0 until MAX_ROUNDS) {
+        val fullPrompt = if (promptSuffix.isEmpty()) prompt else "$prompt\n$promptSuffix"
+        val responseBuf = StringBuilder()
+        var turnErr: String? = null
 
-      val innerCb = object : NativeBridge.TokenCallback {
-        override fun onToken(t: String) { responseBuf.append(t) }
-        override fun onDone() {}
-        override fun onError(e: String) { turnErr = e }
-        override fun onKvCacheUsage(p: Int) { callback.onKvUsage(p); kvUsage = p }
-        override fun onTokensGenerated(c: Int) { callback.onTokensGenerated(c); tokensGenerated.set(c) }
-      }
-      activeCallback = innerCb
-      try {
-        NativeBridge.executeWithCallbackNative(userPrompt, innerCb)
-      } catch (e: Exception) {
-        callback.onError("Inference error: ${e.message}")
-        callback.onDone()
-        return
-      } finally {
-        activeCallback = null
-      }
+        val innerCb = object : NativeBridge.TokenCallback {
+          override fun onToken(t: String) { responseBuf.append(t) }
+          override fun onDone() {}
+          override fun onError(e: String) { turnErr = e }
+          override fun onKvCacheUsage(p: Int) { callback.onKvUsage(p); kvUsage = p }
+          override fun onTokensGenerated(c: Int) { callback.onTokensGenerated(c); tokensGenerated.set(c) }
+        }
+        activeCallback = innerCb
+        try {
+          NativeBridge.executeWithCallbackNative(fullPrompt, innerCb)
+        } catch (e: Exception) {
+          callback.onError("Inference error: ${e.message}")
+          callback.onDone()
+          return
+        } finally {
+          activeCallback = null
+        }
 
-      if (turnErr != null) { callback.onError(turnErr!!); callback.onDone(); return }
+        if (turnErr != null) { callback.onError(turnErr!!); callback.onDone(); return }
 
-      // Stream the response
-      val response = responseBuf.toString().trim()
-      for (ch in response) {
-        if (inferenceAborted.get()) break
-        callback.onToken(ch.toString())
+        val response = responseBuf.toString()
+        val toolCall = tm.parseToolCall(response)
+
+        if (toolCall == null) {
+          // No tool call — stream the response and we're done
+          for (ch in response) {
+            if (inferenceAborted.get()) break
+            callback.onToken(ch.toString())
+          }
+          break
+        }
+
+        // Tool call detected — show status message
+        val query = toolCall.arguments.optString("query",
+          toolCall.arguments.keys().asSequence().firstOrNull()
+            ?.let { toolCall.arguments.optString(it) } ?: toolCall.name)
+        val status = "\n🔍 *Searching: \"$query\"…*\n\n"
+        for (ch in status) callback.onToken(ch.toString())
+        callback.onToolCall(toolCall.name, toolCall.arguments.toString())
+
+        try {
+          val result = tm.executeTool(toolCall)
+          promptSuffix += "\n[Tool Call]:\n" + response.trim() +
+            "\n[Tool Result for ${toolCall.name}]:\n" + result.result.trim() + "\n"
+        } catch (e: Exception) {
+          callback.onError("Tool execution failed: ${e.message}")
+          callback.onDone()
+          return
+        }
       }
     } finally {
       NativeBridge.setSystemPromptNative(origSystemPrompt)
     }
     callback.onDone()
   }
-
-  /**
-   * Detects whether the user message implies a web search, runs it,
-   * and returns a formatted results string (or null if no search needed).
-   */
-  private fun detectAndRunSearch(userPrompt: String): String? {
-    val lower = userPrompt.lowercase()
-    val triggers = listOf(
-      "search", "find", "look up", "google",
-      "what is", "what are", "who is", "who are",
-      "when", "where is", "where are",
-      "latest", "current", "news", "weather",
-      "price", "prices", "stock", "stocks",
-      "forecast", "today", "now",
-      "how much", "how many", "tell me about"
-    )
-    if (!triggers.any { lower.contains(it) }) return null
-
-    // Extract a concise query from the message
-    var query = userPrompt.trim()
-      .replace(Regex("^(?:search\\s+(?:for\\s+)?|find\\s+|look\\s+up\\s+|google\\s+)", RegexOption.IGNORE_CASE), "")
-      .trim()
-      .take(200)
-    if (query.length < 3) query = userPrompt.take(200)
-
-    return try {
-      val encoded = java.net.URLEncoder.encode(query, "UTF-8")
-      val results = fetchDuckDuckGo(encoded)
-      if (results.isNotBlank()) results else null
-    } catch (_: Exception) { null }
-  }
-
-  /**
-   * Fetches web results from DuckDuckGo (lite API first, HTML fallback).
-   * Called on background thread (from within runWithTools which is on Dispatchers.IO).
-   */
-  private fun fetchDuckDuckGo(encoded: String): String {
-    val lite = fetchDdgLite(encoded)
-    if (lite.isNotBlank()) return lite
-    return fetchDdgHtml(encoded)
-  }
-
-  private fun openDdgConn(url: String): java.net.HttpURLConnection =
-    (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
-      requestMethod = "GET"
-      connectTimeout = 10_000
-      readTimeout = 10_000
-      instanceFollowRedirects = true
-      setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
-      setRequestProperty("Accept", "text/html,*/*;q=0.8")
-      setRequestProperty("Connection", "close")
-    }
-
-  private fun fetchDdgLite(encoded: String): String {
-    val conn = openDdgConn("https://lite.duckduckgo.com/lite/?q=$encoded")
-    if (conn.responseCode != 200) { conn.disconnect(); return "" }
-    val html = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-    conn.disconnect()
-    return formatDdgResults(parseDdgLinks(html, "result-link", "result-snippet"), 5)
-  }
-
-  private fun fetchDdgHtml(encoded: String): String {
-    val conn = openDdgConn("https://html.duckduckgo.com/html/?q=$encoded")
-    if (conn.responseCode != 200) { conn.disconnect(); return "" }
-    val html = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-    conn.disconnect()
-    return formatDdgResults(parseDdgLinks(html, "result__a", "result__snippet"), 5)
-  }
-
-  private data class DdgResult(val title: String, val url: String, val snippet: String)
-
-  private fun parseDdgLinks(html: String, linkClass: String, snipClass: String): List<DdgResult> {
-    val linkPat = Regex("""<a[^>]+class="$linkClass"[^>]*href="([^"]+)"[^>]*>(.*?)</a>""", RegexOption.DOT_MATCHES_ALL)
-    val snipPat = Regex("""<[^>]+class="$snipClass"[^>]*>(.*?)</[^>]+>""", RegexOption.DOT_MATCHES_ALL)
-    val links = linkPat.findAll(html).toList()
-    val snips = snipPat.findAll(html).toList()
-    val results = mutableListOf<DdgResult>()
-    for (i in links.indices) {
-      val title = stripHtml(links[i].groupValues[2]).trim()
-      if (title.isEmpty()) continue
-      var url = decodeHtml(links[i].groupValues[1])
-      if ("uddg=" in url) {
-        url = try { java.net.URLDecoder.decode(url.substringAfter("uddg=").substringBefore("&"), "UTF-8") }
-        catch (_: Exception) { url }
-      }
-      val snip = snips.getOrNull(i)?.let { stripHtml(it.groupValues[1]).trim() } ?: ""
-      results.add(DdgResult(title, url, snip))
-    }
-    return results
-  }
-
-  private fun formatDdgResults(results: List<DdgResult>, max: Int): String {
-    if (results.isEmpty()) return ""
-    return results.take(max).joinToString("\n---\n") { r ->
-      buildString {
-        appendLine(r.title)
-        appendLine("URL: ${r.url}")
-        if (r.snippet.isNotEmpty()) appendLine(r.snippet)
-      }
-    }
-  }
-
-  private fun stripHtml(s: String) = s.replace(Regex("<[^>]+>"), "").let { decodeHtml(it) }
-
-  private fun decodeHtml(s: String) = s
-    .replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
-    .replace("&quot;", "\"").replace("&#39;", "'").replace("&nbsp;", " ")
-    .replace(Regex("&#(\\d+);")) { it.groupValues[1].toIntOrNull()?.toChar()?.toString() ?: it.value }
 
   private fun buildHistoryJson(history: List<Pair<String, String>>): String {
     val arr = JSONArray()
@@ -292,22 +207,11 @@ class LlamaCppEngine : InferenceEngine {
       inferenceDone.set(false)
       tokensGenerated.set(0)
 
-      val webSearchEnabled = com.gguf.zerocopy.data.local.SettingsManager.webSearchEnabled
-      if (webSearchEnabled) {
-        // Auto-search strategy: detect search intent from user message,
-        // run web search if needed, feed results as system prompt context.
-        // No tool call output required from the model.
-        val alreadyWrapped = prompt.startsWith("<|system|") ||
-          prompt.startsWith("<|im_start|") ||
-          prompt.startsWith("<|begin_of_text|") ||
-          prompt.contains("\n<|user|>\n") ||
-          prompt.contains("\n<|im_start|>user\n")
-        if (!alreadyWrapped) {
-          runWithTools(prompt, callback)
-          inferenceDone.set(true)
-          return@withContext
-        }
-        // fall through — prompt is already fully formatted, run directly
+      val tm = _toolManager
+      if (tm != null) {
+        runWithTools(prompt, tm, callback)
+        inferenceDone.set(true)
+        return@withContext
       }
 
       val cb = object : NativeBridge.TokenCallback {

@@ -15,18 +15,22 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gguf.zerocopy.data.invent.FileNode
 import com.gguf.zerocopy.data.invent.InventMessage
 import com.gguf.zerocopy.data.invent.InventPhase
 import com.gguf.zerocopy.ui.theme.ZcPalette
 import com.gguf.zerocopy.ui.theme.currentPalette
+import android.content.Intent
+import android.net.Uri
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,6 +48,9 @@ fun InventScreen(
     val vm: InventViewModel = viewModel()
     val ui by vm.ui.collectAsState()
     val colors = currentPalette()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
     var inputText by remember { mutableStateOf("") }
 
@@ -89,6 +96,7 @@ fun InventScreen(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Surface)
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = colors.Bg
     ) { pad ->
         Box(Modifier.fillMaxSize().padding(pad)) {
@@ -166,6 +174,41 @@ fun InventScreen(
 
                     if (ui.phase == InventPhase.DONE && ui.fileTree.isNotEmpty()) {
                         item { InventFileTreeCard(ui.fileTree, colors) }
+                        item {
+                            InventExportCard(
+                                onExportZip = {
+                                    val zipFile = vm.exportProjectZip()
+                                    if (zipFile != null) {
+                                        try {
+                                            val uri = FileProvider.getUriForFile(
+                                                context,
+                                                "${context.packageName}.fileprovider",
+                                                zipFile
+                                            )
+                                            context.startActivity(
+                                                Intent.createChooser(
+                                                    Intent(Intent.ACTION_SEND).apply {
+                                                        type = "application/zip"
+                                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                    },
+                                                    "Export Project as ZIP"
+                                                )
+                                            )
+                                        } catch (_: Exception) {
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("Failed to share zip file")
+                                            }
+                                        }
+                                    } else {
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar("No project to export")
+                                        }
+                                    }
+                                },
+                                colors = colors
+                            )
+                        }
                     }
 
                     if (ui.showSureButtons) {
@@ -499,6 +542,45 @@ fun InventInputBar(
                     Text("Done talking — start search & plan",
                         color = colors.Accent2.copy(if (!isGenerating) 1f else 0.4f),
                         fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun InventExportCard(onExportZip: () -> Unit, colors: ZcPalette) {
+    Surface(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = colors.Accent.copy(alpha = 0.06f),
+        border = BorderStroke(1.dp, colors.Accent.copy(alpha = 0.4f))
+    ) {
+        Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Filled.Folder, null, tint = colors.Accent, modifier = Modifier.size(28.dp))
+            Spacer(Modifier.height(8.dp))
+            Text("Project ready for export!", fontWeight = FontWeight.Bold,
+                color = colors.Text, fontFamily = FontFamily.Monospace, fontSize = 14.sp)
+            Spacer(Modifier.height(4.dp))
+            Text("Download a .zip with the full project structure",
+                color = colors.Text3, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+            Spacer(Modifier.height(12.dp))
+            Box(
+                Modifier.fillMaxWidth().height(44.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Brush.horizontalGradient(
+                        listOf(colors.Accent.copy(0.3f), colors.Accent2.copy(0.3f))
+                    ))
+                    .border(BorderStroke(1.dp, colors.Accent.copy(0.5f)), RoundedCornerShape(10.dp))
+                    .clickable { onExportZip() },
+                contentAlignment = Alignment.Center
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Download, null, tint = colors.Accent,
+                        modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Export .ZIP", color = colors.Accent, fontWeight = FontWeight.SemiBold,
+                        fontFamily = FontFamily.Monospace, fontSize = 14.sp)
                 }
             }
         }
