@@ -88,19 +88,19 @@ class LlamaCppEngine : InferenceEngine {
   }
 
   // ── Tool-aware agentic loop — delegates to shared ToolAwareInference ─────
-  private suspend fun runWithTools(prompt: String, tm: ToolManager, callback: TokenCallback) {
+  private fun runWithTools(prompt: String, tm: ToolManager, callback: TokenCallback) {
     ToolAwareInference.execute(
       userPrompt = prompt,
       originalSystemPrompt = systemPrompt,
       toolManager = tm,
       setSystemPrompt = { NativeBridge.setSystemPromptNative(it) },
-      runInference = { p, cb ->
+      runInference = { p, tokenSink, doneSignal ->
         val innerCb = object : NativeBridge.TokenCallback {
-          override fun onToken(t: String) { cb.onToken(t) }
-          override fun onDone() { cb.onDone() }
-          override fun onError(e: String) { cb.onError(e) }
-          override fun onKvCacheUsage(pct: Int) { cb.onKvUsage(pct); kvUsage = pct }
-          override fun onTokensGenerated(cnt: Int) { cb.onTokensGenerated(cnt); tokensGenerated.set(cnt) }
+          override fun onToken(t: String) { tokenSink.onToken(t) }
+          override fun onDone() { tokenSink.onDone(); doneSignal.signalDone() }
+          override fun onError(e: String) { tokenSink.onError(e); doneSignal.signalError(e) }
+          override fun onKvCacheUsage(pct: Int) { kvUsage = pct; tokenSink.onKvUsage(pct) }
+          override fun onTokensGenerated(cnt: Int) { tokensGenerated.set(cnt); tokenSink.onTokensGenerated(cnt) }
         }
         activeCallback = innerCb
         try {

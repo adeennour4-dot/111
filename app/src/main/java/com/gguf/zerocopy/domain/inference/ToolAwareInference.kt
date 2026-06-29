@@ -1,18 +1,22 @@
 package com.gguf.zerocopy.domain.inference
 
 import android.util.Log
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Shared tool-calling agentic loop used by ALL inference engines.
  *
  * Each engine provides:
- *  - [runInference] – a suspend function that runs a single inference round
- *    with the given prompt and streams results via the provided TokenCallback.
+ *  - [runInference] – runs a single inference round with the given prompt.
+ *    The lambda MUST call `onDone()` or `onError()` on the provided callback
+ *    when inference completes, and should return only after the callback has
+ *    fired (i.e., it is responsible for its own synchronization).
  *  - [setSystemPrompt] – sets the system prompt on the native/engine side.
  *
  * This utility handles the multi-round loop: inject tool definitions, run
  * inference, parse tool calls from the response, execute tools, and re-run
- * with results (up to [maxRounds] times).
+ * with results (up to [MAX_ROUNDS] times).
  */
 object ToolAwareInference {
 
@@ -22,23 +26,25 @@ object ToolAwareInference {
     /**
      * Execute the tool-aware agentic loop.
      *
-     * @param userPrompt           The user's message text.
-     * @param originalSystemPrompt The engine's current system prompt (will be
-     *                             restored after the loop).
-     * @param toolManager          The ToolManager with registered tools.
-     * @param setSystemPrompt      Sets the system prompt on the engine.
-     * @param runInference         Runs a single inference round with the given
-     *                             prompt and streams tokens to the callback.
-     * @param callback             The outer TokenCallback from ChatScreen.
-     * @param isAborted            A lambda that returns true if inference was
-     *                             aborted (e.g., by user pressing stop).
+     * The [runInference] lambda receives:
+     *  - `prompt` — the text to feed to the model
+     *  - `tokenSink` — a [TokenCallback] the engine MUST forward each token
+     *    to as they are generated (this buffers them inside the loop for
+     *    tool call parsing).
+     *  - `doneSignal` — an [InferenceDoneSignal] the engine MUST call
+     *    `signalDone()` or `signalError()` on exactly once when inference
+     *    completes. The lambda MUST NOT return before calling one of those.
+     *
+     * The [tokenSink] does NOT forward tokens to the outer [callback]; it
+     * buffers them internally for tool call parsing. The final response is
+     * delivered to [callback] after the loop ends.
      */
-    suspend fun execute(
+    fun execute(
         userPrompt: String,
         originalSystemPrompt: String,
         toolManager: ToolManager,
         setSystemPrompt: (String) -> Unit,
-        runInference: suspend (String, TokenCallback) -> Unit,
+        runInference: (prompt: String, tokenSink: TokenCallback, doneSignal: InferenceDoneSignal) -> Unit,
         callback: TokenCallback,
         isAborted: () -> Boolean = { false }
     ) {
@@ -75,19 +81,19 @@ object ToolAwareInference {
 
                 // ── Run one inference round, buffer all tokens ────────────
                 val responseBuf = StringBuilder()
-                var turnError: String? = null
+                val roundDone = InferenceDoneSignal()
 
-                val bufferCb = object : TokenCallback {
+                val tokenSink = object : TokenCallback {
                     override fun onToken(token: String) {
                         responseBuf.append(token)
                     }
 
                     override fun onDone() {
-                        // Nothing — we handle completion below
+                        // completion is signalled via roundDone, not here
                     }
 
                     override fun onError(error: String) {
-                        turnError = error
+                        // errors are signalled via roundDone, not here
                     }
 
                     override fun onKvUsage(percent: Int) {
@@ -104,7 +110,7 @@ object ToolAwareInference {
                 }
 
                 try {
-                    runInference(fullPrompt, bufferCb)
+                    runInference(fullPrompt, tokenSink, roundDone)
                 } catch (e: Exception) {
                     Log.e(TAG, "Inference round $round failed: ${e.message}")
                     callback.onError("Inference error: ${e.message}")
@@ -112,8 +118,21 @@ object ToolAwareInference {
                     return
                 }
 
-                if (turnError != null) {
-                    callback.onError(turnError!!)
+                // Wait for the engine to signal completion via the doneSignal.
+                // The engine's runInference lambda MUST call signalDone() or
+                // signalError() on the doneSignal and MUST NOT return before
+                // doing so.  If the engine fails to signal within 5 minutes,
+                // we time out.
+                val timedOut = !roundDone.await(5, TimeUnit.MINUTES)
+                if (timedOut) {
+                    Log.e(TAG, "Inference round $round timed out")
+                    callback.onError("Inference timed out")
+                    callback.onDone()
+                    return
+                }
+
+                if (roundDone.error != null) {
+                    callback.onError(roundDone.error!!)
                     callback.onDone()
                     return
                 }
@@ -159,15 +178,36 @@ object ToolAwareInference {
                     return
                 }
             }
-
-            if (!anyToolCall) {
-                // If we never made a tool call, no need to restore system prompt
-                // in a separate try/finally — we already streamed the response.
-            }
         } finally {
             setSystemPrompt(originalSystemPrompt)
         }
 
         callback.onDone()
     }
+
+    /**
+     * A lightweight one-shot signal that an inference round has completed.
+     * The engine's [runInference] lambda must call [signalDone] or [signalError]
+     * exactly once before returning.  [await] blocks until one of those is called
+     * (or the timeout expires).
+     */
+    class InferenceDoneSignal {
+        private val latch = CountDownLatch(1)
+        @Volatile var error: String? = null
+            private set
+
+        fun signalDone() {
+            latch.countDown()
+        }
+
+        fun signalError(msg: String) {
+            error = msg
+            latch.countDown()
+        }
+
+        fun await(timeout: Long, unit: TimeUnit): Boolean {
+            return latch.await(timeout, unit)
+        }
+    }
+}
 }

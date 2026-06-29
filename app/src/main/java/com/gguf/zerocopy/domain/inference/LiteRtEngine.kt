@@ -110,32 +110,27 @@ class LiteRtEngine : InferenceEngine {
               } catch (_: Exception) {}
             }
           },
-          runInference = { p, cb ->
-            val latch = CountDownLatch(1)
+          runInference = { p, tokenSink, doneSignal ->
             try {
               if (conversation == null) {
                 conversation = engine?.createConversation()
               }
               val msgCallback = object : MessageCallback {
                 override fun onMessage(message: Message) {
-                  cb.onToken(message.toString())
+                  tokenSink.onToken(message.toString())
                 }
                 override fun onDone() {
-                  cb.onDone()
-                  latch.countDown()
+                  tokenSink.onDone()
+                  doneSignal.signalDone()
                 }
                 override fun onError(t: Throwable) {
-                  cb.onError(t.message ?: "LiteRT-LM error")
-                  latch.countDown()
+                  tokenSink.onError(t.message ?: "LiteRT-LM error")
+                  doneSignal.signalError(t.message ?: "LiteRT-LM error")
                 }
               }
               conversation?.sendMessageAsync(p, msgCallback, emptyMap())
-              if (!latch.await(300, TimeUnit.SECONDS)) {
-                cb.onError("LiteRT-LM inference timed out")
-              }
             } catch (e: Exception) {
-              cb.onError(e.message ?: "LiteRT-LM error")
-              latch.countDown()
+              doneSignal.signalError(e.message ?: "LiteRT-LM error")
             }
           },
           callback = callback
