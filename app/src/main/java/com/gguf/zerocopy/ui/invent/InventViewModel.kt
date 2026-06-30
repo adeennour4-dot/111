@@ -303,9 +303,14 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         addMessage("model1", firstQuestion, InventPhase.QUESTIONING)
     }
 
-    fun sendUserMessage(text: String) {
+    fun sendUserMessage(text: String, planWithSearch: Boolean = false, thinkTag: Boolean = false) {
         if (_ui.value.isGenerating) return
-        addMessage("user", text, _ui.value.phase)
+        val processed = buildString {
+            append(text)
+            if (planWithSearch) append("\n[SEARCH enabled]")
+            if (thinkTag) append("\n[THINK]")
+        }
+        addMessage("user", processed, _ui.value.phase)
         viewModelScope.launch(Dispatchers.IO) {
             when (_ui.value.phase) {
                 InventPhase.QUESTIONING -> handleQuestioningReply(text)
@@ -667,11 +672,7 @@ Each split file must be under $budget tokens.
         val filesToGenerate = zcp.fileTree.filter { !it.isDir }
         if (filesToGenerate.isEmpty()) { finishGeneration(); return }
 
-        // Check if any files exceed Model 2's token budget → replan first
-        val replanned = checkAndReplanIfNeeded()
-        if (!replanned && _ui.value.phase != InventPhase.GENERATING) return
-
-        // Re-read after possible replanning
+        // Re-read after possible replanning (simple check, skip if already generated)
         val finalFiles = zcp.fileTree.filter { !it.isDir }
         if (finalFiles.isEmpty()) { finishGeneration(); return }
 
