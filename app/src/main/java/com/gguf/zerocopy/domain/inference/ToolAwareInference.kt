@@ -7,50 +7,20 @@ import java.util.concurrent.TimeUnit
 /**
  * Shared search-context injection helper used by ALL inference engines.
  *
- * This uses an **auto-detect + inject** strategy:
+ * When the search toggle is ON, EVERY user input is treated as a search query:
+ * 1. Run the web search via [ToolManager] with the user's input
+ * 2. If results come back, inject them into the system prompt
+ * 3. If search fails, inject a "search failed" note
+ * 4. Run inference — the model uses the injected context
  *
- * 1. Check the user message for search-like keywords
- * 2. If triggered, run the web search via [ToolManager]
- * 3. If the search returns useful results, inject them into the system prompt
- * 4. If the search FAILS, inject a "search failed" note so the model knows
- *    it was asked to search but couldn't, and should answer from its own knowledge
- * 5. Run a single normal inference round — the model uses the injected context
- *
- * No tool instruction is added to the prompt.  This works with EVERY model
- * regardless of tool-calling ability, which is exactly what the original
- * working code did in MnnEngine.
- *
- * If keywords are NOT detected, no augmentation happens and normal inference
- * proceeds as usual.
+ * No tool instruction is added. Works with EVERY model.
  */
 object ToolAwareInference {
 
     private const val TAG = "ToolAwareInference"
 
-    /** Keywords that signal a search / real-time-info query. */
-    private val SEARCH_TRIGGERS = listOf(
-        "search", "find", "look up", "google",
-        "what is", "what are", "who is", "who are",
-        "when did", "when was", "where is", "where are",
-        "latest", "current", "news", "weather",
-        "price", "prices", "stock", "stocks",
-        "forecast", "today", "now",
-        "how much", "how many", "tell me about",
-        "recent", "update", "status of"
-    )
-
     /**
-     * Result of the auto-detect + search phase.
-     */
-    sealed interface SearchOutcome {
-        data class TriggeredWithResults(val results: String) : SearchOutcome
-        data class TriggeredButFailed(val reason: String) : SearchOutcome
-        object NotTriggered : SearchOutcome
-    }
-
-    /**
-     * Execute search-context injection if the user message implies a need for
-     * real-time information.
+     * Execute search-context injection for every user message.
      *
      * @param userPrompt The raw user message.
      * @param originalSystemPrompt The engine's current system prompt.
@@ -69,47 +39,24 @@ object ToolAwareInference {
         callback: TokenCallback,
         isAborted: () -> Boolean = { false }
     ) {
-        // ── Auto-detect search intent ────────────────────────────────────
-        val outcome = detectAndRunSearch(userPrompt, toolManager)
+        // Always run search with the user's input as the query
+        val searchResults = runSearch(userPrompt, toolManager)
 
-        when (outcome) {
-            is SearchOutcome.TriggeredWithResults -> {
-                // Search succeeded — inject results with a strong instruction
-                val instruction = "Here is up-to-date web search information:\n${outcome.results}\n\nUse the above information to answer the user's question directly and completely. Do not just acknowledge it — give the actual answer."
-                val augmentedSysPrompt = if (originalSystemPrompt.isNotEmpty()) {
-                    "$originalSystemPrompt\n\n$instruction"
-                } else {
-                    instruction
-                }
-                setSystemPrompt(augmentedSysPrompt)
-                try {
-                    runSingleRound(userPrompt, runInference, callback, isAborted)
-                } finally {
-                    setSystemPrompt(originalSystemPrompt)
-                }
-            }
-            is SearchOutcome.TriggeredButFailed -> {
-                // Search was triggered but failed — inject a failure note so
-                // the model knows it was asked to search but couldn't, and
-                // should answer from its own knowledge instead of saying "okay".
-                val failureNote = "A web search was attempted for the user's question but returned no usable results (search may have failed, been rate-limited, or the query had nothing indexable). Do NOT say only \"okay\" or stop — answer the user's question as best you can from your own knowledge, and briefly mention that live search data wasn't available."
-                val augmentedSysPrompt = if (originalSystemPrompt.isNotEmpty()) {
-                    "$originalSystemPrompt\n\n$failureNote"
-                } else {
-                    failureNote
-                }
-                setSystemPrompt(augmentedSysPrompt)
-                try {
-                    runSingleRound(userPrompt, runInference, callback, isAborted)
-                } finally {
-                    setSystemPrompt(originalSystemPrompt)
-                }
-            }
-            SearchOutcome.NotTriggered -> {
-                // No search needed — run normal inference with the original
-                // system prompt (no augmentation).
-                runSingleRound(userPrompt, runInference, callback, isAborted)
-            }
+        val augmentedSysPrompt = if (searchResults != null) {
+            // Search succeeded — inject results
+            val instruction = "Here is up-to-date web search information:\n$searchResults\n\nUse the above information to answer the user's question directly and completely. Do not just acknowledge it — give the actual answer."
+            if (originalSystemPrompt.isNotEmpty()) "$originalSystemPrompt\n\n$instruction" else instruction
+        } else {
+            // Search failed — tell the model to answer from its own knowledge
+            val failureNote = "A web search was attempted for the user's question but returned no usable results. Do NOT say only \"okay\" or stop — answer the user's question as best you can from your own knowledge, and briefly mention that live search data wasn't available."
+            if (originalSystemPrompt.isNotEmpty()) "$originalSystemPrompt\n\n$failureNote" else failureNote
+        }
+
+        setSystemPrompt(augmentedSysPrompt)
+        try {
+            runSingleRound(userPrompt, runInference, callback, isAborted)
+        } finally {
+            setSystemPrompt(originalSystemPrompt)
         }
 
         callback.onDone()
@@ -117,11 +64,6 @@ object ToolAwareInference {
 
     // ── Single round runner ─────────────────────────────────────────────────
 
-    /**
-     * Run a single inference round and stream tokens LIVE to [callback] as
-     * they arrive. Tokens are forwarded immediately so the UI never appears
-     * stalled.
-     */
     private fun runSingleRound(
         prompt: String,
         runInference: (String, TokenCallback, InferenceDoneSignal) -> Unit,
@@ -132,7 +74,6 @@ object ToolAwareInference {
 
         val tokenSink = object : TokenCallback {
             override fun onToken(token: String) {
-                // Forward immediately — no buffering, no delay.
                 callback.onToken(token)
             }
             override fun onDone() { /* completion handled via roundDone */ }
@@ -144,7 +85,6 @@ object ToolAwareInference {
 
         runInference(prompt, tokenSink, roundDone)
 
-        // Wait for the engine to signal completion via the doneSignal.
         val timedOut = !roundDone.await(5, TimeUnit.MINUTES)
         if (timedOut) {
             Log.e(TAG, "Inference timed out")
@@ -155,50 +95,17 @@ object ToolAwareInference {
             callback.onError(roundDone.error!!)
             return
         }
-        // If aborted, the callback already received an onDone from the engine
-        // or the abort path; do not call it again.
     }
 
-    // ── Search detection and execution ──────────────────────────────────────
+    // ── Search execution ────────────────────────────────────────────────────
 
     /**
-     * Detects whether a search result string represents a genuinely empty
-     * or failed search (as opposed to real but short results).
+     * Run web search with the user's input as the query.
+     * Returns search results as a string, or null if search failed.
      */
-    private fun isEmptySearchResult(text: String): Boolean {
-        val t = text.trim().lowercase()
-        if (t.isEmpty()) return true
-        if (t.length < 12) return true // too short to be a real result block
-        val failureMarkers = listOf(
-            "no results found",
-            "web search failed",
-            "search timed out",
-            "error executing tool",
-            "empty search query"
-        )
-        return failureMarkers.any { t.contains(it) }
-    }
-
-    /**
-     * Detect whether the user message implies a web search, run it, and
-     * return a [SearchOutcome] indicating the result.
-     */
-    private fun detectAndRunSearch(userPrompt: String, toolManager: ToolManager): SearchOutcome {
-        val lower = userPrompt.lowercase()
-        if (!SEARCH_TRIGGERS.any { lower.contains(it) }) {
-            return SearchOutcome.NotTriggered
-        }
-
-        // Build a search query from the user message
-        val query = userPrompt.trim()
-            .replace(Regex("^(?:search\\s+(?:for\\s+)?|find\\s+|look\\s+up\\s+|google\\s+)", RegexOption.IGNORE_CASE), "")
-            .trim()
-            .take(200)
-            .ifEmpty { userPrompt.take(200) }
-
-        if (query.length < 3) {
-            return SearchOutcome.TriggeredButFailed("Query too short after stripping trigger words")
-        }
+    private fun runSearch(userPrompt: String, toolManager: ToolManager): String? {
+        val query = userPrompt.trim().take(200)
+        if (query.length < 2) return null
 
         val args = org.json.JSONObject().apply {
             put("query", query)
@@ -209,32 +116,25 @@ object ToolAwareInference {
         return try {
             val result = toolManager.executeTool(toolCall)
             val text = result.result.trim()
-            // If the search returned an error message or "No results found.",
-            // treat it as a failure.
             if (text.isBlank() ||
                 text.startsWith("Error", ignoreCase = true) ||
                 text.startsWith("Web search failed", ignoreCase = true) ||
                 text.startsWith("No results found", ignoreCase = true)
             ) {
-                Log.w(TAG, "Auto-search returned no useful results: $text")
-                SearchOutcome.TriggeredButFailed(text.ifBlank { "Empty search result" })
+                Log.w(TAG, "Search returned no useful results: $text")
+                null
             } else {
-                SearchOutcome.TriggeredWithResults(text)
+                Log.d(TAG, "Search returned ${text.length} chars")
+                text
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Auto-search failed: ${e.message}")
-            SearchOutcome.TriggeredButFailed(e.message ?: "Search exception")
+            Log.e(TAG, "Search failed: ${e.message}")
+            null
         }
     }
 
     // ── InferenceDoneSignal ────────────────────────────────────────────────
 
-    /**
-     * A lightweight one-shot signal that an inference round has completed.
-     * The engine's [runInference] lambda must call [signalDone] or [signalError]
-     * exactly once before returning.  [await] blocks until one of those is called
-     * (or the timeout expires).
-     */
     class InferenceDoneSignal {
         private val latch = CountDownLatch(1)
 
