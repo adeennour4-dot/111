@@ -387,15 +387,16 @@ private fun SamplingField(
             OutlinedTextField(
                 value = value,
                 onValueChange = onValue,
-                modifier = Modifier.fillMaxWidth().padding(start = 26.dp),
+                modifier = Modifier.fillMaxWidth().padding(start = 26.dp).height(44.dp),
                 singleLine = true,
-                textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
+                textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
                 placeholder = { Text(hint, fontSize = 10.sp, color = colors.Text3) },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
                     cursorColor = colors.Accent
                 ),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
             )
         }
     }

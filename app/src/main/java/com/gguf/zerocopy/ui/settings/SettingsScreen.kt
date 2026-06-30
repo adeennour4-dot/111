@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -557,7 +558,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         OutlinedTextField(
           value = serverAuthToken,
           onValueChange = { serverAuthToken = it },
-          modifier = Modifier.fillMaxWidth(),
+          modifier = Modifier.fillMaxWidth().height(46.dp),
           label = { Text("Auth Token", fontSize = 12.sp) },
           singleLine = true,
           visualTransformation = if (showToken) VisualTransformation.None
@@ -571,7 +572,7 @@ fun SettingsScreen(onBack: () -> Unit) {
               )
             }
           },
-          shape = RoundedCornerShape(10.dp),
+          shape = RoundedCornerShape(8.dp),
           colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = colors.Accent,
             unfocusedBorderColor = colors.Border,
@@ -579,7 +580,8 @@ fun SettingsScreen(onBack: () -> Unit) {
             unfocusedTextColor = colors.Text,
             cursorColor = colors.Accent
           ),
-          textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+          textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+          contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
         )
       }
 
@@ -725,10 +727,10 @@ fun SettingField(label: String, hint: String, value: String, onChange: (String) 
     OutlinedTextField(
       value = value,
       onValueChange = onChange,
-      modifier = Modifier.fillMaxWidth().height(48.dp),
+      modifier = Modifier.fillMaxWidth().height(46.dp),
       singleLine = true,
       keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-      shape = RoundedCornerShape(10.dp),
+      shape = RoundedCornerShape(8.dp),
       colors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = colors.Accent,
         unfocusedBorderColor = colors.Border,
@@ -736,7 +738,8 @@ fun SettingField(label: String, hint: String, value: String, onChange: (String) 
         unfocusedTextColor = colors.Text,
         cursorColor = colors.Accent
       ),
-      textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+      textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+      contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
     )
   }
 }
