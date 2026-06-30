@@ -200,7 +200,15 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             clearToolManagerOnEngines()
 
-            val existing = InventStorage.listSessions(ctx).firstOrNull()
+            // Find the most recent in-progress session (skip DONE/DEBUGGING for auto-load)
+            val existing = InventStorage.listSessions(ctx)
+                .mapNotNull { sid ->
+                    val s = InventStorage.loadSession(ctx, sid)
+                    if (s != null && s.phase != InventPhase.DONE && s.phase != InventPhase.DEBUGGING) sid to s else null
+                }
+                .sortedByDescending { (_, s) -> s.messages.lastOrNull()?.content?.length ?: 0 }
+                .firstOrNull()?.first
+
             if (existing != null) {
                 val saved = InventStorage.loadSession(ctx, existing)
                 val savedZcp = InventStorage.loadZcp(ctx, existing)
@@ -1211,6 +1219,17 @@ Each split file must be under $budget tokens.
 
         addMessage("system", "✓ Fixed $filePath. Tell me about any other bugs, or say 'done' to finish.", InventPhase.DEBUGGING)
         saveCurrentState()
+    }
+
+    fun startNewSession(onDone: () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            engineManager.unloadAll()
+            _ui.value = InventUiState()
+            sessionState = null
+            zcp = ZcpProtocol()
+            sessionId = ""
+            onDone()
+        }
     }
 
     fun onDeleteConfirmed() {

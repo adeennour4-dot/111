@@ -112,6 +112,10 @@ fun InventScreen(
                     }
                 },
                 actions = {
+                    // New session button
+                    IconButton(onClick = { vm.startNewSession(onModelsClick) }) {
+                        Icon(Icons.Outlined.Add, "New", tint = colors.Accent2)
+                    }
                     IconButton(onClick = { vm.toggleSessionList() }) {
                         Icon(Icons.Outlined.FolderOpen, "Sessions", tint = colors.Text3)
                     }
