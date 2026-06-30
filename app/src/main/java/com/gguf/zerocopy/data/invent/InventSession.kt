@@ -15,7 +15,9 @@ data class FileSpec(
     val imports: String = "",
     val classes: String = "",
     val functions: String = "",
-    val dependencies: List<String> = emptyList()
+    val dependencies: List<String> = emptyList(),
+    val estimatedTokens: Int = 0,
+    val continuationOf: String = ""
 )
 
 /** A debug/fix session: which file, what was wrong, what was changed. */
@@ -82,6 +84,7 @@ enum class InventPhase {
     PLANNING,
     CONFIRMING,
     GENERATING,
+    REPLANNING,
     DONE,
     DEBUGGING
 }
@@ -374,6 +377,8 @@ object InventStorage {
                     put("classes", spec.classes)
                     put("functions", spec.functions)
                     put("dependencies", JSONArray(spec.dependencies))
+                    if (spec.estimatedTokens > 0) put("estimatedTokens", spec.estimatedTokens)
+                    if (spec.continuationOf.isNotEmpty()) put("continuationOf", spec.continuationOf)
                 })
             }
             put("fileSpecs", specsObj)
@@ -431,7 +436,9 @@ object InventStorage {
                     imports = o.optString("imports", ""),
                     classes = o.optString("classes", ""),
                     functions = o.optString("functions", ""),
-                    dependencies = if (deps != null) (0 until deps.length()).map { deps.getString(it) } else emptyList()
+                    dependencies = if (deps != null) (0 until deps.length()).map { deps.getString(it) } else emptyList(),
+                    estimatedTokens = o.optInt("estimatedTokens", 0),
+                    continuationOf = o.optString("continuationOf", "")
                 )
             }
             m

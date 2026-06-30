@@ -77,6 +77,7 @@ fun InventScreen(
                                     InventPhase.SEARCHING -> "Researching"
                                     InventPhase.PLANNING, InventPhase.CONFIRMING -> "Planning"
                                     InventPhase.GENERATING -> "Generating"
+                                    InventPhase.REPLANNING -> "Resizing"
                                     InventPhase.DONE -> "Ready ✓"
                                     InventPhase.DEBUGGING -> "Fixing"
                                 }

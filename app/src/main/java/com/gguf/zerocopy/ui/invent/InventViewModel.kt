@@ -480,6 +480,163 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── Phase 4b: File-by-File Code Generation ────────────────────────────────
 
+    /** Rough token estimate: ~1 token per 4 chars, plus overhead per field. */
+    private fun estimateFileTokens(spec: FileSpec): Int {
+        val base = spec.description.length / 4
+        val imports = spec.imports.length / 4
+        val classes = spec.classes.length / 4
+        val funcs = spec.functions.length / 4
+        val deps = spec.dependencies.sumOf { it.length / 4 }
+        // Prompt overhead: ~120 tokens for the code gen template
+        // Dependency summaries: ~40 tokens per dependency
+        val overhead = 120 + spec.dependencies.size * 40
+        return base + imports + classes + funcs + deps + overhead
+    }
+
+    /**
+     * Before generating, check if any file spec exceeds Model 2's token budget.
+     * If so, enter REPLANNING: load Model 1 to split the oversized file into
+     * smaller files that together implement the same functionality.
+     */
+    private suspend fun checkAndReplanIfNeeded(): Boolean {
+        val state = sessionState ?: return false
+        val filesToGenerate = zcp.fileTree.filter { !it.isDir }
+        if (filesToGenerate.isEmpty()) return false
+
+        // Get Model 2's effective maxNewTokens
+        val m2Path = if (state.sameModelMode || state.model1Path == state.model2Path)
+            state.model1Path else state.model2Path
+        val perModelCfg = SettingsManager.getModelTokenConfig(m2Path)
+        val maxNew = perModelCfg?.maxNew ?: SettingsManager.maxTokens
+        // Safety margin: leave 256 tokens for the code gen prompt
+        val budget = maxNew - 256
+        if (budget <= 128) return false
+
+        // Find files that exceed the budget
+        val oversized = filesToGenerate.filter { node ->
+            val spec = zcp.fileSpecs[node.path] ?: FileSpec(path = node.path, description = node.description)
+            val est = estimateFileTokens(spec)
+            est > budget
+        }
+
+        if (oversized.isEmpty()) return false
+
+        // Enter replanning phase
+        updatePhase(InventPhase.REPLANNING)
+        val oversizedPaths = oversized.joinToString(", ") { it.path }
+        addMessage("system", "⚠ Some files exceed Model 2's token budget (max $maxNew tokens). Replanning: $oversizedPaths", InventPhase.REPLANNING)
+
+        setSwap("Replanning oversized files…")
+        val ok = loadOrKeepModel(state.model1Path)
+        if (!ok) { setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name} for replanning"); return false }
+        setSwap("")
+
+        // Build a focused prompt for Model 1: show the oversized file spec and ask for splits
+        val oversizedDetails = oversized.joinToString("\n\n") { node ->
+            val spec = zcp.fileSpecs[node.path] ?: FileSpec(path = node.path, description = node.description)
+            """
+[OVERSIZE] ${node.path}
+  Description: ${spec.description}
+  Imports: ${spec.imports}
+  Classes: ${spec.classes}
+  Functions: ${spec.functions}
+  Dependencies: ${spec.dependencies.joinToString(", ")}
+  Estimated tokens: ${estimateFileTokens(spec)} (budget: $budget)
+""".trimIndent()
+        }
+
+        val smallFiles = filesToGenerate.filter { node ->
+            val spec = zcp.fileSpecs[node.path] ?: FileSpec(path = node.path, description = node.description)
+            estimateFileTokens(spec) <= budget
+        }
+        val smallSummary = smallFiles.joinToString("\n") { "[OK] ${it.path}" }
+
+        val replanPrompt = """
+The following files in the project are too large for the coder model to generate in one pass.
+The coder can generate at most $budget tokens per file (context limit: $maxNew tokens).
+
+OVERSIZED FILES (need splitting):
+$oversizedDetails
+
+FILES THAT FIT (leave unchanged):
+$smallSummary
+
+Current file tree:
+${zcp.fileTree.joinToString("\n") { "  ${if (it.isDir) "[DIR]" else "[FILE]"} ${it.path}" }}
+
+For EACH oversized file above, split it into smaller files that together implement
+the same functionality. Output the COMPLETE new file tree including ALL files
+(small + unchanged + new split files). Then output a §FILEZCP block for EVERY
+file in the tree (including unchanged ones — copy their existing spec).
+
+Use exactly these formats:
+§TREE{path:X|type:dir/file|desc:X}
+§FILEZCP{path:X|description:X|imports:X|classes:X|functions:X|dependencies:Y,Z|estimatedTokens:N}
+
+IMPORTANT: The estimatedTokens field should reflect the NEW estimated size of each split file.
+Each split file must be under $budget tokens.
+""".trimIndent()
+
+        val replanResult = runInference(
+            systemPrompt = "You are a senior software architect. Split oversized files into smaller, focused files that each fit within the coder's token budget. Output ONLY the ZCP file tree and specs.",
+            userMessage = replanPrompt,
+            expectedModelPath = state.model1Path
+        )
+
+        // Parse the new file tree and specs
+        val newTree = parseFileTree(replanResult)
+        val newSpecs = parseFileSpecs(replanResult)
+
+        if (newTree.isEmpty()) {
+            // Parsing failed — log and continue with original plan
+            addMessage("system", "⚠ Replanning failed to produce a valid file tree — continuing with original plan.", InventPhase.REPLANNING)
+            withContext(Dispatchers.IO) { engineManager.unloadAll() }
+            updatePhase(InventPhase.GENERATING)
+            return false
+        }
+
+        // Merge: keep old specs for files that weren't changed, use new specs for everything
+        val mergedSpecs = mutableMapOf<String, FileSpec>()
+        newTree.filter { !it.isDir }.forEach { node ->
+            val newSpec = newSpecs[node.path]
+            if (newSpec != null) {
+                mergedSpecs[node.path] = newSpec
+            } else {
+                // Keep old spec if it exists and wasn't mentioned in the replan
+                val oldSpec = zcp.fileSpecs[node.path]
+                if (oldSpec != null) mergedSpecs[node.path] = oldSpec
+            }
+        }
+        // Also copy over any old specs for files that are still in the tree but not in newSpecs
+        zcp.fileSpecs.forEach { (path, spec) ->
+            if (newTree.any { it.path == path } && !mergedSpecs.containsKey(path)) {
+                mergedSpecs[path] = spec
+            }
+        }
+
+        zcp = zcp.copy(fileTree = newTree, fileSpecs = mergedSpecs)
+        InventStorage.saveZcp(ctx, sessionId, zcp)
+
+        addMessage("model1", replanResult, InventPhase.REPLANNING)
+        addMessage("system", "✅ File tree updated: ${newTree.count { !it.isDir }} files (${oversized.size} split, ${smallFiles.size} kept)", InventPhase.REPLANNING)
+
+        // Update UI
+        _ui.value = _ui.value.copy(
+            fileTree = newTree,
+            totalFiles = newTree.count { !it.isDir },
+            currentFileIndex = 0
+        )
+        sessionState = sessionState?.copy(
+            totalFiles = newTree.count { !it.isDir },
+            currentFileIndex = 0
+        )
+        saveCurrentState()
+
+        withContext(Dispatchers.IO) { engineManager.unloadAll() }
+        updatePhase(InventPhase.GENERATING)
+        return true
+    }
+
     private suspend fun startFileGeneration() {
         val state = sessionState ?: return
         updatePhase(InventPhase.GENERATING)
@@ -487,7 +644,15 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         val filesToGenerate = zcp.fileTree.filter { !it.isDir }
         if (filesToGenerate.isEmpty()) { finishGeneration(); return }
 
-        val totalFiles = filesToGenerate.size
+        // Check if any files exceed Model 2's token budget → replan first
+        val replanned = checkAndReplanIfNeeded()
+        if (!replanned && _ui.value.phase != InventPhase.GENERATING) return
+
+        // Re-read after possible replanning
+        val finalFiles = zcp.fileTree.filter { !it.isDir }
+        if (finalFiles.isEmpty()) { finishGeneration(); return }
+
+        val totalFiles = finalFiles.size
         sessionState = sessionState?.copy(totalFiles = totalFiles, currentFileIndex = 0)
         saveCurrentState()
         _ui.value = _ui.value.copy(totalFiles = totalFiles, currentFileIndex = 0, fileTree = zcp.fileTree)
@@ -502,7 +667,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
           File(projectDir, node.path).mkdirs()
         }
 
-        for ((idx, fileNode) in filesToGenerate.withIndex()) {
+        for ((idx, fileNode) in finalFiles.withIndex()) {
             if (_ui.value.phase != InventPhase.GENERATING) break
 
             val fileSpec = zcp.fileSpecs[fileNode.path] ?: FileSpec(path = fileNode.path, description = fileNode.description)
@@ -619,17 +784,28 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun resumeGeneration() {
         val filesToGenerate = zcp.fileTree.filter { !it.isDir }
         val startFrom = _ui.value.currentFileIndex.coerceAtLeast(0)
-        val totalFiles = filesToGenerate.size
         val state = sessionState ?: return
         val isSame = state.sameModelMode || state.model1Path == state.model2Path
         val targetPath = if (!isSame) state.model2Path else state.model1Path
         val targetName = if (!isSame) state.model2Name else state.model1Name
         val projectDir = InventStorage.getProjectDir(ctx, sessionId, zcp.projectName)
 
+        // Check remaining files for replanning
+        val remaining = filesToGenerate.drop(startFrom).filter { !zcp.generatedFiles.containsKey(it.path) }
+        if (remaining.isNotEmpty()) {
+            updatePhase(InventPhase.GENERATING)
+            val replanned = checkAndReplanIfNeeded()
+            if (!replanned && _ui.value.phase != InventPhase.GENERATING) return
+        }
+
+        // Re-read after possible replanning
+        val finalFiles = zcp.fileTree.filter { !it.isDir }
+        val finalStartFrom = _ui.value.currentFileIndex.coerceAtLeast(0)
+        val totalFiles = finalFiles.size
         _ui.value = _ui.value.copy(totalFiles = totalFiles)
 
-        for (idx in startFrom until filesToGenerate.size) {
-            val fileNode = filesToGenerate[idx]
+        for (idx in finalStartFrom until finalFiles.size) {
+            val fileNode = finalFiles[idx]
             if (_ui.value.phase != InventPhase.GENERATING) break
             if (zcp.generatedFiles.containsKey(fileNode.path)) continue
 
@@ -1198,7 +1374,9 @@ Model 2 (coder) context: $model2Ctx tokens.
                     imports = kv["imports"] ?: "",
                     classes = kv["classes"] ?: "",
                     functions = kv["functions"] ?: "",
-                    dependencies = (kv["dependencies"] ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                    dependencies = (kv["dependencies"] ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() },
+                    estimatedTokens = (kv["estimatedTokens"] ?: "0").toIntOrNull() ?: 0,
+                    continuationOf = kv["continuationOf"] ?: ""
                 )
             }
         }
