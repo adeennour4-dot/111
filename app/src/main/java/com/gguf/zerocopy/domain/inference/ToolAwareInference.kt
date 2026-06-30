@@ -7,25 +7,35 @@ import java.util.concurrent.TimeUnit
 /**
  * Shared search-context injection helper used by ALL inference engines.
  *
- * When search is ON, the system prompt is augmented to tell the model
- * it has web search available. The model decides when to search by
- * outputting a simple marker like [SEARCH: query]. If the model doesn't
- * search, it answers normally from its own knowledge.
+ * When search is ON, this auto-detects search intent from keywords
+ * and injects results into the system prompt. The model never needs
+ * to understand tool calling — it just sees search results as context.
  *
- * This works with small models because the instruction is minimal.
+ * Works with EVERY model regardless of size or capability.
  */
 object ToolAwareInference {
 
     private const val TAG = "ToolAwareInference"
 
-    /** Simple search marker that even small models can output. */
-    private val SEARCH_MARKER_REGEX = Regex("""\[SEARCH:\s*(.+?)]""", RegexOption.IGNORE_CASE)
+    /** Keywords that signal a search / real-time-info query. */
+    private val SEARCH_TRIGGERS = listOf(
+        "search", "find", "look up", "google",
+        "what is", "what are", "who is", "who are",
+        "when did", "when was", "where is", "where are",
+        "latest", "current", "news", "weather",
+        "price", "prices", "stock", "stocks",
+        "forecast", "today", "now",
+        "how much", "how many", "tell me about",
+        "recent", "update", "status of",
+        "can you", "do you know", "explain"
+    )
 
     /**
-     * Execute with search awareness. The system prompt tells the model
-     * about search capability. After inference, if the model output
-     * contains a search marker, we run the search and re-run inference
-     * with the results injected.
+     * Execute with search context injection.
+     *
+     * 1. Check if user message implies search (keyword detection)
+     * 2. If yes → run search → inject results into system prompt
+     * 3. If no → run normal inference
      */
     fun execute(
         userPrompt: String,
@@ -36,90 +46,33 @@ object ToolAwareInference {
         callback: TokenCallback,
         isAborted: () -> Boolean = { false }
     ) {
-        // Add search capability instruction to system prompt
-        val searchInstruction = buildString {
-            appendLine()
-            appendLine("You have access to web search for real-time information.")
-            appendLine("When the user asks about current prices, news, weather, facts that may have changed, or anything you're not sure about, you MUST search the web.")
-            appendLine("To search, output EXACTLY this format and nothing else:")
-            appendLine("[SEARCH: your search query here]")
-            appendLine("After you see search results, use them to answer the user.")
-            appendLine("If you already know the answer and it doesn't need current data, answer directly without searching.")
-        }
-        val augmentedSysPrompt = if (originalSystemPrompt.isNotEmpty()) {
-            "$originalSystemPrompt\n$searchInstruction"
+        // Auto-detect search intent from keywords
+        val lower = userPrompt.lowercase()
+        val needsSearch = SEARCH_TRIGGERS.any { lower.contains(it) }
+
+        if (needsSearch) {
+            // Run search and inject results
+            val searchResults = runSearch(userPrompt, toolManager)
+
+            val augmentedSysPrompt = if (searchResults != null) {
+                // Search succeeded — inject results
+                val instruction = "Here is up-to-date web search information:\n$searchResults\n\nUse the above information to answer the user's question directly and completely. Do not just acknowledge it — give the actual answer."
+                if (originalSystemPrompt.isNotEmpty()) "$originalSystemPrompt\n\n$instruction" else instruction
+            } else {
+                // Search failed — tell model to answer from knowledge
+                val failureNote = "A web search was attempted for the user's question but returned no usable results. Answer the user's question as best you can from your own knowledge, and briefly mention that live search data wasn't available."
+                if (originalSystemPrompt.isNotEmpty()) "$originalSystemPrompt\n\n$failureNote" else failureNote
+            }
+
+            setSystemPrompt(augmentedSysPrompt)
+            try {
+                runSingleRound(userPrompt, runInference, callback, isAborted)
+            } finally {
+                setSystemPrompt(originalSystemPrompt)
+            }
         } else {
-            searchInstruction.trimStart()
-        }
-
-        setSystemPrompt(augmentedSysPrompt)
-        try {
-            // Round 1: Run inference — model may output a search request
-            val responseBuf = StringBuilder()
-            val roundDone = InferenceDoneSignal()
-
-            val tokenSink = object : TokenCallback {
-                override fun onToken(token: String) {
-                    responseBuf.append(token)
-                    callback.onToken(token)
-                }
-                override fun onDone() {}
-                override fun onError(error: String) {}
-                override fun onKvUsage(percent: Int) { callback.onKvUsage(percent) }
-                override fun onTokensGenerated(count: Int) { callback.onTokensGenerated(count) }
-                override fun onToolCall(toolName: String, toolArgs: String) {}
-            }
-
-            runInference(userPrompt, tokenSink, roundDone)
-
-            val timedOut = !roundDone.await(5, TimeUnit.MINUTES)
-            if (timedOut) { callback.onError("Inference timed out"); return }
-            if (roundDone.error != null) { callback.onError(roundDone.error!!); return }
-            if (isAborted()) return
-
-            val response = responseBuf.toString()
-
-            // Check if model wants to search
-            val searchMatch = SEARCH_MARKER_REGEX.find(response)
-            if (searchMatch != null) {
-                // Model requested a search — run it
-                val query = searchMatch.groupValues[1].trim()
-                Log.d(TAG, "Model requested search: $query")
-
-                val searchResults = runSearch(query, toolManager)
-                if (searchResults != null) {
-                    // Re-run inference with search results in system prompt
-                    val resultsPrompt = "Here is up-to-date web search information:\n$searchResults\n\nUse the above information to answer the user's question directly and completely."
-                    val newSysPrompt = if (originalSystemPrompt.isNotEmpty()) {
-                        "$originalSystemPrompt\n\n$resultsPrompt"
-                    } else {
-                        resultsPrompt
-                    }
-                    setSystemPrompt(newSysPrompt)
-                    try {
-                        runSingleRound(userPrompt, runInference, callback, isAborted)
-                    } finally {
-                        setSystemPrompt(originalSystemPrompt)
-                    }
-                } else {
-                    // Search failed — tell model to answer from knowledge
-                    val failPrompt = "Web search failed or returned no results. Answer the user's question from your own knowledge and mention that live search data wasn't available."
-                    val newSysPrompt = if (originalSystemPrompt.isNotEmpty()) {
-                        "$originalSystemPrompt\n\n$failPrompt"
-                    } else {
-                        failPrompt
-                    }
-                    setSystemPrompt(newSysPrompt)
-                    try {
-                        runSingleRound(userPrompt, runInference, callback, isAborted)
-                    } finally {
-                        setSystemPrompt(originalSystemPrompt)
-                    }
-                }
-            }
-            // If no search marker, model already answered — nothing more to do
-        } finally {
-            setSystemPrompt(originalSystemPrompt)
+            // No search needed — run normal inference
+            runSingleRound(userPrompt, runInference, callback, isAborted)
         }
 
         callback.onDone()
@@ -134,8 +87,11 @@ object ToolAwareInference {
         isAborted: () -> Boolean
     ) {
         val roundDone = InferenceDoneSignal()
+
         val tokenSink = object : TokenCallback {
-            override fun onToken(token: String) { callback.onToken(token) }
+            override fun onToken(token: String) {
+                callback.onToken(token)
+            }
             override fun onDone() {}
             override fun onError(error: String) {}
             override fun onKvUsage(percent: Int) { callback.onKvUsage(percent) }
@@ -152,12 +108,18 @@ object ToolAwareInference {
 
     // ── Search execution ────────────────────────────────────────────────────
 
-    private fun runSearch(query: String, toolManager: ToolManager): String? {
-        val q = query.trim().take(200)
-        if (q.length < 2) return null
+    private fun runSearch(userPrompt: String, toolManager: ToolManager): String? {
+        // Build search query from user message
+        val query = userPrompt.trim()
+            .replace(Regex("^(?:search\\s+(?:for\\s+)?|find\\s+|look\\s+up\\s+|google\\s+)", RegexOption.IGNORE_CASE), "")
+            .trim()
+            .take(200)
+            .ifEmpty { userPrompt.take(200) }
+
+        if (query.length < 2) return null
 
         val args = org.json.JSONObject().apply {
-            put("query", q)
+            put("query", query)
             put("num_results", 5)
         }
         val toolCall = ToolCall("auto_${System.currentTimeMillis()}", "web_search", args)
