@@ -601,11 +601,10 @@ fun ChatScreen(
     } else "New Chat"
   }
 
-  // ── imePadding on the Scaffold makes the entire layout (including bottomBar)
-  //   slide up with the software keyboard. This works alongside adjustResize in
-  //   the Manifest and enableEdgeToEdge() in MainActivity.
+  // bottomBar gets imePadding so the InputBar slides above the keyboard.
+  // The Scaffold itself does NOT get imePadding — that would double with
+  // adjustResize in the Manifest and push content up twice.
   Scaffold(
-    modifier = Modifier.imePadding(),
     topBar = {
       Surface(color = colors.Bg) {
         Row(
@@ -656,7 +655,7 @@ fun ChatScreen(
       }
     },
     bottomBar = {
-      Column {
+      Column(modifier = Modifier.imePadding()) {
         if (messages.isEmpty() && !isInferring) {
           PromptSuggestions(suggestions = suggestions, onSelect = { text ->
             sendMessage(text, emptyList(), emptyList())

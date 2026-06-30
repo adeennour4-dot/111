@@ -206,7 +206,8 @@ fun AppRoot() {
               researcherPath = inventResPath, researcherName = inventResName,
               offlineMode = inventOffline,
               sameModelMode = inventSameModel,
-              onBack = { selectedTab = 0 }
+              onBack = { selectedTab = 0 },
+              onModelsClick = { selectedTab = 0 }
             )
           } else {
             InventSetupScreen(

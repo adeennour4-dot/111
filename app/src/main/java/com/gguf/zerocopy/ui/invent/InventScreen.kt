@@ -43,7 +43,8 @@ fun InventScreen(
     researcherName: String,
     offlineMode: Boolean,
     sameModelMode: Boolean,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onModelsClick: () -> Unit = onBack
 ) {
     val vm: InventViewModel = viewModel()
     val ui by vm.ui.collectAsState()
@@ -66,31 +67,61 @@ fun InventScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Invent", fontSize = 18.sp, fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace, color = colors.Text)
-                            if (ui.sessionId.isNotEmpty()) {
-                                Text(" / ${ui.sessionId.take(8)}", fontSize = 13.sp,
-                                    color = colors.Text3, fontFamily = FontFamily.Monospace)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("⚡", fontSize = 16.sp)
+                        Spacer(Modifier.width(6.dp))
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                val displayName = when (ui.phase) {
+                                    InventPhase.QUESTIONING -> "Let's Build"
+                                    InventPhase.SEARCHING -> "Researching"
+                                    InventPhase.PLANNING, InventPhase.CONFIRMING -> "Planning"
+                                    InventPhase.GENERATING -> "Generating"
+                                    InventPhase.DONE -> "Ready ✓"
+                                    InventPhase.DEBUGGING -> "Fixing"
+                                }
+                                Text(displayName, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace, color = colors.Text)
+                                if (ui.projectName.isNotEmpty()) {
+                                    Text("  /  ${ui.projectName.take(20)}", fontSize = 11.sp,
+                                        color = colors.Text3, fontFamily = FontFamily.Monospace)
+                                }
                             }
+                            Text("${phaseLabel(ui.phase)}  ·  ${ui.sessionId.take(6)}",
+                                fontSize = 9.sp, color = colors.Accent,
+                                fontFamily = FontFamily.Monospace)
                         }
-                        Text(phaseLabel(ui.phase), fontSize = 11.sp, color = colors.Accent,
-                            fontFamily = FontFamily.Monospace)
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, "Back", tint = colors.Text2)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.Filled.ArrowBack, "Back", tint = colors.Text2)
+                        }
+                        // Models button to go back & change models
+                        IconButton(onClick = onModelsClick) {
+                            Icon(Icons.Outlined.SmartToy, "Models", tint = colors.Accent2,
+                                modifier = Modifier.size(20.dp))
+                        }
                     }
                 },
                 actions = {
-                    // Session list toggle
                     IconButton(onClick = { vm.toggleSessionList() }) {
                         Icon(Icons.Outlined.FolderOpen, "Sessions", tint = colors.Text3)
                     }
-                    InventPhaseIndicator(ui.phase, colors.Accent, colors.Border)
-                    Spacer(Modifier.width(4.dp))
+                    // Token usage indicator
+                    if (ui.totalTokensUsed > 0) {
+                        Box(
+                            Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(colors.Accent.copy(alpha = 0.08f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text("${ui.totalTokensUsed} tok", fontSize = 9.sp,
+                                color = colors.Accent, fontFamily = FontFamily.Monospace)
+                        }
+                        Spacer(Modifier.width(4.dp))
+                    }
                     IconButton(onClick = { vm.setShowDeleteConfirm(true) }) {
                         Icon(Icons.Outlined.DeleteOutline, "Clear", tint = colors.Text3)
                     }
@@ -100,7 +131,7 @@ fun InventScreen(
         },
         containerColor = colors.Bg
     ) { pad ->
-        Box(Modifier.fillMaxSize().padding(pad)) {
+        Box(Modifier.fillMaxSize().padding(pad).imePadding()) {
 
             Column(Modifier.fillMaxSize()) {
 
@@ -500,7 +531,8 @@ fun DebugInputBar(
         border = BorderStroke(1.dp, colors.Amber.copy(0.5f)),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = text,
@@ -662,7 +694,8 @@ fun InventInputBar(text: String, onTextChange: (String) -> Unit, onSend: () -> U
                    onSearch: () -> Unit, isGenerating: Boolean, colors: ZcPalette) {
     Surface(color = colors.Surface, border = BorderStroke(1.dp, colors.Border),
         modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = text, onValueChange = onTextChange,
                     modifier = Modifier.weight(1f),

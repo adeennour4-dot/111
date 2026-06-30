@@ -667,7 +667,7 @@ fun SettingField(label: String, hint: String, value: String, onChange: (String) 
     OutlinedTextField(
       value = value,
       onValueChange = onChange,
-      modifier = Modifier.fillMaxWidth().height(52.dp),
+      modifier = Modifier.fillMaxWidth().height(48.dp),
       singleLine = true,
       keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
       shape = RoundedCornerShape(10.dp),
@@ -678,7 +678,7 @@ fun SettingField(label: String, hint: String, value: String, onChange: (String) 
         unfocusedTextColor = colors.Text,
         cursorColor = colors.Accent
       ),
-      textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+      textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace)
     )
   }
 }

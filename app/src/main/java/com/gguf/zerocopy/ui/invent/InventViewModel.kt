@@ -36,6 +36,7 @@ data class InventUiState(
     val totalFiles: Int = 0,
     val currentFileName: String = "",
     val sessionId: String = "",
+    val projectName: String = "",
     val model1Name: String = "",
     val model2Name: String = "",
     val researcherName: String = "",
@@ -44,6 +45,8 @@ data class InventUiState(
     val error: String = "",
     val zipReady: Boolean = false,
     val debugMode: Boolean = false,
+    // Token usage tracking
+    val totalTokensUsed: Int = 0,
     // Stats
     val totalLines: Int = 0,
     val totalGeneratedBytes: Long = 0,
@@ -986,12 +989,18 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             return@withContext "[No engine loaded]"
         }
 
+        var streamedTokens = 0
         val callback = object : TokenCallback {
             override fun onToken(token: String) { sb.append(token) }
-            override fun onDone() {}
+            override fun onDone() {
+                val current = _ui.value.totalTokensUsed
+                _ui.value = _ui.value.copy(totalTokensUsed = current + streamedTokens)
+            }
             override fun onError(error: String) { sb.append("[ERROR: $error]") }
             override fun onKvUsage(percent: Int) {}
-            override fun onTokensGenerated(count: Int) {}
+            override fun onTokensGenerated(count: Int) {
+                streamedTokens = count
+            }
         }
 
         try { engine.executeInference(fullPrompt, callback) }
@@ -1279,6 +1288,10 @@ Model 2 (coder) context: $model2Ctx tokens.
 
     private fun saveCurrentState() {
         sessionState?.let { InventStorage.saveSession(ctx, it) }
+        // Sync projectName from ZCP to UI
+        if (zcp.projectName.isNotEmpty() && _ui.value.projectName != zcp.projectName) {
+            _ui.value = _ui.value.copy(projectName = zcp.projectName)
+        }
     }
 
     override fun onCleared() {
