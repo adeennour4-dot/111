@@ -12,7 +12,9 @@ import java.util.concurrent.TimeUnit
  * 1. Check the user message for search-like keywords
  * 2. If triggered, run the web search via [ToolManager]
  * 3. If the search returns useful results, inject them into the system prompt
- * 4. Run a single normal inference round — the model uses the injected context
+ * 4. If the search FAILS, inject a "search failed" note so the model knows
+ *    it was asked to search but couldn't, and should answer from its own knowledge
+ * 5. Run a single normal inference round — the model uses the injected context
  *
  * No tool instruction is added to the prompt.  This works with EVERY model
  * regardless of tool-calling ability, which is exactly what the original
@@ -38,6 +40,15 @@ object ToolAwareInference {
     )
 
     /**
+     * Result of the auto-detect + search phase.
+     */
+    sealed interface SearchOutcome {
+        data class TriggeredWithResults(val results: String) : SearchOutcome
+        data class TriggeredButFailed(val reason: String) : SearchOutcome
+        object NotTriggered : SearchOutcome
+    }
+
+    /**
      * Execute search-context injection if the user message implies a need for
      * real-time information.
      *
@@ -59,35 +70,46 @@ object ToolAwareInference {
         isAborted: () -> Boolean = { false }
     ) {
         // ── Auto-detect search intent ────────────────────────────────────
-        val searchResults = detectAndRunSearch(userPrompt, toolManager)
+        val outcome = detectAndRunSearch(userPrompt, toolManager)
 
-        if (searchResults != null && !isAborted()) {
-            // Check whether the search genuinely returned useful data
-            // or an error / empty result.
-            val searchFailed = isEmptySearchResult(searchResults)
-            val augmentedSysPrompt = if (searchFailed) {
-                // Search failed — tell the model explicitly so it doesn't
-                // see "here is up-to-date info" then nothing useful and go
-                // silent. Instead, instruct it to answer from its own knowledge.
-                val failureNote = "A web search was attempted for the user's question but returned no usable results (search may have failed, been rate-limited, or the query had nothing indexable). Do NOT say only \"okay\" or stop — answer the user's question as best you can from your own knowledge, and briefly mention that live search data wasn't available."
-                if (originalSystemPrompt.isNotEmpty()) "$originalSystemPrompt\n\n$failureNote" else failureNote
-            } else {
+        when (outcome) {
+            is SearchOutcome.TriggeredWithResults -> {
                 // Search succeeded — inject results with a strong instruction
-                // to actually use them.
-                val instruction = "Here is up-to-date web search information:\n$searchResults\n\nUse the above information to answer the user's question directly and completely. Do not just acknowledge it — give the actual answer."
-                if (originalSystemPrompt.isNotEmpty()) "$originalSystemPrompt\n\n$instruction" else instruction
+                val instruction = "Here is up-to-date web search information:\n${outcome.results}\n\nUse the above information to answer the user's question directly and completely. Do not just acknowledge it — give the actual answer."
+                val augmentedSysPrompt = if (originalSystemPrompt.isNotEmpty()) {
+                    "$originalSystemPrompt\n\n$instruction"
+                } else {
+                    instruction
+                }
+                setSystemPrompt(augmentedSysPrompt)
+                try {
+                    runSingleRound(userPrompt, runInference, callback, isAborted)
+                } finally {
+                    setSystemPrompt(originalSystemPrompt)
+                }
             }
-            setSystemPrompt(augmentedSysPrompt)
-
-            try {
+            is SearchOutcome.TriggeredButFailed -> {
+                // Search was triggered but failed — inject a failure note so
+                // the model knows it was asked to search but couldn't, and
+                // should answer from its own knowledge instead of saying "okay".
+                val failureNote = "A web search was attempted for the user's question but returned no usable results (search may have failed, been rate-limited, or the query had nothing indexable). Do NOT say only \"okay\" or stop — answer the user's question as best you can from your own knowledge, and briefly mention that live search data wasn't available."
+                val augmentedSysPrompt = if (originalSystemPrompt.isNotEmpty()) {
+                    "$originalSystemPrompt\n\n$failureNote"
+                } else {
+                    failureNote
+                }
+                setSystemPrompt(augmentedSysPrompt)
+                try {
+                    runSingleRound(userPrompt, runInference, callback, isAborted)
+                } finally {
+                    setSystemPrompt(originalSystemPrompt)
+                }
+            }
+            SearchOutcome.NotTriggered -> {
+                // No search needed — run normal inference with the original
+                // system prompt (no augmentation).
                 runSingleRound(userPrompt, runInference, callback, isAborted)
-            } finally {
-                setSystemPrompt(originalSystemPrompt)
             }
-        } else {
-            // No search needed or search failed — run normal inference
-            // with the original system prompt (no augmentation).
-            runSingleRound(userPrompt, runInference, callback, isAborted)
         }
 
         callback.onDone()
@@ -159,11 +181,13 @@ object ToolAwareInference {
 
     /**
      * Detect whether the user message implies a web search, run it, and
-     * return formatted results (or null if no search needed or search failed).
+     * return a [SearchOutcome] indicating the result.
      */
-    private fun detectAndRunSearch(userPrompt: String, toolManager: ToolManager): String? {
+    private fun detectAndRunSearch(userPrompt: String, toolManager: ToolManager): SearchOutcome {
         val lower = userPrompt.lowercase()
-        if (!SEARCH_TRIGGERS.any { lower.contains(it) }) return null
+        if (!SEARCH_TRIGGERS.any { lower.contains(it) }) {
+            return SearchOutcome.NotTriggered
+        }
 
         // Build a search query from the user message
         val query = userPrompt.trim()
@@ -172,7 +196,9 @@ object ToolAwareInference {
             .take(200)
             .ifEmpty { userPrompt.take(200) }
 
-        if (query.length < 3) return null
+        if (query.length < 3) {
+            return SearchOutcome.TriggeredButFailed("Query too short after stripping trigger words")
+        }
 
         val args = org.json.JSONObject().apply {
             put("query", query)
@@ -191,13 +217,13 @@ object ToolAwareInference {
                 text.startsWith("No results found", ignoreCase = true)
             ) {
                 Log.w(TAG, "Auto-search returned no useful results: $text")
-                null
+                SearchOutcome.TriggeredButFailed(text.ifBlank { "Empty search result" })
             } else {
-                text
+                SearchOutcome.TriggeredWithResults(text)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Auto-search failed: ${e.message}")
-            null
+            SearchOutcome.TriggeredButFailed(e.message ?: "Search exception")
         }
     }
 
