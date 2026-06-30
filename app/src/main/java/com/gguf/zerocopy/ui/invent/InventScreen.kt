@@ -640,7 +640,8 @@ fun SessionPopup(
                     SessionFilesView(
                         files = zcpFileTree,
                         colors = colors,
-                        vm = vm
+                        vm = vm,
+                        onDismiss = onDismiss
                     )
                 } else {
                     // Show session list
@@ -712,7 +713,8 @@ fun SessionPopup(
 fun SessionFilesView(
     files: List<FileNode>,
     colors: ZcPalette,
-    vm: InventViewModel
+    vm: InventViewModel,
+    onDismiss: () -> Unit = {}
 ) {
     Column {
         // "Continue Inventing" button
