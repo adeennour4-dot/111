@@ -244,6 +244,15 @@ fun ModelListScreen(
           onSave = { ctx, maxNew ->
             SettingsManager.setModelTokenConfig(model.path, ctx, maxNew)
             tokenConfigModel = null
+            // Auto-reload if this model is currently loaded
+            if (loadedModelPath == model.path) {
+              reloading = true
+              scope.launch {
+                app.engineManager.unloadAll()
+                loadModel(model, onModelSelected)
+                reloading = false
+              }
+            }
           },
           onDismiss = { tokenConfigModel = null },
           onRemove = {

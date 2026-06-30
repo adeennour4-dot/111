@@ -641,9 +641,7 @@ fun ChatScreen(
           IconButton(onClick = onSettings) {
             Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = colors.Text2)
           }
-          IconButton(onClick = onCloud) {
-            Icon(Icons.Outlined.Cloud, contentDescription = "Cloud", tint = colors.Text2)
-          }
+            // Server icon removed per user request
           IconButton(
             onClick = { if (chatId != null) showExportDialog = true },
             enabled = chatId != null && messages.isNotEmpty()

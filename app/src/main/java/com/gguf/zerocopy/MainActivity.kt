@@ -152,43 +152,47 @@ fun AppRoot() {
       }
     }
   ) { innerPad ->
+    // All screens are always composed but only the selected one is visible.
+    // This preserves inference state when switching tabs (e.g., chat keeps running
+    // while you check Settings or Models).
     Box(modifier = Modifier.padding(innerPad).fillMaxSize()) {
-      when (selectedTab) {
-        0 -> {
-          if (showSessionList) {
-            SessionListScreen(
-              onSessionSelected = { session ->
-                // Reset inference engine context so previous session's KV cache doesn't bleed
-                app.engineManager.getActiveEngine()?.resetContext()
-                // Clear RAG document store from previous session
-                app.ragEngine.clear()
-                currentSessionId = session.id
-                SettingsManager.currentSessionId = session.id
-                if (session.modelPath.isNotEmpty()) { loadedModelPath = session.modelPath; loadedModelName = session.modelName }
-                showSessionList = false
-              },
-              onBack = { showSessionList = false }
-            )
-          } else {
-            ChatScreen(
-              modelPath = loadedModelPath, modelName = loadedModelName,
-              sessionId = currentSessionId,
-              onModelSelected = { path, name ->
-                loadedModelPath = path; loadedModelName = name
-                SettingsManager.lastModelPath = path; SettingsManager.lastModelName = name
-                if (currentSessionId != null && app.chatRepository.sessionExists(currentSessionId!!)) {
-                  val existing = app.chatRepository.sessions.value.find { it.id == currentSessionId }
-                  if (existing != null) app.chatRepository.renameSession(currentSessionId!!, "Chat - $name")
-                  else currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
-                } else currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
-              },
-              onSettings = { selectedTab = 3 },
-              onSessions = { app.chatRepository.refreshSessions(); showSessionList = true },
-              onCloud = { selectedTab = 2 }
-            )
-          }
+      // Tab 0: Chat (always composed so inference continues)
+      Box(modifier = Modifier.alpha(if (selectedTab == 0) 1f else 0f)) {
+        if (showSessionList) {
+          SessionListScreen(
+            onSessionSelected = { session ->
+              app.engineManager.getActiveEngine()?.resetContext()
+              app.ragEngine.clear()
+              currentSessionId = session.id
+              SettingsManager.currentSessionId = session.id
+              if (session.modelPath.isNotEmpty()) { loadedModelPath = session.modelPath; loadedModelName = session.modelName }
+              showSessionList = false
+            },
+            onBack = { showSessionList = false }
+          )
+        } else {
+          ChatScreen(
+            modelPath = loadedModelPath, modelName = loadedModelName,
+            sessionId = currentSessionId,
+            onModelSelected = { path, name ->
+              loadedModelPath = path; loadedModelName = name
+              SettingsManager.lastModelPath = path; SettingsManager.lastModelName = name
+              if (currentSessionId != null && app.chatRepository.sessionExists(currentSessionId!!)) {
+                val existing = app.chatRepository.sessions.value.find { it.id == currentSessionId }
+                if (existing != null) app.chatRepository.renameSession(currentSessionId!!, "Chat - $name")
+                else currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
+              } else currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
+            },
+            onSettings = { selectedTab = 3 },
+            onSessions = { app.chatRepository.refreshSessions(); showSessionList = true },
+            onCloud = { selectedTab = 2 }
+          )
         }
-        1 -> ModelListScreen(
+      }
+
+      // Tab 1: Models
+      Box(modifier = Modifier.alpha(if (selectedTab == 1) 1f else 0f)) {
+        ModelListScreen(
           onModelSelected = { path, name ->
             loadedModelPath = path; loadedModelName = name
             currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
@@ -196,30 +200,40 @@ fun AppRoot() {
           },
           onBack = { selectedTab = 0 }
         )
-        2 -> CloudScreen(onBack = { selectedTab = 0 })
-        3 -> SettingsScreen(onBack = { selectedTab = 0 })
-        4 -> {
-          if (inventStarted) {
-            InventScreen(
-              model1Path = inventModel1Path, model1Name = inventModel1Name,
-              model2Path = inventModel2Path, model2Name = inventModel2Name,
-              researcherPath = inventResPath, researcherName = inventResName,
-              offlineMode = inventOffline,
-              sameModelMode = inventSameModel,
-              onBack = { selectedTab = 0 },
-              onModelsClick = { selectedTab = 0 }
-            )
-          } else {
-            InventSetupScreen(
-              onStart = { m1p, m1n, m2p, m2n, rp, rn, offline, sameModel ->
-                inventModel1Path = m1p; inventModel1Name = m1n
-                inventModel2Path = m2p; inventModel2Name = m2n
-                inventResPath = rp; inventResName = rn
-                inventOffline = offline; inventSameModel = sameModel; inventStarted = true
-              },
-              onBack = { selectedTab = 0 }
-            )
-          }
+      }
+
+      // Tab 2: Cloud/Server
+      Box(modifier = Modifier.alpha(if (selectedTab == 2) 1f else 0f)) {
+        CloudScreen(onBack = { selectedTab = 0 })
+      }
+
+      // Tab 3: Settings
+      Box(modifier = Modifier.alpha(if (selectedTab == 3) 1f else 0f)) {
+        SettingsScreen(onBack = { selectedTab = 0 })
+      }
+
+      // Tab 4: Invent
+      Box(modifier = Modifier.alpha(if (selectedTab == 4) 1f else 0f)) {
+        if (inventStarted) {
+          InventScreen(
+            model1Path = inventModel1Path, model1Name = inventModel1Name,
+            model2Path = inventModel2Path, model2Name = inventModel2Name,
+            researcherPath = inventResPath, researcherName = inventResName,
+            offlineMode = inventOffline,
+            sameModelMode = inventSameModel,
+            onBack = { selectedTab = 0 },
+            onModelsClick = { selectedTab = 0 }
+          )
+        } else {
+          InventSetupScreen(
+            onStart = { m1p, m1n, m2p, m2n, rp, rn, offline, sameModel ->
+              inventModel1Path = m1p; inventModel1Name = m1n
+              inventModel2Path = m2p; inventModel2Name = m2n
+              inventResPath = rp; inventResName = rn
+              inventOffline = offline; inventSameModel = sameModel; inventStarted = true
+            },
+            onBack = { selectedTab = 0 }
+          )
         }
       }
     }

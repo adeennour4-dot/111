@@ -162,6 +162,36 @@ fun SettingsScreen(onBack: () -> Unit) {
     }
   }
 
+  /** Same as saveSettings() but also reloads the model to apply context/batch/GPU changes. */
+  fun saveAndReload() {
+    saveSettings()
+    val active = engineManager.getActiveEngine()
+    if (active?.isModelLoaded == true && active.loadedModelPath != null) {
+      val path = active.loadedModelPath!!
+      scope.launch(Dispatchers.IO) {
+        engineManager.unloadAll()
+        val eng = engineManager.selectEngineForFormat(path)
+        val cfg = InferenceConfig(
+          nCtx = SettingsManager.nCtx,
+          nBatch = SettingsManager.nBatch.coerceIn(512, 8192),
+          maxNewTokens = SettingsManager.maxTokens,
+          temperature = SettingsManager.temperature.coerceIn(0f, 2f),
+          topP = SettingsManager.topP.coerceIn(0f, 1f),
+          minP = SettingsManager.minP.coerceIn(0f, 1f),
+          nGpuLayers = SettingsManager.gpuLayers.coerceIn(0, 999),
+          nThreads = SettingsManager.threads.coerceIn(0, 16),
+          lowRamMode = SettingsManager.lowRamMode,
+          flashAttention = SettingsManager.flashAttention,
+          mmprojPath = SettingsManager.mmprojPath
+        )
+        eng.config = cfg
+        eng.repeatPenalty = SettingsManager.toRepeatPenalty()
+        eng.systemPrompt = SettingsManager.systemPrompt
+        eng.loadModel(path)
+      }
+    }
+  }
+
   BackHandler(onBack = {
     saveSettings()
     onBack()
@@ -558,8 +588,8 @@ fun SettingsScreen(onBack: () -> Unit) {
 
       Button(
         onClick = {
-          saveSettings()
-          scope.launch { snackbarHostState.showSnackbar("Settings saved") }
+          saveAndReload()
+          scope.launch { snackbarHostState.showSnackbar("Settings saved — model reloaded") }
         },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
