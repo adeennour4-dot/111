@@ -14,7 +14,9 @@ import android.speech.tts.TextToSpeech
 import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +38,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Settings
@@ -771,6 +775,35 @@ fun ChatScreen(
           },
           trackColor = colors.Border
         )
+      }
+      // Context limit warning banner
+      if (kvUsagePercent >= 85) {
+        Surface(
+          modifier = Modifier
+            .fillMaxWidth()
+            .align(Alignment.TopCenter)
+            .padding(top = 4.dp, start = 8.dp, end = 8.dp)
+            .clickable { onSettings() },
+          shape = RoundedCornerShape(8.dp),
+          color = colors.Red.copy(alpha = 0.08f),
+          border = BorderStroke(1.dp, colors.Red.copy(alpha = 0.3f))
+        ) {
+          Row(
+            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Icon(Icons.Filled.Warning, null, tint = colors.Red, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(6.dp))
+            Column(Modifier.weight(1f)) {
+              Text("Context limit approaching", fontSize = 10.sp,
+                color = colors.Red, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+              Text("Tap to increase context size in model settings",
+                fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+            }
+            Icon(Icons.Filled.Settings, null, tint = colors.Red.copy(0.6f),
+              modifier = Modifier.size(14.dp))
+          }
+        }
       }
       if (messages.isEmpty() && !isInferring) {
         Column(

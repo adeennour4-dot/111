@@ -919,9 +919,44 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         return withContext(Dispatchers.IO) {
             try {
                 engineManager.unloadAll()
-                engineManager.selectEngineForFormat(path)
-                engineManager.getActiveEngine()?.loadModel(path)?.isSuccess == true
+                val engine = engineManager.selectEngineForFormat(path)
+                // Apply per-model token config
+                val perModelCfg = SettingsManager.getModelTokenConfig(path)
+                if (perModelCfg != null) {
+                    val cfg = InferenceConfig(
+                        nCtx = perModelCfg.first,
+                        nBatch = SettingsManager.nBatch.coerceIn(512, 8192),
+                        maxNewTokens = perModelCfg.second.coerceAtMost(
+                            (perModelCfg.first - 64).coerceAtLeast(64)),
+                        temperature = SettingsManager.temperature.coerceIn(0f, 2f),
+                        topP = SettingsManager.topP.coerceIn(0f, 1f),
+                        minP = SettingsManager.minP.coerceIn(0f, 1f),
+                        nGpuLayers = SettingsManager.gpuLayers.coerceIn(0, 999),
+                        nThreads = SettingsManager.threads.coerceIn(0, 16),
+                        lowRamMode = SettingsManager.lowRamMode,
+                        flashAttention = SettingsManager.flashAttention,
+                        mmprojPath = SettingsManager.mmprojPath
+                    )
+                    engine.config = cfg
+                }
+                engine.loadModel(path)?.isSuccess == true
             } catch (e: Exception) { false }
+        }
+    }
+
+    private var lastCompactionNotified: Long = 0
+
+    private fun checkCompactionAndNotify(historySize: Int, compactedSize: Int, phase: InventPhase) {
+        if (compactedSize < historySize && phase == InventPhase.QUESTIONING) {
+            val now = System.currentTimeMillis()
+            if (now - lastCompactionNotified > 30_000) {  // at most once per 30s
+                lastCompactionNotified = now
+                val dropped = historySize - compactedSize
+                addMessage("system",
+                    "⚠ Context limit reached — $dropped oldest messages compacted. " +
+                    "Go to Models → gear icon ⚙ to increase context size.",
+                    phase)
+            }
         }
     }
 
@@ -942,7 +977,8 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        val fullPrompt = buildPrompt(systemPrompt, history, userMessage)
+        val (fullPrompt, compacted) = buildPromptWithInfo(systemPrompt, history, userMessage)
+        checkCompactionAndNotify(history.size, compacted, _ui.value.phase)
         val engine = engineManager.getActiveEngine()
 
         if (engine == null) {
@@ -1058,32 +1094,58 @@ Model 2 (coder) context: $model2Ctx tokens.
         appendLine("}")
     }
 
-    private fun buildPrompt(
+    /** Rough token estimate: ~3.5 chars per token for code/text. */
+    private fun estimateTokens(text: String): Int = (text.length / 3.5f).toInt() + 1
+
+    private fun buildPromptWithInfo(
         system: String,
         history: List<Pair<String, String>>,
         user: String
-    ): String = buildString {
-        appendLine("<|im_start|>system")
-        appendLine(system)
-        appendLine("<|im_end|>")
-        history.forEach { (role, content) ->
-            val mappedRole = if (role == "user") "user" else "assistant"
-            appendLine("<|im_start|>$mappedRole")
-            val truncated = if (content.length > 16_000) content.take(16_000) + "…" else content
-            appendLine(truncated)
-            appendLine("<|im_end|>")
+    ): Pair<String, Int> {
+        val availableCtx = SettingsManager.nCtx.coerceAtLeast(1024)
+        val maxNew = SettingsManager.maxTokens.coerceAtLeast(64)
+        val budget = availableCtx - maxNew - 256
+
+        var compactedHistory = history
+        val estimatedTotal = estimateTokens(system) + history.sumOf { (r, c) -> estimateTokens("$r $c") } + estimateTokens(user)
+        if (estimatedTotal > budget) {
+            val mutable = history.toMutableList()
+            while (mutable.isNotEmpty()) {
+                val testTotal = estimateTokens(system) + mutable.sumOf { (r, c) -> estimateTokens("$r $c") } + estimateTokens(user)
+                if (testTotal <= budget) break
+                if (mutable.size > 1) mutable.removeAt(0) else break
+            }
+            if (mutable.size < history.size) {
+                val droppedCount = history.size - mutable.size
+                mutable.add(0, "system" to "[Earlier conversation compacted — $droppedCount messages removed to fit context window]")
+            }
+            compactedHistory = mutable
         }
-        appendLine("<|im_start|>user")
-        val truncatedUser = if (user.length > 16_000) user.take(16_000) + "…" else user
-        appendLine(truncatedUser)
-        appendLine("<|im_end|>")
-        append("<|im_start|>assistant")
+
+        val prompt = buildString {
+            appendLine("<|im_start|>system")
+            appendLine(system)
+            appendLine("<|im_end|>")
+            compactedHistory.forEach { (role, content) ->
+                val mappedRole = if (role == "user") "user" else if (role == "system") "system" else "assistant"
+                appendLine("<|im_start|>$mappedRole")
+                val truncated = if (content.length > 16_000) content.take(16_000) + "…" else content
+                appendLine(truncated)
+                appendLine("<|im_end|>")
+            }
+            appendLine("<|im_start|>user")
+            val truncatedUser = if (user.length > 16_000) user.take(16_000) + "…" else user
+            appendLine(truncatedUser)
+            appendLine("<|im_end|>")
+            append("<|im_start|>assistant")
+        }
+        return prompt to compactedHistory.size
     }
 
     private fun buildConversationHistory(): List<Pair<String, String>> =
         _ui.value.messages
             .filter { it.role != "system" }
-            .takeLast(10)
+            .takeLast(20)
             .map { msg ->
                 val role = if (msg.role == "user") "user" else "assistant"
                 role to msg.content

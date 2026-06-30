@@ -54,6 +54,9 @@ object SettingsManager {
     prefs?.edit()?.putBoolean("compat_defaults_seeded", true)?.apply()
   }
 
+  // ── Per-Model Token Configs (stored as JSON map) ───────────────────────
+  // Each entry: path -> {"ctx": N, "maxNew": N}
+  // Global nCtx/maxTokens kept as defaults for models without per-model config.
   var nCtx: Int
     get() = prefs?.getInt("n_ctx", 2048) ?: 2048
     set(v) { prefs?.edit()?.putInt("n_ctx", v)?.apply() }
@@ -61,6 +64,58 @@ object SettingsManager {
   var maxTokens: Int
     get() = prefs?.getInt("max_tokens", 2048) ?: 2048
     set(v) { prefs?.edit()?.putInt("max_tokens", v)?.apply() }
+
+  private var _modelConfigsCache: MutableMap<String, Pair<Int, Int>>? = null
+
+  private fun loadModelConfigs(): MutableMap<String, Pair<Int, Int>> {
+    if (_modelConfigsCache != null) return _modelConfigsCache!!
+    val raw = prefs?.getString("model_token_configs", "{}") ?: "{}"
+    val map = mutableMapOf<String, Pair<Int, Int>>()
+    try {
+      val json = org.json.JSONObject(raw)
+      json.keys().forEach { key ->
+        val obj = json.getJSONObject(key)
+        val ctx = obj.optInt("ctx", 1024)
+        val maxNew = obj.optInt("maxNew", 1024)
+        map[key] = Pair(ctx, maxNew)
+      }
+    } catch (_: Exception) {}
+    _modelConfigsCache = map
+    return map
+  }
+
+  private fun saveModelConfigs(map: Map<String, Pair<Int, Int>>) {
+    try {
+      val json = org.json.JSONObject()
+      map.forEach { (path, pair) ->
+        json.put(path, org.json.JSONObject().apply {
+          put("ctx", pair.first)
+          put("maxNew", pair.second)
+        })
+      }
+      prefs?.edit()?.putString("model_token_configs", json.toString())?.apply()
+    } catch (_: Exception) {}
+  }
+
+  /** Get per-model token config, or null if not set (use global defaults). */
+  fun getModelTokenConfig(path: String): Pair<Int, Int>? {
+    val map = loadModelConfigs()
+    return map[path]
+  }
+
+  /** Set per-model token config. Default if not set: 1024 ctx, 1024 maxNew. */
+  fun setModelTokenConfig(path: String, context: Int, maxNewTokens: Int) {
+    val map = loadModelConfigs()
+    map[path] = Pair(context, maxNewTokens)
+    saveModelConfigs(map)
+  }
+
+  /** Remove per-model config (revert to global defaults). */
+  fun removeModelTokenConfig(path: String) {
+    val map = loadModelConfigs()
+    map.remove(path)
+    saveModelConfigs(map)
+  }
 
   var nBatch: Int
     get() = prefs?.getInt("n_batch", 512) ?: 512
@@ -218,20 +273,31 @@ object SettingsManager {
     get() = prefs?.getString("invent_researcher_name", "") ?: ""
     set(v) { prefs?.edit()?.putString("invent_researcher_name", v)?.apply() }
 
-  fun toConfig() = InferenceConfig(
-    nCtx = nCtx,
-    nBatch = nBatch.coerceIn(512, 8192),
-    maxNewTokens = maxTokens.coerceAtMost((nCtx - 512).coerceAtLeast(64)),
-    temperature = temperature.coerceIn(0f, 2f),
-    topP = topP.coerceIn(0f, 1f),
-    minP = minP.coerceIn(0f, 1f),
-    nGpuLayers = gpuLayers.coerceIn(0, 999),
-    nThreads = threads.coerceIn(0, 16),
-    lowRamMode = lowRamMode,
-    // Pass user preference; native code will further gate on i8mm CPU feature detection
-    flashAttention = flashAttention,
-    mmprojPath = mmprojPath
-  )
+  /** Build InferenceConfig, optionally applying per-model overrides. */
+  fun toConfig(modelPath: String? = null): InferenceConfig {
+    var ctx = nCtx
+    var maxNew = maxTokens
+    if (modelPath != null) {
+      val modelCfg = getModelTokenConfig(modelPath)
+      if (modelCfg != null) {
+        ctx = modelCfg.first
+        maxNew = modelCfg.second
+      }
+    }
+    return InferenceConfig(
+      nCtx = ctx,
+      nBatch = nBatch.coerceIn(512, 8192),
+      maxNewTokens = maxNew.coerceAtMost((ctx - 64).coerceAtLeast(64)),
+      temperature = temperature.coerceIn(0f, 2f),
+      topP = topP.coerceIn(0f, 1f),
+      minP = minP.coerceIn(0f, 1f),
+      nGpuLayers = gpuLayers.coerceIn(0, 999),
+      nThreads = threads.coerceIn(0, 16),
+      lowRamMode = lowRamMode,
+      flashAttention = flashAttention,
+      mmprojPath = mmprojPath
+    )
+  }
 
   fun toRepeatPenalty() = RepeatPenaltyConfig(
     repeatPenalty = repeatPenalty,

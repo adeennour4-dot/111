@@ -218,8 +218,31 @@ fun SettingsScreen(onBack: () -> Unit) {
         letterSpacing = 2.sp
       )
 
-      SettingField("Context Window", "512-32768", nCtx, { nCtx = it })
-      SettingField("Max Tokens", "64-8192", maxTok, { maxTok = it })
+      // Per-model token config (set via gear icon in Model list)
+      Surface(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = colors.Accent.copy(alpha = 0.05f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, colors.Accent.copy(0.2f))
+      ) {
+        Column(Modifier.padding(12.dp)) {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Settings, null, tint = colors.Accent,
+              modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Per-Model Token Config", fontSize = 12.sp, color = colors.Accent,
+              fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+          }
+          Spacer(Modifier.height(4.dp))
+          Text("Context window & max tokens are now set per model.",
+            fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+          Text("Go to Models → tap gear icon ⚙ on any model to configure.",
+            fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+          Text("Default: 1024 context / 1024 max tokens.",
+            fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+        }
+      }
+
       SettingField("Batch Size", "512-8192", batch, { batch = it })
       SettingField("GPU Layers", "99=GPU, 0=CPU", gpu, { gpu = it })
       SettingField("Threads", "0=auto, 1-16", threads, { threads = it })

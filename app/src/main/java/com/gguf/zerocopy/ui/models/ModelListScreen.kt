@@ -92,6 +92,8 @@ fun ModelListScreen(
   var longPressModel by remember { mutableStateOf<LocalModel?>(null) }
   var benchmarkResult by remember { mutableStateOf<BenchmarkResult?>(null) }
   var benchmarking by remember { mutableStateOf(false) }
+  var tokenConfigModel by remember { mutableStateOf<LocalModel?>(null) }
+  var reloading by remember { mutableStateOf(false) }
 
   val activeEngine = app.engineManager.getActiveEngine()
   val isModelLoaded = activeEngine?.isModelLoaded == true
@@ -210,16 +212,44 @@ fun ModelListScreen(
               model = model,
               isLoaded = isThisLoaded,
               onClick = { handleModelTap(model) },
-              onLongClick = { longPressModel = model }
+              onLongClick = { longPressModel = model },
+              onGearClick = { tokenConfigModel = model }
             )
           }
         }
       }
 
-      if (loading || isLoading) {
+      if (loading || isLoading || reloading) {
         CircularProgressIndicator(
           modifier = Modifier.align(Alignment.Center),
           color = colors.Accent
+        )
+      }
+
+      // ── Token config dialog ────────────────────────────────────────────
+      tokenConfigModel?.let { model ->
+        val deviceInfo = remember { app.deviceUtils.detect() }
+        val curCfg = model.path.let { path ->
+          SettingsManager.getModelTokenConfig(path)
+        }
+        val defaultCtx = curCfg?.first ?: 1024
+        val defaultMaxNew = curCfg?.second ?: 1024
+        val fileSizeMB = if (model.sizeBytes > 0) model.sizeBytes / (1024f * 1024f) else 100f
+        ModelTokenConfigDialog(
+          modelName = model.name,
+          modelFileSizeMB = fileSizeMB,
+          totalRamMB = deviceInfo.totalRamMB,
+          currentCtx = defaultCtx,
+          currentMaxNew = defaultMaxNew,
+          onSave = { ctx, maxNew ->
+            SettingsManager.setModelTokenConfig(model.path, ctx, maxNew)
+            tokenConfigModel = null
+          },
+          onDismiss = { tokenConfigModel = null },
+          onRemove = {
+            SettingsManager.removeModelTokenConfig(model.path)
+            tokenConfigModel = null
+          }
         )
       }
 
@@ -261,6 +291,22 @@ fun ModelListScreen(
               }
             )
           }
+          HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
+          DropdownMenuItem(
+            text = { Text("Reload", color = colors.Accent2, fontSize = 14.sp) },
+            onClick = {
+              longPressModel = null
+              reloading = true
+              scope.launch {
+                app.engineManager.unloadAll()
+                loadModel(model, onModelSelected)
+                reloading = false
+              }
+            },
+            leadingIcon = {
+              Icon(Icons.Filled.Refresh, null, tint = colors.Accent2, modifier = Modifier.size(18.dp))
+            }
+          )
           HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
           DropdownMenuItem(
             text = { Text("Delete", color = colors.Red, fontSize = 14.sp) },
@@ -438,7 +484,8 @@ private fun ModelCard(
   model: LocalModel,
   isLoaded: Boolean = false,
   onClick: () -> Unit,
-  onLongClick: () -> Unit = {}
+  onLongClick: () -> Unit = {},
+  onGearClick: () -> Unit = {}
 ) {
   val colors = currentPalette()
   val dateFormat = remember { SimpleDateFormat("MMM d", Locale.getDefault()) }
@@ -497,6 +544,18 @@ private fun ModelCard(
           }
         }
       }
+      // Gear icon for token config
+      IconButton(
+        onClick = onGearClick,
+        modifier = Modifier.size(36.dp)
+      ) {
+        Icon(
+          Icons.Filled.Settings,
+          "Token config",
+          tint = colors.Text3.copy(alpha = 0.6f),
+          modifier = Modifier.size(18.dp)
+        )
+      }
       if (isLoaded) {
         IconButton(
           onClick = {
@@ -547,18 +606,36 @@ private suspend fun loadModel(
   val app = ZeroCopyApp.instance
   val engine = app.engineManager.selectEngineForFormat(model.path)
 
-  // Recalculate config based on available RAM + model file size.
-  // This ensures that when the user switches to a big model,
-  // context and max tokens are scaled down; for small models
-  // they are scaled up (leaving room for search results).
+  // Use per-model token config from SettingsManager (default: 1024 ctx, 1024 maxNew).
+  // If no per-model config is set, fall back to device-suggested defaults.
   val deviceInfo = app.deviceUtils.detect()
   val estimatedParamsB = when {
-    model.sizeBytes <= 0L -> 4f  // unknown → assume 4B
+    model.sizeBytes <= 0L -> 4f
     else -> (model.sizeBytes.toFloat() / 512_000_000f).coerceIn(0.5f, 72f)
   }
-  val suggested = deviceInfo.suggestConfig(modelSizeB = estimatedParamsB)
 
-  val config = suggested
+  val perModelCfg = SettingsManager.getModelTokenConfig(model.path)
+  val config = if (perModelCfg != null) {
+    val ctx = perModelCfg.first
+    val maxNew = perModelCfg.second
+    InferenceConfig(
+      nCtx = ctx,
+      nBatch = SettingsManager.nBatch.coerceIn(512, 8192),
+      maxNewTokens = maxNew.coerceAtMost((ctx - 64).coerceAtLeast(64)),
+      temperature = SettingsManager.temperature.coerceIn(0f, 2f),
+      topP = SettingsManager.topP.coerceIn(0f, 1f),
+      minP = SettingsManager.minP.coerceIn(0f, 1f),
+      nGpuLayers = SettingsManager.gpuLayers.coerceIn(0, 999),
+      nThreads = SettingsManager.threads.coerceIn(0, 16),
+      lowRamMode = SettingsManager.lowRamMode,
+      flashAttention = SettingsManager.flashAttention,
+      mmprojPath = SettingsManager.mmprojPath
+    )
+  } else {
+    val suggested = deviceInfo.suggestConfig(modelSizeB = estimatedParamsB)
+    suggested
+  }
+
   val tunedConfig = if (model.format == "gguf") {
     val nativeCtx = com.gguf.zerocopy.domain.invent.GgufMetaReader.readContextLength(model.path)
     if (nativeCtx > 0 && (config.nCtx <= 0 || config.nCtx > nativeCtx)) {
@@ -571,9 +648,10 @@ private suspend fun loadModel(
   engine.systemPrompt = SettingsManager.systemPrompt
   engine.mmprojPath = SettingsManager.mmprojPath
 
-  Log.i("ModelList", "Auto-config for ${model.name}: " +
+  Log.i("ModelList", "Config for ${model.name}: " +
     "ctx=${tunedConfig.nCtx} maxTkns=${tunedConfig.maxNewTokens} " +
-    "ram=${deviceInfo.totalRamMB/1024}GB modelSize=${String.format("%.1f", estimatedParamsB)}B")
+    "ram=${deviceInfo.totalRamMB/1024}GB modelSize=${String.format("%.1f", estimatedParamsB)}B" +
+    if (perModelCfg != null) " (from per-model config)" else " (from device defaults)")
 
   withContext(Dispatchers.IO) {
     engine.loadModel(model.path)
