@@ -143,8 +143,9 @@ fun ChatScreen(
   var ragEnabled by remember { mutableStateOf(SettingsManager.ragEnabled) }
   var webSearchEnabled by remember { mutableStateOf(SettingsManager.webSearchEnabled) }
 
-  LaunchedEffect(webSearchEnabled) {
-    val eng = app.engineManager.getActiveEngine() ?: return@LaunchedEffect
+  // Set ToolManager on the active engine whenever search toggle OR engine changes
+  LaunchedEffect(webSearchEnabled, engine) {
+    val eng = engine ?: return@LaunchedEffect
     if (webSearchEnabled) {
       if (eng.getToolManager() == null) eng.setToolManager(ToolManager())
     } else {
