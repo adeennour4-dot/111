@@ -85,6 +85,7 @@ enum class InventPhase {
     CONFIRMING,
     GENERATING,
     REPLANNING,
+    FINALIZING,
     DONE,
     DEBUGGING
 }

@@ -78,6 +78,7 @@ fun InventScreen(
                                     InventPhase.PLANNING, InventPhase.CONFIRMING -> "Planning"
                                     InventPhase.GENERATING -> "Generating"
                                     InventPhase.REPLANNING -> "Resizing"
+                                    InventPhase.FINALIZING -> "Finalizing"
                                     InventPhase.DONE -> "Ready ✓"
                                     InventPhase.DEBUGGING -> "Fixing"
                                 }
@@ -173,6 +174,21 @@ fun InventScreen(
                         current = ui.currentFileIndex,
                         total = ui.totalFiles,
                         fileName = ui.currentFileName,
+                        colors = colors
+                    )
+                }
+
+                // Status bar (shows current model + process during FINALIZING / GENERATING)
+                AnimatedVisibility(
+                    visible = ui.phase == InventPhase.FINALIZING ||
+                              ui.phase == InventPhase.GENERATING ||
+                              ui.phase == InventPhase.REPLANNING ||
+                              ui.currentModelLabel.isNotEmpty()
+                ) {
+                    InventStatusBar(
+                        modelLabel = ui.currentModelLabel,
+                        processLabel = ui.processLabel,
+                        phase = ui.phase,
                         colors = colors
                     )
                 }
@@ -768,8 +784,49 @@ fun phaseLabel(phase: InventPhase) = when (phase) {
     InventPhase.PLANNING    -> "Planning"
     InventPhase.CONFIRMING  -> "Review"
     InventPhase.GENERATING  -> "Generating code"
+    InventPhase.REPLANNING  -> "Resizing files"
+    InventPhase.FINALIZING  -> "Reading project"
     InventPhase.DONE        -> "Done ✓"
     InventPhase.DEBUGGING   -> "Debugging"
+}
+
+@Composable
+fun InventStatusBar(
+    modelLabel: String,
+    processLabel: String,
+    phase: InventPhase,
+    colors: ZcPalette
+) {
+    if (modelLabel.isEmpty() && processLabel.isEmpty() && phase != InventPhase.FINALIZING) return
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = colors.Accent.copy(alpha = 0.06f),
+        shape = RoundedCornerShape(0.dp)
+    ) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (phase == InventPhase.FINALIZING || phase == InventPhase.GENERATING || phase == InventPhase.REPLANNING) {
+                Box(
+                    Modifier.size(6.dp).clip(RoundedCornerShape(3.dp)).background(colors.Accent2)
+                )
+            }
+            if (modelLabel.isNotEmpty()) {
+                Text(modelLabel, fontSize = 10.sp, color = colors.Accent2,
+                    fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1)
+            }
+            if (modelLabel.isNotEmpty() && processLabel.isNotEmpty()) {
+                Text("▸", fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+            }
+            if (processLabel.isNotEmpty()) {
+                Text(processLabel, fontSize = 10.sp, color = colors.Text2,
+                    fontFamily = FontFamily.Monospace, maxLines = 1)
+            }
+        }
+    }
 }
 
 private fun formatBytes(bytes: Long): String = when {
