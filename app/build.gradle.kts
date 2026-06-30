@@ -48,6 +48,55 @@ cFlags  ("-O3 -flto=thin -fstack-protector-strong")
         buildConfig = true
     }
 
+    // ── Product flavors ─────────────────────────────────────────────────────
+    // "standard"     — full performance build. Compile-time baseline assumes
+    //                  armv8.2-a+dotprod (safe for Exynos 9825, Exynos 2200,
+    //                  Snapdragon 8 Elite and basically every device released
+    //                  after ~2018). This is what most users should install.
+    //
+    // "compatibility" — maximum-safety build for old / unusual / low-end
+    //                  ARM64 devices where even dotprod at the compiler
+    //                  baseline level is a risk (custom ROMs, rare SoCs,
+    //                  very early arm64-v8a chips). Pure armv8-a baseline,
+    //                  zero compile-time CPU feature assumptions — every
+    //                  optimized code path is gated behind a runtime HWCAP
+    //                  check inside ggml/llama.cpp itself, so the binary
+    //                  degrades gracefully instead of hitting SIGILL.
+    //                  Also forces conservative runtime defaults (smaller
+    //                  context, fewer threads, flash attention off,
+    //                  GPU layers off) so first-run never OOMs either.
+    flavorDimensions += "compatibility"
+    productFlavors {
+        create("standard") {
+            dimension = "compatibility"
+            buildConfigField("boolean", "IS_COMPAT_BUILD", "false")
+            buildConfigField("int", "SAFE_DEFAULT_CTX", "4096")
+            buildConfigField("int", "SAFE_DEFAULT_THREADS", "4")
+            externalNativeBuild {
+                cmake {
+                    arguments("-DZC_ARCH_PROFILE=standard")
+                }
+            }
+        }
+        create("compatibility") {
+            dimension = "compatibility"
+            applicationIdSuffix = ".compat"
+            versionNameSuffix = "-compat"
+            resValue("string", "app_name", "ZeroCopy Compat")
+            buildConfigField("boolean", "IS_COMPAT_BUILD", "true")
+            // Lower default context + thread count so first launch on a
+            // 2-4 GB RAM device (Note 10 Lite class) can't OOM before the
+            // user even gets to Settings to tune it down themselves.
+            buildConfigField("int", "SAFE_DEFAULT_CTX", "2048")
+            buildConfigField("int", "SAFE_DEFAULT_THREADS", "2")
+            externalNativeBuild {
+                cmake {
+                    arguments("-DZC_ARCH_PROFILE=compatibility")
+                }
+            }
+        }
+    }
+
     externalNativeBuild {
         cmake {
             path    = file("src/main/cpp/CMakeLists.txt")
