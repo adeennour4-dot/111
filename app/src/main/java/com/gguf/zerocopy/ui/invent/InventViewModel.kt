@@ -924,25 +924,8 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 engineManager.unloadAll()
                 val engine = engineManager.selectEngineForFormat(path)
-                // Apply per-model token config
-                val perModelCfg = SettingsManager.getModelTokenConfig(path)
-                if (perModelCfg != null) {
-                    val cfg = InferenceConfig(
-                        nCtx = perModelCfg.ctx,
-                        nBatch = SettingsManager.nBatch.coerceIn(512, 8192),
-                        maxNewTokens = perModelCfg.maxNew.coerceAtMost(
-                            (perModelCfg.ctx - 64).coerceAtLeast(64)),
-                        temperature = SettingsManager.temperature.coerceIn(0f, 2f),
-                        topP = SettingsManager.topP.coerceIn(0f, 1f),
-                        minP = SettingsManager.minP.coerceIn(0f, 1f),
-                        nGpuLayers = perModelCfg.gpuLayers.coerceIn(0, 999),
-                        nThreads = SettingsManager.threads.coerceIn(0, 16),
-                        lowRamMode = SettingsManager.lowRamMode,
-                        flashAttention = SettingsManager.flashAttention,
-                        mmprojPath = SettingsManager.mmprojPath
-                    )
-                    engine.config = cfg
-                }
+                engine.config = SettingsManager.toConfig(path)
+                engine.repeatPenalty = SettingsManager.toRepeatPenalty()
                 engine.loadModel(path)?.isSuccess == true
             } catch (e: Exception) { false }
         }

@@ -15,7 +15,7 @@ data class InferenceConfig(
   val seed: Int = -1,
   val lowRamMode: Boolean = true,
   val flashAttention: Boolean = true,
-  val presencePenalty: Float = 0.1f,
+  val topK: Int = 40,
   val mmprojPath: String = ""
 )
 

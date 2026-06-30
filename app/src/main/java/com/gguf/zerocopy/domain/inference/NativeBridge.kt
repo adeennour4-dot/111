@@ -47,6 +47,7 @@ object NativeBridge {
     temperature: Float,
     topP: Float,
     minP: Float,
+    topK: Int,
     nGpuLayers: Int,
     nThreads: Int,
     seed: Int,

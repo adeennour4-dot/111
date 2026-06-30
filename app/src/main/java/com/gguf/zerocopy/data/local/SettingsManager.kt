@@ -65,8 +65,25 @@ object SettingsManager {
     get() = prefs?.getInt("max_tokens", 2048) ?: 2048
     set(v) { prefs?.edit()?.putInt("max_tokens", v)?.apply() }
 
-  /** Per-model config: context, maxNewTokens, gpuLayers */
-  data class ModelTokenConfig(val ctx: Int, val maxNew: Int, val gpuLayers: Int)
+  /** Per-model config overrides for ALL inference parameters.
+   *  Null fields mean "use global default from Settings". */
+  data class ModelTokenConfig(
+    val ctx: Int,
+    val maxNew: Int,
+    val gpuLayers: Int,
+    val temperature: Float? = null,
+    val topP: Float? = null,
+    val minP: Float? = null,
+    val topK: Int? = null,
+    val repeatPenalty: Float? = null,
+    val freqPenalty: Float? = null,
+    val presPenalty: Float? = null,
+    val seed: Int? = null,
+    val flashAttention: Boolean? = null,
+    val lowRamMode: Boolean? = null,
+    val threads: Int? = null,
+    val nBatch: Int? = null
+  )
 
   private var _modelConfigsCache: MutableMap<String, ModelTokenConfig>? = null
 
@@ -81,7 +98,21 @@ object SettingsManager {
         val ctx = obj.optInt("ctx", 1024)
         val maxNew = obj.optInt("maxNew", 1024)
         val gpuLayers = obj.optInt("gpuLayers", 0)
-        map[key] = ModelTokenConfig(ctx, maxNew, gpuLayers)
+        map[key] = ModelTokenConfig(
+          ctx = ctx, maxNew = maxNew, gpuLayers = gpuLayers,
+          temperature = if (obj.has("temperature")) obj.getDouble("temperature").toFloat() else null,
+          topP = if (obj.has("topP")) obj.getDouble("topP").toFloat() else null,
+          minP = if (obj.has("minP")) obj.getDouble("minP").toFloat() else null,
+          topK = if (obj.has("topK")) obj.optInt("topK") else null,
+          repeatPenalty = if (obj.has("repeatPenalty")) obj.getDouble("repeatPenalty").toFloat() else null,
+          freqPenalty = if (obj.has("freqPenalty")) obj.getDouble("freqPenalty").toFloat() else null,
+          presPenalty = if (obj.has("presPenalty")) obj.getDouble("presPenalty").toFloat() else null,
+          seed = if (obj.has("seed")) obj.optInt("seed") else null,
+          flashAttention = if (obj.has("flashAttention")) obj.optBoolean("flashAttention") else null,
+          lowRamMode = if (obj.has("lowRamMode")) obj.optBoolean("lowRamMode") else null,
+          threads = if (obj.has("threads")) obj.optInt("threads") else null,
+          nBatch = if (obj.has("nBatch")) obj.optInt("nBatch") else null
+        )
       }
     } catch (_: Exception) {}
     _modelConfigsCache = map
@@ -96,6 +127,18 @@ object SettingsManager {
           put("ctx", cfg.ctx)
           put("maxNew", cfg.maxNew)
           put("gpuLayers", cfg.gpuLayers)
+          cfg.temperature?.let { put("temperature", it.toDouble()) }
+          cfg.topP?.let { put("topP", it.toDouble()) }
+          cfg.minP?.let { put("minP", it.toDouble()) }
+          cfg.topK?.let { put("topK", it) }
+          cfg.repeatPenalty?.let { put("repeatPenalty", it.toDouble()) }
+          cfg.freqPenalty?.let { put("freqPenalty", it.toDouble()) }
+          cfg.presPenalty?.let { put("presPenalty", it.toDouble()) }
+          cfg.seed?.let { put("seed", it) }
+          cfg.flashAttention?.let { put("flashAttention", it) }
+          cfg.lowRamMode?.let { put("lowRamMode", it) }
+          cfg.threads?.let { put("threads", it) }
+          cfg.nBatch?.let { put("nBatch", it) }
         })
       }
       prefs?.edit()?.putString("model_token_configs", json.toString())?.apply()
@@ -108,10 +151,10 @@ object SettingsManager {
     return map[path]
   }
 
-  /** Set per-model token config. Default: 1024 ctx, 1024 maxNew, 0 gpuLayers. */
-  fun setModelTokenConfig(path: String, context: Int, maxNewTokens: Int, gpuLayers: Int = 0) {
+  /** Set per-model token config with full overrides. */
+  fun setModelTokenConfig(path: String, cfg: ModelTokenConfig) {
     val map = loadModelConfigs()
-    map[path] = ModelTokenConfig(context, maxNewTokens, gpuLayers)
+    map[path] = cfg
     saveModelConfigs(map)
   }
 
@@ -278,28 +321,23 @@ object SettingsManager {
     get() = prefs?.getString("invent_researcher_name", "") ?: ""
     set(v) { prefs?.edit()?.putString("invent_researcher_name", v)?.apply() }
 
-  /** Build InferenceConfig, optionally applying per-model overrides. */
+  /** Build InferenceConfig, applying per-model overrides if available. */
   fun toConfig(modelPath: String? = null): InferenceConfig {
-    var ctx = nCtx
-    var maxNew = maxTokens
-    if (modelPath != null) {
-      val modelCfg = getModelTokenConfig(modelPath)
-      if (modelCfg != null) {
-        ctx = modelCfg.ctx
-        maxNew = modelCfg.maxNew
-      }
-    }
+    val pm = if (modelPath != null) getModelTokenConfig(modelPath) else null
     return InferenceConfig(
-      nCtx = ctx,
-      nBatch = nBatch.coerceIn(512, 8192),
-      maxNewTokens = maxNew.coerceAtMost((ctx - 64).coerceAtLeast(64)),
-      temperature = temperature.coerceIn(0f, 2f),
-      topP = topP.coerceIn(0f, 1f),
-      minP = minP.coerceIn(0f, 1f),
-      nGpuLayers = gpuLayers.coerceIn(0, 999),
-      nThreads = threads.coerceIn(0, 16),
-      lowRamMode = lowRamMode,
-      flashAttention = flashAttention,
+      nCtx = pm?.ctx ?: nCtx,
+      nBatch = (pm?.nBatch ?: nBatch).coerceIn(512, 8192),
+      maxNewTokens = (pm?.maxNew ?: maxTokens).coerceAtMost(
+        ((pm?.ctx ?: nCtx) - 64).coerceAtLeast(64)),
+      temperature = (pm?.temperature ?: temperature).coerceIn(0f, 2f),
+      topP = (pm?.topP ?: topP).coerceIn(0f, 1f),
+      minP = (pm?.minP ?: minP).coerceIn(0f, 1f),
+      topK = (pm?.topK ?: topK).coerceIn(0, 200),
+      nGpuLayers = (pm?.gpuLayers ?: gpuLayers).coerceIn(0, 999),
+      nThreads = (pm?.threads ?: threads).coerceIn(0, 16),
+      seed = pm?.seed ?: -1,
+      lowRamMode = pm?.lowRamMode ?: lowRamMode,
+      flashAttention = pm?.flashAttention ?: flashAttention,
       mmprojPath = mmprojPath
     )
   }
@@ -326,6 +364,7 @@ object SettingsManager {
     temperature = config.temperature
     topP = config.topP
     minP = config.minP
+    topK = config.topK
     gpuLayers = config.nGpuLayers
     threads = config.nThreads
     lowRamMode = config.lowRamMode

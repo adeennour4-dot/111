@@ -232,21 +232,18 @@ fun ModelListScreen(
         val curCfg = model.path.let { path ->
           SettingsManager.getModelTokenConfig(path)
         }
-        val defaultCtx = curCfg?.ctx ?: 1024
-        val defaultMaxNew = curCfg?.maxNew ?: 1024
-        val defaultGpu = curCfg?.gpuLayers ?: 0
         val isGguf = model.format.equals("gguf", ignoreCase = true)
         val fileSizeMB = if (model.sizeBytes > 0) model.sizeBytes / (1024f * 1024f) else 100f
         ModelTokenConfigDialog(
           modelName = model.name,
           modelFileSizeMB = fileSizeMB,
           totalRamMB = deviceInfo.totalRamMB,
-          currentCtx = defaultCtx,
-          currentMaxNew = defaultMaxNew,
-          currentGpuLayers = defaultGpu,
           isGguf = isGguf,
-          onSave = { ctx, maxNew, gpuLayers ->
-            SettingsManager.setModelTokenConfig(model.path, ctx, maxNew, gpuLayers)
+          initial = curCfg ?: SettingsManager.ModelTokenConfig(
+            ctx = 1024, maxNew = 1024, gpuLayers = 0
+          ),
+          onSave = { cfg ->
+            SettingsManager.setModelTokenConfig(model.path, cfg)
             tokenConfigModel = null
             // Auto-reload if this model is currently loaded
             if (loadedModelPath == model.path) {
@@ -629,24 +626,9 @@ private suspend fun loadModel(
 
   val perModelCfg = SettingsManager.getModelTokenConfig(model.path)
   val config = if (perModelCfg != null) {
-    val ctx = perModelCfg.ctx
-    val maxNew = perModelCfg.maxNew
-    InferenceConfig(
-      nCtx = ctx,
-      nBatch = SettingsManager.nBatch.coerceIn(512, 8192),
-      maxNewTokens = maxNew.coerceAtMost((ctx - 64).coerceAtLeast(64)),
-      temperature = SettingsManager.temperature.coerceIn(0f, 2f),
-      topP = SettingsManager.topP.coerceIn(0f, 1f),
-      minP = SettingsManager.minP.coerceIn(0f, 1f),
-      nGpuLayers = (perModelCfg?.gpuLayers ?: SettingsManager.gpuLayers).coerceIn(0, 999),
-      nThreads = SettingsManager.threads.coerceIn(0, 16),
-      lowRamMode = SettingsManager.lowRamMode,
-      flashAttention = SettingsManager.flashAttention,
-      mmprojPath = SettingsManager.mmprojPath
-    )
+    SettingsManager.toConfig(model.path)
   } else {
-    val suggested = deviceInfo.suggestConfig(modelSizeB = estimatedParamsB)
-    suggested
+    deviceInfo.suggestConfig(modelSizeB = estimatedParamsB)
   }
 
   val tunedConfig = if (model.format == "gguf") {

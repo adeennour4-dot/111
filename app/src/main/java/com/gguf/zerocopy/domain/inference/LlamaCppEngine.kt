@@ -57,7 +57,7 @@ class LlamaCppEngine : InferenceEngine {
       currentModelPath = path
       NativeBridge.setEngineConfigNative(
         config.nCtx, config.nBatch, config.maxNewTokens, config.temperature,
-        config.topP, config.minP, config.nGpuLayers, config.nThreads,
+        config.topP, config.minP, config.topK, config.nGpuLayers, config.nThreads,
         config.seed, config.lowRamMode, config.flashAttention
       )
       NativeBridge.setRepeatPenaltyNative(repeatPenalty.repeatPenalty, repeatPenalty.freqPenalty, repeatPenalty.presPenalty)

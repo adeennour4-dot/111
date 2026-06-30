@@ -133,9 +133,11 @@ fun SettingsScreen(onBack: () -> Unit) {
       temperature = temp.toFloatOrNull()?.coerceIn(0f, 2f) ?: 0.5f,
       topP = topP.toFloatOrNull()?.coerceIn(0f, 1f) ?: 0.85f,
       minP = minP.toFloatOrNull()?.coerceIn(0f, 1f) ?: 0.1f,
+      topK = topK.toIntOrNull()?.coerceIn(1, 200) ?: 40,
       nGpuLayers = gpu.toIntOrNull()?.coerceIn(0, 999) ?: 99,
       nThreads = threads.toIntOrNull()?.coerceIn(0, 16) ?: 0,
       lowRamMode = lowRam,
+      flashAttention = flashAttn,
       mmprojPath = mmprojPath
     )
     val rp = RepeatPenaltyConfig(
@@ -178,6 +180,7 @@ fun SettingsScreen(onBack: () -> Unit) {
           temperature = SettingsManager.temperature.coerceIn(0f, 2f),
           topP = SettingsManager.topP.coerceIn(0f, 1f),
           minP = SettingsManager.minP.coerceIn(0f, 1f),
+          topK = SettingsManager.topK.coerceIn(1, 200),
           nGpuLayers = SettingsManager.gpuLayers.coerceIn(0, 999),
           nThreads = SettingsManager.threads.coerceIn(0, 16),
           lowRamMode = SettingsManager.lowRamMode,

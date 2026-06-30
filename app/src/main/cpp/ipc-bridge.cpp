@@ -55,6 +55,7 @@ struct EngineConfig {
     float    temperature    = 0.5f;
     float    top_p          = 0.9f;
     float    min_p          = 0.1f;
+    int      top_k          = 40;
     float    repeat_penalty = 1.1f;
     float    freq_penalty   = 0.0f;
     float    pres_penalty   = 0.1f;
@@ -166,6 +167,9 @@ static void rebuild_sampler() {
     llama_sampler_chain_add(g_sampler, llama_sampler_init_temp(g_cfg.temperature));
     llama_sampler_chain_add(g_sampler, llama_sampler_init_top_p(g_cfg.top_p, 1));
     llama_sampler_chain_add(g_sampler, llama_sampler_init_min_p(g_cfg.min_p, 1));
+    if (g_cfg.top_k > 0) {
+        llama_sampler_chain_add(g_sampler, llama_sampler_init_top_k(g_cfg.top_k));
+    }
     llama_sampler_chain_add(g_sampler, llama_sampler_init_dist(g_cfg.seed));
 }
 
@@ -338,7 +342,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_setEngineConfigNative(
         JNIEnv*, jobject,
         jint nCtx, jint nBatch, jint maxNewTokens, jfloat temp,
-        jfloat topP, jfloat minP, jint nGpuLayers, jint nThreads, jint seed,
+        jfloat topP, jfloat minP, jint topK, jint nGpuLayers, jint nThreads, jint seed,
         jboolean lowRamMode, jboolean flashAttention) {
     g_cfg.n_ctx          = nCtx;
     g_cfg.n_batch        = (nBatch > 0) ? nBatch : 2048;
@@ -346,13 +350,14 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_setEngineConfigNative(
     g_cfg.temperature    = temp;
     g_cfg.top_p          = topP;
     g_cfg.min_p          = minP;
+    g_cfg.top_k          = topK;
     g_cfg.n_gpu_layers   = nGpuLayers;
     g_cfg.n_threads      = nThreads;
     g_cfg.seed           = (seed < 0) ? LLAMA_DEFAULT_SEED : (uint32_t)seed;
     g_cfg.low_ram_mode   = lowRamMode;
     g_cfg.flash_attn     = flashAttention;
-    LOGI("Config: ctx=%d batch=%d gpu=%d threads=%d lowRam=%d flashAttn=%d",
-         nCtx, nBatch, nGpuLayers, nThreads, lowRamMode, flashAttention);
+    LOGI("Config: ctx=%d batch=%d gpu=%d threads=%d lowRam=%d flashAttn=%d topK=%d",
+         nCtx, nBatch, nGpuLayers, nThreads, lowRamMode, flashAttention, topK);
 }
 
 extern "C" JNIEXPORT void JNICALL
