@@ -280,25 +280,26 @@ fun InventScreen(
                             )
                             Spacer(Modifier.width(8.dp))
                             // Send button — Telegram-style
+                            val canSend = inputText.isNotBlank() && selectedTab >= 0
                             Box(
                                 modifier = Modifier
                                     .size(44.dp)
                                     .clip(RoundedCornerShape(14.dp))
                                     .background(
-                                        if (inputText.isNotBlank() && selectedTab >= 0)
+                                        if (canSend)
                                             Brush.linearGradient(listOf(CyanGreen, CyanGreen.copy(alpha = 0.7f)))
                                         else colors.Border
                                     )
-                                    .clickable(enabled = inputText.isNotBlank() && selectedTab >= 0) {
+                                    .then(if (canSend) Modifier.clickable {
                                         vm.sendUserMessage(inputText,
                                             planWithSearch = showSearch,
                                             thinkTag = showThinking)
                                         inputText = ""
-                                    },
+                                    } else Modifier),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(Icons.AutoMirrored.Filled.Send, "Send",
-                                    tint = if (inputText.isNotBlank()) Color.Black else colors.Text3,
+                                    tint = if (canSend) Color.Black else colors.Text3,
                                     modifier = Modifier.size(20.dp))
                             }
                         }
@@ -447,27 +448,27 @@ fun FloatingActionBar(
 ) {
     Surface(
         Modifier
-            .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(14.dp)),
+            .clip(RoundedCornerShape(12.dp)),
         color = colors.CardLight.copy(alpha = 0.5f),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         border = BorderStroke(1.dp, colors.Border.copy(alpha = 0.3f))
     ) {
         Row(
-            Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Settings gear
-            IconButton(onClick = onSettings, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onSettings, modifier = Modifier.size(28.dp)) {
                 Icon(Icons.Filled.Settings, "Settings", tint = colors.Text2,
-                    modifier = Modifier.size(18.dp))
+                    modifier = Modifier.size(16.dp))
             }
+            Spacer(Modifier.width(4.dp))
             // History
-            IconButton(onClick = onHistory, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onHistory, modifier = Modifier.size(28.dp)) {
                 Icon(Icons.Outlined.History, "History", tint = colors.Text2,
-                    modifier = Modifier.size(18.dp))
+                    modifier = Modifier.size(16.dp))
             }
         }
     }
