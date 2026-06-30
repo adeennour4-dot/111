@@ -65,32 +65,37 @@ object SettingsManager {
     get() = prefs?.getInt("max_tokens", 2048) ?: 2048
     set(v) { prefs?.edit()?.putInt("max_tokens", v)?.apply() }
 
-  private var _modelConfigsCache: MutableMap<String, Pair<Int, Int>>? = null
+  /** Per-model config: context, maxNewTokens, gpuLayers */
+  data class ModelTokenConfig(val ctx: Int, val maxNew: Int, val gpuLayers: Int)
 
-  private fun loadModelConfigs(): MutableMap<String, Pair<Int, Int>> {
+  private var _modelConfigsCache: MutableMap<String, ModelTokenConfig>? = null
+
+  private fun loadModelConfigs(): MutableMap<String, ModelTokenConfig> {
     if (_modelConfigsCache != null) return _modelConfigsCache!!
     val raw = prefs?.getString("model_token_configs", "{}") ?: "{}"
-    val map = mutableMapOf<String, Pair<Int, Int>>()
+    val map = mutableMapOf<String, ModelTokenConfig>()
     try {
       val json = org.json.JSONObject(raw)
       json.keys().forEach { key ->
         val obj = json.getJSONObject(key)
         val ctx = obj.optInt("ctx", 1024)
         val maxNew = obj.optInt("maxNew", 1024)
-        map[key] = Pair(ctx, maxNew)
+        val gpuLayers = obj.optInt("gpuLayers", 0)
+        map[key] = ModelTokenConfig(ctx, maxNew, gpuLayers)
       }
     } catch (_: Exception) {}
     _modelConfigsCache = map
     return map
   }
 
-  private fun saveModelConfigs(map: Map<String, Pair<Int, Int>>) {
+  private fun saveModelConfigs(map: Map<String, ModelTokenConfig>) {
     try {
       val json = org.json.JSONObject()
-      map.forEach { (path, pair) ->
+      map.forEach { (path, cfg) ->
         json.put(path, org.json.JSONObject().apply {
-          put("ctx", pair.first)
-          put("maxNew", pair.second)
+          put("ctx", cfg.ctx)
+          put("maxNew", cfg.maxNew)
+          put("gpuLayers", cfg.gpuLayers)
         })
       }
       prefs?.edit()?.putString("model_token_configs", json.toString())?.apply()
@@ -98,15 +103,15 @@ object SettingsManager {
   }
 
   /** Get per-model token config, or null if not set (use global defaults). */
-  fun getModelTokenConfig(path: String): Pair<Int, Int>? {
+  fun getModelTokenConfig(path: String): ModelTokenConfig? {
     val map = loadModelConfigs()
     return map[path]
   }
 
-  /** Set per-model token config. Default if not set: 1024 ctx, 1024 maxNew. */
-  fun setModelTokenConfig(path: String, context: Int, maxNewTokens: Int) {
+  /** Set per-model token config. Default: 1024 ctx, 1024 maxNew, 0 gpuLayers. */
+  fun setModelTokenConfig(path: String, context: Int, maxNewTokens: Int, gpuLayers: Int = 0) {
     val map = loadModelConfigs()
-    map[path] = Pair(context, maxNewTokens)
+    map[path] = ModelTokenConfig(context, maxNewTokens, gpuLayers)
     saveModelConfigs(map)
   }
 
@@ -280,8 +285,8 @@ object SettingsManager {
     if (modelPath != null) {
       val modelCfg = getModelTokenConfig(modelPath)
       if (modelCfg != null) {
-        ctx = modelCfg.first
-        maxNew = modelCfg.second
+        ctx = modelCfg.ctx
+        maxNew = modelCfg.maxNew
       }
     }
     return InferenceConfig(

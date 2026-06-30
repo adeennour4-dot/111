@@ -28,13 +28,16 @@ fun ModelTokenConfigDialog(
     totalRamMB: Int,
     currentCtx: Int,
     currentMaxNew: Int,
-    onSave: (ctx: Int, maxNew: Int) -> Unit,
+    currentGpuLayers: Int = 0,
+    isGguf: Boolean = false,
+    onSave: (ctx: Int, maxNew: Int, gpuLayers: Int) -> Unit,
     onDismiss: () -> Unit,
     onRemove: (() -> Unit)? = null
 ) {
     val colors = currentPalette()
     var ctxSlider by remember { mutableIntStateOf(currentCtx.coerceIn(512, 32768)) }
     var maxNewSlider by remember { mutableIntStateOf(currentMaxNew.coerceIn(64, 32768)) }
+    var gpuLayersSlider by remember { mutableIntStateOf(currentGpuLayers.coerceIn(0, 99)) }
 
     // RAM estimation: KV cache per token ≈ modelFileSizeMB * 0.000046f
     // Total RAM ≈ modelFileSizeMB + (ctx + maxNew) * modelFileSizeMB * 0.000046f
@@ -134,6 +137,48 @@ fun ModelTokenConfigDialog(
                 )
             }
 
+            // GPU layers slider (only for GGUF models — MNN/TFLite don't support GPU)
+            if (isGguf) {
+                Column {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("GPU layers", fontSize = 11.sp, color = colors.Text2,
+                            fontFamily = FontFamily.Monospace)
+                        Text("${gpuLayersSlider}", fontSize = 13.sp, color = colors.Purple,
+                            fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    }
+                    Slider(
+                        value = gpuLayersSlider.toFloat(),
+                        onValueChange = { v -> gpuLayersSlider = v.roundToInt().coerceIn(0, 99) },
+                        valueRange = 0f..99f,
+                        steps = 0,
+                        colors = SliderDefaults.colors(
+                            thumbColor = colors.Purple,
+                            activeTrackColor = colors.Purple,
+                            inactiveTrackColor = colors.Border
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("0 = CPU", fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                        Text("99 = all layers", fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            } else {
+                // Show as read-only for non-GGUF models
+                Surface(
+                    Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    color = colors.Border.copy(alpha = 0.1f)
+                ) {
+                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Info, null, tint = colors.Text3, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("GPU offload only supported for GGUF models",
+                            fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            }
+
             // RAM estimate card
             Surface(
                 Modifier.fillMaxWidth(),
@@ -163,11 +208,12 @@ fun ModelTokenConfigDialog(
                     onClick = {
                         ctxSlider = 1024
                         maxNewSlider = 1024
+                        gpuLayersSlider = 0
                     },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Text3)
-                ) { Text("Reset 1024", fontSize = 11.sp, fontFamily = FontFamily.Monospace) }
+                ) { Text("Reset defaults", fontSize = 11.sp, fontFamily = FontFamily.Monospace) }
 
                 if (onRemove != null) {
                     OutlinedButton(
@@ -189,7 +235,7 @@ fun ModelTokenConfigDialog(
                 ) { Text("Cancel", fontFamily = FontFamily.Monospace) }
 
                 Button(
-                    onClick = { onSave(ctxSlider, maxNewSlider) },
+                    onClick = { onSave(ctxSlider, maxNewSlider, gpuLayersSlider) },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(10.dp),
                     enabled = ramOk,

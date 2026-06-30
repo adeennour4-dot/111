@@ -8,6 +8,7 @@ import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.invent.*
 import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.domain.invent.GgufMetaReader
+import com.gguf.zerocopy.domain.inference.InferenceConfig
 import com.gguf.zerocopy.domain.inference.TokenCallback
 import com.gguf.zerocopy.domain.inference.ToolManager
 import kotlinx.coroutines.Dispatchers
@@ -927,14 +928,14 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 val perModelCfg = SettingsManager.getModelTokenConfig(path)
                 if (perModelCfg != null) {
                     val cfg = InferenceConfig(
-                        nCtx = perModelCfg.first,
+                        nCtx = perModelCfg.ctx,
                         nBatch = SettingsManager.nBatch.coerceIn(512, 8192),
-                        maxNewTokens = perModelCfg.second.coerceAtMost(
-                            (perModelCfg.first - 64).coerceAtLeast(64)),
+                        maxNewTokens = perModelCfg.maxNew.coerceAtMost(
+                            (perModelCfg.ctx - 64).coerceAtLeast(64)),
                         temperature = SettingsManager.temperature.coerceIn(0f, 2f),
                         topP = SettingsManager.topP.coerceIn(0f, 1f),
                         minP = SettingsManager.minP.coerceIn(0f, 1f),
-                        nGpuLayers = SettingsManager.gpuLayers.coerceIn(0, 999),
+                        nGpuLayers = perModelCfg.gpuLayers.coerceIn(0, 999),
                         nThreads = SettingsManager.threads.coerceIn(0, 16),
                         lowRamMode = SettingsManager.lowRamMode,
                         flashAttention = SettingsManager.flashAttention,

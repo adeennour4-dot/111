@@ -232,8 +232,10 @@ fun ModelListScreen(
         val curCfg = model.path.let { path ->
           SettingsManager.getModelTokenConfig(path)
         }
-        val defaultCtx = curCfg?.first ?: 1024
-        val defaultMaxNew = curCfg?.second ?: 1024
+        val defaultCtx = curCfg?.ctx ?: 1024
+        val defaultMaxNew = curCfg?.maxNew ?: 1024
+        val defaultGpu = curCfg?.gpuLayers ?: 0
+        val isGguf = model.format.equals("gguf", ignoreCase = true)
         val fileSizeMB = if (model.sizeBytes > 0) model.sizeBytes / (1024f * 1024f) else 100f
         ModelTokenConfigDialog(
           modelName = model.name,
@@ -241,8 +243,10 @@ fun ModelListScreen(
           totalRamMB = deviceInfo.totalRamMB,
           currentCtx = defaultCtx,
           currentMaxNew = defaultMaxNew,
-          onSave = { ctx, maxNew ->
-            SettingsManager.setModelTokenConfig(model.path, ctx, maxNew)
+          currentGpuLayers = defaultGpu,
+          isGguf = isGguf,
+          onSave = { ctx, maxNew, gpuLayers ->
+            SettingsManager.setModelTokenConfig(model.path, ctx, maxNew, gpuLayers)
             tokenConfigModel = null
             // Auto-reload if this model is currently loaded
             if (loadedModelPath == model.path) {
@@ -625,8 +629,8 @@ private suspend fun loadModel(
 
   val perModelCfg = SettingsManager.getModelTokenConfig(model.path)
   val config = if (perModelCfg != null) {
-    val ctx = perModelCfg.first
-    val maxNew = perModelCfg.second
+    val ctx = perModelCfg.ctx
+    val maxNew = perModelCfg.maxNew
     InferenceConfig(
       nCtx = ctx,
       nBatch = SettingsManager.nBatch.coerceIn(512, 8192),
@@ -634,7 +638,7 @@ private suspend fun loadModel(
       temperature = SettingsManager.temperature.coerceIn(0f, 2f),
       topP = SettingsManager.topP.coerceIn(0f, 1f),
       minP = SettingsManager.minP.coerceIn(0f, 1f),
-      nGpuLayers = SettingsManager.gpuLayers.coerceIn(0, 999),
+      nGpuLayers = (perModelCfg?.gpuLayers ?: SettingsManager.gpuLayers).coerceIn(0, 999),
       nThreads = SettingsManager.threads.coerceIn(0, 16),
       lowRamMode = SettingsManager.lowRamMode,
       flashAttention = SettingsManager.flashAttention,
