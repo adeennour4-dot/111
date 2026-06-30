@@ -123,182 +123,150 @@ fun ModelTokenConfigDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = colors.Card,
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Column(
-            Modifier
-                .padding(20.dp)
-                .verticalScroll(rememberScrollState())
-                .widthIn(max = 380.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            // ── Title ──
-            Text("⚙  Per-Model Config", fontWeight = FontWeight.Bold,
-                color = colors.Text, fontFamily = FontFamily.Monospace, fontSize = 16.sp)
-            Text(modelName, fontSize = 11.sp, color = colors.Text3,
-                fontFamily = FontFamily.Monospace, maxLines = 2)
-            HorizontalDivider(color = colors.Border)
-
-            // ── Context + Max New ──
-            SliderSection("Context window", "${ctxSlider}", colors) { axisLabel ->
-                Slider(
-                    value = ctxSlider.toFloat(),
-                    onValueChange = { v -> ctxSlider = v.roundToInt().coerceIn(512, 32768) },
-                    valueRange = 512f..32768f,
-                    colors = SliderDefaults.colors(thumbColor = colors.Accent, activeTrackColor = colors.Accent, inactiveTrackColor = colors.Border),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    listOf(512, 1024, 2048, 4096, 8192, 16384, 32768).forEach { tick ->
-                        Text("$tick", fontSize = 6.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-                    }
-                }
-            }
-
-            SliderSection("Max new tokens", "${maxNewSlider}", colors) { axisLabel ->
-                Slider(
-                    value = maxNewSlider.toFloat(),
-                    onValueChange = { v -> maxNewSlider = v.roundToInt().coerceIn(64, ctxSlider - 64) },
-                    valueRange = 64f..(ctxSlider - 64).coerceAtLeast(128).toFloat(),
-                    colors = SliderDefaults.colors(thumbColor = colors.Accent2, activeTrackColor = colors.Accent2, inactiveTrackColor = colors.Border),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            // ── GPU layers (GGUF only) ──
-            if (isGguf) {
-                CheckOverride("GPU layers", enableGpu, { enableGpu = it }, colors) {
-                    SliderSection("", "${gpuSlider}", colors) {
-                        Slider(
-                            value = gpuSlider.toFloat(),
-                            onValueChange = { v -> gpuSlider = v.roundToInt().coerceIn(0, 99) },
-                            valueRange = 0f..99f,
-                            colors = SliderDefaults.colors(thumbColor = colors.Purple, activeTrackColor = colors.Purple, inactiveTrackColor = colors.Border),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("0 = CPU", fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-                        Text("99 = all layers", fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-                    }
-                }
-            } else {
-                Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = colors.Border.copy(0.1f)) {
-                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Info, null, tint = colors.Text3, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("GPU offload only for GGUF (llama.cpp)",
-                            fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-                    }
-                }
-            }
-
-            HorizontalDivider(color = colors.Border.copy(0.5f))
-
-            // ── Sampling ──
-            SectionHeader("Sampling", colors)
-            SamplingField("Temperature", "0-2", tempText, { tempText = it }, enableTemp, { enableTemp = it }, colors)
-            SamplingField("Top-P", "0-1", topPText, { topPText = it }, enableTopP, { enableTopP = it }, colors)
-            SamplingField("Min-P", "0-1", minPText, { minPText = it }, enableMinP, { enableMinP = it }, colors)
-            SamplingField("Top-K", "1-200, 0=off", topKText, { topKText = it }, enableTopK, { enableTopK = it }, colors)
-
-            // ── Penalties ──
-            SectionHeader("Penalties", colors)
-            SamplingField("Repeat", "1.0=off, >1 reduces repeats", repPenText, { repPenText = it }, enableRepPen, { enableRepPen = it }, colors)
-            SamplingField("Freq", "0=off, penalizes freq tokens", freqPenText, { freqPenText = it }, enableFreqPen, { enableFreqPen = it }, colors)
-            SamplingField("Presence", "0=off, penalizes seen tokens", presPenText, { presPenText = it }, enablePresPen, { enablePresPen = it }, colors)
-
-            // ── Advanced ──
-            SectionHeader("Advanced", colors)
-            SamplingField("Seed", "-1=random", seedText, { seedText = it }, enableSeed, { enableSeed = it }, colors)
-
-            SwitchField("Flash Attention", flashSwitch, { flashSwitch = it }, enableFlash, { enableFlash = it }, colors,
-                hint = "llama.cpp only — auto-disabled on ARMv8.2-a")
-            SwitchField("Low RAM mode", lowRamSwitch, { lowRamSwitch = it }, enableLowRam, { enableLowRam = it }, colors,
-                hint = "caps n_ctx to 2048, llama.cpp only")
-
-            SamplingField("Threads", "1-16", threadsText, { threadsText = it }, enableThreads, { enableThreads = it }, colors)
-            SamplingField("Batch", "512-8192", batchText, { batchText = it }, enableBatch, { enableBatch = it }, colors)
-
-            // ── RAM estimate ──
-            Surface(
-                Modifier.fillMaxWidth(),
+        confirmButton = {
+            Button(
+                onClick = { onSave(buildConfig()) },
                 shape = RoundedCornerShape(10.dp),
-                color = if (ramOk) colors.Surface else colors.Red.copy(alpha = 0.08f),
-                border = if (!ramOk) androidx.compose.foundation.BorderStroke(1.dp, colors.Red.copy(0.5f)) else null
+                enabled = ramOk,
+                colors = ButtonDefaults.buttonColors(containerColor = colors.Accent)
+            ) { Text("Save", fontFamily = FontFamily.Monospace,
+                color = colors.Bg, fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Text2)
+            ) { Text("Cancel", fontFamily = FontFamily.Monospace) }
+        },
+        containerColor = colors.Card,
+        shape = RoundedCornerShape(20.dp),
+        title = {
+            Column {
+                Text("⚙  Per-Model Config", fontWeight = FontWeight.Bold,
+                    color = colors.Text, fontFamily = FontFamily.Monospace, fontSize = 16.sp)
+                Text(modelName, fontSize = 11.sp, color = colors.Text3,
+                    fontFamily = FontFamily.Monospace, maxLines = 2)
+            }
+        },
+        text = {
+            Column(
+                Modifier
+                    .verticalScroll(rememberScrollState())
+                    .widthIn(max = 380.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("📊  RAM Estimate", fontSize = 10.sp, color = colors.Text3,
-                        fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
-                    RamRow("Model", "${"%.1f".format(modelFileSizeMB)} MB", colors.Text2, colors)
-                    RamRow("KV Cache", "${"%.0f".format(kvCacheMB)} MB", colors.Text2, colors)
-                    HorizontalDivider(color = colors.Border.copy(0.5f))
-                    RamRow("Total", "${"%.0f".format(totalEstMB)} MB / ${totalRamMB} MB",
-                        if (ramOk) colors.Accent2 else colors.Red, colors)
-                    if (!ramOk) Text("⚠  Exceeds RAM — reduce ctx or max tokens",
-                        fontSize = 9.sp, color = colors.Red, fontFamily = FontFamily.Monospace)
+                HorizontalDivider(color = colors.Border)
+
+                // ── Context + Max New ──
+                SliderSection("Context window", "${ctxSlider}", colors) { axisLabel ->
+                    Slider(
+                        value = ctxSlider.toFloat(),
+                        onValueChange = { v -> ctxSlider = v.roundToInt().coerceIn(512, 32768) },
+                        valueRange = 512f..32768f,
+                        colors = SliderDefaults.colors(thumbColor = colors.Accent, activeTrackColor = colors.Accent, inactiveTrackColor = colors.Border),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        listOf(512, 1024, 2048, 4096, 8192, 16384, 32768).forEach { tick ->
+                            Text("$tick", fontSize = 6.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                        }
+                    }
                 }
-            }
 
-            // ── Buttons ──
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = {
-                        ctxSlider = 1024; maxNewSlider = 1024; gpuSlider = 0
-                        enableCtx = true; enableMaxNew = true; enableGpu = isGguf
-                        enableTemp = false; enableTopP = false; enableMinP = false
-                        enableTopK = false; enableRepPen = false; enableFreqPen = false
-                        enablePresPen = false; enableSeed = false; enableFlash = false
-                        enableLowRam = false; enableThreads = false; enableBatch = false
-                        tempText = SettingsManager.temperature.toString()
-                        topPText = SettingsManager.topP.toString()
-                        minPText = SettingsManager.minP.toString()
-                        topKText = SettingsManager.topK.toString()
-                        repPenText = SettingsManager.repeatPenalty.toString()
-                        freqPenText = SettingsManager.freqPenalty.toString()
-                        presPenText = SettingsManager.presPenalty.toString()
-                        seedText = "-1"
-                        flashSwitch = SettingsManager.flashAttention
-                        lowRamSwitch = SettingsManager.lowRamMode
-                        threadsText = SettingsManager.threads.toString()
-                        batchText = SettingsManager.nBatch.toString()
-                    },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Text3)
-                ) { Text("Reset", fontSize = 11.sp, fontFamily = FontFamily.Monospace) }
-
-                if (onRemove != null) {
-                    OutlinedButton(
-                        onClick = onRemove,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Red)
-                    ) { Text("Remove", fontSize = 11.sp, fontFamily = FontFamily.Monospace) }
+                SliderSection("Max new tokens", "${maxNewSlider}", colors) { axisLabel ->
+                    Slider(
+                        value = maxNewSlider.toFloat(),
+                        onValueChange = { v -> maxNewSlider = v.roundToInt().coerceIn(64, ctxSlider - 64) },
+                        valueRange = 64f..(ctxSlider - 64).coerceAtLeast(128).toFloat(),
+                        colors = SliderDefaults.colors(thumbColor = colors.Accent2, activeTrackColor = colors.Accent2, inactiveTrackColor = colors.Border),
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
-            }
 
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Text2)
-                ) { Text("Cancel", fontFamily = FontFamily.Monospace) }
+                // ── GPU layers (GGUF only) ──
+                if (isGguf) {
+                    CheckOverride("GPU layers", enableGpu, { enableGpu = it }, colors) {
+                        SliderSection("", "${gpuSlider}", colors) {
+                            Slider(
+                                value = gpuSlider.toFloat(),
+                                onValueChange = { v -> gpuSlider = v.roundToInt().coerceIn(0, 99) },
+                                valueRange = 0f..99f,
+                                colors = SliderDefaults.colors(thumbColor = colors.Purple, activeTrackColor = colors.Purple, inactiveTrackColor = colors.Border),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("0 = CPU", fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                            Text("99 = all layers", fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                } else {
+                    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = colors.Border.copy(0.1f)) {
+                        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Info, null, tint = colors.Text3, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("GPU offload only for GGUF (llama.cpp)",
+                                fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
 
-                Button(
-                    onClick = { onSave(buildConfig()) },
-                    modifier = Modifier.weight(1f),
+                HorizontalDivider(color = colors.Border.copy(0.5f))
+
+                // ── Sampling ──
+                SectionHeader("Sampling", colors)
+                SamplingField("Temperature", "0-2", tempText, { tempText = it }, enableTemp, { enableTemp = it }, colors)
+                SamplingField("Top-P", "0-1", topPText, { topPText = it }, enableTopP, { enableTopP = it }, colors)
+                SamplingField("Min-P", "0-1", minPText, { minPText = it }, enableMinP, { enableMinP = it }, colors)
+                SamplingField("Top-K", "1-200, 0=off", topKText, { topKText = it }, enableTopK, { enableTopK = it }, colors)
+
+                // ── Penalties ──
+                SectionHeader("Penalties", colors)
+                SamplingField("Repeat", "1.0=off, >1 reduces repeats", repPenText, { repPenText = it }, enableRepPen, { enableRepPen = it }, colors)
+                SamplingField("Freq", "0=off, penalizes freq tokens", freqPenText, { freqPenText = it }, enableFreqPen, { enableFreqPen = it }, colors)
+                SamplingField("Presence", "0=off, penalizes seen tokens", presPenText, { presPenText = it }, enablePresPen, { enablePresPen = it }, colors)
+
+                // ── Advanced ──
+                SectionHeader("Advanced", colors)
+                SamplingField("Seed", "-1=random", seedText, { seedText = it }, enableSeed, { enableSeed = it }, colors)
+
+                SwitchField("Flash Attention", flashSwitch, { flashSwitch = it }, enableFlash, { enableFlash = it }, colors,
+                    hint = "llama.cpp only — auto-disabled on ARMv8.2-a")
+                SwitchField("Low RAM mode", lowRamSwitch, { lowRamSwitch = it }, enableLowRam, { enableLowRam = it }, colors,
+                    hint = "caps n_ctx to 2048, llama.cpp only")
+
+                SamplingField("Threads", "1-16", threadsText, { threadsText = it }, enableThreads, { enableThreads = it }, colors)
+                SamplingField("Batch", "512-8192", batchText, { batchText = it }, enableBatch, { enableBatch = it }, colors)
+
+                // ── RAM estimate ──
+                Surface(
+                    Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
-                    enabled = ramOk,
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.Accent)
-                ) { Text("Save", fontFamily = FontFamily.Monospace,
-                    color = colors.Bg, fontWeight = FontWeight.Bold) }
+                    color = if (ramOk) colors.Surface else colors.Red.copy(alpha = 0.08f),
+                    border = if (!ramOk) androidx.compose.foundation.BorderStroke(1.dp, colors.Red.copy(0.5f)) else null
+                ) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("📊  RAM Estimate", fontSize = 10.sp, color = colors.Text3,
+                            fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+                        RamRow("Model", "${String.format("%.1f", modelFileSizeMB)} MB", colors.Text2, colors)
+                        RamRow("KV Cache", "${String.format("%.0f", kvCacheMB)} MB", colors.Text2, colors)
+                        HorizontalDivider(color = colors.Border.copy(0.5f))
+                        RamRow("Total", "${String.format("%.0f", totalEstMB)} MB / ${totalRamMB} MB",
+                            if (ramOk) colors.Accent2 else colors.Red, colors)
+                        if (!ramOk) Text("⚠  Exceeds RAM — reduce ctx or max tokens",
+                            fontSize = 9.sp, color = colors.Red, fontFamily = FontFamily.Monospace)
+                    }
+                }
             }
         }
-    }
+    )
 }
+
+/**
+ * The actual scrollable content rendered as a separate composable used
+ * inside the dialog's text/content slot.
+ */
 
 // ── Reusable composables ─────────────────────────────────────────────────────
 

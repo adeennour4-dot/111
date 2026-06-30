@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -65,6 +66,7 @@ import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.data.repository.LocalModel
 import com.gguf.zerocopy.domain.inference.BenchmarkResult
 import com.gguf.zerocopy.domain.inference.EngineType
+import com.gguf.zerocopy.domain.inference.InferenceConfig
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -237,7 +239,7 @@ fun ModelListScreen(
         ModelTokenConfigDialog(
           modelName = model.name,
           modelFileSizeMB = fileSizeMB,
-          totalRamMB = deviceInfo.totalRamMB,
+          totalRamMB = deviceInfo.totalRamMB.toInt(),
           isGguf = isGguf,
           initial = curCfg ?: SettingsManager.ModelTokenConfig(
             ctx = 1024, maxNew = 1024, gpuLayers = 0
