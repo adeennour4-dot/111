@@ -4,31 +4,20 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- background glow -->
+    <!-- Small rounded cube (top-middle-left) -->
     <path
-        android:fillColor="#8B83FF"
-        android:fillAlpha="0.06"
-        android:pathData="M54,8 C78,8 100,30 100,54 C100,78 78,100 54,100 C30,100 8,78 8,54 C8,30 30,8 54,8 Z"/>
-    <!-- ring -->
+        android:fillColor="#00E5A0"
+        android:pathData="M22,22 L36,22 C37.1,22 38,22.9 38,24 L38,36 C38,37.1 37.1,38 36,38 L24,38 C22.9,38 22,37.1 22,36 Z"/>
+    <!-- Small circle (bottom-middle-right) -->
     <path
-        android:fillColor="#00F0B2"
-        android:fillAlpha="0.10"
-        android:pathData="M54,16 C75,16 92,33 92,54 C92,75 75,92 54,92 C33,92 16,75 16,54 C16,33 33,16 54,16 Z"/>
-    <!-- Z top bar -->
+        android:fillColor="#7C5CFF"
+        android:pathData="M72,72 m-8,0 a8,8 0,1 1,16 0 a8,8 0,1 1,-16 0"/>
+    <!-- + sign horizontal bar (slightly left of center) -->
     <path
         android:fillColor="#F0F0F8"
-        android:pathData="M28,32 L80,32 L80,42 L28,42 Z"/>
-    <!-- Z diagonal -->
-    <path
-        android:fillColor="#8B83FF"
-        android:pathData="M78,42 L34,66 L28,60 L72,36 Z"/>
-    <!-- Z bottom bar -->
+        android:pathData="M36,52 L66,52 L66,60 L36,60 Z"/>
+    <!-- + sign vertical bar (slightly left of center) -->
     <path
         android:fillColor="#F0F0F8"
-        android:pathData="M28,58 L80,58 L80,68 L28,68 Z"/>
-    <!-- accent corner -->
-    <path
-        android:fillColor="#00F0B2"
-        android:pathData="M66,58 L80,58 L80,68 L66,68 Z"
-        android:strokeWidth="0"/>
+        android:pathData="M47,41 L55,41 L55,71 L47,71 Z"/>
 </vector>

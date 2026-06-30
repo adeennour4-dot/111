@@ -4,7 +4,6 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -148,7 +147,7 @@ fun InventScreen(
     ) { pad ->
         Box(Modifier.fillMaxSize().padding(pad)) {
 
-            Column(Modifier.fillMaxSize().imePadding()) {
+            Column(Modifier.fillMaxSize()) {
 
                 // ── Model Selector Row ────────────────────────────────────────
                 ModelSelectorRow(
@@ -254,7 +253,7 @@ fun InventScreen(
                             OutlinedIconButton(
                                 onClick = { showSearch = !showSearch },
                                 modifier = Modifier.size(32.dp),
-                                shape = RoundedCornerShape(8.dp),
+                                shape = RoundedCornerShape(8.dp),,
                                 border = BorderStroke(1.dp,
                                     if (showSearch) CyanGreen else colors.Border)
                             ) {
@@ -386,7 +385,7 @@ fun ModelSelectorRow(
         // Planner
         ModelButton(
             label = "Planner",
-            subtitle = if (plannerLoaded) "Loaded ✓" else "Select",
+            subtitle = if (plannerLoaded) "In Use" else "Tap to load",
             selected = selectedTab == 0,
             loaded = plannerLoaded,
             color = CyanGreen,
@@ -397,7 +396,7 @@ fun ModelSelectorRow(
         // Researcher
         ModelButton(
             label = "Researcher",
-            subtitle = if (researcherLoaded) "Loaded ✓" else "Select",
+            subtitle = if (researcherLoaded) "In Use" else "Tap to load",
             selected = selectedTab == 1,
             loaded = researcherLoaded,
             color = Color(0xFF8B83FF),
@@ -408,7 +407,7 @@ fun ModelSelectorRow(
         // Coder
         ModelButton(
             label = "Coder",
-            subtitle = if (coderLoaded) "Loaded ✓" else "Select",
+            subtitle = if (coderLoaded) "In Use" else "Tap to load",
             selected = selectedTab == 2,
             loaded = coderLoaded,
             color = Color(0xFF00E5A0),
@@ -627,7 +626,7 @@ fun SessionPopup(
                 .fillMaxWidth(0.6f)
                 .fillMaxHeight(0.7f)
                 .clickable { /* block clicks through */ },
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(24.dp),
             color = colors.Card,
             border = BorderStroke(1.dp, CyanGreen.copy(alpha = 0.4f))
         ) {
@@ -825,7 +824,7 @@ fun SettingsPopup(
                 .fillMaxWidth(0.6f)
                 .fillMaxHeight(0.6f)
                 .clickable { /* block clicks */ },
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(24.dp),
             color = colors.Card,
             border = BorderStroke(1.dp, CyanGreen.copy(alpha = 0.4f))
         ) {
