@@ -91,11 +91,23 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     fun selectModelTab(tab: Int) {
         val state = sessionState ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val path = when (tab) {
+            var path = when (tab) {
                 0 -> state.model1Path
                 1 -> state.researcherPath
                 2 -> state.model2Path
                 else -> return@launch
+            }
+            var name = when (tab) {
+                0 -> state.model1Name
+                1 -> state.researcherName
+                2 -> state.model2Name
+                else -> return@launch
+            }
+            // Fallback to currently loaded engine model if path empty
+            if (path.isEmpty()) {
+                val active = engineManager.getActiveEngine()
+                path = active?.loadedModelPath ?: ""
+                name = if (path.isNotEmpty()) path.substringAfterLast('/').substringAfterLast('\\') else "Loaded Model"
             }
             if (path.isNotEmpty()) {
                 val ok = loadOrKeepModel(path)
@@ -104,6 +116,18 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                     researcherLoaded = tab == 1 && ok,
                     coderLoaded = tab == 2 && ok
                 )
+                if (ok) {
+                    // Update session state with selected path
+                    val newState = sessionState?.let { s ->
+                        when (tab) {
+                            0 -> s.copy(model1Path = path, model1Name = name)
+                            1 -> s.copy(researcherPath = path, researcherName = name)
+                            2 -> s.copy(model2Path = path, model2Name = name)
+                            else -> s
+                        }
+                    }
+                    sessionState = newState
+                }
             }
         }
     }
@@ -223,6 +247,22 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         sameModelMode: Boolean
     ) {
         viewModelScope.launch(Dispatchers.IO) {
+            // Fallback: if no models configured (setup screen removed), use currently loaded engine model
+            var m1p = model1Path
+            var m1n = model1Name
+            var m2p = model2Path
+            var m2n = model2Name
+            var rp = researcherPath
+            var rn = researcherName
+            if (m1p.isEmpty()) {
+                val active = engineManager.getActiveEngine()
+                val curPath = active?.loadedModelPath ?: ""
+                val curName = if (curPath.isNotEmpty()) curPath.substringAfterLast('/').substringAfterLast('\\') else "Loaded Model"
+                m1p = curPath; m1n = curName
+                m2p = curPath; m2n = curName
+                rp = curPath; rn = curName
+            }
+
             clearToolManagerOnEngines()
 
             // Find the most recent in-progress session (skip DONE/DEBUGGING for auto-load)
@@ -265,9 +305,9 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
-            val m1Ctx = GgufMetaReader.readContextLength(model1Path).let { if (it <= 0) 2048 else it }
+            val m1Ctx = GgufMetaReader.readContextLength(m1p).let { if (it <= 0) 2048 else it }
             val m2Ctx = if (sameModelMode) m1Ctx
-                        else GgufMetaReader.readContextLength(model2Path).let { if (it <= 0) 2048 else it }
+                        else GgufMetaReader.readContextLength(m2p).let { if (it <= 0) 2048 else it }
 
             val userCtx = SettingsManager.nCtx
             val effectiveCtx = if (userCtx <= 0) m1Ctx else userCtx.coerceAtMost(m1Ctx)
@@ -283,12 +323,12 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             sessionState = InventSessionState(
                 sessionId = sessionId,
                 phase = InventPhase.QUESTIONING,
-                model1Path = model1Path,
-                model1Name = model1Name,
-                model2Path = if (sameModelMode) model1Path else model2Path,
-                model2Name = if (sameModelMode) model1Name else model2Name,
-                researcherPath = researcherPath,
-                researcherName = researcherName,
+                model1Path = m1p,
+                model1Name = m1n,
+                model2Path = if (sameModelMode) m1p else m2p,
+                model2Name = if (sameModelMode) m1n else m2n,
+                researcherPath = rp,
+                researcherName = rn,
                 model1ContextSize = m1Ctx,
                 model2ContextSize = m2Ctx,
                 offlineMode = offlineMode,
@@ -301,9 +341,9 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             _ui.value = _ui.value.copy(
                 phase = InventPhase.QUESTIONING,
                 sessionId = sessionId,
-                model1Name = model1Name,
-                model2Name = if (sameModelMode) model1Name else model2Name,
-                researcherName = researcherName,
+                model1Name = m1n,
+                model2Name = if (sameModelMode) m1n else m2n,
+                researcherName = rn,
                 offlineMode = offlineMode,
                 sameModelMode = sameModelMode
             )

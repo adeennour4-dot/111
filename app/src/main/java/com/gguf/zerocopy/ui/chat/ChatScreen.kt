@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -602,9 +601,7 @@ fun ChatScreen(
     } else "New Chat"
   }
 
-  // bottomBar gets imePadding so the InputBar slides above the keyboard.
-  // The Scaffold itself does NOT get imePadding — that would double with
-  // adjustResize in the Manifest and push content up twice.
+
   Scaffold(
     topBar = {
       Surface(color = colors.Bg) {
