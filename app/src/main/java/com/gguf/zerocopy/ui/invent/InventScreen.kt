@@ -5,7 +5,6 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -18,10 +17,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -125,9 +122,9 @@ fun InventScreen(
                 ModelSelectorRow(
                     selectedTab = selectedTab,
                     onTabSelected = { selectedTab = it },
-                    plannerLoaded = true, // TODO: track actual loading state
-                    researcherLoaded = false,
-                    coderLoaded = false,
+                    plannerLoaded = ui.plannerLoaded,
+                    researcherLoaded = ui.researcherLoaded,
+                    coderLoaded = ui.coderLoaded,
                     colors = colors,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                 )

@@ -57,7 +57,11 @@ data class InventUiState(
     val showSessionList: Boolean = false,
     // Status bar
     val currentModelLabel: String = "",
-    val processLabel: String = ""
+    val processLabel: String = "",
+    // Model loading states for Invent
+    val plannerLoaded: Boolean = false,
+    val researcherLoaded: Boolean = false,
+    val coderLoaded: Boolean = false
 )
 
 data class SessionInfo(
