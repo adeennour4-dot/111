@@ -4,29 +4,29 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Soft background blob -->
+    <!-- background glow -->
     <path
         android:fillColor="#8B83FF"
         android:fillAlpha="0.06"
         android:pathData="M54,8 C78,8 100,30 100,54 C100,78 78,100 54,100 C30,100 8,78 8,54 C8,30 30,8 54,8 Z"/>
-    <!-- Glow ring -->
+    <!-- ring -->
     <path
         android:fillColor="#00F0B2"
         android:fillAlpha="0.10"
         android:pathData="M54,16 C75,16 92,33 92,54 C92,75 75,92 54,92 C33,92 16,75 16,54 C16,33 33,16 54,16 Z"/>
-    <!-- Z letter -- horizontal top bar -->
+    <!-- Z top bar -->
     <path
         android:fillColor="#F0F0F8"
         android:pathData="M28,32 L80,32 L80,42 L28,42 Z"/>
-    <!-- Z letter -- diagonal fill -->
+    <!-- Z diagonal -->
     <path
         android:fillColor="#8B83FF"
         android:pathData="M78,42 L34,66 L28,60 L72,36 Z"/>
-    <!-- Z letter -- horizontal bottom bar -->
+    <!-- Z bottom bar -->
     <path
         android:fillColor="#F0F0F8"
         android:pathData="M28,58 L80,58 L80,68 L28,68 Z"/>
-    <!-- Accent highlight on bottom-right corner -->
+    <!-- accent corner -->
     <path
         android:fillColor="#00F0B2"
         android:pathData="M66,58 L80,58 L80,68 L66,68 Z"
