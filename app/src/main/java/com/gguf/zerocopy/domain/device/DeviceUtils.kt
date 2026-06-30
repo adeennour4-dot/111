@@ -40,20 +40,44 @@ data class DeviceInfo(
     val estimatedModelRAM = modelSizeB * 1024 * 0.6f
     val availableForContext = (availableRamMB - estimatedModelRAM).coerceAtLeast(256f)
 
-    // More conservative context sizing for old devices
-    val suggestedCtx =
-      when {
-        modelSizeB <= 1f -> 4096
-        modelSizeB <= 3f -> 2048
-        modelSizeB <= 7f -> 1024
-        else -> 512
-      }.coerceAtMost((availableForContext / 2).toInt())
-        .coerceIn(256, 8192)  // never go below 256, never above 8192
+    // Base context: scale by total RAM so search results don't overflow.
+    // Each token uses ~2 * n_layers * d_model bytes in KV cache.
+    // For a 4B model that's ~100 KB/token → 4096 tokens = ~400 MB.
+    // The old formula (model-size-based, capped at availableForContext/2)
+    // starved context when search results were injected.
+    val ramBaseCtx = when {
+      totalRamMB >= 16_000 -> 8192
+      totalRamMB >= 12_000 -> 6144
+      totalRamMB >= 8_000  -> 4096
+      totalRamMB >= 6_000  -> 3072
+      else                 -> 2048
+    }
+
+    // Scale down for larger models that eat more RAM for weights
+    val modelScale = when {
+      modelSizeB <= 1f -> 1.0
+      modelSizeB <= 4f -> 0.75
+      modelSizeB <= 7f -> 0.5
+      else             -> 0.33
+    }
+
+    // Final context: RAM-base * model-scale, capped by physical RAM limit
+    val suggestedCtx = (ramBaseCtx * modelScale).toInt()
+      .coerceAtMost((availableForContext / 2).toInt())
+      .coerceIn(256, 16384)
+
+    // Max new tokens: scale with context so there's room for long answers
+    val suggestedMaxNewTokens = when {
+      suggestedCtx >= 4096 -> 2048
+      suggestedCtx >= 2048 -> 1536
+      suggestedCtx >= 1024 -> 1024
+      else                -> 512
+    }.coerceAtMost(suggestedCtx / 2)
 
     return InferenceConfig(
       nCtx = suggestedCtx,
       nBatch = suggestedCtx.coerceAtMost(2048).coerceAtLeast(128),
-      maxNewTokens = suggestedCtx.coerceAtMost(1024),
+      maxNewTokens = suggestedMaxNewTokens,
       nGpuLayers = suggestedGpuLayers,
       nThreads = suggestedThreads,
       lowRamMode = true

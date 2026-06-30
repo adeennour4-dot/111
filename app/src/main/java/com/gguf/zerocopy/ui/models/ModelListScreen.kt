@@ -547,8 +547,18 @@ private suspend fun loadModel(
   val app = ZeroCopyApp.instance
   val engine = app.engineManager.selectEngineForFormat(model.path)
 
-  // Auto-detect GGUF native context length and use it as the upper bound.
-  val config = SettingsManager.toConfig()
+  // Recalculate config based on available RAM + model file size.
+  // This ensures that when the user switches to a big model,
+  // context and max tokens are scaled down; for small models
+  // they are scaled up (leaving room for search results).
+  val deviceInfo = app.deviceUtils.detect()
+  val estimatedParamsB = when {
+    model.sizeBytes <= 0L -> 4f  // unknown → assume 4B
+    else -> (model.sizeBytes.toFloat() / 512_000_000f).coerceIn(0.5f, 72f)
+  }
+  val suggested = deviceInfo.suggestConfig(modelSizeB = estimatedParamsB)
+
+  val config = suggested
   val tunedConfig = if (model.format == "gguf") {
     val nativeCtx = com.gguf.zerocopy.domain.invent.GgufMetaReader.readContextLength(model.path)
     if (nativeCtx > 0 && (config.nCtx <= 0 || config.nCtx > nativeCtx)) {
@@ -560,6 +570,11 @@ private suspend fun loadModel(
   engine.repeatPenalty = SettingsManager.toRepeatPenalty()
   engine.systemPrompt = SettingsManager.systemPrompt
   engine.mmprojPath = SettingsManager.mmprojPath
+
+  Log.i("ModelList", "Auto-config for ${model.name}: " +
+    "ctx=${tunedConfig.nCtx} maxTkns=${tunedConfig.maxNewTokens} " +
+    "ram=${deviceInfo.totalRamMB/1024}GB modelSize=${String.format("%.1f", estimatedParamsB)}B")
+
   withContext(Dispatchers.IO) {
     engine.loadModel(model.path)
   }.onSuccess {
