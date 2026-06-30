@@ -7,6 +7,26 @@ import java.io.File
 import java.security.MessageDigest
 
 // ─── ZCP Protocol Schema ───────────────────────────────────────────────────
+
+/** Per-file spec: tells Model 2 exactly what this file should contain. */
+data class FileSpec(
+    val path: String = "",
+    val description: String = "",
+    val imports: String = "",
+    val classes: String = "",
+    val functions: String = "",
+    val dependencies: List<String> = emptyList()
+)
+
+/** A debug/fix session: which file, what was wrong, what was changed. */
+data class DebugSession(
+    val filePath: String,
+    val problem: String,
+    val originalCode: String,
+    val fixedCode: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 data class ZcpProtocol(
     val version: Int = 1,
     val projectName: String = "",
@@ -26,7 +46,13 @@ data class ZcpProtocol(
     val offlineMode: Boolean = false,
     val checksum: String = "",
     val phase: InventPhase = InventPhase.QUESTIONING,
-    val mergeCount: Int = 0
+    val mergeCount: Int = 0,
+    // Per-file specs (keyed by file path)
+    val fileSpecs: Map<String, FileSpec> = emptyMap(),
+    // Generated code (keyed by file path)
+    val generatedFiles: Map<String, String> = emptyMap(),
+    // Debug history
+    val debugSessions: List<DebugSession> = emptyList()
 )
 
 data class SearchIntent(
@@ -55,8 +81,9 @@ enum class InventPhase {
     SEARCHING,
     PLANNING,
     CONFIRMING,
+    GENERATING,
     DONE,
-    NOT_SURE
+    DEBUGGING
 }
 
 // ─── Session State ──────────────────────────────────────────────────────────
@@ -74,9 +101,10 @@ data class InventSessionState(
     val searchRound: Int = 0,
     val mergeCount: Int = 0,
     val offlineMode: Boolean = false,
-    // true = model1 is reused for the coder role; no separate model2 load needed
     val sameModelMode: Boolean = false,
-    val messages: List<InventMessage> = emptyList()
+    val messages: List<InventMessage> = emptyList(),
+    val currentFileIndex: Int = 0,
+    val totalFiles: Int = 0
 )
 
 data class InventMessage(
@@ -159,6 +187,8 @@ object InventStorage {
             put("mergeCount", state.mergeCount)
             put("offlineMode", state.offlineMode)
             put("sameModelMode", state.sameModelMode)
+            put("currentFileIndex", state.currentFileIndex)
+            put("totalFiles", state.totalFiles)
             val msgs = JSONArray()
             state.messages.forEach { m ->
                 msgs.put(JSONObject().apply {
@@ -201,7 +231,9 @@ object InventStorage {
                 mergeCount = obj.optInt("mergeCount", 0),
                 offlineMode = obj.optBoolean("offlineMode", false),
                 sameModelMode = obj.optBoolean("sameModelMode", false),
-                messages = msgList
+                messages = msgList,
+                currentFileIndex = obj.optInt("currentFileIndex", 0),
+                totalFiles = obj.optInt("totalFiles", 0)
             )
         } catch (e: Exception) { null }
     }
@@ -210,6 +242,8 @@ object InventStorage {
         File(getDir(ctx), "zcp_${sessionId}.json").delete()
         File(getDir(ctx), "state_${sessionId}.json").delete()
         File(getDir(ctx), "searchlog_${sessionId}.json").delete()
+        // Also delete generated projects
+        File(ctx.filesDir, "invent_projects/$sessionId").deleteRecursively()
     }
 
     fun listSessions(ctx: Context): List<String> {
@@ -256,6 +290,25 @@ object InventStorage {
             .filter { it.category.equals(category, ignoreCase = true) }
             .map { it.domain }
             .take(2)
+    }
+
+    // ── Project directory helpers ─────────────────────────────────────────────
+
+    fun getProjectDir(ctx: Context, sessionId: String, projectName: String): File {
+        val dir = File(ctx.filesDir, "invent_projects/${projectName.ifEmpty { sessionId }}")
+        dir.mkdirs()
+        return dir
+    }
+
+    fun writeGeneratedFile(projectDir: File, filePath: String, content: String) {
+        val f = File(projectDir, filePath)
+        f.parentFile?.mkdirs()
+        f.writeText(content)
+    }
+
+    fun readGeneratedFile(projectDir: File, filePath: String): String? {
+        val f = File(projectDir, filePath)
+        return if (f.exists()) f.readText() else null
     }
 
     private fun sha256(input: String): String {
@@ -311,6 +364,37 @@ object InventStorage {
             }
             put("fileTree", tree)
             put("chunks", JSONArray(zcp.chunks))
+            // File specs
+            val specsObj = JSONObject()
+            zcp.fileSpecs.forEach { (path, spec) ->
+                specsObj.put(path, JSONObject().apply {
+                    put("path", spec.path)
+                    put("description", spec.description)
+                    put("imports", spec.imports)
+                    put("classes", spec.classes)
+                    put("functions", spec.functions)
+                    put("dependencies", JSONArray(spec.dependencies))
+                })
+            }
+            put("fileSpecs", specsObj)
+            // Generated files
+            val genObj = JSONObject()
+            zcp.generatedFiles.forEach { (path, code) ->
+                genObj.put(path, code)
+            }
+            put("generatedFiles", genObj)
+            // Debug sessions
+            val debugArr = JSONArray()
+            zcp.debugSessions.forEach { ds ->
+                debugArr.put(JSONObject().apply {
+                    put("filePath", ds.filePath)
+                    put("problem", ds.problem)
+                    put("originalCode", ds.originalCode)
+                    put("fixedCode", ds.fixedCode)
+                    put("timestamp", ds.timestamp)
+                })
+            }
+            put("debugSessions", debugArr)
         }
         return obj.toString(2)
     }
@@ -332,6 +416,49 @@ object InventStorage {
             val o = treeArr.getJSONObject(i)
             FileNode(o.getString("path"), o.getBoolean("isDir"), o.optString("description",""))
         }
+        // File specs
+        val specsObj = obj.optJSONObject("fileSpecs")
+        val fileSpecs = if (specsObj != null) {
+            val m = mutableMapOf<String, FileSpec>()
+            val keys = specsObj.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val o = specsObj.getJSONObject(key)
+                val deps = o.optJSONArray("dependencies")
+                m[key] = FileSpec(
+                    path = o.optString("path", key),
+                    description = o.optString("description", ""),
+                    imports = o.optString("imports", ""),
+                    classes = o.optString("classes", ""),
+                    functions = o.optString("functions", ""),
+                    dependencies = if (deps != null) (0 until deps.length()).map { deps.getString(it) } else emptyList()
+                )
+            }
+            m
+        } else emptyMap()
+        // Generated files
+        val genObj = obj.optJSONObject("generatedFiles")
+        val generatedFiles = if (genObj != null) {
+            val m = mutableMapOf<String, String>()
+            val keys = genObj.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                m[key] = genObj.getString(key)
+            }
+            m
+        } else emptyMap()
+        // Debug sessions
+        val debugArr = obj.optJSONArray("debugSessions") ?: JSONArray()
+        val debugSessions = (0 until debugArr.length()).map { i ->
+            val o = debugArr.getJSONObject(i)
+            DebugSession(
+                filePath = o.getString("filePath"),
+                problem = o.getString("problem"),
+                originalCode = o.getString("originalCode"),
+                fixedCode = o.getString("fixedCode"),
+                timestamp = o.optLong("timestamp", System.currentTimeMillis())
+            )
+        }
         return ZcpProtocol(
             version = obj.optInt("version", 1),
             projectName = obj.optString("projectName",""),
@@ -351,7 +478,10 @@ object InventStorage {
             offlineMode = obj.optBoolean("offlineMode", false),
             checksum = obj.optString("checksum",""),
             phase = try { InventPhase.valueOf(obj.optString("phase","QUESTIONING")) } catch(e:Exception){ InventPhase.QUESTIONING },
-            mergeCount = obj.optInt("mergeCount", 0)
+            mergeCount = obj.optInt("mergeCount", 0),
+            fileSpecs = fileSpecs,
+            generatedFiles = generatedFiles,
+            debugSessions = debugSessions
         )
     }
 }
