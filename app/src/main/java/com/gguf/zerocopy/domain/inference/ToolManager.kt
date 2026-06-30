@@ -204,12 +204,17 @@ class ToolManager {
    * NetworkOnMainThreadException.
    */
   private fun webSearch(query: String, numResults: Int): String {
-    if (query.isBlank()) return "Error: empty search query"
+    if (query.isBlank()) return "Web search failed: empty search query"
     val doSearch = fun(): String {
       return try {
         val encoded = URLEncoder.encode(query, "UTF-8")
         val lite = fetchDdgLite(encoded, numResults)
-        if (lite.isNotBlank()) lite else fetchDdgHtml(encoded, numResults)
+        val final = if (lite.isNotBlank()) lite else fetchDdgHtml(encoded, numResults)
+        // FIX: guarantee callers never receive a blank string — always a
+        // clearly-detectable phrase so the inference layer can tell the
+        // model "search produced nothing" instead of treating blank/short
+        // text as if it were real search content.
+        final.ifBlank { "No results found." }
       } catch (e: Exception) {
         "Web search failed: ${e.message}"
       }
@@ -243,7 +248,12 @@ class ToolManager {
     if (conn.responseCode != 200) { conn.disconnect(); return "" }
     val html = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
     conn.disconnect()
-    return parseDdgLite(html, n)
+    val parsed = parseDdgLite(html, n)
+    // FIX: previously an empty string here silently fell through to
+    // fetchDdgHtml, which is correct — but if BOTH return blank/empty the
+    // caller (ToolAwareInference) needs a string it can reliably detect as
+    // "no results", not just emptiness that gets treated as real content.
+    return parsed
   }
 
   private fun parseDdgLite(html: String, n: Int): String {
@@ -354,3 +364,4 @@ class ToolManager {
     }
   }
 }
+
