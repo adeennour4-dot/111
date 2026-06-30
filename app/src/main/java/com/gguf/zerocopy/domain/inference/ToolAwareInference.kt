@@ -7,28 +7,25 @@ import java.util.concurrent.TimeUnit
 /**
  * Shared search-context injection helper used by ALL inference engines.
  *
- * When the search toggle is ON, EVERY user input is treated as a search query:
- * 1. Run the web search via [ToolManager] with the user's input
- * 2. If results come back, inject them into the system prompt
- * 3. If search fails, inject a "search failed" note
- * 4. Run inference — the model uses the injected context
+ * When search is ON, the system prompt is augmented to tell the model
+ * it has web search available. The model decides when to search by
+ * outputting a simple marker like [SEARCH: query]. If the model doesn't
+ * search, it answers normally from its own knowledge.
  *
- * No tool instruction is added. Works with EVERY model.
+ * This works with small models because the instruction is minimal.
  */
 object ToolAwareInference {
 
     private const val TAG = "ToolAwareInference"
 
+    /** Simple search marker that even small models can output. */
+    private val SEARCH_MARKER_REGEX = Regex("""\[SEARCH:\s*(.+?)]""", RegexOption.IGNORE_CASE)
+
     /**
-     * Execute search-context injection for every user message.
-     *
-     * @param userPrompt The raw user message.
-     * @param originalSystemPrompt The engine's current system prompt.
-     * @param toolManager The ToolManager used to run the web search.
-     * @param setSystemPrompt Callback to set the system prompt on the native side.
-     * @param runInference Single-round inference runner (blocking).
-     * @param callback Token callback to receive the generated response.
-     * @param isAborted Function returning true if inference was aborted.
+     * Execute with search awareness. The system prompt tells the model
+     * about search capability. After inference, if the model output
+     * contains a search marker, we run the search and re-run inference
+     * with the results injected.
      */
     fun execute(
         userPrompt: String,
@@ -39,22 +36,88 @@ object ToolAwareInference {
         callback: TokenCallback,
         isAborted: () -> Boolean = { false }
     ) {
-        // Always run search with the user's input as the query
-        val searchResults = runSearch(userPrompt, toolManager)
-
-        val augmentedSysPrompt = if (searchResults != null) {
-            // Search succeeded — inject results
-            val instruction = "Here is up-to-date web search information:\n$searchResults\n\nUse the above information to answer the user's question directly and completely. Do not just acknowledge it — give the actual answer."
-            if (originalSystemPrompt.isNotEmpty()) "$originalSystemPrompt\n\n$instruction" else instruction
+        // Add search capability instruction to system prompt
+        val searchInstruction = buildString {
+            appendLine()
+            appendLine("You have access to web search for real-time information.")
+            appendLine("When the user asks about current prices, news, weather, facts that may have changed, or anything you're not sure about, you MUST search the web.")
+            appendLine("To search, output EXACTLY this format and nothing else:")
+            appendLine("[SEARCH: your search query here]")
+            appendLine("After you see search results, use them to answer the user.")
+            appendLine("If you already know the answer and it doesn't need current data, answer directly without searching.")
+        }
+        val augmentedSysPrompt = if (originalSystemPrompt.isNotEmpty()) {
+            "$originalSystemPrompt\n$searchInstruction"
         } else {
-            // Search failed — tell the model to answer from its own knowledge
-            val failureNote = "A web search was attempted for the user's question but returned no usable results. Do NOT say only \"okay\" or stop — answer the user's question as best you can from your own knowledge, and briefly mention that live search data wasn't available."
-            if (originalSystemPrompt.isNotEmpty()) "$originalSystemPrompt\n\n$failureNote" else failureNote
+            searchInstruction.trimStart()
         }
 
         setSystemPrompt(augmentedSysPrompt)
         try {
-            runSingleRound(userPrompt, runInference, callback, isAborted)
+            // Round 1: Run inference — model may output a search request
+            val responseBuf = StringBuilder()
+            val roundDone = InferenceDoneSignal()
+
+            val tokenSink = object : TokenCallback {
+                override fun onToken(token: String) {
+                    responseBuf.append(token)
+                    callback.onToken(token)
+                }
+                override fun onDone() {}
+                override fun onError(error: String) {}
+                override fun onKvUsage(percent: Int) { callback.onKvUsage(percent) }
+                override fun onTokensGenerated(count: Int) { callback.onTokensGenerated(count) }
+                override fun onToolCall(toolName: String, toolArgs: String) {}
+            }
+
+            runInference(userPrompt, tokenSink, roundDone)
+
+            val timedOut = !roundDone.await(5, TimeUnit.MINUTES)
+            if (timedOut) { callback.onError("Inference timed out"); return }
+            if (roundDone.error != null) { callback.onError(roundDone.error!!); return }
+            if (isAborted()) return
+
+            val response = responseBuf.toString()
+
+            // Check if model wants to search
+            val searchMatch = SEARCH_MARKER_REGEX.find(response)
+            if (searchMatch != null) {
+                // Model requested a search — run it
+                val query = searchMatch.groupValues[1].trim()
+                Log.d(TAG, "Model requested search: $query")
+
+                val searchResults = runSearch(query, toolManager)
+                if (searchResults != null) {
+                    // Re-run inference with search results in system prompt
+                    val resultsPrompt = "Here is up-to-date web search information:\n$searchResults\n\nUse the above information to answer the user's question directly and completely."
+                    val newSysPrompt = if (originalSystemPrompt.isNotEmpty()) {
+                        "$originalSystemPrompt\n\n$resultsPrompt"
+                    } else {
+                        resultsPrompt
+                    }
+                    setSystemPrompt(newSysPrompt)
+                    try {
+                        runSingleRound(userPrompt, runInference, callback, isAborted)
+                    } finally {
+                        setSystemPrompt(originalSystemPrompt)
+                    }
+                } else {
+                    // Search failed — tell model to answer from knowledge
+                    val failPrompt = "Web search failed or returned no results. Answer the user's question from your own knowledge and mention that live search data wasn't available."
+                    val newSysPrompt = if (originalSystemPrompt.isNotEmpty()) {
+                        "$originalSystemPrompt\n\n$failPrompt"
+                    } else {
+                        failPrompt
+                    }
+                    setSystemPrompt(newSysPrompt)
+                    try {
+                        runSingleRound(userPrompt, runInference, callback, isAborted)
+                    } finally {
+                        setSystemPrompt(originalSystemPrompt)
+                    }
+                }
+            }
+            // If no search marker, model already answered — nothing more to do
         } finally {
             setSystemPrompt(originalSystemPrompt)
         }
@@ -71,13 +134,10 @@ object ToolAwareInference {
         isAborted: () -> Boolean
     ) {
         val roundDone = InferenceDoneSignal()
-
         val tokenSink = object : TokenCallback {
-            override fun onToken(token: String) {
-                callback.onToken(token)
-            }
-            override fun onDone() { /* completion handled via roundDone */ }
-            override fun onError(error: String) { /* errors handled via roundDone */ }
+            override fun onToken(token: String) { callback.onToken(token) }
+            override fun onDone() {}
+            override fun onError(error: String) {}
             override fun onKvUsage(percent: Int) { callback.onKvUsage(percent) }
             override fun onTokensGenerated(count: Int) { callback.onTokensGenerated(count) }
             override fun onToolCall(toolName: String, toolArgs: String) {}
@@ -86,29 +146,18 @@ object ToolAwareInference {
         runInference(prompt, tokenSink, roundDone)
 
         val timedOut = !roundDone.await(5, TimeUnit.MINUTES)
-        if (timedOut) {
-            Log.e(TAG, "Inference timed out")
-            callback.onError("Inference timed out")
-            return
-        }
-        if (roundDone.error != null) {
-            callback.onError(roundDone.error!!)
-            return
-        }
+        if (timedOut) { callback.onError("Inference timed out"); return }
+        if (roundDone.error != null) { callback.onError(roundDone.error!!); return }
     }
 
     // ── Search execution ────────────────────────────────────────────────────
 
-    /**
-     * Run web search with the user's input as the query.
-     * Returns search results as a string, or null if search failed.
-     */
-    private fun runSearch(userPrompt: String, toolManager: ToolManager): String? {
-        val query = userPrompt.trim().take(200)
-        if (query.length < 2) return null
+    private fun runSearch(query: String, toolManager: ToolManager): String? {
+        val q = query.trim().take(200)
+        if (q.length < 2) return null
 
         val args = org.json.JSONObject().apply {
-            put("query", query)
+            put("query", q)
             put("num_results", 5)
         }
         val toolCall = ToolCall("auto_${System.currentTimeMillis()}", "web_search", args)
@@ -142,9 +191,7 @@ object ToolAwareInference {
         var error: String? = null
             private set
 
-        fun signalDone() {
-            latch.countDown()
-        }
+        fun signalDone() { latch.countDown() }
 
         fun signalError(msg: String) {
             error = msg
