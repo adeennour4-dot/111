@@ -290,12 +290,14 @@ fun InventScreen(
                                             Brush.linearGradient(listOf(CyanGreen, CyanGreen.copy(alpha = 0.7f)))
                                         else colors.Border
                                     )
-                                    .then(if (canSend) Modifier.clickable {
-                                        vm.sendUserMessage(inputText,
-                                            planWithSearch = showSearch,
-                                            thinkTag = showThinking)
-                                        inputText = ""
-                                    } else Modifier),
+                                    .clickable {
+                                        if (canSend) {
+                                            vm.sendUserMessage(inputText,
+                                                planWithSearch = showSearch,
+                                                thinkTag = showThinking)
+                                            inputText = ""
+                                        }
+                                    },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(Icons.AutoMirrored.Filled.Send, "Send",
