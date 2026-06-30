@@ -37,42 +37,24 @@ data class DeviceInfo(
     // Only suggest GPU layers on verified Snapdragon / Tensor with Vulkan.
     val suggestedGpuLayers = if (hasVulkan && (isSnapdragon || isTensor)) 99 else 0
 
-    val estimatedModelRAM = modelSizeB * 1024 * 0.6f
-    val availableForContext = (availableRamMB - estimatedModelRAM).coerceAtLeast(256f)
+    // Context window based on model size:
+    //   - 1B  models → 4096 (room for search results)
+    //   - 4B  models → 2048
+    //   - 7B  models → 1024
+    //   - 12B+ models → 512
+    // Capped by total RAM so the system doesn't OOM.
+    // 8 GB device → max ~4900 tokens (8192*0.6)
+    // 6 GB device → max ~3686 tokens
+    val maxCtxByRam = (totalRamMB * 0.6f).toInt().coerceIn(256, 16384)
+    val suggestedCtx = when {
+      modelSizeB <= 1f -> 4096
+      modelSizeB <= 4f -> 2048
+      modelSizeB <= 7f -> 1024
+      else             -> 512
+    }.coerceAtMost(maxCtxByRam)
 
-    // Base context: scale by total RAM so search results don't overflow.
-    // Each token uses ~2 * n_layers * d_model bytes in KV cache.
-    // For a 4B model that's ~100 KB/token → 4096 tokens = ~400 MB.
-    // The old formula (model-size-based, capped at availableForContext/2)
-    // starved context when search results were injected.
-    val ramBaseCtx = when {
-      totalRamMB >= 16_000 -> 8192
-      totalRamMB >= 12_000 -> 6144
-      totalRamMB >= 8_000  -> 4096
-      totalRamMB >= 6_000  -> 3072
-      else                 -> 2048
-    }
-
-    // Scale down for larger models that eat more RAM for weights
-    val modelScale = when {
-      modelSizeB <= 1f -> 1.0
-      modelSizeB <= 4f -> 0.75
-      modelSizeB <= 7f -> 0.5
-      else             -> 0.33
-    }
-
-    // Final context: RAM-base * model-scale, capped by physical RAM limit
-    val suggestedCtx = (ramBaseCtx * modelScale).toInt()
-      .coerceAtMost((availableForContext / 2).toInt())
-      .coerceIn(256, 16384)
-
-    // Max new tokens: scale with context so there's room for long answers
-    val suggestedMaxNewTokens = when {
-      suggestedCtx >= 4096 -> 2048
-      suggestedCtx >= 2048 -> 1536
-      suggestedCtx >= 1024 -> 1024
-      else                -> 512
-    }.coerceAtMost(suggestedCtx / 2)
+    // Max new tokens = same as context (user expects room for long answers)
+    val suggestedMaxNewTokens = suggestedCtx
 
     return InferenceConfig(
       nCtx = suggestedCtx,
