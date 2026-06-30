@@ -26,11 +26,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.gguf.zerocopy.data.invent.FileNode
-import com.gguf.zerocopy.data.invent.InventMessage
-import com.gguf.zerocopy.data.invent.InventPhase
+import com.gguf.zerocopy.data.invent.*
+import com.gguf.zerocopy.data.local.SettingsManager
+import com.gguf.zerocopy.data.local.SettingsManager.ModelTokenConfig
 import com.gguf.zerocopy.ui.theme.ZcPalette
 import com.gguf.zerocopy.ui.theme.currentPalette
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
+import java.io.File
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
 
@@ -78,6 +83,43 @@ fun InventScreen(
     var showThinking by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val context = LocalContext.current
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        uris.forEach { uri ->
+            try {
+                val dir = File(context.filesDir, "invent_attachments").also { it.mkdirs() }
+                val mime = context.contentResolver.getType(uri) ?: "*/*"
+                val ext = when {
+                    mime.contains("pdf") -> ".pdf"
+                    mime.contains("zip") -> ".zip"
+                    mime.contains("text") -> ".txt"
+                    mime.contains("json") -> ".json"
+                    mime.contains("kotlin") -> ".kt"
+                    mime.contains("python") -> ".py"
+                    mime.contains("java") -> ".java"
+                    mime.contains("xml") -> ".xml"
+                    mime.contains("javascript") -> ".js"
+                    mime.contains("html") -> ".html"
+                    mime.contains("css") -> ".css"
+                    mime.contains("yaml") -> ".yml"
+                    mime.contains("toml") -> ".toml"
+                    mime.contains("md") -> ".md"
+                    else -> ".bin"
+                }
+                val name = "att_${System.currentTimeMillis()}$ext"
+                val file = File(dir, name)
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    file.outputStream().use { output -> input.copyTo(output) }
+                }
+                val content = if (file.length() < 50_000) file.readText() else "[File too large to preview: ${file.length()} bytes]"
+                // Add as user message with file context
+                vm.sendUserMessage("[Attached file: ${uri.lastPathSegment}]\n\n$content",
+                    planWithSearch = showSearch, thinkTag = showThinking)
+            } catch (_: Exception) { }
+        }
+    }
 
     LaunchedEffect(Unit) {
         if (ui.sessionId.isEmpty()) {
@@ -139,6 +181,19 @@ fun InventScreen(
                         }
                         Spacer(Modifier.width(4.dp))
                     }
+                    // Export button when done
+                    if (ui.phase == InventPhase.DONE) {
+                        IconButton(
+                            onClick = { vm.exportProjectZip() },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(CyanGreen.copy(alpha = 0.15f))
+                        ) {
+                            Icon(Icons.Filled.FileDownload, "Export",
+                                tint = CyanGreen, modifier = Modifier.size(18.dp))
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Surface)
             )
@@ -191,6 +246,21 @@ fun InventScreen(
                         PhaseIndicator(ui.phase, colors)
                     }
 
+                    // Swap/loading indicator
+                    if (ui.swapInfo.isNotEmpty()) {
+                        item {
+                            Surface(
+                                Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp),
+                                color = CyanGreen.copy(alpha = 0.06f)
+                            ) {
+                                Text(ui.swapInfo, modifier = Modifier.padding(10.dp),
+                                    color = CyanGreen, fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                    }
+
                     // Error banner
                     if (ui.error.isNotEmpty()) {
                         item {
@@ -211,6 +281,38 @@ fun InventScreen(
                     itemsIndexed(ui.messages) { _, msg ->
                         InventBubbleNew(msg, colors)
                     }
+
+                    // Sure/Not Sure buttons (during CONFIRMING phase)
+                    if (ui.showSureButtons && ui.phase == InventPhase.CONFIRMING) {
+                        item {
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                // Not Sure
+                                OutlinedButton(
+                                    onClick = { vm.onNotSure() },
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Amber),
+                                    border = BorderStroke(1.dp, colors.Amber.copy(0.5f)),
+                                    shape = RoundedCornerShape(14.dp)
+                                ) {
+                                    Icon(Icons.Outlined.Close, null, Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Not Sure", fontFamily = FontFamily.Monospace)
+                                }
+                                // Sure
+                                Button(
+                                    onClick = { vm.onSure() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = CyanGreen),
+                                    shape = RoundedCornerShape(14.dp)
+                                ) {
+                                    Icon(Icons.Outlined.Check, null, Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Sure", fontFamily = FontFamily.Monospace, color = Color.Black)
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // ── Input Bar ─────────────────────────────────────────────────
@@ -227,7 +329,7 @@ fun InventScreen(
                         ) {
                             // File upload
                             OutlinedIconButton(
-                                onClick = { /* TODO */ },
+                                onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
                                 modifier = Modifier.size(32.dp),
                                 shape = RoundedCornerShape(8.dp),
                                 border = BorderStroke(1.dp, colors.Border)
@@ -253,7 +355,7 @@ fun InventScreen(
                             OutlinedIconButton(
                                 onClick = { showSearch = !showSearch },
                                 modifier = Modifier.size(32.dp),
-                                shape = RoundedCornerShape(8.dp),,
+                                shape = RoundedCornerShape(8.dp),
                                 border = BorderStroke(1.dp,
                                     if (showSearch) CyanGreen else colors.Border)
                             ) {
@@ -342,10 +444,9 @@ fun InventScreen(
                 SessionPopup(
                     sessions = ui.sessions,
                     sessionId = ui.sessionId,
-                    zcpFileTree = ui.fileTree,
                     selectedSession = selectedSession,
                     onSelectSession = { selectedSession = it },
-                    onSwitch = { vm.switchToSession(it); selectedSession = null },
+                    onSwitch = { vm.switchToSession(it); showSessionPopup = false; selectedSession = null },
                     onDelete = { vm.deleteSessionById(it) },
                     onBack = { selectedSession = null },
                     onDismiss = { showSessionPopup = false; selectedSession = null },
@@ -359,7 +460,9 @@ fun InventScreen(
                 SettingsPopup(
                     onDismiss = { showSettingsPopup = false },
                     colors = colors,
-                    vm = vm
+                    model1Path = model1Path,
+                    model2Path = model2Path,
+                    researcherPath = researcherPath
                 )
             }
         }
@@ -478,6 +581,7 @@ fun FloatingActionBar(
 ) {
     Surface(
         Modifier
+            .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .clip(RoundedCornerShape(12.dp)),
         color = colors.CardLight.copy(alpha = 0.5f),
@@ -592,7 +696,7 @@ fun InventBubbleNew(msg: InventMessage, colors: ZcPalette) {
                     Spacer(Modifier.height(4.dp))
                 }
                 Text(msg.content, fontSize = 12.sp, color = colors.Text,
-                    fontFamily = FontFamily.Monospace)
+                    fontFamily = FontFamily.Monospace, maxLines = 30, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -604,7 +708,6 @@ fun InventBubbleNew(msg: InventMessage, colors: ZcPalette) {
 fun SessionPopup(
     sessions: List<SessionInfo>,
     sessionId: String,
-    zcpFileTree: List<FileNode>,
     selectedSession: String?,
     onSelectSession: (String?) -> Unit,
     onSwitch: (String) -> Unit,
@@ -614,6 +717,25 @@ fun SessionPopup(
     colors: ZcPalette,
     vm: InventViewModel
 ) {
+    // Load selected session's file tree
+    val context = LocalContext.current
+    var selectedFiles by remember { mutableStateOf<List<FileNode>>(emptyList()) }
+    var selectedProjectName by remember { mutableStateOf("") }
+    var selectedPhase by remember { mutableStateOf<InventPhase?>(null) }
+    LaunchedEffect(selectedSession) {
+        if (selectedSession != null) {
+            val zcp = InventStorage.loadZcp(context, selectedSession!!)
+            val state = InventStorage.loadSession(context, selectedSession!!)
+            selectedFiles = zcp?.fileTree ?: emptyList()
+            selectedProjectName = zcp?.projectName ?: ""
+            selectedPhase = state?.phase
+        } else {
+            selectedFiles = emptyList()
+            selectedProjectName = ""
+            selectedPhase = null
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -654,11 +776,14 @@ fun SessionPopup(
                 Spacer(Modifier.height(8.dp))
 
                 if (selectedSession != null) {
-                    // Show files for this session
+                    // Show files for selected session
                     SessionFilesView(
-                        files = zcpFileTree,
+                        files = selectedFiles,
+                        projectName = selectedProjectName,
+                        phase = selectedPhase,
+                        sessionId = selectedSession,
                         colors = colors,
-                        vm = vm,
+                        onSwitch = { onSwitch(selectedSession) },
                         onDismiss = onDismiss
                     )
                 } else {
@@ -730,12 +855,15 @@ fun SessionPopup(
 @Composable
 fun SessionFilesView(
     files: List<FileNode>,
+    projectName: String,
+    phase: InventPhase?,
+    sessionId: String,
     colors: ZcPalette,
-    vm: InventViewModel,
+    onSwitch: () -> Unit,
     onDismiss: () -> Unit = {}
 ) {
     Column {
-        // "Continue Inventing" button
+        // Continue or Switch button
         Surface(
             Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
@@ -743,15 +871,21 @@ fun SessionFilesView(
             border = BorderStroke(1.dp, CyanGreen.copy(0.3f))
         ) {
             Row(
-                Modifier.clickable { onDismiss() }.padding(12.dp),
+                Modifier.clickable { onSwitch() }.padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(Icons.Filled.PlayArrow, null, tint = CyanGreen,
                     modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Continue Inventing", fontSize = 12.sp,
+                Text("Continue " + (projectName.ifEmpty { "Session" }),
+                    fontSize = 12.sp,
                     color = CyanGreen, fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.weight(1f))
+                if (phase != null) {
+                    Text(phase.name, fontSize = 9.sp,
+                        color = colors.Text3, fontFamily = FontFamily.Monospace)
+                }
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -808,9 +942,21 @@ fun FileRow(node: FileNode, colors: ZcPalette) {
 fun SettingsPopup(
     onDismiss: () -> Unit,
     colors: ZcPalette,
-    vm: InventViewModel
+    model1Path: String,
+    model2Path: String,
+    researcherPath: String
 ) {
     var settingsTab by remember { mutableStateOf(0) } // 0=Planner, 1=Researcher, 2=Coder
+
+    val plannerCfg = remember(model1Path) {
+        SettingsManager.getModelTokenConfig(model1Path)
+    }
+    val researcherCfg = remember(researcherPath) {
+        SettingsManager.getModelTokenConfig(researcherPath)
+    }
+    val coderCfg = remember(model2Path) {
+        SettingsManager.getModelTokenConfig(model2Path)
+    }
 
     Box(
         modifier = Modifier
@@ -860,9 +1006,9 @@ fun SettingsPopup(
 
                 // Settings content
                 when (settingsTab) {
-                    0 -> ModelSettingsContent("Planner", vm, colors)
-                    1 -> ModelSettingsContent("Researcher", vm, colors)
-                    2 -> ModelSettingsContent("Coder", vm, colors)
+                    0 -> ModelSettingsContent("Planner", plannerCfg, colors, model1Path)
+                    1 -> ModelSettingsContent("Researcher", researcherCfg, colors, researcherPath)
+                    2 -> ModelSettingsContent("Coder", coderCfg, colors, model2Path)
                 }
             }
         }
@@ -885,22 +1031,57 @@ fun SettingsTab(label: String, index: Int, current: Int, colors: ZcPalette, onCl
 }
 
 @Composable
-fun ModelSettingsContent(label: String, vm: InventViewModel, colors: ZcPalette) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("$label Configuration", fontSize = 12.sp, fontWeight = FontWeight.Bold,
-            color = colors.Text, fontFamily = FontFamily.Monospace)
-        Text("Context Length: 4096", fontSize = 10.sp, color = colors.Text2,
-            fontFamily = FontFamily.Monospace)
-        Text("Max Tokens: 1024", fontSize = 10.sp, color = colors.Text2,
-            fontFamily = FontFamily.Monospace)
-        Text("GPU Layers: 0 (CPU)", fontSize = 10.sp, color = colors.Text2,
-            fontFamily = FontFamily.Monospace)
-        Text("Temperature: 0.7", fontSize = 10.sp, color = colors.Text2,
-            fontFamily = FontFamily.Monospace)
-        Text("Top-P: 0.9", fontSize = 10.sp, color = colors.Text2,
-            fontFamily = FontFamily.Monospace)
-        Text("Supported: GGUF, TFLite, MNN", fontSize = 10.sp,
-            color = CyanGreen, fontFamily = FontFamily.Monospace)
+fun ModelSettingsContent(label: String, config: ModelTokenConfig?, colors: ZcPalette, modelPath: String) {
+    val infoItems = if (config != null) listOf(
+        "Model" to modelPath.substringAfterLast('/').substringAfterLast('\\').take(28),
+        "Context" to "${config.ctx}",
+        "Max Tokens" to "${config.maxNew}",
+        "GPU Layers" to "${config.gpuLayers}",
+        "Temperature" to "${config.temperature ?: "global"}",
+        "Top-P" to "${config.topP ?: "global"}",
+        "Min-P" to "${config.minP ?: "global"}",
+        "Top-K" to "${config.topK ?: "global"}",
+        "Repeat Penalty" to "${config.repeatPenalty ?: "global"}",
+        "Freq Penalty" to "${config.freqPenalty ?: "global"}",
+        "Pres Penalty" to "${config.presPenalty ?: "global"}",
+        "Seed" to "${config.seed ?: "global"}",
+        "Flash Attn" to "${if (config.flashAttention == true) "on" else if (config.flashAttention == false) "off" else "global"}",
+        "Low RAM" to "${if (config.lowRamMode == true) "on" else if (config.lowRamMode == false) "off" else "global"}",
+        "Threads" to "${config.threads ?: "global"}",
+        "Batch" to "${config.nBatch ?: "global"}"
+    ) else listOf(
+        "Model" to modelPath.substringAfterLast('/').substringAfterLast('\\').take(28),
+        "Note" to "Using global defaults",
+        "Context" to "—",
+        "Max Tokens" to "—",
+        "GPU Layers" to "—"
+    )
+
+    LazyColumn(
+        modifier = Modifier.weight(1f).fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        item {
+            Text("$label Configuration", fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                color = colors.Text, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.height(4.dp))
+        }
+        items(infoItems) { (key, value) ->
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(key, fontSize = 10.sp, color = colors.Text2,
+                    fontFamily = FontFamily.Monospace)
+                Text(value, fontSize = 10.sp, color = CyanGreen,
+                    fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        item {
+            Spacer(Modifier.height(8.dp))
+            Text("GGUF · TFLite · MNN", fontSize = 9.sp,
+                color = colors.Text3, fontFamily = FontFamily.Monospace)
+        }
     }
 }
 
