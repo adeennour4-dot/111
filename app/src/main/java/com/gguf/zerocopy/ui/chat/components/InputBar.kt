@@ -87,8 +87,7 @@ fun InputBar(
 
   Surface(
     color = colors.Surface,
-    shadowElevation = 8.dp,
-    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    shadowElevation = 0.dp
   ) {
     Column(
       modifier = Modifier

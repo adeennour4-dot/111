@@ -239,8 +239,7 @@ fun AppRoot() {
           if (selectedTab != 4) { scaleX = 0.001f; scaleY = 0.001f }
         }
       ) {
-        if (inventStarted) {
-          InventScreen(
+        InventScreen(
             model1Path = inventModel1Path, model1Name = inventModel1Name,
             model2Path = inventModel2Path, model2Name = inventModel2Name,
             researcherPath = inventResPath, researcherName = inventResName,
@@ -248,18 +247,7 @@ fun AppRoot() {
             sameModelMode = inventSameModel,
             onBack = { selectedTab = 1 },
             onModelsClick = { selectedTab = 1 }
-          )
-        } else {
-          InventSetupScreen(
-            onStart = { m1p, m1n, m2p, m2n, rp, rn, offline, sameModel ->
-              inventModel1Path = m1p; inventModel1Name = m1n
-              inventModel2Path = m2p; inventModel2Name = m2n
-              inventResPath = rp; inventResName = rn
-              inventOffline = offline; inventSameModel = sameModel; inventStarted = true
-            },
-            onBack = { selectedTab = 1 }
-          )
-        }
+        )
       }
     }
   }

@@ -115,6 +115,20 @@ fun InventScreen(
                     }
                 },
                 actions = {
+                    // New chat + button with rounded corners
+                    IconButton(
+                        onClick = { vm.startNewSession { onModelsClick() } },
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color.White.copy(alpha = 0.15f))
+                    ) {
+                        Icon(
+                            Icons.Filled.Add, "New",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                     if (ui.totalTokensUsed > 0) {
                         Box(
                             Modifier.clip(RoundedCornerShape(6.dp))
@@ -431,14 +445,14 @@ fun ModelButton(
     Box(
         modifier = modifier
             .height(56.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(18.dp))
             .background(glow)
             .border(
                 BorderStroke(
                     if (loaded || selected) 1.5f.dp else 1.dp,
                     borderColor
                 ),
-                RoundedCornerShape(16.dp)
+                RoundedCornerShape(18.dp)
             )
             .clickable { onClick() }
             .padding(horizontal = 12.dp, vertical = 8.dp),
