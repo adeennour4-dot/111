@@ -281,7 +281,7 @@ fun SplashScreen(onDone: () -> Unit) {
     modifier = Modifier.fillMaxSize().background(colors.Bg),
     contentAlignment = Alignment.Center
   ) {
-    Column(modifier = Modifier.alpha(splashAlpha.value), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(modifier = Modifier.graphicsLayer { alpha = splashAlpha.value }, horizontalAlignment = Alignment.CenterHorizontally) {
       Box(
         modifier = Modifier.size(100.dp).clip(RoundedCornerShape(28.dp)).background(Brush.linearGradient(listOf(colors.GradientStart, colors.GradientEnd))),
         contentAlignment = Alignment.Center
