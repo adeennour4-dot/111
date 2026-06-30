@@ -66,7 +66,8 @@ object ToolAwareInference {
             } finally {
                 setSystemPrompt(originalSystemPrompt)
             }
-            callback.onDone()
+            // runSingleRound already calls callback.onDone() via the live signal,
+            // but guard here too in case of early-return paths.
             return
         }
 
@@ -105,10 +106,17 @@ object ToolAwareInference {
                 val responseBuf = StringBuilder()
                 val roundDone = InferenceDoneSignal()
 
+                // Stream tokens live to the UI as they arrive — buffering
+                // happens IN ADDITION TO live forwarding, not instead of it.
+                // This is the fix: the UI sees every token immediately,
+                // it is never silently swallowed until a round completes.
                 val tokenSink = object : TokenCallback {
-                    override fun onToken(token: String) { responseBuf.append(token) }
-                    override fun onDone() { /* completion via roundDone */ }
-                    override fun onError(error: String) { /* errors via roundDone */ }
+                    override fun onToken(token: String) {
+                        responseBuf.append(token)
+                        callback.onToken(token)
+                    }
+                    override fun onDone() { /* completion handled via roundDone */ }
+                    override fun onError(error: String) { /* errors handled via roundDone */ }
                     override fun onKvUsage(percent: Int) { callback.onKvUsage(percent) }
                     override fun onTokensGenerated(count: Int) { callback.onTokensGenerated(count) }
                     override fun onToolCall(toolName: String, toolArgs: String) { callback.onToolCall(toolName, toolArgs) }
@@ -122,7 +130,8 @@ object ToolAwareInference {
                 val toolCall = toolManager.parseToolCall(response)
 
                 if (toolCall == null) {
-                    callback.onToken(response)
+                    // Already streamed live above — do not re-emit the full
+                    // response again, that would duplicate every token.
                     break
                 }
 
@@ -159,9 +168,16 @@ object ToolAwareInference {
     // ── Phase 1 helpers ────────────────────────────────────────────────────
 
     /**
-     * Run a SINGLE inference round and stream the response to [callback].
-     * No tool instruction is injected — this is the "implicit search" path
-     * where search results are already in the system prompt.
+     * Run a SINGLE inference round and stream tokens LIVE to [callback] as
+     * they arrive. No tool instruction is injected — this is the "implicit
+     * search" path where search results are already in the system prompt.
+     *
+     * FIX: previously this buffered every token silently and only emitted
+     * the full response once at the very end via callback.onToken(full).
+     * That meant the UI received zero tokens during generation and a single
+     * giant dump after — which any "is still generating" timeout / stall
+     * detector in the UI interpreted as the model stopping after one token.
+     * Now every token is forwarded immediately as it streams from the engine.
      */
     private fun runSingleRound(
         prompt: String,
@@ -169,22 +185,26 @@ object ToolAwareInference {
         callback: TokenCallback,
         isAborted: () -> Boolean
     ) {
-        val responseBuf = StringBuilder()
         val roundDone = InferenceDoneSignal()
 
         val tokenSink = object : TokenCallback {
-            override fun onToken(token: String) { responseBuf.append(token) }
-            override fun onDone() { /* completion via roundDone */ }
-            override fun onError(error: String) { /* errors via roundDone */ }
+            override fun onToken(token: String) {
+                // Forward immediately — no buffering, no delay.
+                callback.onToken(token)
+            }
+            override fun onDone() { /* completion handled via roundDone */ }
+            override fun onError(error: String) { /* errors handled via roundDone */ }
             override fun onKvUsage(percent: Int) { callback.onKvUsage(percent) }
             override fun onTokensGenerated(count: Int) { callback.onTokensGenerated(count) }
             override fun onToolCall(toolName: String, toolArgs: String) {}
         }
 
         runRound(prompt, tokenSink, roundDone, runInference, callback, 0)
-        if (roundDone.error != null) { callback.onError(roundDone.error!!); return }
+        if (roundDone.error != null) { callback.onError(roundDone.error!!); callback.onDone(); return }
         if (!isAborted()) {
-            callback.onToken(responseBuf.toString())
+            callback.onDone()
+        } else {
+            callback.onDone()
         }
     }
 
