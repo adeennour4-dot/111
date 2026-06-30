@@ -43,8 +43,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -157,7 +157,12 @@ fun AppRoot() {
     // while you check Settings or Models).
     Box(modifier = Modifier.padding(innerPad).fillMaxSize()) {
       // Tab 0: Chat (always composed so inference continues)
-      Box(modifier = Modifier.alpha(if (selectedTab == 0) 1f else 0f)) {
+      Box(
+        modifier = Modifier.fillMaxSize().graphicsLayer {
+          alpha = if (selectedTab == 0) 1f else 0f
+          isVisible = selectedTab == 0
+        }
+      ) {
         if (showSessionList) {
           SessionListScreen(
             onSessionSelected = { session ->
@@ -191,7 +196,12 @@ fun AppRoot() {
       }
 
       // Tab 1: Models
-      Box(modifier = Modifier.alpha(if (selectedTab == 1) 1f else 0f)) {
+      Box(
+        modifier = Modifier.fillMaxSize().graphicsLayer {
+          alpha = if (selectedTab == 1) 1f else 0f
+          isVisible = selectedTab == 1
+        }
+      ) {
         ModelListScreen(
           onModelSelected = { path, name ->
             loadedModelPath = path; loadedModelName = name
@@ -203,17 +213,32 @@ fun AppRoot() {
       }
 
       // Tab 2: Cloud/Server
-      Box(modifier = Modifier.alpha(if (selectedTab == 2) 1f else 0f)) {
+      Box(
+        modifier = Modifier.fillMaxSize().graphicsLayer {
+          alpha = if (selectedTab == 2) 1f else 0f
+          isVisible = selectedTab == 2
+        }
+      ) {
         CloudScreen(onBack = { selectedTab = 0 })
       }
 
       // Tab 3: Settings
-      Box(modifier = Modifier.alpha(if (selectedTab == 3) 1f else 0f)) {
+      Box(
+        modifier = Modifier.fillMaxSize().graphicsLayer {
+          alpha = if (selectedTab == 3) 1f else 0f
+          isVisible = selectedTab == 3
+        }
+      ) {
         SettingsScreen(onBack = { selectedTab = 0 })
       }
 
       // Tab 4: Invent
-      Box(modifier = Modifier.alpha(if (selectedTab == 4) 1f else 0f)) {
+      Box(
+        modifier = Modifier.fillMaxSize().graphicsLayer {
+          alpha = if (selectedTab == 4) 1f else 0f
+          isVisible = selectedTab == 4
+        }
+      ) {
         if (inventStarted) {
           InventScreen(
             model1Path = inventModel1Path, model1Name = inventModel1Name,
