@@ -121,8 +121,19 @@ fun ModelTokenConfigDialog(
         )
     }
 
+    @Suppress("DEPRECATION")
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = colors.Card,
+        shape = RoundedCornerShape(20.dp),
+        title = {
+            Column {
+                Text("⚙  Per-Model Config", fontWeight = FontWeight.Bold,
+                    color = colors.Text, fontFamily = FontFamily.Monospace, fontSize = 16.sp)
+                Text(modelName, fontSize = 11.sp, color = colors.Text3,
+                    fontFamily = FontFamily.Monospace, maxLines = 2)
+            }
+        },
         confirmButton = {
             Button(
                 onClick = { onSave(buildConfig()) },
@@ -138,16 +149,6 @@ fun ModelTokenConfigDialog(
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Text2)
             ) { Text("Cancel", fontFamily = FontFamily.Monospace) }
-        },
-        containerColor = colors.Card,
-        shape = RoundedCornerShape(20.dp),
-        title = {
-            Column {
-                Text("⚙  Per-Model Config", fontWeight = FontWeight.Bold,
-                    color = colors.Text, fontFamily = FontFamily.Monospace, fontSize = 16.sp)
-                Text(modelName, fontSize = 11.sp, color = colors.Text3,
-                    fontFamily = FontFamily.Monospace, maxLines = 2)
-            }
         },
         text = {
             Column(
@@ -258,6 +259,43 @@ fun ModelTokenConfigDialog(
                             fontSize = 9.sp, color = colors.Red, fontFamily = FontFamily.Monospace)
                     }
                 }
+
+                // ── Reset / Remove / Save buttons ──
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            ctxSlider = 1024; maxNewSlider = 1024; gpuSlider = 0
+                            enableCtx = true; enableMaxNew = true; enableGpu = isGguf
+                            enableTemp = false; enableTopP = false; enableMinP = false
+                            enableTopK = false; enableRepPen = false; enableFreqPen = false
+                            enablePresPen = false; enableSeed = false; enableFlash = false
+                            enableLowRam = false; enableThreads = false; enableBatch = false
+                            tempText = SettingsManager.temperature.toString()
+                            topPText = SettingsManager.topP.toString()
+                            minPText = SettingsManager.minP.toString()
+                            topKText = SettingsManager.topK.toString()
+                            repPenText = SettingsManager.repeatPenalty.toString()
+                            freqPenText = SettingsManager.freqPenalty.toString()
+                            presPenText = SettingsManager.presPenalty.toString()
+                            seedText = "-1"
+                            flashSwitch = SettingsManager.flashAttention
+                            lowRamSwitch = SettingsManager.lowRamMode
+                            threadsText = SettingsManager.threads.toString()
+                            batchText = SettingsManager.nBatch.toString()
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Text3)
+                    ) { Text("Reset", fontSize = 11.sp, fontFamily = FontFamily.Monospace) }
+                    if (onRemove != null) {
+                        OutlinedButton(
+                            onClick = onRemove,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Red)
+                        ) { Text("Remove", fontSize = 11.sp, fontFamily = FontFamily.Monospace) }
+                    }
+                }
             }
         }
     )
@@ -309,7 +347,7 @@ private fun CheckOverride(
                 checked = checked,
                 onCheckedChange = onCheck,
                 colors = CheckboxDefaults.colors(checkedColor = colors.Accent, checkmarkColor = colors.Bg,
-                    uncheckedColor = colors.Text3, uncheckedTrackColor = colors.Border),
+                    uncheckedColor = colors.Text3),
                 modifier = Modifier.size(20.dp)
             )
             Spacer(Modifier.width(6.dp))
@@ -339,7 +377,7 @@ private fun SamplingField(
                 checked = enabled,
                 onCheckedChange = onEnabled,
                 colors = CheckboxDefaults.colors(checkedColor = colors.Accent, checkmarkColor = colors.Bg,
-                    uncheckedColor = colors.Text3, uncheckedTrackColor = colors.Border),
+                    uncheckedColor = colors.Text3),
                 modifier = Modifier.size(20.dp)
             )
             Spacer(Modifier.width(6.dp))
@@ -379,7 +417,7 @@ private fun SwitchField(
                 checked = enabled,
                 onCheckedChange = onEnabled,
                 colors = CheckboxDefaults.colors(checkedColor = colors.Accent, checkmarkColor = colors.Bg,
-                    uncheckedColor = colors.Text3, uncheckedTrackColor = colors.Border),
+                    uncheckedColor = colors.Text3),
                 modifier = Modifier.size(20.dp)
             )
             Spacer(Modifier.width(6.dp))
