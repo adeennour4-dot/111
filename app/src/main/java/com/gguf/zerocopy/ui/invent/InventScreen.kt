@@ -285,11 +285,11 @@ fun InventScreen(
                                 modifier = Modifier
                                     .size(44.dp)
                                     .clip(RoundedCornerShape(14.dp))
-                                    .background(
-                                        if (canSend)
+                                    .let { mod ->
+                                        if (canSend) mod.background(
                                             Brush.linearGradient(listOf(CyanGreen, CyanGreen.copy(alpha = 0.7f)))
-                                        else colors.Border
-                                    )
+                                        ) else mod.background(colors.Border)
+                                    }
                                     .clickable {
                                         if (canSend) {
                                             vm.sendUserMessage(inputText,
