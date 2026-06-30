@@ -7,12 +7,28 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(FetchContent)
 
 if(ANDROID_ABI STREQUAL "arm64-v8a")
-    # Use armv8.2-a as the baseline — this covers Exynos 9825 (Note 10 Lite),
-    # Exynos 2200 (S23 FE), and Snapdragon 8 Elite (S25 Ultra).
-    # armv8.6-a / i8mm are NOT safe here: Exynos 9825 is ARMv8.2-a only.
-    # llama.cpp auto-detects dotprod / i8mm / fp16 at runtime via HWCAP,
-    # so we only set the safe compile-time baseline.
-    set(ARM_ARCH_FLAGS "-march=armv8.2-a+fp16+dotprod")
+    # ZC_ARCH_PROFILE is passed from Gradle's product flavors:
+    #   "standard"      → armv8.2-a+dotprod baseline. Safe for Exynos 9825
+    #                     (Note 10 Lite), Exynos 2200, Snapdragon 8 Elite,
+    #                     and essentially every device from ~2018 onward.
+    #   "compatibility" → plain armv8-a, ZERO compile-time CPU feature
+    #                     assumptions. Every optimized code path in
+    #                     ggml/llama.cpp is gated behind a runtime HWCAP
+    #                     check already, so this build degrades gracefully
+    #                     on rare/old/custom-ROM ARM64 devices instead of
+    #                     risking SIGILL from an instruction the CPU at hand
+    #                     doesn't actually implement. Slower, but unkillable.
+    if(NOT DEFINED ZC_ARCH_PROFILE)
+        set(ZC_ARCH_PROFILE "standard")
+    endif()
+
+    if(ZC_ARCH_PROFILE STREQUAL "compatibility")
+        message(STATUS "ZeroCopy COMPATIBILITY build — armv8-a baseline, no compile-time CPU feature assumptions")
+        set(ARM_ARCH_FLAGS "-march=armv8-a")
+    else()
+        message(STATUS "ZeroCopy STANDARD build — armv8.2-a+dotprod baseline")
+        set(ARM_ARCH_FLAGS "-march=armv8.2-a+fp16+dotprod")
+    endif()
     set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   ${ARM_ARCH_FLAGS}")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ARM_ARCH_FLAGS}")
 endif()
@@ -27,6 +43,18 @@ set(GGML_KLEIDIAI      OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 # Flash attention is enabled via context params at runtime, gated on i8mm detection
+
+# Compatibility builds disable LTO. Thin LTO can perform cross-TU inlining
+# and instruction selection that, combined with certain GCC/Clang versions,
+# has been observed to re-introduce target-specific instructions even when
+# an explicit conservative -march baseline is set. For the compatibility
+# profile we trade a modest amount of performance for compile-time
+# predictability — what you compile is exactly what runs.
+if(ZC_ARCH_PROFILE STREQUAL "compatibility")
+    string(REPLACE "-flto=thin" "" CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}")
+    string(REPLACE "-flto=thin" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+    message(STATUS "ZeroCopy COMPATIBILITY build — LTO disabled for codegen predictability")
+endif()
 
 # Suppress warnings that come from upstream llama.cpp / ggml third-party headers.
 # We use add_compile_options so these apply to all targets in this directory,
@@ -225,3 +253,4 @@ endif()
 
 target_compile_features(ipc-bridge PRIVATE cxx_std_20)
 target_compile_features(mnn-bridge PRIVATE cxx_std_20)
+
