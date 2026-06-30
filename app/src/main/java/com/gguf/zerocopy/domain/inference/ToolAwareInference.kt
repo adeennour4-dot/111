@@ -54,10 +54,21 @@ object ToolAwareInference {
         if (searchResults != null) {
             // Inject search results directly into the system prompt —
             // no tool instruction needed, works with EVERY model.
-            val augmentedSysPrompt = if (originalSystemPrompt.isNotEmpty()) {
-                "$originalSystemPrompt\n\nHere is up-to-date web search information:\n$searchResults\n\nUse the above information to answer the user if relevant."
+            //
+            // FIX: when the search came back genuinely empty ("No results
+            // found.", a fetch error, etc.) we must NOT tell the model
+            // "here is up-to-date info" followed by nothing useful — small
+            // models read that literally, conclude there's nothing to say,
+            // and reply "okay" then stop. Instead, explicitly tell the model
+            // the search failed/was empty and instruct it to answer from its
+            // own knowledge with a disclaimer, so it never just goes silent.
+            val searchFailed = isEmptySearchResult(searchResults)
+            val augmentedSysPrompt = if (searchFailed) {
+                val failureNote = "A web search was attempted for the user's question but returned no usable results (search may have failed, been rate-limited, or the query had nothing indexable). Do NOT say only \"okay\" or stop — answer the user's question as best you can from your own knowledge, and briefly mention that live search data wasn't available."
+                if (originalSystemPrompt.isNotEmpty()) "$originalSystemPrompt\n\n$failureNote" else failureNote
             } else {
-                "Here is up-to-date web search information:\n$searchResults\n\nUse the above information to answer the user if relevant."
+                val instruction = "Here is up-to-date web search information:\n$searchResults\n\nUse the above information to answer the user's question directly and completely. Do not just acknowledge it — give the actual answer."
+                if (originalSystemPrompt.isNotEmpty()) "$originalSystemPrompt\n\n$instruction" else instruction
             }
             setSystemPrompt(augmentedSysPrompt)
 
@@ -163,6 +174,25 @@ object ToolAwareInference {
             setSystemPrompt(originalSystemPrompt)
         }
         callback.onDone()
+    }
+
+    /**
+     * Detects whether a search result string represents a genuinely empty
+     * or failed search (as opposed to real but short results). This is what
+     * prevents the model from being told "here is info" when there's none.
+     */
+    private fun isEmptySearchResult(text: String): Boolean {
+        val t = text.trim().lowercase()
+        if (t.isEmpty()) return true
+        if (t.length < 12) return true // too short to be a real result block
+        val failureMarkers = listOf(
+            "no results found",
+            "web search failed",
+            "search timed out",
+            "error executing tool",
+            "empty search query"
+        )
+        return failureMarkers.any { t.contains(it) }
     }
 
     // ── Phase 1 helpers ────────────────────────────────────────────────────
@@ -301,3 +331,4 @@ object ToolAwareInference {
         }
     }
 }
+
