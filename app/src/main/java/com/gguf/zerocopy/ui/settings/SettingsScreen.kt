@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -70,6 +71,7 @@ import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.domain.server.ModelServerService
 import com.gguf.zerocopy.domain.inference.InferenceConfig
 import com.gguf.zerocopy.domain.inference.RepeatPenaltyConfig
+import com.gguf.zerocopy.ui.settings.BenchmarkDialog
 import kotlinx.coroutines.Dispatchers
 import com.gguf.zerocopy.ui.chat.components.getFileName
 import com.gguf.zerocopy.ui.theme.currentPalette
@@ -97,6 +99,7 @@ fun SettingsScreen(onBack: () -> Unit) {
   var freqPen by remember { mutableStateOf(SettingsManager.freqPenalty.toString()) }
   var presPen by remember { mutableStateOf(SettingsManager.presPenalty.toString()) }
   var sysPrompt by remember { mutableStateOf(SettingsManager.systemPrompt) }
+  var showBenchmark by remember { mutableStateOf(false) }
   var lowRam by remember { mutableStateOf(SettingsManager.lowRamMode) }
   var isDark by remember { mutableStateOf(SettingsManager.isDarkTheme) }
   var mmprojPath by remember { mutableStateOf(SettingsManager.mmprojPath) }
@@ -591,6 +594,18 @@ fun SettingsScreen(onBack: () -> Unit) {
 
       HorizontalDivider(color = colors.Border, thickness = 1.dp)
 
+      // ── Benchmark button ──
+      OutlinedButton(
+        onClick = { showBenchmark = true },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent2)
+      ) {
+        Icon(Icons.Filled.Refresh, null, tint = colors.Accent2, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text("Run Benchmark", color = colors.Accent2, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+      }
+
       Button(
         onClick = {
           saveAndReload()
@@ -689,6 +704,14 @@ fun SettingsScreen(onBack: () -> Unit) {
           Text("Cancel", color = colors.Text2)
         }
       }
+    )
+  }
+
+  if (showBenchmark) {
+    BenchmarkDialog(
+      engineManager = engineManager,
+      models = app.modelRepository.models.value,
+      onDismiss = { showBenchmark = false }
     )
   }
 }
