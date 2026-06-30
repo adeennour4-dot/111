@@ -208,13 +208,19 @@ class ToolManager {
     val doSearch = fun(): String {
       return try {
         val encoded = URLEncoder.encode(query, "UTF-8")
+        // 1. DuckDuckGo Lite
         val lite = fetchDdgLite(encoded, numResults)
-        val final = if (lite.isNotBlank()) lite else fetchDdgHtml(encoded, numResults)
-        // FIX: guarantee callers never receive a blank string — always a
-        // clearly-detectable phrase so the inference layer can tell the
-        // model "search produced nothing" instead of treating blank/short
-        // text as if it were real search content.
-        final.ifBlank { "No results found." }
+        if (lite.isNotBlank()) return lite
+        // 2. DuckDuckGo HTML
+        val html = fetchDdgHtml(encoded, numResults)
+        if (!html.startsWith("No results found", ignoreCase = true) && !html.startsWith("Web search failed", ignoreCase = true)) {
+          return html
+        }
+        // 3. SearXNG public instances (JSON API, no key, no rate limits)
+        val searx = fetchSearxng(encoded, numResults)
+        if (searx.isNotBlank()) return searx
+        // All failed
+        "No results found."
       } catch (e: Exception) {
         "Web search failed: ${e.message}"
       }
@@ -222,7 +228,6 @@ class ToolManager {
     return if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
       doSearch()
     } else {
-      // Offload to avoid NetworkOnMainThreadException from JNI callbacks
       var result = "Web search timed out after 25 s"
       val t = Thread { result = doSearch() }
       t.start()
@@ -230,10 +235,6 @@ class ToolManager {
       result
     }
   }
-
-  private fun openConn(url: String): HttpURLConnection =
-    (URL(url).openConnection() as HttpURLConnection).apply {
-      requestMethod = "GET"
       connectTimeout = 15_000
       readTimeout = 20_000
       instanceFollowRedirects = true
@@ -299,6 +300,50 @@ class ToolManager {
         count++
       }
     }.trim().ifEmpty { "No results found." }
+  }
+
+
+  /**
+   * Fetches search results from public SearXNG instances.
+   * SearXNG is a free, open-source meta-search engine with a JSON API.
+   * No API key required, no rate limits (beyond normal HTTP courtesy).
+   */
+  private fun fetchSearxng(encoded: String, n: Int): String {
+    val instances = listOf(
+      "https://searx.be",
+      "https://search.bus-hit.me",
+      "https://searx.tiekoetter.com",
+      "https://searx.thegpm.org",
+      "https://search.sapphire.moe"
+    )
+    for (instance in instances) {
+      try {
+        val url = "$instance/search?q=$encoded&format=json&categories=general&safesearch=1"
+        val conn = openConn(url)
+        conn.setRequestProperty("Accept", "application/json")
+        if (conn.responseCode != 200) { conn.disconnect(); continue }
+        val jsonText = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        conn.disconnect()
+        val json = org.json.JSONObject(jsonText)
+        val results = json.optJSONArray("results") ?: continue
+        return buildString {
+          var count = 0
+          for (i in 0 until results.length()) {
+            if (count >= n) break
+            val r = results.optJSONObject(i) ?: continue
+            val title = r.optString("title", "").trim()
+            if (title.isEmpty()) continue
+            val u = r.optString("url", "").trim()
+            val snip = r.optString("content", r.optString("snippet", "")).trim()
+            if (isNotEmpty()) append("\n---\n")
+            appendLine("Result ${count + 1}:"); appendLine("Title: $title"); appendLine("URL: $u")
+            if (snip.isNotEmpty()) appendLine("Snippet: $snip")
+            count++
+          }
+        }.trim()
+      } catch (_: Exception) { continue }
+    }
+    return ""
   }
 
   private fun extractDdgUrl(raw: String) = try {
