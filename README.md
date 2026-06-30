@@ -1,100 +1,131 @@
 # ZeroCopy
 
-An Android app for running LLMs locally on your phone. No cloud, no account, no data sent anywhere.
+Run LLMs entirely on your Android phone. No cloud, no account, no API key, nothing leaves your device.
 
-Still early — version 0.5, actively developed. Expect rough edges.
+Actively developed — expect rough edges, but the core works well across a wide range of devices including older Exynos chips.
 
 ---
 
-## What it does
+## Quick overview
 
-You load a model file onto your phone and chat with it. That's the core. Everything runs on-device using one of three inference engines depending on the model format you're using.
+| | |
+|---|---|
+| **What it is** | Local LLM chat app + multi-agent project generator, all on-device |
+| **Engines** | llama.cpp (GGUF), MNN, LiteRT-LM — auto-selected by file type |
+| **Chipsets tested** | Snapdragon (8 Elite, 888+), Exynos (2200, 9825) |
+| **Min Android** | 10 (API 29), arm64-v8a |
+| **Network use** | None required for chat. Optional for web search / model downloads. |
 
-**Three engines, three formats:**
+---
+
+## Core features
+
+**Chat** — Standard streaming conversation. Sessions auto-save and auto-name from your first message.
+
+**Web search** — Toggle the search icon in the input bar. The model can look things up before answering. Works with any model now — tokens stream live as the model generates, the earlier bug where generation appeared to stop after one token in search mode is fixed.
+
+**Document Q&A (RAG)** — Attach a PDF or text file, ask questions about it. BM25 keyword search finds relevant chunks, no embedding model needed, fully offline. Tested up to ~100 pages.
+
+**Vision input** — Attach photos if you've loaded a vision-capable model (LLaVA, Qwen2-VL, Gemma3 multimodal) with the matching `mmproj` file set in settings.
+
+**Voice input / TTS** — Mic button dictates instead of typing. Speaker icon reads the last response aloud. Both use Android's built-in speech services.
+
+**Local inference server** — Exposes an OpenAI-compatible API on your local network so other apps can query your model. WiFi-only mode and auto-start on boot are both available from the Cloud screen.
+
+**Thinking mode** — Wraps your prompt to request step-by-step `<think>` reasoning. Best with models trained for chain-of-thought (Qwen3, DeepSeek R1).
+
+**Export & Benchmark** — Share any chat as text or JSON. Measure prefill/decode tokens-per-second for your loaded model.
+
+---
+
+## Invent — new multi-agent project generator
+
+A separate screen, accessible from the bottom nav, that turns a spoken idea into a real project file structure — entirely on-device, three small models taking turns so nothing exceeds your phone's RAM.
+
+**How a session goes:**
+
+1. **Setup** — Pick three GGUF models: a planner, a coder, and a small ~1B researcher. The app reads each model's context window directly from its file metadata, no model load needed for that step.
+2. **Questioning** — The planner model asks you questions one at a time about your idea (platform, language, features, what makes it different) until it has everything it needs.
+3. **Search** — Tap "Done talking" and the planner writes a structured blueprint (we call it ZCP) plus a list of things to look up. The researcher model loads, fetches from a small set of trusted domains, extracts what's relevant, then unloads. This repeats up to a few rounds if gaps remain.
+4. **Planning** — The planner reloads with the research results, designs the full file tree, and chunks the implementation plan to fit inside the coder model's context window.
+5. **Confirm** — The coder model loads, reads the blueprint, and tells you exactly what it understood. You hit **Sure** to generate the folder structure, or **Not Sure** to merge both attempts into a refined session and try again (capped at 2 merges).
+
+Models never run simultaneously — only one is ever loaded in RAM at a time, so this works on 8–12 GB devices. Every step is saved to disk, so the app surviving a kill mid-session just resumes where it left off.
+
+There's also an offline toggle: skip the web fetch entirely and let the researcher work from its own training knowledge instead, with results clearly flagged as unverified.
+
+---
+
+## Device compatibility
+
+Specific fixes have gone into supporting lower-end and older chipsets, not just current flagships:
+
+- **Samsung Note 10 Lite (Exynos 9825, ARMv8.2-a)** — downgraded CMake `-march` flags, fixed Exynos GPU detection, flash attention auto-disables when the CPU lacks `i8mm` support (checked at runtime from `/proc/cpuinfo`)
+- **Samsung S25 Ultra (Snapdragon 8 Elite)** — verified full compatibility including flash attention
+- **Crash recovery** — a sentinel file breaks model-load crash loops; if the app crashes mid-load, the next launch clears the broken model path automatically instead of retrying forever
+- **KV cache handling** — fixed a corruption bug that could poison inference context across sessions
+
+---
+
+## Engines
 
 | Engine | Format | Notes |
 |--------|--------|-------|
-| llama.cpp | `.gguf` | Most models on HuggingFace are this format. Widest compatibility. |
-| MNN | `.mnn` (directory) | Alibaba's framework. Needs a folder with `config.json` inside. |
-| LiteRT-LM | `.tflite` / `.litertlm` | Google's on-device runtime. Fewer models available. |
+| llama.cpp | `.gguf` | Most models on HuggingFace. Widest compatibility, required for Invent. |
+| MNN | `.mnn` (folder with `config.json`) | Alibaba's framework, strong on Exynos. |
+| LiteRT-LM | `.tflite` / `.litertlm` | Google's on-device runtime. |
 
-The app picks the engine automatically based on file extension.
-
----
-
-## Features that actually work
-
-**Chat** — Standard back-and-forth conversation with streaming output. Sessions are saved and named automatically from your first message.
-
-**Document Q&A (RAG)** — Attach a PDF or text file and ask questions about it. Uses BM25 keyword search to find relevant chunks — no embedding model required, so it's fast and works offline. Tested up to ~100 pages; larger files get capped at 2000 chunks to avoid OOM.
-
-**Web search** — Toggle the search icon in the input bar. When enabled, the model can call DuckDuckGo to look things up before answering. Works with most instruction-tuned models that support tool calling (Qwen3, Llama 3.1+, etc). Hit or miss with smaller models.
-
-**Vision / image input** — Attach photos to messages. Only works if you've loaded a vision-capable model (LLaVA, Qwen2-VL, Gemma3 multimodal) and set the matching `mmproj` file in settings. If your model isn't multimodal, the camera button is disabled.
-
-**Voice input** — Tap the mic to dictate instead of type. Uses Android's built-in speech recognition.
-
-**Text-to-speech** — Tap the speaker icon to have the last response read aloud. Uses Android TTS.
-
-**Local inference server** — Exposes a basic OpenAI-compatible API on your local network so other apps or scripts can query the model. Toggle it from the Cloud screen. WiFi-only mode available. Auto-start on boot if you want.
-
-**Thinking / reasoning mode** — Toggle in the input bar. Wraps your prompt to ask the model to use `<think>` tags for step-by-step reasoning. Works best with models trained for chain-of-thought (Qwen3, DeepSeek R1).
-
-**Export** — Share any conversation as plain text or JSON.
-
-**Benchmark** — Measure prefill and decode speed (tokens/sec) for your loaded model.
+The app picks the engine automatically from the file you load.
 
 ---
 
-## What doesn't work yet / known issues
+## Known limitations
 
-- **STT/TTS** — Voice input uses Android's recognizer (requires internet on most devices). The in-app TTS is Android system TTS, not a local neural voice.
-- **Download from HuggingFace in-app** — The model list in CloudScreen is there but the download UI isn't fully wired. For now, copy model files manually to the app's files directory or use a file manager.
-- **Vision on MNN/LiteRT** — Only llama.cpp supports multimodal right now.
-- **GPU acceleration** — Vulkan is compiled out. GPU layers setting exists but only helps on devices where the driver supports OpenCL via llama.cpp's CPU path. Most Android GPUs won't see improvement here.
-- **Rust performance layer** — `RustCore.kt` exists but the native `.so` isn't included in this build. It falls back gracefully to defaults.
-- **Web search reliability** — Depends on DuckDuckGo's HTML endpoints. Breaks if DDG changes their markup or rate-limits you.
+- **Invent requires GGUF** — MNN and LiteRT models aren't supported in the Invent pipeline yet, only normal chat.
+- **STT/TTS** — Both rely on Android's built-in services, not local neural models. Speech recognition needs internet on most devices.
+- **In-app HuggingFace download** — UI exists in the Cloud screen but isn't fully wired yet. Copy model files manually for now.
+- **Vision** — Only llama.cpp supports multimodal currently.
+- **GPU acceleration** — Compiled out. The GPU layers setting exists but won't help on most Android GPUs right now.
+- **Web search** — Depends on DuckDuckGo's HTML endpoints; can break if they change markup or rate-limit.
 
 ---
 
-## Requirements
+## RAM guide
 
-- Android 10 (API 29) or newer
-- arm64-v8a device (all modern Android phones)
-- Enough RAM for your model — rough guide:
-  - 1B models: ~1 GB free
-  - 3B models: ~2.5 GB free
-  - 7–8B models: ~5–6 GB free
-  - Anything bigger will OOM on most phones
+| Model size | Free RAM needed |
+|---|---|
+| 1B | ~1 GB |
+| 3B | ~2.5 GB |
+| 7–8B | ~5–6 GB |
+| Invent (3 models, sequential) | Same as your largest single model — they never coexist in RAM |
 
 ---
 
 ## Getting started
 
-1. Build the app or install the APK
-2. Get a model file — `.gguf` from HuggingFace is the easiest starting point
-3. Copy it to your phone (any folder you can open with a file picker)
+1. Build the app or grab the latest APK from [Releases](../../releases)
+2. Get a model file — `.gguf` from HuggingFace is the easiest start
+3. Copy it to your phone
 4. Open ZeroCopy → tap the model name at the top → pick your file
-5. Wait for it to load (first load takes a few seconds for KV cache warm-up)
-6. Start chatting
+5. Wait for load (a few seconds for KV cache warm-up), then chat
 
-Good starting models for phones with 6–8 GB RAM: Qwen3 4B, Llama 3.2 3B, Gemma 3 4B — all available as GGUF Q4_K_M on HuggingFace.
+Good starting models for 6–8 GB RAM phones: Qwen3 4B, Llama 3.2 3B, Gemma 3 4B — all available as GGUF Q4_K_M.
 
 ---
 
-## Settings worth knowing
+## Settings reference
 
 | Setting | What it does |
-|---------|-------------|
-| Context window | How many tokens the model remembers. Larger = more RAM. Start with 2048. |
-| Max new tokens | Longest response the model can generate. |
-| Temperature | How creative/random responses are. 0.1 = factual, 0.8 = creative. |
-| Top-K | Limits token candidates. 40 is a reasonable default. |
-| Flash Attention | Faster inference on ARMv8.2+ chips (Snapdragon 888 and newer, most 2021+ flagships). Keep on unless you see errors. |
-| GPU layers | How many transformer layers to offload. Leave at 0 unless you know your device supports it. |
-| Threads | CPU threads for inference. Match your device's big core count (usually 4). |
-| System prompt | Custom instructions prepended to every conversation. |
-| mmproj | Path to the vision encoder file for multimodal models. |
+|---|---|
+| Context window | Tokens the model remembers. Larger = more RAM. Start at 2048. |
+| Max new tokens | Longest single response. |
+| Temperature | 0.1 = factual, 0.8 = creative. |
+| Top-K | Token candidate limit, 40 is a safe default. |
+| Flash Attention | Faster on ARMv8.2+ chips. Auto-disabled on devices that don't support it (e.g. Exynos 9825). |
+| GPU layers | Leave at 0 unless you know your device benefits. |
+| Threads | Match your device's performance core count, usually 4. |
+| System prompt | Custom instructions prepended to every chat. |
+| mmproj | Vision encoder path for multimodal models. |
 
 ---
 
@@ -107,16 +138,19 @@ cd 111
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Requires Android Studio Hedgehog or newer, NDK 27.0.12077973, CMake 3.22.1. The llama.cpp and MNN sources are fetched automatically by CMake at build time (`FetchContent`), so the first build takes a while.
+Requires Android Studio Hedgehog+, NDK 27.0.12077973, CMake 3.22.1. llama.cpp and MNN sources are fetched automatically via CMake `FetchContent` — first build takes a while.
+
+CI builds run automatically on every push to `master`/`main` and on version tags (`v*`), which also publish a debug APK to [Releases](../../releases).
 
 ---
 
-## Project structure (roughly)
+## Project structure
 
 ```
 ui/
   chat/          Chat screen, input bar, message bubbles
-  settings/      All inference settings
+  invent/        Multi-agent project generator screen
+  settings/      Inference settings
   models/        Model list and file picker
   cloud/         Local server controls
   sessions/      Chat history
@@ -124,13 +158,15 @@ ui/
 
 domain/
   inference/     Engine abstraction + LlamaCpp/MNN/LiteRT implementations
+  invent/        GGUF metadata reader for Invent's context-aware planning
   rag/           BM25 document retrieval
   ocr/           PDF text extraction
   server/        Local OpenAI-compatible HTTP server
 
 data/
   repository/    Chat and model storage
-  local/         Settings persistence (SharedPreferences)
+  local/         Settings persistence
+  invent/        ZCP protocol, session state, domain registry
 
 cpp/
   ipc-bridge.cpp     JNI bridge for llama.cpp
@@ -141,4 +177,4 @@ cpp/
 
 ## License
 
-Apache 2.0. The underlying libraries — llama.cpp, MNN, LiteRT-LM, Jetpack Compose — are all open source with their own licenses (MIT, Apache 2.0).
+Apache 2.0. Underlying libraries — llama.cpp, MNN, LiteRT-LM, Jetpack Compose — are open source under their own licenses (MIT, Apache 2.0).
