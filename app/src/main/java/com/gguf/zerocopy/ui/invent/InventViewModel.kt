@@ -87,6 +87,27 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     private var zcp: ZcpProtocol = ZcpProtocol()
     private var sessionId: String = ""
 
+    /** Select a model tab (0=Planner, 1=Researcher, 2=Coder) and optionally load it. */
+    fun selectModelTab(tab: Int) {
+        val state = sessionState ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val path = when (tab) {
+                0 -> state.model1Path
+                1 -> state.researcherPath
+                2 -> state.model2Path
+                else -> return@launch
+            }
+            if (path.isNotEmpty()) {
+                val ok = loadOrKeepModel(path)
+                _ui.value = _ui.value.copy(
+                    plannerLoaded = tab == 0 && ok,
+                    researcherLoaded = tab == 1 && ok,
+                    coderLoaded = tab == 2 && ok
+                )
+            }
+        }
+    }
+
     private fun clearToolManagerOnEngines() {
       engineManager.llamaCpp.setToolManager(null)
       engineManager.mnn.setToolManager(null)
@@ -298,6 +319,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         setSwap("Loading ${state.model1Name}…")
         val ok = loadOrKeepModel(state.model1Path)
         if (!ok) { setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name}"); return }
+        _ui.value = _ui.value.copy(plannerLoaded = true)
         setSwap("")
 
         val firstQuestion = runInference(

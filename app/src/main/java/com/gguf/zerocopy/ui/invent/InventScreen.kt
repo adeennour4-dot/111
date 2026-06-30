@@ -56,7 +56,20 @@ fun InventScreen(
     var showSessionPopup by remember { mutableStateOf(false) }
     var showSettingsPopup by remember { mutableStateOf(false) }
     var selectedSession by remember { mutableStateOf<String?>(null) }
-    var selectedTab by remember { mutableStateOf(0) } // 0=Planner, 1=Researcher, 2=Coder
+    // Map current phase to active tab: 
+    // QUESTIONING/PLANNING/CONFIRMING/FINALIZING → Planner (0)
+    // SEARCHING → Researcher (1)
+    // GENERATING/REPLANNING → Coder (2)
+    val phaseTab = when (ui.phase) {
+        InventPhase.QUESTIONING, InventPhase.PLANNING,
+        InventPhase.CONFIRMING, InventPhase.FINALIZING,
+        InventPhase.DONE, InventPhase.DEBUGGING -> 0
+        InventPhase.SEARCHING -> 1
+        InventPhase.GENERATING, InventPhase.REPLANNING -> 2
+    }
+    var selectedTab by remember { mutableStateOf(0) }
+    // Sync tab to phase when phase changes
+    LaunchedEffect(ui.phase) { selectedTab = phaseTab }
     var inputText by remember { mutableStateOf("") }
     var showThinking by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
@@ -121,7 +134,7 @@ fun InventScreen(
                 // ── Model Selector Row ────────────────────────────────────────
                 ModelSelectorRow(
                     selectedTab = selectedTab,
-                    onTabSelected = { selectedTab = it },
+                    onTabSelected = { selectedTab = it; vm.selectModelTab(it) },
                     plannerLoaded = ui.plannerLoaded,
                     researcherLoaded = ui.researcherLoaded,
                     coderLoaded = ui.coderLoaded,
