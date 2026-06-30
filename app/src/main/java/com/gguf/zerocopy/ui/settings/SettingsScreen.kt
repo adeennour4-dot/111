@@ -324,7 +324,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         label = { Text("System Prompt", fontSize = 12.sp) },
         maxLines = 4,
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(8.dp),
         colors = OutlinedTextFieldDefaults.colors(
           focusedBorderColor = colors.Accent,
           unfocusedBorderColor = colors.Border,
@@ -580,7 +580,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             unfocusedTextColor = colors.Text,
             cursorColor = colors.Accent
           ),
-          textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+          textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
         )
       }
 
@@ -733,11 +733,11 @@ fun SettingField(label: String, hint: String, value: String, onChange: (String) 
       colors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = colors.Accent,
         unfocusedBorderColor = colors.Border,
-        focusedTextColor = colors.Text,
-        unfocusedTextColor = colors.Text,
+        focusedTextColor = colors.Accent,
+        unfocusedTextColor = colors.Accent.copy(alpha = 0.7f),
         cursorColor = colors.Accent
       ),
-      textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+      textStyle = LocalTextStyle.current.copy(fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
     )
   }
 }

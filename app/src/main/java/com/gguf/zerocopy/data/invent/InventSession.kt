@@ -179,21 +179,27 @@ object InventStorage {
         return try {
             val text = f.readText()
             val obj = JSONObject(text)
+            val base = jsonToZcp(obj)
             val savedChecksum = obj.optString("checksum", "")
-            val withoutChecksum = zcpToJson(jsonToZcp(obj).copy(checksum = ""))
-            if (savedChecksum.isNotEmpty() && sha256(withoutChecksum) != savedChecksum) null
-            else {
-                val base = jsonToZcp(obj)
-                // Load search result content from disk
-                val searchDir = File(getDir(ctx), "zcp_${sessionId}_sr")
-                val loadedResults = base.searchResults.mapIndexed { i, sr ->
-                    val srFile = File(searchDir, "$i.txt")
-                    val content = if (srFile.exists()) srFile.readText() else sr.content
-                    SearchResult(sr.intent, content, sr.domain, sr.verified)
+            if (savedChecksum.isNotEmpty()) {
+                val withoutChecksum = zcpToJson(base.copy(checksum = ""))
+                if (sha256(withoutChecksum) != savedChecksum) {
+                    // Checksum mismatch — could be old format, still return data
+                    android.util.Log.w("InventStorage", "ZCP checksum mismatch for $sessionId (format change), returning anyway")
                 }
-                base.copy(searchResults = loadedResults)
             }
-        } catch (e: Exception) { null }
+            // Load search result content from disk
+            val searchDir = File(getDir(ctx), "zcp_${sessionId}_sr")
+            val loadedResults = base.searchResults.mapIndexed { i, sr ->
+                val srFile = File(searchDir, "$i.txt")
+                val content = if (srFile.exists()) srFile.readText() else sr.content
+                SearchResult(sr.intent, content, sr.domain, sr.verified)
+            }
+            base.copy(searchResults = loadedResults)
+        } catch (e: Exception) {
+            android.util.Log.e("InventStorage", "Failed to load ZCP", e)
+            null
+        }
     }
 
     fun saveSession(ctx: Context, state: InventSessionState) {
@@ -464,10 +470,22 @@ object InventStorage {
             m
         } else emptyMap()
         // Generated file paths (content is on disk)
-        val genArr = obj.optJSONArray("generatedFiles")
-        val generatedFiles = if (genArr != null) {
-            (0 until genArr.length()).map { genArr.getString(it) }
-        } else emptyList()
+        // Handle both old format (JSONObject of key-value pairs) and new format (JSONArray of paths)
+        val generatedFiles = try {
+            val genObj = obj.optJSONObject("generatedFiles")
+            if (genObj != null) {
+                // Old format: Map<String, String> — just extract keys
+                val keys = genObj.keys()
+                val list = mutableListOf<String>()
+                while (keys.hasNext()) list.add(keys.next())
+                list
+            } else {
+                val genArr = obj.optJSONArray("generatedFiles")
+                if (genArr != null) {
+                    (0 until genArr.length()).map { genArr.getString(it) }
+                } else emptyList()
+            }
+        } catch (_: Exception) { emptyList() }
         // Debug sessions
         val debugArr = obj.optJSONArray("debugSessions") ?: JSONArray()
         val debugSessions = (0 until debugArr.length()).map { i ->

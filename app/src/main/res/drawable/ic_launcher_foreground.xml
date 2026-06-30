@@ -4,47 +4,31 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Outer glow ring -->
-    <path
-        android:fillColor="#00F0B2"
-        android:fillAlpha="0.12"
-        android:pathData="M54,18 L74,28 L74,48 L54,58 L34,48 L34,28 Z"/>
-    <!-- Inner glow ring -->
+    <!-- Soft background blob -->
     <path
         android:fillColor="#8B83FF"
-        android:fillAlpha="0.15"
-        android:pathData="M54,24 L70,32 L70,46 L54,54 L38,46 L38,32 Z"/>
-    <!-- Core hexagon -->
-    <path
-        android:fillColor="#8B83FF"
-        android:pathData="M54,30 L66,36 L66,48 L54,54 L42,48 L42,36 Z"/>
-    <!-- Center accent square -->
+        android:fillAlpha="0.06"
+        android:pathData="M54,8 C78,8 100,30 100,54 C100,78 78,100 54,100 C30,100 8,78 8,54 C8,30 30,8 54,8 Z"/>
+    <!-- Glow ring -->
     <path
         android:fillColor="#00F0B2"
-        android:pathData="M49,39 L59,39 L59,49 L49,49 Z"
-        android:strokeWidth="1.5"
-        android:strokeColor="#00F0B2"/>
-    <!-- Small orbital dots -->
-    <path
-        android:fillColor="#8B83FF"
-        android:fillAlpha="0.6"
-        android:pathData="M54,20 A1.5,1.5 0,1,1 54,19.97 Z"/>
-    <path
-        android:fillColor="#00F0B2"
-        android:fillAlpha="0.6"
-        android:pathData="M74,42 A1.5,1.5 0,1,1 74,41.97 Z"/>
-    <path
-        android:fillColor="#8B83FF"
-        android:fillAlpha="0.6"
-        android:pathData="M34,42 A1.5,1.5 0,1,1 34,41.97 Z"/>
-    <path
-        android:fillColor="#00F0B2"
-        android:fillAlpha="0.6"
-        android:pathData="M54,68 A1.5,1.5 0,1,1 54,67.97 Z"/>
-    <!-- Zero symbol (stylized Z) -->
+        android:fillAlpha="0.10"
+        android:pathData="M54,16 C75,16 92,33 92,54 C92,75 75,92 54,92 C33,92 16,75 16,54 C16,33 33,16 54,16 Z"/>
+    <!-- Z letter -- horizontal top bar -->
     <path
         android:fillColor="#F0F0F8"
-        android:pathData="M48,42 L60,42 L56,48 L48,48 Z"
-        android:strokeWidth="0"
-        android:strokeColor="#F0F0F8"/>
+        android:pathData="M28,32 L80,32 L80,42 L28,42 Z"/>
+    <!-- Z letter -- diagonal fill -->
+    <path
+        android:fillColor="#8B83FF"
+        android:pathData="M78,42 L34,66 L28,60 L72,36 Z"/>
+    <!-- Z letter -- horizontal bottom bar -->
+    <path
+        android:fillColor="#F0F0F8"
+        android:pathData="M28,58 L80,58 L80,68 L28,68 Z"/>
+    <!-- Accent highlight on bottom-right corner -->
+    <path
+        android:fillColor="#00F0B2"
+        android:pathData="M66,58 L80,58 L80,68 L66,68 Z"
+        android:strokeWidth="0"/>
 </vector>

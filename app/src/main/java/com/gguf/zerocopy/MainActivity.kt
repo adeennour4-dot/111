@@ -141,7 +141,7 @@ fun AppRoot() {
             selected = selectedTab == idx,
             onClick = { selectedTab = idx },
             icon = { Icon(item.icon, item.label) },
-            label = { Text(item.label, fontSize = 11.sp) },
+            label = { Text(item.label, fontSize = 9.sp) },
             colors = NavigationBarItemDefaults.colors(
               selectedIconColor = MaterialTheme.colorScheme.primary,
               unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -246,8 +246,8 @@ fun AppRoot() {
             researcherPath = inventResPath, researcherName = inventResName,
             offlineMode = inventOffline,
             sameModelMode = inventSameModel,
-            onBack = { selectedTab = 0 },
-            onModelsClick = { selectedTab = 0 }
+            onBack = { selectedTab = 1 },
+            onModelsClick = { selectedTab = 1 }
           )
         } else {
           InventSetupScreen(
@@ -257,7 +257,7 @@ fun AppRoot() {
               inventResPath = rp; inventResName = rn
               inventOffline = offline; inventSameModel = sameModel; inventStarted = true
             },
-            onBack = { selectedTab = 0 }
+            onBack = { selectedTab = 1 }
           )
         }
       }

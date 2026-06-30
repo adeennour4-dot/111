@@ -70,27 +70,31 @@ fun InventScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("⚡", fontSize = 16.sp)
                         Spacer(Modifier.width(6.dp))
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                val displayName = when (ui.phase) {
-                                    InventPhase.QUESTIONING -> "Let's Build"
-                                    InventPhase.SEARCHING -> "Researching"
-                                    InventPhase.PLANNING, InventPhase.CONFIRMING -> "Planning"
-                                    InventPhase.GENERATING -> "Generating"
-                                    InventPhase.REPLANNING -> "Resizing"
-                                    InventPhase.FINALIZING -> "Finalizing"
-                                    InventPhase.DONE -> "Ready ✓"
-                                    InventPhase.DEBUGGING -> "Fixing"
-                                }
-                                Text(displayName, fontSize = 15.sp, fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace, color = colors.Text)
-                                if (ui.projectName.isNotEmpty()) {
-                                    Text("  /  ${ui.projectName.take(20)}", fontSize = 11.sp,
-                                        color = colors.Text3, fontFamily = FontFamily.Monospace)
-                                }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val displayName = when (ui.phase) {
+                                InventPhase.QUESTIONING -> "Let's Build"
+                                InventPhase.SEARCHING -> "Researching"
+                                InventPhase.PLANNING, InventPhase.CONFIRMING -> "Planning"
+                                InventPhase.GENERATING -> "Generating"
+                                InventPhase.REPLANNING -> "Resizing"
+                                InventPhase.FINALIZING -> "Finalizing"
+                                InventPhase.DONE -> "Ready ✓"
+                                InventPhase.DEBUGGING -> "Fixing"
                             }
-                            Text("${phaseLabel(ui.phase)}  ·  ${ui.sessionId.take(6)}",
-                                fontSize = 9.sp, color = colors.Accent,
+                            Text(displayName, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace, color = colors.Text,
+                                maxLines = 1)
+                            if (ui.projectName.isNotEmpty()) {
+                                Text("  /  ${ui.projectName.take(16)}", fontSize = 10.sp,
+                                    color = colors.Text3, fontFamily = FontFamily.Monospace,
+                                    maxLines = 1)
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Text(phaseLabel(ui.phase), fontSize = 9.sp, color = colors.Accent,
+                                fontFamily = FontFamily.Monospace, maxLines = 1)
+                            Text(" · ", fontSize = 9.sp, color = colors.Text3,
+                                fontFamily = FontFamily.Monospace)
+                            Text(ui.sessionId.take(5), fontSize = 9.sp, color = colors.Text3,
                                 fontFamily = FontFamily.Monospace)
                         }
                     }
