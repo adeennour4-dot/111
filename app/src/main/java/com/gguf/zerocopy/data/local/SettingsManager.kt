@@ -13,6 +13,45 @@ object SettingsManager {
 
   fun init(context: Context) {
     prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    applyCompatBuildDefaultsIfFirstRun(context)
+  }
+
+  /**
+   * On the very first launch of the "compatibility" build flavor (old
+   * Samsung devices like the Note 10 Lite / Exynos 9825 and similar
+   * low-RAM ARM64 phones), seed conservative runtime defaults BEFORE the
+   * user ever loads a model. This prevents an out-of-the-box OOM or crash
+   * on first model load — the user can still raise these later in Settings
+   * if their device handles it fine, but they won't crash before getting
+   * the chance to.
+   *
+   * Uses BuildConfig.IS_COMPAT_BUILD / SAFE_DEFAULT_CTX / SAFE_DEFAULT_THREADS
+   * which are generated per product-flavor in app/build.gradle.kts.
+   * Reflection is used here (rather than a direct BuildConfig import) to
+   * keep SettingsManager flavor-agnostic and avoid a hard compile
+   * dependency that would break if BuildConfig fields are renamed.
+   */
+  private fun applyCompatBuildDefaultsIfFirstRun(context: Context) {
+    val alreadySeeded = prefs?.getBoolean("compat_defaults_seeded", false) ?: true
+    if (alreadySeeded) return
+    try {
+      val buildConfigClass = Class.forName("${context.packageName}.BuildConfig")
+      val isCompat = buildConfigClass.getField("IS_COMPAT_BUILD").getBoolean(null)
+      if (isCompat) {
+        val safeCtx = buildConfigClass.getField("SAFE_DEFAULT_CTX").getInt(null)
+        val safeThreads = buildConfigClass.getField("SAFE_DEFAULT_THREADS").getInt(null)
+        nCtx = safeCtx
+        maxTokens = (safeCtx / 2).coerceAtMost(1024)
+        threads = safeThreads
+        flashAttention = false   // compatibility build: never assume i8mm/dotprod codegen paths
+        gpuLayers = 0
+        lowRamMode = true
+      }
+    } catch (_: Exception) {
+      // Standard flavor (or BuildConfig fields missing) — nothing to do,
+      // fall through to the normal hardcoded defaults above.
+    }
+    prefs?.edit()?.putBoolean("compat_defaults_seeded", true)?.apply()
   }
 
   var nCtx: Int
@@ -226,3 +265,4 @@ object SettingsManager {
     presPenalty = rp.presPenalty
   }
 }
+
