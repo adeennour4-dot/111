@@ -636,7 +636,7 @@ fun SessionPopup(
                             val isCurrent = s.id == sessionId
                             Surface(
                                 Modifier.fillMaxWidth()
-                                    .clickable { onSwitch(s.id) },
+                                    .clickable { onSelectSession(s.id) },
                                 shape = RoundedCornerShape(12.dp),
                                 color = if (isCurrent) CyanGreen.copy(alpha = 0.08f)
                                     else colors.Surface,
@@ -662,6 +662,13 @@ fun SessionPopup(
                                                     fontFamily = FontFamily.Monospace)
                                             }
                                         }
+                                    }
+                                    // Switch button
+                                    IconButton(onClick = { onSwitch(s.id) },
+                                        modifier = Modifier.size(28.dp)) {
+                                        Icon(Icons.Filled.PlayArrow, "Switch",
+                                            tint = CyanGreen,
+                                            modifier = Modifier.size(16.dp))
                                     }
                                     IconButton(onClick = { onDelete(s.id) },
                                         modifier = Modifier.size(24.dp)) {
@@ -703,8 +710,7 @@ fun SessionFilesView(
             border = BorderStroke(1.dp, CyanGreen.copy(0.3f))
         ) {
             Row(
-                Modifier.clickable { /* continue inventing */ }
-                    .padding(12.dp),
+                Modifier.clickable { onDismiss() }.padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(Icons.Filled.PlayArrow, null, tint = CyanGreen,
