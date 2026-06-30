@@ -8,10 +8,12 @@ import java.util.concurrent.TimeUnit
  * Shared search-context injection helper used by ALL inference engines.
  *
  * When search is ON, this auto-detects search intent from keywords
- * and injects results into the system prompt. The model never needs
- * to understand tool calling — it just sees search results as context.
+ * and prepends results to the user prompt. This works with ALL chat
+ * templates (Gemma, Llama, ChatML, etc.) because the search results
+ * are inside a user message, which every template supports.
  *
- * Works with EVERY model regardless of size or capability.
+ * The model never needs to understand tool calling — it just sees
+ * search results as context and answers using them.
  */
 object ToolAwareInference {
 
@@ -34,8 +36,12 @@ object ToolAwareInference {
      * Execute with search context injection.
      *
      * 1. Check if user message implies search (keyword detection)
-     * 2. If yes → run search → inject results into system prompt
+     * 2. If yes → run search → prepend results to user prompt
      * 3. If no → run normal inference
+     *
+     * Search results are prepended to the user prompt (NOT the system prompt)
+     * because some chat templates (Gemma, etc.) don't support system messages
+     * and silently discard them. User messages are always supported.
      */
     fun execute(
         userPrompt: String,
@@ -51,25 +57,18 @@ object ToolAwareInference {
         val needsSearch = SEARCH_TRIGGERS.any { lower.contains(it) }
 
         if (needsSearch) {
-            // Run search and inject results
+            // Run search and prepend results to user prompt
             val searchResults = runSearch(userPrompt, toolManager)
-
-            val augmentedSysPrompt = if (searchResults != null) {
-                // Search succeeded — inject results
-                val instruction = "Here is up-to-date web search information:\n$searchResults\n\nUse the above information to answer the user's question directly and completely. Do not just acknowledge it — give the actual answer."
-                if (originalSystemPrompt.isNotEmpty()) "$originalSystemPrompt\n\n$instruction" else instruction
+            val augmentedPrompt = if (searchResults != null) {
+                "Search results:\n$searchResults\n\n---\n\nUser question:\n$userPrompt"
             } else {
                 // Search failed — tell model to answer from knowledge
-                val failureNote = "A web search was attempted for the user's question but returned no usable results. Answer the user's question as best you can from your own knowledge, and briefly mention that live search data wasn't available."
-                if (originalSystemPrompt.isNotEmpty()) "$originalSystemPrompt\n\n$failureNote" else failureNote
+                "(Search was attempted but no usable results were found. Answer from your own knowledge.)\n\n$userPrompt"
             }
 
-            setSystemPrompt(augmentedSysPrompt)
-            try {
-                runSingleRound(userPrompt, runInference, callback, isAborted)
-            } finally {
-                setSystemPrompt(originalSystemPrompt)
-            }
+            // Restore original system prompt (in case a previous round changed it)
+            setSystemPrompt(originalSystemPrompt)
+            runSingleRound(augmentedPrompt, runInference, callback, isAborted)
         } else {
             // No search needed — run normal inference
             runSingleRound(userPrompt, runInference, callback, isAborted)
