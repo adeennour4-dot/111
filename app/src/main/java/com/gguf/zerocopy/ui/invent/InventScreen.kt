@@ -1058,7 +1058,7 @@ fun ModelSettingsContent(label: String, config: ModelTokenConfig?, colors: ZcPal
     )
 
     LazyColumn(
-        modifier = Modifier.weight(1f).fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().fillMaxHeight(),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         item {
