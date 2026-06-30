@@ -166,15 +166,26 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     // ── Stats ──────────────────────────────────────────────────────────────
 
     private fun computeStats() {
-      val lines = zcp.generatedFiles.values.sumOf { code ->
-        code.count { it == '\n' } + 1
+      val projectDir = getProjectDir()
+      var lines = 0L
+      var bytes = 0L
+      for (path in zcp.generatedFiles) {
+        val content = InventStorage.readGeneratedFile(projectDir, path)
+        if (content != null) {
+          lines += content.count { it == '\n' } + 1
+          bytes += content.length.toLong()
+        }
       }
-      val bytes = zcp.generatedFiles.values.sumOf { it.length.toLong() }
       _ui.value = _ui.value.copy(
-        totalLines = lines,
+        totalLines = lines.toInt(),
         totalGeneratedBytes = bytes,
         debugSessionCount = zcp.debugSessions.size
       )
+    }
+
+    private fun getProjectDir(): java.io.File {
+        val sid = sessionId.ifEmpty { "_" }
+        return InventStorage.getProjectDir(ctx, sid, zcp.projectName)
     }
 
     // ── Setup ────────────────────────────────────────────────────────────────
@@ -470,7 +481,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 fileTree = emptyList(),
                 chunks = emptyList(),
                 fileSpecs = emptyMap(),
-                generatedFiles = emptyMap()
+                generatedFiles = emptyList()
             )
             InventStorage.saveZcp(ctx, sessionId, zcp)
             _ui.value = _ui.value.copy(
@@ -691,10 +702,10 @@ Each split file must be under $budget tokens.
             val generatedCode = generateCodeWithSearch(fileSpec, projectDir)
             if (generatedCode == null) { setSwap(""); _ui.value = _ui.value.copy(error = "Failed to generate ${fileNode.path}"); return }
 
-            // Save generated code
-            zcp = zcp.copy(generatedFiles = zcp.generatedFiles + (fileNode.path to generatedCode))
-            InventStorage.saveZcp(ctx, sessionId, zcp)
+            // Save generated code (content on disk, only path in ZCP)
             InventStorage.writeGeneratedFile(projectDir, fileNode.path, generatedCode)
+            zcp = zcp.copy(generatedFiles = zcp.generatedFiles + fileNode.path)
+            InventStorage.saveZcp(ctx, sessionId, zcp)
 
             // Clear search + unload Model 2
             clearToolManagerOnEngines()
@@ -795,7 +806,7 @@ Each split file must be under $budget tokens.
         val projectDir = InventStorage.getProjectDir(ctx, sessionId, zcp.projectName)
 
         // Check remaining files for replanning
-        val remaining = filesToGenerate.drop(startFrom).filter { !zcp.generatedFiles.containsKey(it.path) }
+        val remaining = filesToGenerate.drop(startFrom).filter { !zcp.generatedFiles.contains(it.path) }
         if (remaining.isNotEmpty()) {
             updatePhase(InventPhase.GENERATING)
             val replanned = checkAndReplanIfNeeded()
@@ -811,7 +822,7 @@ Each split file must be under $budget tokens.
         for (idx in finalStartFrom until finalFiles.size) {
             val fileNode = finalFiles[idx]
             if (_ui.value.phase != InventPhase.GENERATING) break
-            if (zcp.generatedFiles.containsKey(fileNode.path)) continue
+            if (zcp.generatedFiles.contains(fileNode.path)) continue
 
             val fileSpec = zcp.fileSpecs[fileNode.path] ?: FileSpec(path = fileNode.path, description = fileNode.description)
             sessionState = sessionState?.copy(currentFileIndex = idx + 1)
@@ -826,9 +837,9 @@ Each split file must be under $budget tokens.
             val generatedCode = generateCodeWithSearch(fileSpec, projectDir)
             if (generatedCode == null) { setSwap(""); _ui.value = _ui.value.copy(error = "Failed to generate ${fileNode.path}"); return }
 
-            zcp = zcp.copy(generatedFiles = zcp.generatedFiles + (fileNode.path to generatedCode))
-            InventStorage.saveZcp(ctx, sessionId, zcp)
             InventStorage.writeGeneratedFile(projectDir, fileNode.path, generatedCode)
+            zcp = zcp.copy(generatedFiles = zcp.generatedFiles + fileNode.path)
+            InventStorage.saveZcp(ctx, sessionId, zcp)
 
             clearToolManagerOnEngines()
             withContext(Dispatchers.IO) { engineManager.unloadAll() }
@@ -858,11 +869,11 @@ Each split file must be under $budget tokens.
         if (!ok) { setSwap(""); _ui.value = _ui.value.copy(currentModelLabel = "", processLabel = ""); return }
         setSwap("")
         val projectDir = InventStorage.getProjectDir(ctx, sessionId, zcp.projectName)
-        val filePaths = zcp.generatedFiles.keys.sorted()
+        val filePaths = zcp.generatedFiles.sorted().filter { it != "README.txt" }
         val summaries = mutableListOf<String>()
         for ((idx, path) in filePaths.withIndex()) {
             _ui.value = _ui.value.copy(processLabel = "Reading $path (${idx + 1}/${filePaths.size})…")
-            val content = InventStorage.readGeneratedFile(projectDir, path) ?: zcp.generatedFiles[path] ?: continue
+            val content = InventStorage.readGeneratedFile(projectDir, path) ?: continue
             val preview = content.take(2000)
             val lineCount = content.count { it == '\n' } + 1
             val kvBefore = engineManager.getActiveEngine()?.getKvUsage() ?: 0
@@ -954,7 +965,9 @@ Each split file must be under $budget tokens.
             appendLine("Generated by ZeroCopy Invent — adeennour4-dot/111")
         }
         InventStorage.writeGeneratedFile(projectDir, "README.txt", readmeContent)
-        zcp = zcp.copy(generatedFiles = zcp.generatedFiles + ("README.txt" to readmeContent))
+        if (!zcp.generatedFiles.contains("README.txt")) {
+            zcp = zcp.copy(generatedFiles = zcp.generatedFiles + "README.txt")
+        }
         InventStorage.saveZcp(ctx, sessionId, zcp)
         addMessage("system", "✅ README.txt written with build instructions for $platform", InventPhase.FINALIZING)
         _ui.value = _ui.value.copy(currentModelLabel = "", processLabel = "")
@@ -975,6 +988,7 @@ Each split file must be under $budget tokens.
             val zipDir = java.io.File(ctx.cacheDir, "invent_exports").also { it.mkdirs() }
             val zipFile = java.io.File(zipDir, "${projectName}.zip")
 
+            val projectDir = getProjectDir()
             ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
                 val readme = buildString {
                     appendLine("# ${zcp.projectName}")
@@ -989,7 +1003,11 @@ Each split file must be under $budget tokens.
                     appendLine()
                     appendLine("## Stats")
                     appendLine("- Files: ${zcp.generatedFiles.size}")
-                    val lines = zcp.generatedFiles.values.sumOf { it.count { c -> c == '\n' } + 1 }
+                    var lines = 0L
+                    for (p in zcp.generatedFiles) {
+                        val c = InventStorage.readGeneratedFile(projectDir, p)
+                        if (c != null) lines += c.count { ch -> ch == '\n' } + 1
+                    }
                     appendLine("- Lines of code: $lines")
                     if (zcp.debugSessions.isNotEmpty()) appendLine("- Debug sessions: ${zcp.debugSessions.size}")
                     appendLine()
@@ -1008,11 +1026,14 @@ Each split file must be under $budget tokens.
                 zos.write(zcpJson.toByteArray(Charsets.UTF_8))
                 zos.closeEntry()
 
-                // All generated files with actual code
-                zcp.generatedFiles.forEach { (path, code) ->
-                    zos.putNextEntry(ZipEntry(path))
-                    zos.write(code.toByteArray(Charsets.UTF_8))
-                    zos.closeEntry()
+                // All generated files with actual code (read from disk)
+                for (path in zcp.generatedFiles) {
+                    val code = InventStorage.readGeneratedFile(projectDir, path)
+                    if (code != null) {
+                        zos.putNextEntry(ZipEntry(path))
+                        zos.write(code.toByteArray(Charsets.UTF_8))
+                        zos.closeEntry()
+                    }
                 }
             }
             zipFile
@@ -1041,7 +1062,7 @@ Each split file must be under $budget tokens.
                 })
             }
             put("fileTree", treeArr)
-            put("generatedFiles", org.json.JSONArray(zcp.generatedFiles.keys.toList()))
+            put("generatedFiles", org.json.JSONArray(zcp.generatedFiles))
             put("totalFiles", zcp.generatedFiles.size)
             if (zcp.debugSessions.isNotEmpty()) {
                 val debugArr = org.json.JSONArray()
@@ -1104,16 +1125,16 @@ Each split file must be under $budget tokens.
         addMessage("model1", diagnosis, InventPhase.DEBUGGING)
 
         val filePath = Regex("§FILE\\{path:([^}]+)\\}").find(diagnosis)?.groupValues?.get(1)?.trim()
-        if (filePath == null || !zcp.generatedFiles.containsKey(filePath)) {
+        if (filePath == null || !zcp.generatedFiles.contains(filePath)) {
             addMessage("system", "Could not identify which file to fix. Use the exact file path.", InventPhase.DEBUGGING)
             return
         }
 
-        val originalCode = zcp.generatedFiles[filePath] ?: ""
+        val projectDir = InventStorage.getProjectDir(ctx, sessionId, zcp.projectName)
+        val originalCode = InventStorage.readGeneratedFile(projectDir, filePath) ?: ""
         val isSame = state.sameModelMode || state.model1Path == state.model2Path
         val targetPath = if (!isSame) state.model2Path else state.model1Path
         val targetName = if (!isSame) state.model2Name else state.model1Name
-        val projectDir = InventStorage.getProjectDir(ctx, sessionId, zcp.projectName)
 
         setSwap("Loading $targetName to fix $filePath…")
         val m2Ok = loadOrKeepModel(targetPath)
@@ -1165,8 +1186,11 @@ Each split file must be under $budget tokens.
             fixedCode.trim()
         }
 
+        InventStorage.writeGeneratedFile(projectDir, filePath, finalCode)
+        if (!zcp.generatedFiles.contains(filePath)) {
+            zcp = zcp.copy(generatedFiles = zcp.generatedFiles + filePath)
+        }
         zcp = zcp.copy(
-            generatedFiles = zcp.generatedFiles + (filePath to finalCode),
             debugSessions = zcp.debugSessions + com.gguf.zerocopy.data.invent.DebugSession(
                 filePath = filePath,
                 problem = userText,

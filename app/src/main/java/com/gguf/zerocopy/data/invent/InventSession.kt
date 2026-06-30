@@ -24,8 +24,8 @@ data class FileSpec(
 data class DebugSession(
     val filePath: String,
     val problem: String,
-    val originalCode: String,
-    val fixedCode: String,
+    val originalCode: String = "",        // kept for small inline display; full content on disk
+    val fixedCode: String = "",             // kept for small inline display; full content on disk
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -51,8 +51,8 @@ data class ZcpProtocol(
     val mergeCount: Int = 0,
     // Per-file specs (keyed by file path)
     val fileSpecs: Map<String, FileSpec> = emptyMap(),
-    // Generated code (keyed by file path)
-    val generatedFiles: Map<String, String> = emptyMap(),
+    // Generated code paths (content stored on disk, loaded on demand)
+    val generatedFiles: List<String> = emptyList(),
     // Debug history
     val debugSessions: List<DebugSession> = emptyList()
 )
@@ -156,9 +156,20 @@ object InventStorage {
     }
 
     fun saveZcp(ctx: Context, sessionId: String, zcp: ZcpProtocol) {
-        val json = zcpToJson(zcp)
+        // Write large search result content to disk, keep only metadata in ZCP
+        val searchDir = File(getDir(ctx), "zcp_${sessionId}_sr")
+        searchDir.mkdirs()
+        // Delete old search result files
+        searchDir.listFiles()?.forEach { it.delete() }
+        val metaResults = zcp.searchResults.mapIndexed { i, sr ->
+            val srFile = File(searchDir, "$i.txt")
+            srFile.writeText(sr.content)
+            SearchResult(sr.intent, "", sr.domain, sr.verified)
+        }
+        val stripped = zcp.copy(searchResults = metaResults)
+        val json = zcpToJson(stripped)
         val checksum = sha256(json)
-        val withChecksum = zcpToJson(zcp.copy(checksum = checksum))
+        val withChecksum = zcpToJson(stripped.copy(checksum = checksum))
         File(getDir(ctx), "zcp_${sessionId}.json").writeText(withChecksum)
     }
 
@@ -171,7 +182,17 @@ object InventStorage {
             val savedChecksum = obj.optString("checksum", "")
             val withoutChecksum = zcpToJson(jsonToZcp(obj).copy(checksum = ""))
             if (savedChecksum.isNotEmpty() && sha256(withoutChecksum) != savedChecksum) null
-            else jsonToZcp(obj)
+            else {
+                val base = jsonToZcp(obj)
+                // Load search result content from disk
+                val searchDir = File(getDir(ctx), "zcp_${sessionId}_sr")
+                val loadedResults = base.searchResults.mapIndexed { i, sr ->
+                    val srFile = File(searchDir, "$i.txt")
+                    val content = if (srFile.exists()) srFile.readText() else sr.content
+                    SearchResult(sr.intent, content, sr.domain, sr.verified)
+                }
+                base.copy(searchResults = loadedResults)
+            }
         } catch (e: Exception) { null }
     }
 
@@ -203,7 +224,7 @@ object InventStorage {
             }
             put("messages", msgs)
         }
-        File(getDir(ctx), "state_${state.sessionId}.json").writeText(obj.toString(2))
+        File(getDir(ctx), "state_${state.sessionId}.json").writeText(obj.toString())
     }
 
     fun loadSession(ctx: Context, sessionId: String): InventSessionState? {
@@ -246,6 +267,8 @@ object InventStorage {
         File(getDir(ctx), "zcp_${sessionId}.json").delete()
         File(getDir(ctx), "state_${sessionId}.json").delete()
         File(getDir(ctx), "searchlog_${sessionId}.json").delete()
+        // Also delete search result files
+        File(getDir(ctx), "zcp_${sessionId}_sr").deleteRecursively()
         // Also delete generated projects
         File(ctx.filesDir, "invent_projects/$sessionId").deleteRecursively()
     }
@@ -383,12 +406,8 @@ object InventStorage {
                 })
             }
             put("fileSpecs", specsObj)
-            // Generated files
-            val genObj = JSONObject()
-            zcp.generatedFiles.forEach { (path, code) ->
-                genObj.put(path, code)
-            }
-            put("generatedFiles", genObj)
+            // Generated file paths (content is on disk)
+            put("generatedFiles", JSONArray(zcp.generatedFiles))
             // Debug sessions
             val debugArr = JSONArray()
             zcp.debugSessions.forEach { ds ->
@@ -402,7 +421,7 @@ object InventStorage {
             }
             put("debugSessions", debugArr)
         }
-        return obj.toString(2)
+        return obj.toString()
     }
 
     private fun jsonToZcp(obj: JSONObject): ZcpProtocol {
@@ -444,17 +463,11 @@ object InventStorage {
             }
             m
         } else emptyMap()
-        // Generated files
-        val genObj = obj.optJSONObject("generatedFiles")
-        val generatedFiles = if (genObj != null) {
-            val m = mutableMapOf<String, String>()
-            val keys = genObj.keys()
-            while (keys.hasNext()) {
-                val key = keys.next()
-                m[key] = genObj.getString(key)
-            }
-            m
-        } else emptyMap()
+        // Generated file paths (content is on disk)
+        val genArr = obj.optJSONArray("generatedFiles")
+        val generatedFiles = if (genArr != null) {
+            (0 until genArr.length()).map { genArr.getString(it) }
+        } else emptyList()
         // Debug sessions
         val debugArr = obj.optJSONArray("debugSessions") ?: JSONArray()
         val debugSessions = (0 until debugArr.length()).map { i ->
