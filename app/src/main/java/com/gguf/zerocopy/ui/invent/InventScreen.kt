@@ -4,6 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -35,8 +36,12 @@ import com.gguf.zerocopy.ui.theme.currentPalette
 // ─── Colors ──────────────────────────────────────────────────────────────────
 
 private val CyanGreen = Color(0xFF00E5A0)
-private val GlowCyan = Color(0x4000E5A0)
-private val GlowPurple = Color(0x408B83FF)
+private val GlowCyan = Color(0x6000E5A0)
+private val GlowPurple = Color(0x607C5CFF)
+private val NeonBlue = Color(0xFF00BFFF)
+private val NeonPurple = Color(0xFF8B5CF6)
+private val NeonPink = Color(0xFFFF006E)
+private val GlowBorder = Color(0x4000E5A0)
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
@@ -129,7 +134,7 @@ fun InventScreen(
     ) { pad ->
         Box(Modifier.fillMaxSize().padding(pad)) {
 
-            Column(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().imePadding()) {
 
                 // ── Model Selector Row ────────────────────────────────────────
                 ModelSelectorRow(
