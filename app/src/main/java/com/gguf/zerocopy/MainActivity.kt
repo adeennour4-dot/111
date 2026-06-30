@@ -160,7 +160,7 @@ fun AppRoot() {
       Box(
         modifier = Modifier.fillMaxSize().graphicsLayer {
           alpha = if (selectedTab == 0) 1f else 0f
-          isVisible = selectedTab == 0
+          if (selectedTab != 0) { scaleX = 0.001f; scaleY = 0.001f }
         }
       ) {
         if (showSessionList) {
@@ -199,7 +199,7 @@ fun AppRoot() {
       Box(
         modifier = Modifier.fillMaxSize().graphicsLayer {
           alpha = if (selectedTab == 1) 1f else 0f
-          isVisible = selectedTab == 1
+          if (selectedTab != 1) { scaleX = 0.001f; scaleY = 0.001f }
         }
       ) {
         ModelListScreen(
@@ -216,7 +216,7 @@ fun AppRoot() {
       Box(
         modifier = Modifier.fillMaxSize().graphicsLayer {
           alpha = if (selectedTab == 2) 1f else 0f
-          isVisible = selectedTab == 2
+          if (selectedTab != 2) { scaleX = 0.001f; scaleY = 0.001f }
         }
       ) {
         CloudScreen(onBack = { selectedTab = 0 })
@@ -226,7 +226,7 @@ fun AppRoot() {
       Box(
         modifier = Modifier.fillMaxSize().graphicsLayer {
           alpha = if (selectedTab == 3) 1f else 0f
-          isVisible = selectedTab == 3
+          if (selectedTab != 3) { scaleX = 0.001f; scaleY = 0.001f }
         }
       ) {
         SettingsScreen(onBack = { selectedTab = 0 })
@@ -236,7 +236,7 @@ fun AppRoot() {
       Box(
         modifier = Modifier.fillMaxSize().graphicsLayer {
           alpha = if (selectedTab == 4) 1f else 0f
-          isVisible = selectedTab == 4
+          if (selectedTab != 4) { scaleX = 0.001f; scaleY = 0.001f }
         }
       ) {
         if (inventStarted) {
