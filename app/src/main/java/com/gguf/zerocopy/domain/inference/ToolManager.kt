@@ -235,6 +235,10 @@ class ToolManager {
       result
     }
   }
+
+  private fun openConn(url: String): HttpURLConnection =
+    (URL(url).openConnection() as HttpURLConnection).apply {
+      requestMethod = "GET"
       connectTimeout = 15_000
       readTimeout = 20_000
       instanceFollowRedirects = true
@@ -302,7 +306,6 @@ class ToolManager {
     }.trim().ifEmpty { "No results found." }
   }
 
-
   /**
    * Fetches search results from public SearXNG instances.
    * SearXNG is a free, open-source meta-search engine with a JSON API.
@@ -345,6 +348,7 @@ class ToolManager {
     }
     return ""
   }
+
 
   private fun extractDdgUrl(raw: String) = try {
     if ("uddg=" in raw) {
