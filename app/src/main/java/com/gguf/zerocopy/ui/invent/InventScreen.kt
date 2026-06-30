@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -296,7 +297,7 @@ fun InventScreen(
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Filled.Send, "Send",
+                                Icon(Icons.AutoMirrored.Filled.Send, "Send",
                                     tint = if (inputText.isNotBlank()) Color.Black else colors.Text3,
                                     modifier = Modifier.size(20.dp))
                             }
