@@ -404,7 +404,7 @@ fun StatsCard(ui: InventUiState, colors: ZcPalette) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 StatItem("Files", "${ui.totalFiles}", colors.Accent, colors)
                 StatItem("Lines", "${ui.totalLines}", colors.Accent2, colors)
-                StatItem("Size", formatBytes(ui.totalGeneratedBytes), colors.Green, colors)
+                StatItem("Size", formatBytes(ui.totalGeneratedBytes), Color(0xFF00F090), colors)
                 StatItem("Debug", "${ui.debugSessionCount}", colors.Amber, colors)
             }
         }
