@@ -268,12 +268,12 @@ fun AppRoot() {
 @Composable
 fun SplashScreen(onDone: () -> Unit) {
   val colors = currentPalette()
-  val alpha = remember { Animatable(0f) }
+  val splashAlpha = remember { Animatable(0f) }
 
   LaunchedEffect(Unit) {
-    alpha.animateTo(1f, animationSpec = tween(800, easing = FastOutSlowInEasing))
+    splashAlpha.animateTo(1f, animationSpec = tween(800, easing = FastOutSlowInEasing))
     delay(400)
-    alpha.animateTo(0f, animationSpec = tween(400))
+    splashAlpha.animateTo(0f, animationSpec = tween(400))
     onDone()
   }
 
@@ -281,7 +281,7 @@ fun SplashScreen(onDone: () -> Unit) {
     modifier = Modifier.fillMaxSize().background(colors.Bg),
     contentAlignment = Alignment.Center
   ) {
-    Column(modifier = Modifier.alpha(alpha.value), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(modifier = Modifier.alpha(splashAlpha.value), horizontalAlignment = Alignment.CenterHorizontally) {
       Box(
         modifier = Modifier.size(100.dp).clip(RoundedCornerShape(28.dp)).background(Brush.linearGradient(listOf(colors.GradientStart, colors.GradientEnd))),
         contentAlignment = Alignment.Center

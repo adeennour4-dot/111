@@ -395,8 +395,7 @@ private fun SamplingField(
                     focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
                     cursorColor = colors.Accent
                 ),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+                shape = RoundedCornerShape(8.dp)
             )
         }
     }

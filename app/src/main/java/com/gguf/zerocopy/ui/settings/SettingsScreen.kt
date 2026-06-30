@@ -580,8 +580,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             unfocusedTextColor = colors.Text,
             cursorColor = colors.Accent
           ),
-          textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace),
-          contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+          textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace)
         )
       }
 
@@ -738,8 +737,7 @@ fun SettingField(label: String, hint: String, value: String, onChange: (String) 
         unfocusedTextColor = colors.Text,
         cursorColor = colors.Accent
       ),
-      textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace),
-      contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+      textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace)
     )
   }
 }
