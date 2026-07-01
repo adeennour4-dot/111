@@ -4,28 +4,28 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Square glow (24dp, 15% alpha) -->
+    <!-- Square glow (24dp at 15% alpha) centered on square -->
     <path
         android:fillColor="#2600E5A0"
         android:pathData="M24,24 L48,24 C49.1,24 50,24.9 50,26 L50,48 C50,49.1 49.1,50 48,50 L26,50 C24.9,50 24,49.1 24,48 Z"/>
-    <!-- Circle glow (radius 12, 15% alpha) -->
+    <!-- Circle glow (radius 12 at 15% alpha) centered on circle -->
     <path
         android:fillColor="#267C5CFF"
         android:pathData="M72,72 m-12,0 a12,12 0,1 1,24 0 a12,12 0,1 1,-24 0"/>
-    <!-- Small rounded cube (16dp, matching circle diameter) -->
+    <!-- Small rounded cube (14dp matching circle diameter) -->
     <path
         android:fillColor="#00E5A0"
-        android:pathData="M28,28 L42,28 C43.1,28 44,28.9 44,30 L44,42 C44,43.1 43.1,44 42,44 L30,44 C28.9,44 28,43.1 28,42 Z"/>
-    <!-- Small circle (radius 8, diameter 16) -->
+        android:pathData="M29,29 L41,29 C42.1,29 43,29.9 43,31 L43,41 C43,42.1 42.1,43 41,43 L31,43 C29.9,43 29,42.1 29,41 Z"/>
+    <!-- Small circle (radius 7, diameter 14) -->
     <path
         android:fillColor="#7C5CFF"
-        android:pathData="M72,72 m-8,0 a8,8 0,1 1,16 0 a8,8 0,1 1,-16 0"/>
-    <!-- + sign horizontal bar (centered at 54,54) -->
+        android:pathData="M72,72 m-7,0 a7,7 0,1 1,14 0 a7,7 0,1 1,-14 0"/>
+    <!-- Plus sign horizontal bar (rounded ends) -->
     <path
         android:fillColor="#F0F0F8"
-        android:pathData="M39,50 L69,50 L69,58 L39,58 Z"/>
-    <!-- + sign vertical bar (centered at 54,54) -->
+        android:pathData="M43,50 L65,50 Q69,50 69,54 Q69,58 65,58 L43,58 Q39,58 39,54 Q39,50 43,50 Z"/>
+    <!-- Plus sign vertical bar (rounded ends) -->
     <path
         android:fillColor="#F0F0F8"
-        android:pathData="M50,39 L58,39 L58,69 L50,69 Z"/>
+        android:pathData="M50,43 L50,65 Q50,69 54,69 Q58,69 58,65 L58,43 Q58,39 54,39 Q50,39 50,43 Z"/>
 </vector>

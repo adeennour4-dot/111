@@ -241,6 +241,11 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             researcherName = saved.researcherName,
             offlineMode = saved.offlineMode,
             sameModelMode = saved.sameModelMode,
+            modelMode = when {
+                saved.sameModelMode && saved.researcherPath == saved.model1Path -> ModelMode.SINGLE
+                saved.sameModelMode -> ModelMode.DUAL
+                else -> ModelMode.TRIPLE
+            },
             fileTree = savedZcp.fileTree,
             searchRound = saved.searchRound,
             mergeCount = saved.mergeCount,
@@ -343,6 +348,11 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                         researcherName = saved.researcherName,
                         offlineMode = saved.offlineMode,
                         sameModelMode = saved.sameModelMode,
+                        modelMode = when {
+                            saved.sameModelMode && saved.researcherPath == saved.model1Path -> ModelMode.SINGLE
+                            saved.sameModelMode -> ModelMode.DUAL
+                            else -> ModelMode.TRIPLE
+                        },
                         fileTree = savedZcp.fileTree,
                         searchRound = saved.searchRound,
                         mergeCount = saved.mergeCount,
@@ -398,7 +408,12 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 model2Name = if (sameModelMode) m1n else m2n,
                 researcherName = rn,
                 offlineMode = offlineMode,
-                sameModelMode = sameModelMode
+                sameModelMode = sameModelMode,
+                modelMode = when {
+                    sameModelMode && rp == m1p -> ModelMode.SINGLE
+                    sameModelMode -> ModelMode.DUAL
+                    else -> ModelMode.TRIPLE
+                }
             )
 
             startModel1Questioning()

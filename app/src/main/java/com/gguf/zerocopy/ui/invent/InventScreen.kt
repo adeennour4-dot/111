@@ -249,14 +249,6 @@ fun InventScreen(
                         ) {
                             Icon(Icons.Filled.Settings, "Settings", tint = colors.Text2, modifier = Modifier.size(16.dp))
                         }
-                        // New
-                        IconButton(
-                            onClick = { vm.startNewSession { onModelsClick() } },
-                            modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp))
-                                .background(Color.White.copy(alpha = 0.08f))
-                        ) {
-                            Icon(Icons.Filled.Add, "New", tint = Color.White, modifier = Modifier.size(16.dp))
-                        }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Surface)
                 )
@@ -290,7 +282,14 @@ fun InventScreen(
                     coderName = ui.model2Name,
                     modelMode = ui.modelMode,
                     phase = ui.phase,
-                    onTabClick = { role -> modelPickerRole = role },
+                    onTabClick = { role ->
+                        // Mode-aware: in mode 1, all roles share one model
+                        modelPickerRole = when (ui.modelMode) {
+                            ModelMode.SINGLE -> -1
+                            ModelMode.DUAL -> if (role == 1) 1 else -2
+                            ModelMode.TRIPLE -> role
+                        }
+                    },
                     colors = colors
                 )
 
@@ -406,21 +405,47 @@ fun InventScreen(
                 )
             }
             if (showSettingsPopup) {
+                val tabIndex = when {
+                    settingsTabToShow >= 0 -> settingsTabToShow
+                    ui.modelMode == ModelMode.SINGLE -> 0
+                    ui.modelMode == ModelMode.DUAL -> if (settingsTabToShow == -2) 0 else 1
+                    else -> 0
+                }
                 SettingsPopup(
                     onDismiss = { showSettingsPopup = false; settingsTabToShow = -1 },
                     colors = colors,
                     model1Path = model1Path, model2Path = model2Path, researcherPath = researcherPath,
-                    initialTab = settingsTabToShow.coerceAtLeast(0)
+                    initialTab = tabIndex.coerceAtLeast(0),
+                    modelMode = ui.modelMode
                 )
             }
             if (modelPickerRole != null) {
-                val roleLabel = when (modelPickerRole) { 0 -> "Planner"; 1 -> "Researcher"; 2 -> "Coder"; else -> "Model" }
+                val roleIdx = modelPickerRole!!
+                val roleLabel = when (roleIdx) {
+                    -2 -> "Planner + Coder"
+                    -1 -> "All Roles"
+                    0 -> "Planner"
+                    1 -> "Researcher"
+                    2 -> "Coder"
+                    else -> "Model"
+                }
                 ModelPickerDialog(
                     roleLabel = roleLabel,
                     onDismiss = { modelPickerRole = null },
                     onSelect = { path, name, useAll ->
-                        vm.selectModelTab(modelPickerRole ?: 0, path, name, useAll)
-                        settingsTabToShow = modelPickerRole ?: 0; modelPickerRole = null; showSettingsPopup = true
+                        when (roleIdx) {
+                            -1 -> { // All roles (mode 1)
+                                vm.selectModelTab(0, path, name, useAll)
+                                vm.selectModelTab(1, path, name, useAll)
+                                vm.selectModelTab(2, path, name, useAll)
+                            }
+                            -2 -> { // Planner + Coder (mode 2)
+                                vm.selectModelTab(0, path, name, useAll)
+                                vm.selectModelTab(2, path, name, useAll)
+                            }
+                            else -> vm.selectModelTab(roleIdx, path, name, useAll)
+                        }
+                        settingsTabToShow = roleIdx; modelPickerRole = null; showSettingsPopup = true
                     },
                     colors = colors
                 )
@@ -868,7 +893,8 @@ fun FileRow(node: FileNode, colors: ZcPalette) {
 // ═══════════════════════════════════════════════════════════════════════════════
 @Composable
 fun SettingsPopup(onDismiss: () -> Unit, colors: ZcPalette,
-    model1Path: String, model2Path: String, researcherPath: String, initialTab: Int = 0) {
+    model1Path: String, model2Path: String, researcherPath: String, initialTab: Int = 0,
+    modelMode: ModelMode = ModelMode.TRIPLE) {
     var settingsTab by remember { mutableStateOf(initialTab) }
 
     val getCfg = { role: String, _: String ->
@@ -877,6 +903,13 @@ fun SettingsPopup(onDismiss: () -> Unit, colors: ZcPalette,
     val plannerCfg = remember(model1Path) { getCfg("Planner", model1Path) }
     val researcherCfg = remember(researcherPath) { getCfg("Researcher", researcherPath) }
     val coderCfg = remember(model2Path) { getCfg("Coder", model2Path) }
+
+    // Tab definitions based on model mode
+    val tabDefs = when (modelMode) {
+        ModelMode.SINGLE -> listOf("All" to "Planner")
+        ModelMode.DUAL -> listOf("Planner+Coder" to "Planner", "Researcher" to "Researcher")
+        ModelMode.TRIPLE -> listOf("Planner" to "Planner", "Researcher" to "Researcher", "Coder" to "Coder")
+    }
 
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center) {
@@ -892,7 +925,7 @@ fun SettingsPopup(onDismiss: () -> Unit, colors: ZcPalette,
                 }
                 HorizontalDivider(color = colors.Border); Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    listOf("Planner", "Researcher", "Coder").forEachIndexed { i, label ->
+                    tabDefs.forEachIndexed { i, (label, _) ->
                         Surface(shape = RoundedCornerShape(8.dp),
                             color = if (settingsTab == i) CyanGreen.copy(alpha = 0.12f) else colors.Surface,
                             border = BorderStroke(1.dp, if (settingsTab == i) CyanGreen else colors.Border)) {
@@ -904,10 +937,28 @@ fun SettingsPopup(onDismiss: () -> Unit, colors: ZcPalette,
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                val cfg = when (settingsTab) { 0 -> plannerCfg; 1 -> researcherCfg; 2 -> coderCfg; else -> null }
-                val path = when (settingsTab) { 0 -> model1Path; 1 -> researcherPath; 2 -> model2Path; else -> "" }
-                val role = when (settingsTab) { 0 -> "Planner"; 1 -> "Researcher"; 2 -> "Coder"; else -> "" }
-                ModelConfigView(role = role, config = cfg, modelPath = path, colors = colors)
+                val (tabLabel, roleKey) = if (settingsTab < tabDefs.size) tabDefs[settingsTab] else ("Planner" to "Planner")
+                val cfg = when (roleKey) {
+                    "Planner" -> plannerCfg
+                    "Researcher" -> researcherCfg
+                    else -> coderCfg
+                }
+                val path = when (roleKey) {
+                    "Planner" -> model1Path
+                    "Researcher" -> researcherPath
+                    else -> model2Path
+                }
+                ModelConfigView(role = roleKey, config = cfg, modelPath = path, colors = colors)
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = CyanGreen)
+                ) {
+                    Text("Confirm", fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold, color = Color.Black)
+                }
             }
         }
     }
