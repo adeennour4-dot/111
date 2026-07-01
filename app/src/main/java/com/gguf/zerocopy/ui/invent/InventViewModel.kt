@@ -1378,6 +1378,14 @@ Each split file must be under $budget tokens.
         }
     }
 
+    fun saveCurrentSession() {
+        val state = sessionState ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            InventStorage.saveSession(ctx, state)
+            InventStorage.saveZcp(ctx, sessionId, zcp)
+        }
+    }
+
     fun onDeleteConfirmed() {
         viewModelScope.launch(Dispatchers.IO) {
             InventStorage.deleteSession(ctx, sessionId)
@@ -1417,6 +1425,44 @@ Each split file must be under $budget tokens.
                 engine.repeatPenalty = SettingsManager.toRepeatPenalty()
                 engine.loadModel(path)?.isSuccess == true
             } catch (e: Exception) { false }
+        }
+    }
+
+    /** Reload the currently active engine with the Invent config for the matching role. */
+    fun reloadInventModel() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val active = engineManager.getActiveEngine()
+            val path = active?.loadedModelPath ?: return@launch
+            val state = sessionState ?: return@launch
+            val role = when (path) {
+                state.model1Path -> "Planner"
+                state.model2Path -> "Coder"
+                state.researcherPath -> "Researcher"
+                else -> return@launch
+            }
+            val inventCfg = SettingsManager.getInventModelConfig(role) ?: return@launch
+            try {
+                engineManager.unloadAll()
+                val engine = engineManager.selectEngineForFormat(path)
+                engine.config = InferenceConfig(
+                    nCtx = inventCfg.ctx,
+                    nNew = inventCfg.maxNew,
+                    nGpuLayers = inventCfg.gpuLayers,
+                    temperature = inventCfg.temperature ?: 0.7f,
+                    topP = inventCfg.topP ?: 0.9f,
+                    minP = inventCfg.minP ?: 0f,
+                    topK = inventCfg.topK ?: 40,
+                    repeatPenalty = inventCfg.repeatPenalty ?: 1.1f,
+                    freqPenalty = inventCfg.freqPenalty ?: 0f,
+                    presPenalty = inventCfg.presPenalty ?: 0f,
+                    seed = inventCfg.seed ?: -1,
+                    flashAttention = inventCfg.flashAttention ?: false,
+                    lowRamMode = inventCfg.lowRamMode ?: false,
+                    threads = inventCfg.threads ?: 4,
+                    nBatch = inventCfg.nBatch ?: 512
+                )
+                engine.loadModel(path)
+            } catch (_: Exception) { }
         }
     }
 
@@ -1558,6 +1604,17 @@ Each FILEZCP must be self-contained for independent implementation.
     /** Rough token estimate: ~3.5 chars per token for code/text. */
     private fun estimateTokens(text: String): Int = (text.length / 3.5f).toInt() + 1
 
+    private fun getInventConfigForActiveModel(): SettingsManager.ModelTokenConfig? {
+        val activePath = engineManager.getActiveEngine()?.loadedModelPath ?: return null
+        val state = sessionState ?: return null
+        return when (activePath) {
+            state.model1Path -> SettingsManager.getInventModelConfig("Planner")
+            state.model2Path -> SettingsManager.getInventModelConfig("Coder")
+            state.researcherPath -> SettingsManager.getInventModelConfig("Researcher")
+            else -> null
+        }
+    }
+
     private fun buildPromptWithInfo(
         system: String,
         history: List<Pair<String, String>>,
@@ -1565,7 +1622,8 @@ Each FILEZCP must be self-contained for independent implementation.
     ): Pair<String, Int> {
         // Use per-model context if available, else global
         val activePath = engineManager.getActiveEngine()?.loadedModelPath ?: ""
-        val modelCfg = SettingsManager.getModelTokenConfig(activePath)
+        val inventCfg = getInventConfigForActiveModel()
+        val modelCfg = inventCfg ?: SettingsManager.getModelTokenConfig(activePath)
         val availableCtx = modelCfg?.ctx?.coerceAtLeast(512) ?: SettingsManager.nCtx.coerceAtLeast(1024)
         val maxNew = modelCfg?.maxNew?.coerceAtLeast(64) ?: SettingsManager.maxTokens.coerceAtLeast(64)
         val budget = availableCtx - maxNew - 256

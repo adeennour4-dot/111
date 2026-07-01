@@ -237,19 +237,37 @@ fun InventScreen(
                         // History
                         IconButton(
                             onClick = { showSessionPopup = true },
-                            modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp))
+                            modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp))
                                 .background(Color.White.copy(alpha = 0.08f))
                         ) {
-                            Icon(Icons.Outlined.History, "History", tint = colors.Text2, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Outlined.History, "History", tint = colors.Text2, modifier = Modifier.size(14.dp))
                         }
+                        Spacer(Modifier.width(2.dp))
                         // Settings
                         IconButton(
                             onClick = { showSettingsPopup = true },
-                            modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp))
+                            modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp))
                                 .background(Color.White.copy(alpha = 0.08f))
                         ) {
-                            Icon(Icons.Filled.Settings, "Settings", tint = colors.Text2, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Filled.Settings, "Settings", tint = colors.Text2, modifier = Modifier.size(14.dp))
                         }
+                        Spacer(Modifier.width(2.dp))
+                        // Save session
+                        IconButton(
+                            onClick = { vm.saveCurrentSession() },
+                            modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp))
+                                .background(Color.White.copy(alpha = 0.08f))
+                        ) {
+                            Icon(Icons.Filled.Save, "Save", tint = colors.Text2, modifier = Modifier.size(14.dp))
+                        }
+                        Spacer(Modifier.width(2.dp))
+                        // New session
+                        IconButton(
+                            onClick = { vm.startNewSession { onModelsClick() } },
+                            modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp))
+                                .background(Color.White.copy(alpha = 0.08f))
+                        ) {
+                            Icon(Icons.Filled.Add, "New", tint = Color.White, modifier = Modifier.size(14.dp))
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Surface)
                 )
@@ -417,7 +435,8 @@ fun InventScreen(
                     model1Path = model1Path, model2Path = model2Path, researcherPath = researcherPath,
                     initialTab = shownTab,
                     modelMode = ui.modelMode,
-                    restrictRole = settingsRestrictRole
+                    restrictRole = settingsRestrictRole,
+                    onReload = { vm.reloadInventModel() }
                 )
             }
             if (modelPickerRole != null) {
@@ -557,23 +576,23 @@ fun ModelStatusRow(
                          idx == 2 && modelMode == ModelMode.SINGLE
             if (!hidden) {
                 Surface(
-                    modifier = Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(8.dp))
+                    modifier = Modifier.weight(1f).height(28.dp).clip(RoundedCornerShape(6.dp))
                         .clickable { onTabClick(idx) },
                     color = if (loaded) accent.copy(alpha = 0.08f) else colors.Surface,
                     border = BorderStroke(1.dp,
                         if (loaded) accent.copy(alpha = 0.3f) else colors.Border.copy(alpha = 0.2f))
                 ) {
-                    Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(6.dp).clip(RoundedCornerShape(3.dp))
+                    Row(Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(4.dp).clip(RoundedCornerShape(2.dp))
                             .background(if (loaded) accent else colors.Text3.copy(alpha = 0.3f)))
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(Modifier.width(4.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(label, fontSize = 8.sp, fontWeight = FontWeight.Bold,
+                            Text(label, fontSize = 7.sp, fontWeight = FontWeight.Bold,
                                 color = if (loaded) Color.White else colors.Text3,
                                 fontFamily = FontFamily.Monospace)
                             Text(
-                                modelName.substringBeforeLast('.').take(12).ifEmpty { if (loaded) "loaded" else "off" },
-                                fontSize = 7.sp,
+                                modelName.substringBeforeLast('.').take(10).ifEmpty { if (loaded) "ready" else "off" },
+                                fontSize = 6.sp,
                                 color = if (loaded) accent else colors.Text3.copy(alpha = 0.4f),
                                 fontFamily = FontFamily.Monospace, maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -908,7 +927,8 @@ fun FileRow(node: FileNode, colors: ZcPalette) {
 @Composable
 fun SettingsPopup(onDismiss: () -> Unit, colors: ZcPalette,
     model1Path: String, model2Path: String, researcherPath: String, initialTab: Int = 0,
-    modelMode: ModelMode = ModelMode.TRIPLE, restrictRole: Int = -1) {
+    modelMode: ModelMode = ModelMode.TRIPLE, restrictRole: Int = -1,
+    onReload: () -> Unit = {}) {
     var settingsTab by remember { mutableStateOf(initialTab) }
 
     val getCfg = { role: String, _: String ->
@@ -966,7 +986,7 @@ fun SettingsPopup(onDismiss: () -> Unit, colors: ZcPalette,
                 ModelConfigView(role = roleKey, config = cfg, modelPath = path, colors = colors)
                 Spacer(Modifier.height(8.dp))
                 Button(
-                    onClick = onDismiss,
+                    onClick = { onReload(); onDismiss() },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = CyanGreen)
