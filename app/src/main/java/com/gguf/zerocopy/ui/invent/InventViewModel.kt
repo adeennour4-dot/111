@@ -88,7 +88,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     private var sessionId: String = ""
 
     /** Select a model tab (0=Planner, 1=Researcher, 2=Coder) and optionally load it. */
-    fun selectModelTab(tab: Int, modelPath: String = "", modelName: String = "") {
+    fun selectModelTab(tab: Int, modelPath: String = "", modelName: String = "", useForAll: Boolean = false) {
         val state = sessionState ?: return
         viewModelScope.launch(Dispatchers.IO) {
             var path = if (modelPath.isNotEmpty()) modelPath else when (tab) {
@@ -112,18 +112,26 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             if (path.isNotEmpty()) {
                 val ok = loadOrKeepModel(path)
                 _ui.value = _ui.value.copy(
-                    plannerLoaded = tab == 0 && ok,
-                    researcherLoaded = tab == 1 && ok,
-                    coderLoaded = tab == 2 && ok
+                    plannerLoaded = (useForAll || tab == 0) && ok,
+                    researcherLoaded = (useForAll || tab == 1) && ok,
+                    coderLoaded = (useForAll || tab == 2) && ok
                 )
                 if (ok) {
                     // Update session state with selected path
                     val newState = sessionState?.let { s ->
-                        when (tab) {
-                            0 -> s.copy(model1Path = path, model1Name = name)
-                            1 -> s.copy(researcherPath = path, researcherName = name)
-                            2 -> s.copy(model2Path = path, model2Name = name)
-                            else -> s
+                        if (useForAll) {
+                            s.copy(
+                                model1Path = path, model1Name = name,
+                                researcherPath = path, researcherName = name,
+                                model2Path = path, model2Name = name
+                            )
+                        } else {
+                            when (tab) {
+                                0 -> s.copy(model1Path = path, model1Name = name)
+                                1 -> s.copy(researcherPath = path, researcherName = name)
+                                2 -> s.copy(model2Path = path, model2Name = name)
+                                else -> s
+                            }
                         }
                     }
                     sessionState = newState

@@ -165,6 +165,87 @@ object SettingsManager {
     saveModelConfigs(map)
   }
 
+  // ── Invent-specific model configs (separate from main settings) ───────────
+
+  private fun loadInventConfigs(): MutableMap<String, ModelTokenConfig> {
+    val raw = prefs?.getString("invent_model_token_configs", "{}") ?: "{}"
+    val map = mutableMapOf<String, ModelTokenConfig>()
+    try {
+      val json = org.json.JSONObject(raw)
+      json.keys().forEach { key ->
+        val obj = json.getJSONObject(key)
+        map[key] = ModelTokenConfig(
+          ctx = obj.optInt("ctx", 1024),
+          maxNew = obj.optInt("maxNew", 1024),
+          gpuLayers = obj.optInt("gpuLayers", 0),
+          temperature = if (obj.has("temperature")) obj.getDouble("temperature").toFloat() else null,
+          topP = if (obj.has("topP")) obj.getDouble("topP").toFloat() else null,
+          minP = if (obj.has("minP")) obj.getDouble("minP").toFloat() else null,
+          topK = if (obj.has("topK")) obj.optInt("topK") else null,
+          repeatPenalty = if (obj.has("repeatPenalty")) obj.getDouble("repeatPenalty").toFloat() else null,
+          freqPenalty = if (obj.has("freqPenalty")) obj.getDouble("freqPenalty").toFloat() else null,
+          presPenalty = if (obj.has("presPenalty")) obj.getDouble("presPenalty").toFloat() else null,
+          seed = if (obj.has("seed")) obj.optInt("seed") else null,
+          flashAttention = if (obj.has("flashAttention")) obj.optBoolean("flashAttention") else null,
+          lowRamMode = if (obj.has("lowRamMode")) obj.optBoolean("lowRamMode") else null,
+          threads = if (obj.has("threads")) obj.optInt("threads") else null,
+          nBatch = if (obj.has("nBatch")) obj.optInt("nBatch") else null
+        )
+      }
+    } catch (_: Exception) {}
+    return map
+  }
+
+  private fun saveInventConfigs(map: Map<String, ModelTokenConfig>) {
+    try {
+      val json = org.json.JSONObject()
+      map.forEach { (key, cfg) ->
+        json.put(key, org.json.JSONObject().apply {
+          put("ctx", cfg.ctx)
+          put("maxNew", cfg.maxNew)
+          put("gpuLayers", cfg.gpuLayers)
+          cfg.temperature?.let { put("temperature", it.toDouble()) }
+          cfg.topP?.let { put("topP", it.toDouble()) }
+          cfg.minP?.let { put("minP", it.toDouble()) }
+          cfg.topK?.let { put("topK", it) }
+          cfg.repeatPenalty?.let { put("repeatPenalty", it.toDouble()) }
+          cfg.freqPenalty?.let { put("freqPenalty", it.toDouble()) }
+          cfg.presPenalty?.let { put("presPenalty", it.toDouble()) }
+          cfg.seed?.let { put("seed", it) }
+          cfg.flashAttention?.let { put("flashAttention", it) }
+          cfg.lowRamMode?.let { put("lowRamMode", it) }
+          cfg.threads?.let { put("threads", it) }
+          cfg.nBatch?.let { put("nBatch", it) }
+        })
+      }
+      prefs?.edit()?.putString("invent_model_token_configs", json.toString())?.apply()
+    } catch (_: Exception) {}
+  }
+
+  /** Get invent-specific per-model config for a role (e.g. "Planner"). */
+  fun getInventModelConfig(role: String): ModelTokenConfig? {
+    return loadInventConfigs()[role]
+  }
+
+  /** Set invent-specific per-model config for a role. */
+  fun setInventModelConfig(role: String, cfg: ModelTokenConfig) {
+    val map = loadInventConfigs()
+    map[role] = cfg
+    saveInventConfigs(map)
+  }
+
+  /** Remove invent-specific per-model config for a role. */
+  fun removeInventModelConfig(role: String) {
+    val map = loadInventConfigs()
+    map.remove(role)
+    saveInventConfigs(map)
+  }
+
+  /** Whether Invent should use the same configs as main settings. */
+  var inventSyncWithMain: Boolean
+    get() = prefs?.getBoolean("invent_sync_config", false) ?: false
+    set(v) { prefs?.edit()?.putBoolean("invent_sync_config", v)?.apply() }
+
   var nBatch: Int
     get() = prefs?.getInt("n_batch", 512) ?: 512
     set(v) { prefs?.edit()?.putInt("n_batch", v)?.apply() }

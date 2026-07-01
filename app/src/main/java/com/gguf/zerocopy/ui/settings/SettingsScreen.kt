@@ -595,6 +595,18 @@ fun SettingsScreen(onBack: () -> Unit) {
 
       HorizontalDivider(color = colors.Border, thickness = 1.dp)
 
+      // ── Invent sync toggle ──
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Sync config with Invent", fontSize = 13.sp, color = colors.Text2, modifier = Modifier.weight(1f))
+        Switch(
+          checked = SettingsManager.inventSyncWithMain,
+          onCheckedChange = { SettingsManager.inventSyncWithMain = it },
+          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent2, checkedThumbColor = colors.Bg)
+        )
+      }
+
+      HorizontalDivider(color = colors.Border, thickness = 1.dp)
+
       // ── Benchmark button ──
       OutlinedButton(
         onClick = { showBenchmark = true },

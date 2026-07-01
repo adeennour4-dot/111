@@ -83,6 +83,7 @@ fun InventScreen(
     var showThinking by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
     var modelPickerRole by remember { mutableStateOf<Int?>(null) } // null=closed, 0=Planner, 1=Researcher, 2=Coder
+    var settingsTabToShow by remember { mutableStateOf(-1) } // -1=don't open, 0/1/2=open SettingsPopup at this tab
     val listState = rememberLazyListState()
     val context = LocalContext.current
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -462,11 +463,12 @@ fun InventScreen(
             // ── Settings Popup ────────────────────────────────────────────────
             if (showSettingsPopup) {
                 SettingsPopup(
-                    onDismiss = { showSettingsPopup = false },
+                    onDismiss = { showSettingsPopup = false; settingsTabToShow = -1 },
                     colors = colors,
                     model1Path = model1Path,
                     model2Path = model2Path,
-                    researcherPath = researcherPath
+                    researcherPath = researcherPath,
+                    initialTab = settingsTabToShow.coerceAtLeast(0)
                 )
             }
 
@@ -481,9 +483,12 @@ fun InventScreen(
                 ModelPickerDialog(
                     roleLabel = roleLabel,
                     onDismiss = { modelPickerRole = null },
-                    onSelect = { path, name ->
-                        vm.selectModelTab(modelPickerRole ?: 0, path, name)
+                    onSelect = { path, name, useAll ->
+                        vm.selectModelTab(modelPickerRole ?: 0, path, name, useAll)
+                        val role = modelPickerRole ?: 0
                         modelPickerRole = null
+                        settingsTabToShow = role
+                        showSettingsPopup = true
                     },
                     colors = colors
                 )
@@ -1060,18 +1065,22 @@ fun SettingsPopup(
     colors: ZcPalette,
     model1Path: String,
     model2Path: String,
-    researcherPath: String
+    researcherPath: String,
+    initialTab: Int = 0
 ) {
-    var settingsTab by remember { mutableStateOf(0) } // 0=Planner, 1=Researcher, 2=Coder
+    var settingsTab by remember { mutableStateOf(initialTab) } // 0=Planner, 1=Researcher, 2=Coder
 
     val plannerCfg = remember(model1Path) {
-        SettingsManager.getModelTokenConfig(model1Path)
+        if (SettingsManager.inventSyncWithMain) SettingsManager.getModelTokenConfig(model1Path)
+        else SettingsManager.getInventModelConfig("Planner") ?: SettingsManager.getModelTokenConfig(model1Path)
     }
     val researcherCfg = remember(researcherPath) {
-        SettingsManager.getModelTokenConfig(researcherPath)
+        if (SettingsManager.inventSyncWithMain) SettingsManager.getModelTokenConfig(researcherPath)
+        else SettingsManager.getInventModelConfig("Researcher") ?: SettingsManager.getModelTokenConfig(researcherPath)
     }
     val coderCfg = remember(model2Path) {
-        SettingsManager.getModelTokenConfig(model2Path)
+        if (SettingsManager.inventSyncWithMain) SettingsManager.getModelTokenConfig(model2Path)
+        else SettingsManager.getInventModelConfig("Coder") ?: SettingsManager.getModelTokenConfig(model2Path)
     }
 
     Box(

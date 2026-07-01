@@ -651,7 +651,7 @@ fun ChatScreen(
       }
     },
     bottomBar = {
-      Column(modifier = Modifier.fillMaxWidth()) {
+      Column(modifier = Modifier.fillMaxWidth().imePadding()) {
         if (messages.isEmpty() && !isInferring) {
           PromptSuggestions(suggestions = suggestions, onSelect = { text ->
             sendMessage(text, emptyList(), emptyList())
