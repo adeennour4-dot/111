@@ -9,6 +9,7 @@ import com.gguf.zerocopy.data.invent.*
 import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.domain.invent.GgufMetaReader
 import com.gguf.zerocopy.domain.inference.InferenceConfig
+import com.gguf.zerocopy.domain.inference.RepeatPenaltyConfig
 import com.gguf.zerocopy.domain.inference.TokenCallback
 import com.gguf.zerocopy.domain.inference.ToolManager
 import kotlinx.coroutines.Dispatchers
@@ -1446,20 +1447,22 @@ Each split file must be under $budget tokens.
                 val engine = engineManager.selectEngineForFormat(path)
                 engine.config = InferenceConfig(
                     nCtx = inventCfg.ctx,
-                    nNew = inventCfg.maxNew,
+                    maxNewTokens = inventCfg.maxNew,
                     nGpuLayers = inventCfg.gpuLayers,
                     temperature = inventCfg.temperature ?: 0.7f,
                     topP = inventCfg.topP ?: 0.9f,
                     minP = inventCfg.minP ?: 0f,
                     topK = inventCfg.topK ?: 40,
-                    repeatPenalty = inventCfg.repeatPenalty ?: 1.1f,
-                    freqPenalty = inventCfg.freqPenalty ?: 0f,
-                    presPenalty = inventCfg.presPenalty ?: 0f,
                     seed = inventCfg.seed ?: -1,
                     flashAttention = inventCfg.flashAttention ?: false,
                     lowRamMode = inventCfg.lowRamMode ?: false,
-                    threads = inventCfg.threads ?: 4,
+                    nThreads = inventCfg.threads ?: 4,
                     nBatch = inventCfg.nBatch ?: 512
+                )
+                engine.repeatPenalty = RepeatPenaltyConfig(
+                    repeatPenalty = inventCfg.repeatPenalty ?: 1.1f,
+                    freqPenalty = inventCfg.freqPenalty ?: 0f,
+                    presPenalty = inventCfg.presPenalty ?: 0f
                 )
                 engine.loadModel(path)
             } catch (_: Exception) { }
