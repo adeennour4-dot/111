@@ -268,6 +268,7 @@ fun InventScreen(
                                 .background(Color.White.copy(alpha = 0.08f))
                         ) {
                             Icon(Icons.Filled.Add, "New", tint = Color.White, modifier = Modifier.size(14.dp))
+                        }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Surface)
                 )
