@@ -4,10 +4,10 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Small rounded cube (top-middle-left) -->
+    <!-- Small rounded cube (top-right-middle — centered in top-right quadrant) -->
     <path
         android:fillColor="#00E5A0"
-        android:pathData="M22,22 L36,22 C37.1,22 38,22.9 38,24 L38,36 C38,37.1 37.1,38 36,38 L24,38 C22.9,38 22,37.1 22,36 Z"/>
+        android:pathData="M62,14 L78,14 C79.1,14 80,14.9 80,16 L80,30 C80,31.1 79.1,32 78,32 L64,32 C62.9,32 62,31.1 62,30 Z"/>
     <!-- Small circle (bottom-middle-right) -->
     <path
         android:fillColor="#7C5CFF"

@@ -82,6 +82,7 @@ fun InventScreen(
     var inputText by remember { mutableStateOf("") }
     var showThinking by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
+    var modelPickerRole by remember { mutableStateOf<Int?>(null) } // null=closed, 0=Planner, 1=Researcher, 2=Coder
     val listState = rememberLazyListState()
     val context = LocalContext.current
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -207,7 +208,10 @@ fun InventScreen(
                 // ── Model Selector Row ────────────────────────────────────────
                 ModelSelectorRow(
                     selectedTab = selectedTab,
-                    onTabSelected = { selectedTab = it; vm.selectModelTab(it) },
+                    onTabSelected = { tab ->
+                        selectedTab = tab
+                        modelPickerRole = tab
+                    },
                     plannerLoaded = ui.plannerLoaded,
                     researcherLoaded = ui.researcherLoaded,
                     coderLoaded = ui.coderLoaded,
@@ -317,7 +321,7 @@ fun InventScreen(
 
                 // ── Input Bar ─────────────────────────────────────────────────
                 Surface(
-                    Modifier.fillMaxWidth(),
+                    Modifier.fillMaxWidth().imePadding(),
                     color = colors.Surface,
                     shadowElevation = 4.dp
                 ) {
@@ -464,6 +468,118 @@ fun InventScreen(
                     model2Path = model2Path,
                     researcherPath = researcherPath
                 )
+            }
+
+            // ── Model Picker ─────────────────────────────────────────────────
+            if (modelPickerRole != null) {
+                val roleLabel = when (modelPickerRole) {
+                    0 -> "Planner"
+                    1 -> "Researcher"
+                    2 -> "Coder"
+                    else -> "Model"
+                }
+                ModelPickerDialog(
+                    roleLabel = roleLabel,
+                    onDismiss = { modelPickerRole = null },
+                    onSelect = { path, name ->
+                        vm.selectModelTab(modelPickerRole ?: 0, path, name)
+                        modelPickerRole = null
+                    },
+                    colors = colors
+                )
+            }
+        }
+    }
+}
+
+// ─── Model Picker Dialog ─────────────────────────────────────────────────────
+
+@Composable
+fun ModelPickerDialog(
+    roleLabel: String,
+    onDismiss: () -> Unit,
+    onSelect: (path: String, name: String) -> Unit,
+    colors: ZcPalette
+) {
+    val app = com.gguf.zerocopy.ZeroCopyApp.instance
+    val models by app.modelRepository.models.collectAsState()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.6f))
+            .clickable { onDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.7f)
+                .fillMaxHeight(0.6f)
+                .clickable { /* block clicks */ },
+            shape = RoundedCornerShape(24.dp),
+            color = colors.Card,
+            border = BorderStroke(1.dp, CyanGreen.copy(alpha = 0.4f))
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Filled.Close, "Close", tint = colors.Text3)
+                    }
+                    Text("Select $roleLabel Model",
+                        fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                        color = CyanGreen, fontFamily = FontFamily.Monospace)
+                    Spacer(Modifier.width(40.dp))
+                }
+                HorizontalDivider(color = colors.Border)
+                Spacer(Modifier.height(8.dp))
+
+                if (models.isEmpty()) {
+                    Text("No models found. Download one from the Models tab first.",
+                        fontSize = 12.sp, color = colors.Text3,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(16.dp))
+                } else {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(models) { m ->
+                            Surface(
+                                Modifier.fillMaxWidth()
+                                    .clickable {
+                                        onSelect(m.path, m.name)
+                                    },
+                                shape = RoundedCornerShape(12.dp),
+                                color = colors.Surface,
+                                border = BorderStroke(1.dp, colors.Border.copy(0.3f))
+                            ) {
+                                Row(
+                                    Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(m.name, fontSize = 12.sp,
+                                            color = colors.Text,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Row {
+                                            Text(m.format.uppercase(), fontSize = 9.sp,
+                                                color = CyanGreen,
+                                                fontFamily = FontFamily.Monospace)
+                                            Text(" · ${m.sizeFormatted}", fontSize = 9.sp,
+                                                color = colors.Text3,
+                                                fontFamily = FontFamily.Monospace)
+                                        }
+                                    }
+                                    Icon(Icons.Filled.PlayArrow, "Select",
+                                        tint = CyanGreen, modifier = Modifier.size(20.dp))
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

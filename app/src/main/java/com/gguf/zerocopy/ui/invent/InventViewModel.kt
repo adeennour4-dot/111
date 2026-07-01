@@ -88,16 +88,16 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     private var sessionId: String = ""
 
     /** Select a model tab (0=Planner, 1=Researcher, 2=Coder) and optionally load it. */
-    fun selectModelTab(tab: Int) {
+    fun selectModelTab(tab: Int, modelPath: String = "", modelName: String = "") {
         val state = sessionState ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            var path = when (tab) {
+            var path = if (modelPath.isNotEmpty()) modelPath else when (tab) {
                 0 -> state.model1Path
                 1 -> state.researcherPath
                 2 -> state.model2Path
                 else -> return@launch
             }
-            var name = when (tab) {
+            var name = if (modelName.isNotEmpty()) modelName else when (tab) {
                 0 -> state.model1Name
                 1 -> state.researcherName
                 2 -> state.model2Name
