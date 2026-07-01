@@ -23,6 +23,8 @@ import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
+enum class ModelMode { SINGLE, DUAL, TRIPLE }
+
 data class InventUiState(
     val phase: InventPhase = InventPhase.QUESTIONING,
     val messages: List<InventMessage> = emptyList(),
@@ -61,7 +63,8 @@ data class InventUiState(
     // Model loading states for Invent
     val plannerLoaded: Boolean = false,
     val researcherLoaded: Boolean = false,
-    val coderLoaded: Boolean = false
+    val coderLoaded: Boolean = false,
+    val modelMode: ModelMode = ModelMode.TRIPLE
 )
 
 data class SessionInfo(
@@ -95,6 +98,33 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         _ui.value = _ui.value.copy(sameModelMode = newMode, model2Name = newState.model2Name)
         viewModelScope.launch(Dispatchers.IO) {
             InventStorage.saveSession(ctx, newState)
+        }
+    }
+
+    fun setModelMode(mode: ModelMode) {
+        val state = sessionState ?: return
+        _ui.value = _ui.value.copy(modelMode = mode)
+        when (mode) {
+            ModelMode.SINGLE -> {
+                // All three roles use the same model (planner's path)
+                if (!state.sameModelMode) toggleSameModelMode()
+                val newState = sessionState?.copy(
+                    researcherPath = state.model1Path, researcherName = state.model1Name
+                )
+                sessionState = newState
+                _ui.value = _ui.value.copy(researcherName = state.model1Name)
+                viewModelScope.launch(Dispatchers.IO) {
+                    newState?.let { InventStorage.saveSession(ctx, it) }
+                }
+            }
+            ModelMode.DUAL -> {
+                // Planner & Coder share (sameModelMode), Researcher separate
+                if (!state.sameModelMode) toggleSameModelMode()
+            }
+            ModelMode.TRIPLE -> {
+                // All three separate
+                if (state.sameModelMode) toggleSameModelMode()
+            }
         }
     }
 

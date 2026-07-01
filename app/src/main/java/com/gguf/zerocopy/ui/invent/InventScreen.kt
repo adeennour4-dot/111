@@ -43,6 +43,65 @@ private val CyanGreen = Color(0xFF00E5A0)
 private val GlowCyan = Color(0x6000E5A0)
 private val PurpleAccent = Color(0xFF8B83FF)
 private val AmberAccent = Color(0xFFFFB74D)
+private val DimGray = Color(0xFF6A6A7A)
+
+// ─── Log Entry model ─────────────────────────────────────────────────────────
+private data class LogLine(
+    val text: String,
+    val tint: Color? = null,
+    val isPhase: Boolean = false,
+    val isError: Boolean = false,
+    val indent: Int = 0,
+    val tree: String = "" // "│ ", "├─ ", "└─ ", "  "
+)
+
+private fun buildLog(messages: List<InventMessage>, phase: InventPhase): List<LogLine> {
+    val lines = mutableListOf<LogLine>()
+    var lastPhase: InventPhase? = null
+    for (msg in messages) {
+        // Phase separator on change
+        if (lastPhase != null && msg.phase != lastPhase) {
+            lines.add(LogLine("", isPhase = true))
+            lines.add(LogLine("  >>> ${msg.phase.name} <<<", isPhase = true))
+            lines.add(LogLine("", isPhase = true))
+        }
+        lastPhase = msg.phase
+
+        val roleLabel = when (msg.role) {
+            "user" -> "YOU"
+            "model1" -> "PLANNER"
+            "model2" -> "CODER"
+            "researcher" -> "RESEARCH"
+            "system" -> "SYS"
+            else -> msg.role.uppercase()
+        }
+        val roleColor = when (msg.role) {
+            "user" -> CyanGreen
+            "model1" -> AmberAccent
+            "model2" -> CyanGreen
+            "researcher" -> PurpleAccent
+            "system" -> DimGray
+            else -> null
+        }
+        val contentLines = msg.content.split("\n")
+        contentLines.forEachIndexed { i, line ->
+            val prefix = if (i == 0) "$roleLabel" else ""
+            val treeChar = if (i == 0 && contentLines.size == 1) "├─ " else "│ "
+            lines.add(LogLine(
+                text = if (i == 0) "$roleLabel $line" else "   $line",
+                tint = roleColor,
+                indent = 0
+            ))
+        }
+    }
+    // Show phase if no messages yet
+    if (lines.isEmpty()) {
+        lines.add(LogLine("", isPhase = true))
+        lines.add(LogLine("  >>> ${phase.name} <<<", isPhase = true))
+        lines.add(LogLine("", isPhase = true))
+    }
+    return lines
+}
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 @OptIn(ExperimentalMaterial3Api::class)
@@ -61,7 +120,6 @@ fun InventScreen(
     var showSessionPopup by remember { mutableStateOf(false) }
     var showSettingsPopup by remember { mutableStateOf(false) }
     var selectedSession by remember { mutableStateOf<String?>(null) }
-    var selectedTab by remember { mutableStateOf(0) }
     var inputText by remember { mutableStateOf("") }
     var showThinking by remember { mutableStateOf(false) }
     var showSearch by remember { mutableStateOf(false) }
@@ -70,15 +128,8 @@ fun InventScreen(
     val listState = rememberLazyListState()
     val context = LocalContext.current
 
-    // Phase → tab sync
-    val phaseTab = when (ui.phase) {
-        InventPhase.QUESTIONING, InventPhase.PLANNING,
-        InventPhase.CONFIRMING, InventPhase.FINALIZING,
-        InventPhase.DONE, InventPhase.DEBUGGING -> 0
-        InventPhase.SEARCHING -> 1
-        InventPhase.GENERATING, InventPhase.REPLANNING -> 2
-    }
-    LaunchedEffect(ui.phase) { selectedTab = phaseTab }
+    // Build log lines from messages
+    val logLines = remember(ui.messages, ui.phase) { buildLog(ui.messages, ui.phase) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
@@ -115,12 +166,12 @@ fun InventScreen(
                 researcherPath, researcherName, offlineMode, sameModelMode)
         }
     }
-    LaunchedEffect(ui.messages.size) {
-        if (ui.messages.isNotEmpty() && ui.messages.size > 1)
-            listState.animateScrollToItem(ui.messages.size - 1)
+    LaunchedEffect(logLines.size) {
+        if (logLines.isNotEmpty())
+            listState.animateScrollToItem(logLines.size - 1)
     }
 
-    // ── Phase colors ─────────────────────────────────────────────────
+    // Phase color
     val phaseColor = when (ui.phase) {
         InventPhase.QUESTIONING -> CyanGreen
         InventPhase.SEARCHING -> PurpleAccent
@@ -133,129 +184,193 @@ fun InventScreen(
         InventPhase.DEBUGGING -> Color(0xFFFF6B6B)
     }
 
+    // Phase progress fraction
+    val phaseProgress = when (ui.phase) {
+        InventPhase.QUESTIONING -> 0.12f
+        InventPhase.SEARCHING -> 0.25f
+        InventPhase.PLANNING -> 0.37f
+        InventPhase.CONFIRMING -> 0.50f
+        InventPhase.GENERATING -> 0.62f
+        InventPhase.REPLANNING -> 0.62f
+        InventPhase.FINALIZING -> 0.75f
+        InventPhase.DONE -> 1.0f
+        InventPhase.DEBUGGING -> 1.0f
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Phase dot
-                        Box(Modifier.size(8.dp).clip(RoundedCornerShape(4.dp)).background(phaseColor))
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            if (ui.projectName.isNotEmpty()) ui.projectName.take(16) else "Invent",
-                            fontSize = 15.sp, fontWeight = FontWeight.Bold,
-                            color = colors.Text, fontFamily = FontFamily.Monospace
-                        )
-                        if (ui.totalTokensUsed > 0) {
+            Column {
+                TopAppBar(
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(8.dp).clip(RoundedCornerShape(4.dp)).background(phaseColor))
                             Spacer(Modifier.width(8.dp))
-                            Text("· ${ui.totalTokensUsed}t", fontSize = 10.sp,
-                                color = colors.Text3, fontFamily = FontFamily.Monospace)
+                            Text(
+                                if (ui.projectName.isNotEmpty()) ui.projectName.take(20) else "INVENT",
+                                fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                                color = colors.Text, fontFamily = FontFamily.Monospace
+                            )
+                            if (ui.totalTokensUsed > 0) {
+                                Spacer(Modifier.width(8.dp))
+                                Text("· ${ui.totalTokensUsed}t", fontSize = 10.sp,
+                                    color = colors.Text3, fontFamily = FontFamily.Monospace)
+                            }
                         }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, "Back", tint = colors.Text2, modifier = Modifier.size(20.dp))
-                    }
-                },
-                actions = {
-                    if (ui.phase == InventPhase.DONE) {
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.Filled.ArrowBack, "Back", tint = colors.Text2, modifier = Modifier.size(20.dp))
+                        }
+                    },
+                    actions = {
+                        // Export button
+                        if (ui.phase == InventPhase.DONE || ui.phase == InventPhase.DEBUGGING) {
+                            IconButton(
+                                onClick = { vm.exportProjectZip() },
+                                modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp))
+                                    .background(CyanGreen.copy(alpha = 0.12f))
+                            ) {
+                                Icon(Icons.Filled.FileDownload, "Export", tint = CyanGreen, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                        // History
                         IconButton(
-                            onClick = { vm.exportProjectZip() },
-                            modifier = Modifier.size(30.dp).clip(RoundedCornerShape(8.dp))
-                                .background(CyanGreen.copy(alpha = 0.12f))
+                            onClick = { showSessionPopup = true },
+                            modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp))
+                                .background(Color.White.copy(alpha = 0.08f))
                         ) {
-                            Icon(Icons.Filled.FileDownload, "Export", tint = CyanGreen, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Outlined.History, "History", tint = colors.Text2, modifier = Modifier.size(16.dp))
                         }
-                    }
-                    IconButton(
-                        onClick = { vm.startNewSession { onModelsClick() } },
-                        modifier = Modifier.size(30.dp).clip(RoundedCornerShape(8.dp))
-                            .background(Color.White.copy(alpha = 0.08f))
-                    ) {
-                        Icon(Icons.Filled.Add, "New", tint = Color.White, modifier = Modifier.size(18.dp))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Surface)
-            )
+                        // Settings
+                        IconButton(
+                            onClick = { showSettingsPopup = true },
+                            modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp))
+                                .background(Color.White.copy(alpha = 0.08f))
+                        ) {
+                            Icon(Icons.Filled.Settings, "Settings", tint = colors.Text2, modifier = Modifier.size(16.dp))
+                        }
+                        // New
+                        IconButton(
+                            onClick = { vm.startNewSession { onModelsClick() } },
+                            modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp))
+                                .background(Color.White.copy(alpha = 0.08f))
+                        ) {
+                            Icon(Icons.Filled.Add, "New", tint = Color.White, modifier = Modifier.size(16.dp))
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Surface)
+                )
+
+                // ── Progress Bar ─────────────────────────────────────
+                LinearProgressIndicator(
+                    progress = { phaseProgress },
+                    modifier = Modifier.fillMaxWidth().height(2.dp),
+                    color = phaseColor,
+                    trackColor = colors.Border.copy(alpha = 0.2f)
+                )
+            }
         },
         containerColor = colors.Bg
     ) { pad ->
         Box(Modifier.fillMaxSize().padding(pad)) {
             Column(Modifier.fillMaxSize()) {
 
-                // ── Model Status Strip ──────────────────────────────────
-                ModelStatusStrip(
-                    selectedTab = selectedTab,
+                // ── Model Mode selector + Status ──────────────────────
+                ModelModeRow(
+                    modelMode = ui.modelMode,
+                    onModeChange = { vm.setModelMode(it) },
+                    colors = colors
+                )
+                ModelStatusRow(
                     plannerLoaded = ui.plannerLoaded,
                     researcherLoaded = ui.researcherLoaded,
                     coderLoaded = ui.coderLoaded,
+                    plannerName = ui.model1Name,
+                    researcherName = ui.researcherName,
+                    coderName = ui.model2Name,
+                    modelMode = ui.modelMode,
                     phase = ui.phase,
-                    onTabClick = { tab -> selectedTab = tab; modelPickerRole = tab },
+                    onTabClick = { role -> modelPickerRole = role },
                     colors = colors
                 )
 
-                // ── Same-model toggle ─────────────────────────────────
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Same Coder & Planner", fontSize = 9.sp,
-                        color = colors.Text3, fontFamily = FontFamily.Monospace)
-                    Spacer(Modifier.width(6.dp))
-                    Switch(
-                        checked = ui.sameModelMode,
-                        onCheckedChange = { vm.toggleSameModelMode() },
-                        modifier = Modifier.height(24.dp),
-                        colors = SwitchDefaults.colors(
-                            checkedTrackColor = CyanGreen,
-                            checkedThumbColor = Color.Black
-                        )
-                    )
-                }
-
-                // ── Messages ───────────────────────────────────────────
+                // ── Build Log ────────────────────────────────────────
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalArrangement = Arrangement.spacedBy(1.dp)
                 ) {
-                    // Phase banner
-                    item(key = "phase_banner") {
-                        PhaseBanner(ui.phase, phaseColor, colors)
-                    }
-
-                    // Swap/loading
+                    // Swap/loading banner
                     if (ui.swapInfo.isNotEmpty()) {
                         item(key = "swap_info") {
                             SwapBanner(ui.swapInfo, colors)
+                            Spacer(Modifier.height(4.dp))
                         }
                     }
 
-                    // Error
+                    // Error banner
                     if (ui.error.isNotEmpty()) {
                         item(key = "error_banner") {
                             ErrorBanner(ui.error, colors)
+                            Spacer(Modifier.height(4.dp))
                         }
                     }
 
-                    // Messages
-                    itemsIndexed(ui.messages, key = { i, m -> "msg_${i}_${m.role}" }) { _, msg ->
-                        InventChatBubble(msg, colors)
+                    // Log entries
+                    itemsIndexed(logLines, key = { i, _ -> "log_$i" }) { _, line ->
+                        if (line.isPhase) {
+                            // Phase separator
+                            PhaseSeparator(line.text, phaseColor, colors)
+                        } else if (line.isError) {
+                            Text(line.text, fontSize = 11.sp,
+                                color = colors.Red, fontFamily = FontFamily.Monospace)
+                        } else {
+                            val indentStr = "  ".repeat(line.indent)
+                            val prefix = line.tree
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(indentStr, fontSize = 11.sp,
+                                    color = colors.Text3, fontFamily = FontFamily.Monospace)
+                                if (prefix.isNotEmpty()) {
+                                    Text(prefix, fontSize = 11.sp,
+                                        color = colors.Text3.copy(alpha = 0.5f),
+                                        fontFamily = FontFamily.Monospace)
+                                }
+                                Text(line.text, fontSize = 11.sp,
+                                    color = line.tint ?: colors.Text,
+                                    fontFamily = FontFamily.Monospace)
+                            }
+                        }
                     }
 
-                    // Sure / Not Sure
+                    // File generation progress
+                    if (ui.phase == InventPhase.GENERATING && ui.totalFiles > 0) {
+                        item(key = "file_progress") {
+                            val progress = "  >> File ${ui.currentFileIndex + 1}/${ui.totalFiles}: ${ui.currentFileName}"
+                            Text(progress, fontSize = 11.sp, color = CyanGreen,
+                                fontFamily = FontFamily.Monospace)
+                        }
+                    }
+
+                    // Sure buttons
                     if (ui.showSureButtons && ui.phase == InventPhase.CONFIRMING) {
                         item(key = "sure_buttons") {
                             SureButtons(onSure = vm::onSure, onNotSure = vm::onNotSure, colors = colors)
                         }
                     }
+
+                    // Stats when DONE
+                    if (ui.phase == InventPhase.DONE) {
+                        item(key = "stats") {
+                            Spacer(Modifier.height(4.dp))
+                            Text("  Lines: ${ui.totalLines}  |  Size: ${ui.totalGeneratedBytes / 1024}KB  |  Debug: ${ui.debugSessionCount}",
+                                fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                        }
+                    }
                 }
 
-                // ── Input Area ─────────────────────────────────────────
-                InputArea(
+                // ── Input Console ────────────────────────────────────
+                InputConsole(
                     inputText = inputText,
                     onTextChange = { inputText = it },
                     showThinking = showThinking,
@@ -270,8 +385,6 @@ fun InventScreen(
                             inputText = ""
                         }
                     },
-                    onSettings = { showSettingsPopup = true },
-                    onHistory = { showSessionPopup = true },
                     phase = ui.phase,
                     totalTokens = ui.totalTokensUsed,
                     colors = colors
@@ -320,83 +433,116 @@ fun InventScreen(
 // COMPONENTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ─── Model Status Strip ───────────────────────────────────────────────────────
+// ─── Phase Separator ──────────────────────────────────────────────────────────
 @Composable
-fun ModelStatusStrip(
-    selectedTab: Int,
-    plannerLoaded: Boolean, researcherLoaded: Boolean, coderLoaded: Boolean,
-    phase: InventPhase,
-    onTabClick: (Int) -> Unit,
-    colors: ZcPalette
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        listOf(0 to "Planner", 1 to "Researcher", 2 to "Coder").forEach { (idx, label) ->
-            val loaded = when (idx) { 0 -> plannerLoaded; 1 -> researcherLoaded; 2 -> coderLoaded; else -> false }
-            val accent = when (idx) { 0 -> CyanGreen; 1 -> PurpleAccent; 2 -> CyanGreen; else -> CyanGreen }
-            val isActive = when (idx) {
-                0 -> phase in listOf(InventPhase.QUESTIONING, InventPhase.PLANNING, InventPhase.CONFIRMING, InventPhase.FINALIZING)
-                1 -> phase == InventPhase.SEARCHING
-                2 -> phase in listOf(InventPhase.GENERATING, InventPhase.REPLANNING)
-                else -> false
-            }
-            Surface(
-                modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
-                    .clickable { onTabClick(idx) },
-                shape = RoundedCornerShape(12.dp),
-                color = if (selectedTab == idx) accent.copy(alpha = 0.12f) else colors.Surface,
-                border = BorderStroke(1.dp,
-                    if (selectedTab == idx) accent.copy(alpha = 0.5f)
-                    else if (loaded) accent.copy(alpha = 0.25f)
-                    else colors.Border.copy(alpha = 0.3f))
-            ) {
-                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    // Status dot
-                    Box(Modifier.size(6.dp).clip(RoundedCornerShape(3.dp))
-                        .background(if (loaded) accent else colors.Text3.copy(alpha = 0.4f)))
-                    Spacer(Modifier.width(6.dp))
-                    Column {
-                        Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
-                            color = if (loaded || selectedTab == idx) Color.White else colors.Text3,
-                            fontFamily = FontFamily.Monospace)
-                        Text(
-                            if (loaded) "Ready" else if (isActive) "Active..." else "Off",
-                            fontSize = 7.sp, color = if (loaded) accent else colors.Text3.copy(alpha = 0.5f),
-                            fontFamily = FontFamily.Monospace)
-                    }
-                }
-            }
+fun PhaseSeparator(text: String, phaseColor: Color, colors: ZcPalette) {
+    val disp = text.removePrefix("  >>> ").removeSuffix(" <<<")
+    if (disp.isEmpty()) {
+        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp),
+            color = phaseColor.copy(alpha = 0.2f), thickness = 1.dp)
+    } else {
+        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f).height(1.dp).background(phaseColor.copy(alpha = 0.2f)))
+            Spacer(Modifier.width(8.dp))
+            Text(disp, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                color = phaseColor, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.width(8.dp))
+            Box(Modifier.weight(1f).height(1.dp).background(phaseColor.copy(alpha = 0.2f)))
         }
     }
 }
 
-// ─── Phase Banner ─────────────────────────────────────────────────────────────
+// ─── Model Mode Row ───────────────────────────────────────────────────────────
 @Composable
-fun PhaseBanner(phase: InventPhase, phaseColor: Color, colors: ZcPalette) {
-    val (icon, text) = when (phase) {
-        InventPhase.QUESTIONING -> "⚡" to "Tell me what to build"
-        InventPhase.SEARCHING -> "🔍" to "Researching..."
-        InventPhase.PLANNING -> "📋" to "Planning architecture..."
-        InventPhase.CONFIRMING -> "✅" to "Review & confirm the plan"
-        InventPhase.REPLANNING -> "🔄" to "Resizing files..."
-        InventPhase.GENERATING -> "⚙️" to "Generating code..."
-        InventPhase.FINALIZING -> "📖" to "Reading project files..."
-        InventPhase.DONE -> "🎉" to "Project complete!"
-        InventPhase.DEBUGGING -> "🔧" to "Debugging..."
-    }
-    Surface(
-        Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        color = phaseColor.copy(alpha = 0.06f),
-        border = BorderStroke(1.dp, phaseColor.copy(alpha = 0.15f))
+fun ModelModeRow(
+    modelMode: ModelMode,
+    onModeChange: (ModelMode) -> Unit,
+    colors: ZcPalette
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.End
     ) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(icon, fontSize = 14.sp)
-            Spacer(Modifier.width(8.dp))
-            Text(text, fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+        Text("Mode:", fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+        Spacer(Modifier.width(4.dp))
+        ModelMode.entries.forEach { mode ->
+            val active = modelMode == mode
+            Surface(
+                modifier = Modifier.height(24.dp).clip(RoundedCornerShape(4.dp))
+                    .clickable { onModeChange(mode) },
+                color = if (active) CyanGreen.copy(alpha = 0.12f) else colors.Surface,
+                border = BorderStroke(1.dp, if (active) CyanGreen.copy(0.4f) else colors.Border.copy(0.3f))
+            ) {
+                Box(Modifier.padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
+                    Text(
+                        when (mode) { ModelMode.SINGLE -> "1"; ModelMode.DUAL -> "2"; ModelMode.TRIPLE -> "3" },
+                        fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                        color = if (active) CyanGreen else colors.Text3,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+            Spacer(Modifier.width(4.dp))
+        }
+    }
+}
+
+// ─── Model Status Row ─────────────────────────────────────────────────────────
+@Composable
+fun ModelStatusRow(
+    plannerLoaded: Boolean, researcherLoaded: Boolean, coderLoaded: Boolean,
+    plannerName: String, researcherName: String, coderName: String,
+    modelMode: ModelMode,
+    phase: InventPhase,
+    onTabClick: (Int) -> Unit,
+    colors: ZcPalette
+) {
+    val isActive = { role: Int ->
+        when (role) {
+            0 -> phase in listOf(InventPhase.QUESTIONING, InventPhase.PLANNING, InventPhase.CONFIRMING, InventPhase.FINALIZING)
+            1 -> phase == InventPhase.SEARCHING
+            2 -> phase in listOf(InventPhase.GENERATING, InventPhase.REPLANNING)
+            else -> false
+        }
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        listOf(0 to "PLANNER", 1 to "RESEARCH", 2 to "CODER").forEach { (idx, label) ->
+            val loaded = when (idx) { 0 -> plannerLoaded; 1 -> researcherLoaded; 2 -> coderLoaded; else -> false }
+            val accent = when (idx) { 0 -> AmberAccent; 1 -> PurpleAccent; 2 -> CyanGreen; else -> CyanGreen }
+            val modelName = when (idx) { 0 -> plannerName; 1 -> researcherName; 2 -> coderName; else -> "" }
+            val hidden = idx == 1 && modelMode == ModelMode.SINGLE ||
+                         idx == 2 && modelMode == ModelMode.SINGLE
+            if (!hidden) {
+                Surface(
+                    modifier = Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(8.dp))
+                        .clickable { onTabClick(idx) },
+                    color = if (loaded) accent.copy(alpha = 0.08f) else colors.Surface,
+                    border = BorderStroke(1.dp,
+                        if (loaded) accent.copy(alpha = 0.3f) else colors.Border.copy(alpha = 0.2f))
+                ) {
+                    Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(6.dp).clip(RoundedCornerShape(3.dp))
+                            .background(if (loaded) accent else colors.Text3.copy(alpha = 0.3f)))
+                        Spacer(Modifier.width(6.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(label, fontSize = 8.sp, fontWeight = FontWeight.Bold,
+                                color = if (loaded) Color.White else colors.Text3,
+                                fontFamily = FontFamily.Monospace)
+                            Text(
+                                modelName.substringBeforeLast('.').take(12).ifEmpty { if (loaded) "loaded" else "off" },
+                                fontSize = 7.sp,
+                                color = if (loaded) accent else colors.Text3.copy(alpha = 0.4f),
+                                fontFamily = FontFamily.Monospace, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -404,12 +550,12 @@ fun PhaseBanner(phase: InventPhase, phaseColor: Color, colors: ZcPalette) {
 // ─── Swap Banner ──────────────────────────────────────────────────────────────
 @Composable
 fun SwapBanner(text: String, colors: ZcPalette) {
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp),
-        color = CyanGreen.copy(alpha = 0.06f)) {
-        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = CyanGreen)
-            Spacer(Modifier.width(8.dp))
-            Text(text, color = CyanGreen, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(6.dp),
+        color = CyanGreen.copy(alpha = 0.06f), border = BorderStroke(1.dp, CyanGreen.copy(0.15f))) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp, color = CyanGreen)
+            Spacer(Modifier.width(6.dp))
+            Text(text, color = CyanGreen, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
         }
     }
 }
@@ -417,12 +563,12 @@ fun SwapBanner(text: String, colors: ZcPalette) {
 // ─── Error Banner ─────────────────────────────────────────────────────────────
 @Composable
 fun ErrorBanner(text: String, colors: ZcPalette) {
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp),
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(6.dp),
         color = colors.Red.copy(alpha = 0.1f), border = BorderStroke(1.dp, colors.Red.copy(0.3f))) {
-        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.Warning, null, tint = colors.Red, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(text, color = colors.Red, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Warning, null, tint = colors.Red, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(text, color = colors.Red, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
         }
     }
 }
@@ -430,133 +576,81 @@ fun ErrorBanner(text: String, colors: ZcPalette) {
 // ─── Sure / Not Sure ──────────────────────────────────────────────────────────
 @Composable
 fun SureButtons(onSure: () -> Unit, onNotSure: () -> Unit, colors: ZcPalette) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)) {
-        OutlinedButton(onClick = onNotSure, shape = RoundedCornerShape(14.dp),
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
+        OutlinedButton(onClick = onNotSure, shape = RoundedCornerShape(10.dp),
             border = BorderStroke(1.dp, AmberAccent.copy(0.5f)),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = AmberAccent)) {
-            Icon(Icons.Outlined.Close, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp))
-            Text("Not Sure", fontFamily = FontFamily.Monospace)
+            Text("Not Sure", fontFamily = FontFamily.Monospace, fontSize = 11.sp)
         }
-        Button(onClick = onSure, shape = RoundedCornerShape(14.dp),
+        Button(onClick = onSure, shape = RoundedCornerShape(10.dp),
             colors = ButtonDefaults.buttonColors(containerColor = CyanGreen)) {
-            Icon(Icons.Outlined.Check, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp))
-            Text("Sure ✓", fontFamily = FontFamily.Monospace, color = Color.Black)
+            Text("Sure ✓", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = Color.Black)
         }
     }
 }
-
-// ─── Chat Bubble ──────────────────────────────────────────────────────────────
-@Composable
-fun InventChatBubble(msg: InventMessage, colors: ZcPalette) {
-    val isUser = msg.role == "user"
-    val isModel2 = msg.role == "model2"
-    val bg = when { isUser -> colors.UserBg; isModel2 -> CyanGreen.copy(alpha = 0.04f); msg.role == "system" -> colors.Accent.copy(alpha = 0.05f); else -> colors.Card }
-    val border = when { isUser -> colors.Accent.copy(alpha = 0.25f); isModel2 -> CyanGreen.copy(alpha = 0.12f); else -> colors.Border.copy(alpha = 0.2f) }
-    val label = if (!isUser && !isSystem(msg)) {
-        val name = msg.role.uppercase().take(1) + msg.role.drop(1)
-        val lblColor = if (isModel2) CyanGreen else colors.Accent
-        @Composable { Text(name, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = lblColor, fontFamily = FontFamily.Monospace) }
-    } else null
-
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start) {
-        Surface(
-            modifier = Modifier.widthIn(max = 320.dp),
-            shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomStart = if (isUser) 12.dp else 4.dp, bottomEnd = if (isUser) 4.dp else 12.dp),
-            color = bg, border = BorderStroke(1.dp, border)
-        ) {
-            Column(Modifier.padding(10.dp)) {
-                if (label != null) { label(); Spacer(Modifier.height(4.dp)) }
-                Text(msg.content, fontSize = 12.sp, color = colors.Text,
-                    fontFamily = FontFamily.Monospace, maxLines = 30, overflow = TextOverflow.Ellipsis)
-            }
-        }
-    }
-}
-
-private fun isSystem(msg: InventMessage) = msg.role == "system"
 
 // ─── Toolbar Toggle ─────────────────────────────────────────────────────────
 @Composable
 private fun ToolbarToggle(
-    icon: ImageVector,
-    label: String,
-    active: Boolean,
-    onClick: () -> Unit,
-    colors: ZcPalette
+    icon: ImageVector, label: String, active: Boolean,
+    onClick: () -> Unit, colors: ZcPalette
 ) {
     Surface(
-        modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)).clickable { onClick() },
+        modifier = Modifier.size(24.dp).clip(RoundedCornerShape(4.dp)).clickable { onClick() },
         color = if (active) CyanGreen.copy(alpha = 0.12f) else Color.Transparent,
         border = BorderStroke(1.dp, if (active) CyanGreen.copy(alpha = 0.4f) else colors.Border.copy(alpha = 0.3f))
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Icon(icon, label, tint = if (active) CyanGreen else colors.Text3, modifier = Modifier.size(14.dp))
+            Icon(icon, label, tint = if (active) CyanGreen else colors.Text3, modifier = Modifier.size(12.dp))
         }
     }
 }
 
-// ─── Input Area ──────────────────────────────────────────────────────────────
+// ─── Input Console ──────────────────────────────────────────────────────────
 @Composable
-fun InputArea(
+fun InputConsole(
     inputText: String, onTextChange: (String) -> Unit,
     showThinking: Boolean, showSearch: Boolean,
     onToggleThinking: () -> Unit, onToggleSearch: () -> Unit,
     onFilePick: () -> Unit, onSend: () -> Unit,
-    onSettings: () -> Unit, onHistory: () -> Unit,
     phase: InventPhase, totalTokens: Int,
     colors: ZcPalette
 ) {
-    Surface(Modifier.fillMaxWidth().imePadding(), color = colors.Surface) {
+    Surface(Modifier.fillMaxWidth().imePadding(), color = colors.Surface,
+        shadowElevation = 2.dp) {
         Column {
-            // Toolbar — row of icon toggles + token count
-            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
+            // Toolbar row
+            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                // File
                 ToolbarToggle(Icons.Outlined.AttachFile, "File", false, onFilePick, colors)
                 Spacer(Modifier.width(4.dp))
-                // Think
                 ToolbarToggle(Icons.Outlined.Psychology, "Think", showThinking, onToggleThinking, colors)
                 Spacer(Modifier.width(4.dp))
-                // Search
                 ToolbarToggle(Icons.Outlined.Search, "Search", showSearch, onToggleSearch, colors)
                 Spacer(Modifier.weight(1f))
-                // Settings + History pills
-                Surface(modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)).clickable { onSettings() },
-                    color = colors.CardLight.copy(alpha = 0.4f), border = BorderStroke(1.dp, colors.Border.copy(0.2f))) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Settings, "Settings", tint = colors.Text2, modifier = Modifier.size(14.dp))
-                    }
-                }
-                Spacer(Modifier.width(4.dp))
-                Surface(modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)).clickable { onHistory() },
-                    color = colors.CardLight.copy(alpha = 0.4f), border = BorderStroke(1.dp, colors.Border.copy(0.2f))) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Outlined.History, "History", tint = colors.Text2, modifier = Modifier.size(14.dp))
-                    }
-                }
-                Spacer(Modifier.width(6.dp))
                 if (totalTokens > 0) {
-                    Text("${totalTokens}t", fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                    Text("${totalTokens}t", fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                    Spacer(Modifier.width(6.dp))
                 }
             }
-            // Input row
-            Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.Bottom) {
+            // Input + Send
+            Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.Bottom) {
                 OutlinedTextField(
                     value = inputText,
                     onValueChange = onTextChange,
-                    modifier = Modifier.weight(1f).heightIn(min = 40.dp, max = 100.dp),
+                    modifier = Modifier.weight(1f).heightIn(min = 36.dp, max = 80.dp),
                     singleLine = false,
                     placeholder = {
                         Text(
                             when {
                                 phase == InventPhase.QUESTIONING -> "Describe your project..."
-                                phase == InventPhase.DONE -> "Complete — export or new"
-                                else -> "Message..."
-                            }, fontSize = 13.sp, color = colors.Text3
+                                phase == InventPhase.DONE -> "Build complete · export or new"
+                                else -> ">"
+                            }, fontSize = 12.sp, color = colors.Text3, fontFamily = FontFamily.Monospace
                         )
                     },
-                    textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
-                    shape = RoundedCornerShape(14.dp),
+                    textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
+                    shape = RoundedCornerShape(10.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = CyanGreen.copy(alpha = 0.5f),
                         unfocusedBorderColor = colors.Border,
@@ -564,19 +658,19 @@ fun InputArea(
                     ),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { onSend() }),
-                    maxLines = 4
+                    maxLines = 3
                 )
                 Spacer(Modifier.width(6.dp))
-                val canSend = inputText.isNotBlank()
+                val canSend = inputText.isNotBlank() || phase == InventPhase.QUESTIONING
                 Box(
-                    modifier = Modifier.size(42.dp).clip(RoundedCornerShape(12.dp))
+                    modifier = Modifier.size(38.dp).clip(RoundedCornerShape(10.dp))
                         .let { mod -> if (canSend) mod.background(Brush.linearGradient(listOf(CyanGreen, CyanGreen.copy(0.6f))))
                             else mod.background(colors.Border) }
                         .clickable { if (canSend) onSend() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Send, "Send",
-                        tint = if (canSend) Color.Black else colors.Text3, modifier = Modifier.size(18.dp))
+                        tint = if (canSend) Color.Black else colors.Text3, modifier = Modifier.size(16.dp))
                 }
             }
         }
@@ -599,13 +693,13 @@ fun ModelPickerDialog(
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center) {
         Surface(Modifier.fillMaxWidth(0.85f).fillMaxHeight(0.8f).clickable {},
-            shape = RoundedCornerShape(24.dp), color = colors.Card,
+            shape = RoundedCornerShape(20.dp), color = colors.Card,
             border = BorderStroke(1.dp, CyanGreen.copy(alpha = 0.4f))) {
             Column(Modifier.padding(16.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, "Close", tint = colors.Text3) }
-                    Text("Select $roleLabel Model", fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                    Text("Select $roleLabel Model", fontSize = 13.sp, fontWeight = FontWeight.Bold,
                         color = CyanGreen, fontFamily = FontFamily.Monospace)
                     Spacer(Modifier.width(40.dp))
                 }
@@ -615,29 +709,29 @@ fun ModelPickerDialog(
                     verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = useForAll, onCheckedChange = { useForAll = it },
                         colors = CheckboxDefaults.colors(checkedColor = CyanGreen, checkmarkColor = Color.Black))
-                    Text("Use for all roles", fontSize = 12.sp, color = colors.Text, fontFamily = FontFamily.Monospace)
+                    Text("Use for all roles", fontSize = 11.sp, color = colors.Text, fontFamily = FontFamily.Monospace)
                 }
                 Spacer(Modifier.height(4.dp))
                 if (models.isEmpty()) {
-                    Text("No models. Download from Models tab first.", fontSize = 12.sp,
+                    Text("No models. Download from Models tab first.", fontSize = 11.sp,
                         color = colors.Text3, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(16.dp))
                 } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         items(models) { m ->
                             Surface(Modifier.fillMaxWidth().clickable { onSelect(m.path, m.name, useForAll) },
-                                shape = RoundedCornerShape(12.dp), color = colors.Surface,
+                                shape = RoundedCornerShape(10.dp), color = colors.Surface,
                                 border = BorderStroke(1.dp, colors.Border.copy(0.3f))) {
-                                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
-                                        Text(m.name, fontSize = 12.sp, color = colors.Text,
+                                        Text(m.name, fontSize = 11.sp, color = colors.Text,
                                             fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold,
                                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         Row {
-                                            Text(m.format.uppercase(), fontSize = 9.sp, color = CyanGreen, fontFamily = FontFamily.Monospace)
-                                            Text(" · ${m.sizeFormatted}", fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                                            Text(m.format.uppercase(), fontSize = 8.sp, color = CyanGreen, fontFamily = FontFamily.Monospace)
+                                            Text(" · ${m.sizeFormatted}", fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
                                         }
                                     }
-                                    Icon(Icons.Filled.PlayArrow, "Select", tint = CyanGreen, modifier = Modifier.size(20.dp))
+                                    Icon(Icons.Filled.PlayArrow, "Select", tint = CyanGreen, modifier = Modifier.size(18.dp))
                                 }
                             }
                         }
@@ -676,15 +770,15 @@ fun SessionPopup(
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center) {
         Surface(Modifier.fillMaxWidth(0.85f).fillMaxHeight(0.85f).clickable {},
-            shape = RoundedCornerShape(24.dp), color = colors.Card,
+            shape = RoundedCornerShape(20.dp), color = colors.Card,
             border = BorderStroke(1.dp, CyanGreen.copy(alpha = 0.4f))) {
             Column(Modifier.padding(16.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { if (selectedSession != null) onBack() else onDismiss() }) {
                         Icon(Icons.Filled.Close, "Close", tint = colors.Text3) }
-                    Text(if (selectedSession != null) "Session Files" else "Past Sessions",
-                        fontSize = 14.sp, fontWeight = FontWeight.Bold, color = CyanGreen, fontFamily = FontFamily.Monospace)
+                    Text(if (selectedSession != null) "Session Files" else "Sessions",
+                        fontSize = 13.sp, fontWeight = FontWeight.Bold, color = CyanGreen, fontFamily = FontFamily.Monospace)
                     Spacer(Modifier.width(40.dp))
                 }
                 HorizontalDivider(color = colors.Border); Spacer(Modifier.height(8.dp))
@@ -693,33 +787,33 @@ fun SessionPopup(
                         phase = selectedPhase, sessionId = selectedSession, colors = colors,
                         onSwitch = { onSwitch(selectedSession) }, onDismiss = onDismiss)
                 } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         items(sessions) { s ->
                             val isCurrent = s.id == sessionId
                             Surface(Modifier.fillMaxWidth().clickable { onSelectSession(s.id) },
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 color = if (isCurrent) CyanGreen.copy(alpha = 0.08f) else colors.Surface,
                                 border = if (isCurrent) BorderStroke(1.dp, CyanGreen.copy(0.3f)) else null) {
                                 Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
-                                        Text(s.projectName, fontSize = 12.sp, color = colors.Text,
+                                        Text(s.projectName, fontSize = 11.sp, color = colors.Text,
                                             fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
                                         Row {
-                                            Text(s.phase.name, fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-                                            if (s.fileCount > 0) Text(" · ${s.fileCount} files", fontSize = 9.sp,
+                                            Text(s.phase.name, fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                                            if (s.fileCount > 0) Text(" · ${s.fileCount} files", fontSize = 8.sp,
                                                 color = colors.Text3, fontFamily = FontFamily.Monospace)
                                         }
                                     }
-                                    IconButton(onClick = { onSwitch(s.id) }, modifier = Modifier.size(28.dp)) {
-                                        Icon(Icons.Filled.PlayArrow, "Switch", tint = CyanGreen, modifier = Modifier.size(16.dp))
+                                    IconButton(onClick = { onSwitch(s.id) }, modifier = Modifier.size(24.dp)) {
+                                        Icon(Icons.Filled.PlayArrow, "Switch", tint = CyanGreen, modifier = Modifier.size(14.dp))
                                     }
-                                    IconButton(onClick = { onDelete(s.id) }, modifier = Modifier.size(24.dp)) {
-                                        Icon(Icons.Outlined.DeleteOutline, "Delete", tint = colors.Red.copy(0.5f), modifier = Modifier.size(14.dp))
+                                    IconButton(onClick = { onDelete(s.id) }, modifier = Modifier.size(22.dp)) {
+                                        Icon(Icons.Outlined.DeleteOutline, "Delete", tint = colors.Red.copy(0.5f), modifier = Modifier.size(12.dp))
                                     }
                                 }
                             }
                         }
-                        if (sessions.isEmpty()) item { Text("No saved sessions", fontSize = 12.sp, color = colors.Text3,
+                        if (sessions.isEmpty()) item { Text("No saved sessions", fontSize = 11.sp, color = colors.Text3,
                             fontFamily = FontFamily.Monospace, modifier = Modifier.padding(8.dp)) }
                     }
                 }
@@ -732,32 +826,32 @@ fun SessionPopup(
 fun SessionFilesView(files: List<FileNode>, projectName: String, phase: InventPhase?, sessionId: String,
     colors: ZcPalette, onSwitch: () -> Unit, onDismiss: () -> Unit = {}) {
     Column {
-        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp),
             color = CyanGreen.copy(alpha = 0.1f), border = BorderStroke(1.dp, CyanGreen.copy(0.3f))) {
-            Row(Modifier.clickable { onSwitch() }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.PlayArrow, null, tint = CyanGreen, modifier = Modifier.size(20.dp))
+            Row(Modifier.clickable { onSwitch() }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.PlayArrow, null, tint = CyanGreen, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Continue ${projectName.ifEmpty { "Session" }}", fontSize = 12.sp, color = CyanGreen,
+                Text("Continue ${projectName.ifEmpty { "Session" }}", fontSize = 11.sp, color = CyanGreen,
                     fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.weight(1f))
-                if (phase != null) Text(phase.name, fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                if (phase != null) Text(phase.name, fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
             }
         }
         Spacer(Modifier.height(8.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             items(files) { node -> FileRow(node, colors) }
-            if (files.isEmpty()) item { Text("No files yet", fontSize = 11.sp, color = colors.Text3, fontFamily = FontFamily.Monospace) }
+            if (files.isEmpty()) item { Text("No files yet", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace) }
         }
     }
 }
 
 @Composable
 fun FileRow(node: FileNode, colors: ZcPalette) {
-    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp),
+    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(6.dp),
         color = colors.Surface.copy(alpha = 0.5f), border = BorderStroke(1.dp, colors.Border.copy(0.2f))) {
         Row(Modifier.padding(8.dp).clickable {}, verticalAlignment = Alignment.CenterVertically) {
             Icon(if (node.isDir) Icons.Filled.Folder else Icons.Filled.Description, null,
-                tint = if (node.isDir) AmberAccent else CyanGreen, modifier = Modifier.size(16.dp))
+                tint = if (node.isDir) AmberAccent else CyanGreen, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(8.dp))
             Column {
                 Text(node.path, fontSize = 10.sp, color = colors.Text, fontFamily = FontFamily.Monospace,
@@ -787,24 +881,24 @@ fun SettingsPopup(onDismiss: () -> Unit, colors: ZcPalette,
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center) {
         Surface(Modifier.fillMaxWidth(0.85f).fillMaxHeight(0.85f).clickable {},
-            shape = RoundedCornerShape(24.dp), color = colors.Card,
+            shape = RoundedCornerShape(20.dp), color = colors.Card,
             border = BorderStroke(1.dp, CyanGreen.copy(alpha = 0.4f))) {
             Column(Modifier.padding(16.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, "Close", tint = colors.Text3) }
-                    Text("Model Settings", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = CyanGreen, fontFamily = FontFamily.Monospace)
+                    Text("Model Settings", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = CyanGreen, fontFamily = FontFamily.Monospace)
                     Spacer(Modifier.width(40.dp))
                 }
                 HorizontalDivider(color = colors.Border); Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                     listOf("Planner", "Researcher", "Coder").forEachIndexed { i, label ->
-                        Surface(shape = RoundedCornerShape(10.dp),
+                        Surface(shape = RoundedCornerShape(8.dp),
                             color = if (settingsTab == i) CyanGreen.copy(alpha = 0.12f) else colors.Surface,
                             border = BorderStroke(1.dp, if (settingsTab == i) CyanGreen else colors.Border)) {
-                            Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                            Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
                                 color = if (settingsTab == i) CyanGreen else colors.Text3, fontFamily = FontFamily.Monospace,
-                                modifier = Modifier.clickable { settingsTab = i }.padding(horizontal = 16.dp, vertical = 8.dp))
+                                modifier = Modifier.clickable { settingsTab = i }.padding(horizontal = 12.dp, vertical = 6.dp))
                         }
                         Spacer(Modifier.width(8.dp))
                     }
@@ -822,15 +916,12 @@ fun SettingsPopup(onDismiss: () -> Unit, colors: ZcPalette,
 @Composable
 fun ModelConfigView(role: String, config: ModelTokenConfig?, modelPath: String, colors: ZcPalette) {
     val modelName = modelPath.substringAfterLast('/').substringAfterLast('\\').take(28)
-
-    // Editable values — initialize from config or defaults
     var ctx by remember { mutableStateOf(config?.ctx ?: 2048) }
     var maxNew by remember { mutableStateOf(config?.maxNew ?: 512) }
     var gpuLayers by remember { mutableStateOf(config?.gpuLayers ?: 0) }
     var temperature by remember { mutableStateOf(config?.temperature ?: 0.7f) }
     var topP by remember { mutableStateOf(config?.topP ?: 0.9f) }
 
-    // Save helper
     fun save() {
         val existing = config ?: ModelTokenConfig(ctx = 2048, maxNew = 512, gpuLayers = 0)
         val updated = existing.copy(ctx = ctx, maxNew = maxNew, gpuLayers = gpuLayers,
@@ -840,108 +931,38 @@ fun ModelConfigView(role: String, config: ModelTokenConfig?, modelPath: String, 
 
     LazyColumn(modifier = Modifier.fillMaxWidth().fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         item {
-            Text(role, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                color = CyanGreen, fontFamily = FontFamily.Monospace)
+            Text(role, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = CyanGreen, fontFamily = FontFamily.Monospace)
             Text(modelName, fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
             Spacer(Modifier.height(6.dp))
         }
-
-        // Context slider
-        item {
-            SettingsSlider(
-                label = "Context Window",
-                value = ctx.toFloat(),
-                range = 256f..32768f,
-                steps = 127,
-                format = { "${it.toInt()}" },
-                onValueChange = { ctx = it.toInt(); save() },
-                colors = colors
-            )
-        }
-        // Max tokens slider
-        item {
-            SettingsSlider(
-                label = "Max Tokens",
-                value = maxNew.toFloat(),
-                range = 64f..8192f,
-                steps = 127,
-                format = { "${it.toInt()}" },
-                onValueChange = { maxNew = it.toInt(); save() },
-                colors = colors
-            )
-        }
-        // GPU Layers slider
-        item {
-            SettingsSlider(
-                label = "GPU Layers (-1 = all)",
-                value = gpuLayers.toFloat(),
-                range = -1f..200f,
-                steps = 201,
-                format = { if (it.toInt() < 0) "All" else "${it.toInt()}" },
-                onValueChange = { gpuLayers = it.toInt(); save() },
-                colors = colors
-            )
-        }
-        // Temperature slider
-        item {
-            SettingsSlider(
-                label = "Temperature",
-                value = temperature,
-                range = 0.0f..2.0f,
-                steps = 40,
-                format = { "%.2f".format(it) },
-                onValueChange = { temperature = it; save() },
-                colors = colors
-            )
-        }
-        // Top-P slider
-        item {
-            SettingsSlider(
-                label = "Top-P",
-                value = topP,
-                range = 0.0f..1.0f,
-                steps = 20,
-                format = { "%.2f".format(it) },
-                onValueChange = { topP = it; save() },
-                colors = colors
-            )
-        }
-
-        item {
-            Spacer(Modifier.height(6.dp))
-            Text("GGUF · TFLite · MNN", fontSize = 9.sp,
-                color = colors.Text3, fontFamily = FontFamily.Monospace)
-        }
+        item { SettingsSlider("Context Window", ctx.toFloat(), 256f..32768f, 127,
+            { "${it.toInt()}" }, { ctx = it.toInt(); save() }, colors) }
+        item { SettingsSlider("Max Tokens", maxNew.toFloat(), 64f..8192f, 127,
+            { "${it.toInt()}" }, { maxNew = it.toInt(); save() }, colors) }
+        item { SettingsSlider("GPU Layers", gpuLayers.toFloat(), -1f..200f, 201,
+            { if (it.toInt() < 0) "All" else "${it.toInt()}" }, { gpuLayers = it.toInt(); save() }, colors) }
+        item { SettingsSlider("Temperature", temperature, 0.0f..2.0f, 40,
+            { "%.2f".format(it) }, { temperature = it; save() }, colors) }
+        item { SettingsSlider("Top-P", topP, 0.0f..1.0f, 20,
+            { "%.2f".format(it) }, { topP = it; save() }, colors) }
+        item { Spacer(Modifier.height(6.dp)); Text("GGUF · TFLite · MNN", fontSize = 9.sp,
+            color = colors.Text3, fontFamily = FontFamily.Monospace) }
     }
 }
 
 @Composable
 fun SettingsSlider(
-    label: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    steps: Int,
-    format: (Float) -> String,
-    onValueChange: (Float) -> Unit,
-    colors: ZcPalette
+    label: String, value: Float, range: ClosedFloatingPointRange<Float>,
+    steps: Int, format: (Float) -> String, onValueChange: (Float) -> Unit, colors: ZcPalette
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 2.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label, fontSize = 10.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
-            Text(format(value), fontSize = 10.sp, color = CyanGreen,
-                fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+            Text(label, fontSize = 9.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+            Text(format(value), fontSize = 9.sp, color = CyanGreen, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
         }
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            valueRange = range,
-            steps = steps,
-            modifier = Modifier.fillMaxWidth().height(24.dp),
-            colors = SliderDefaults.colors(
-                thumbColor = CyanGreen,
-                activeTrackColor = CyanGreen,
-                inactiveTrackColor = colors.Border.copy(alpha = 0.3f)
-            )
-        )
+        Slider(value = value, onValueChange = onValueChange, valueRange = range, steps = steps,
+            modifier = Modifier.fillMaxWidth().height(20.dp),
+            colors = SliderDefaults.colors(thumbColor = CyanGreen,
+                activeTrackColor = CyanGreen, inactiveTrackColor = colors.Border.copy(alpha = 0.3f)))
     }
 }
