@@ -4,11 +4,19 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Small rounded cube (mirrored from circle position — top-left-middle) -->
+    <!-- Square glow (24dp, 15% alpha) -->
+    <path
+        android:fillColor="#2600E5A0"
+        android:pathData="M24,24 L48,24 C49.1,24 50,24.9 50,26 L50,48 C50,49.1 49.1,50 48,50 L26,50 C24.9,50 24,49.1 24,48 Z"/>
+    <!-- Circle glow (radius 12, 15% alpha) -->
+    <path
+        android:fillColor="#267C5CFF"
+        android:pathData="M72,72 m-12,0 a12,12 0,1 1,24 0 a12,12 0,1 1,-24 0"/>
+    <!-- Small rounded cube (16dp, matching circle diameter) -->
     <path
         android:fillColor="#00E5A0"
-        android:pathData="M28,28 L44,28 C45.1,28 46,28.9 46,30 L46,44 C46,45.1 45.1,46 44,46 L30,46 C28.9,46 28,45.1 28,44 Z"/>
-    <!-- Small circle (bottom-middle-right) -->
+        android:pathData="M28,28 L42,28 C43.1,28 44,28.9 44,30 L44,42 C44,43.1 43.1,44 42,44 L30,44 C28.9,44 28,43.1 28,42 Z"/>
+    <!-- Small circle (radius 8, diameter 16) -->
     <path
         android:fillColor="#7C5CFF"
         android:pathData="M72,72 m-8,0 a8,8 0,1 1,16 0 a8,8 0,1 1,-16 0"/>
