@@ -4,22 +4,40 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Square glow (24dp at 15% alpha) centered on square -->
+    <!-- Outer bloom glow (40dp, 8% alpha) - large soft aura -->
     <path
-        android:fillColor="#2600E5A0"
-        android:pathData="M24,24 L48,24 C49.1,24 50,24.9 50,26 L50,48 C50,49.1 49.1,50 48,50 L26,50 C24.9,50 24,49.1 24,48 Z"/>
-    <!-- Circle glow (radius 12 at 15% alpha) centered on circle -->
+        android:fillColor="#0D00E5A0"
+        android:pathData="M20,20 L52,20 C53.1,20 54,20.9 54,22 L54,50 C54,51.1 53.1,52 52,52 L22,52 C20.9,52 20,51.1 20,50 Z"/>
+    <!-- Primary square glow (28dp, 20% alpha) -->
     <path
-        android:fillColor="#267C5CFF"
-        android:pathData="M72,72 m-12,0 a12,12 0,1 1,24 0 a12,12 0,1 1,-24 0"/>
-    <!-- Small rounded cube (14dp matching circle diameter) -->
+        android:fillColor="#3300E5A0"
+        android:pathData="M22,22 L50,22 C51.1,22 52,22.9 52,24 L52,50 C52,51.1 51.1,52 50,52 L24,52 C22.9,52 22,51.1 22,50 Z"/>
+    <!-- Inner square glow (20dp, 30% alpha) -->
+    <path
+        android:fillColor="#4D00E5A0"
+        android:pathData="M25,25 L47,25 C48.1,25 49,25.9 49,27 L49,45 C49,46.1 48.1,47 47,47 L27,47 C25.9,47 25,46.1 25,45 Z"/>
+    <!-- Small rounded cube (14dp, solid) -->
     <path
         android:fillColor="#00E5A0"
         android:pathData="M29,29 L41,29 C42.1,29 43,29.9 43,31 L43,41 C43,42.1 42.1,43 41,43 L31,43 C29.9,43 29,42.1 29,41 Z"/>
-    <!-- Small circle (radius 7, diameter 14) -->
+
+    <!-- Outer bloom glow for circle (radius 14, 8% alpha) -->
+    <path
+        android:fillColor="#0D7C5CFF"
+        android:pathData="M72,72 m-14,0 a14,14 0,1 1,28 0 a14,14 0,1 1,-28 0"/>
+    <!-- Primary circle glow (radius 12, 20% alpha) -->
+    <path
+        android:fillColor="#337C5CFF"
+        android:pathData="M72,72 m-12,0 a12,12 0,1 1,24 0 a12,12 0,1 1,-24 0"/>
+    <!-- Inner circle glow (radius 9, 30% alpha) -->
+    <path
+        android:fillColor="#4D7C5CFF"
+        android:pathData="M72,72 m-9,0 a9,9 0,1 1,18 0 a9,9 0,1 1,-18 0"/>
+    <!-- Small circle (radius 7, solid) -->
     <path
         android:fillColor="#7C5CFF"
         android:pathData="M72,72 m-7,0 a7,7 0,1 1,14 0 a7,7 0,1 1,-14 0"/>
+
     <!-- Plus sign horizontal bar (rounded ends) -->
     <path
         android:fillColor="#F0F0F8"

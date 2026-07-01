@@ -104,27 +104,55 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setModelMode(mode: ModelMode) {
         val state = sessionState ?: return
+        // Save original paths before any mode transition
+        val origResearcherPath = state.researcherPath
+        val origResearcherName = state.researcherName
+        val origModel1Path = state.model1Path
+        val origModel1Name = state.model1Name
         _ui.value = _ui.value.copy(modelMode = mode)
+
         when (mode) {
             ModelMode.SINGLE -> {
-                // All three roles use the same model (planner's path)
-                if (!state.sameModelMode) toggleSameModelMode()
-                val newState = sessionState?.copy(
-                    researcherPath = state.model1Path, researcherName = state.model1Name
+                if (sessionState?.sameModelMode != true) toggleSameModelMode()
+                val s = sessionState ?: return
+                val newState = s.copy(
+                    researcherPath = s.model1Path, researcherName = s.model1Name
                 )
                 sessionState = newState
-                _ui.value = _ui.value.copy(researcherName = state.model1Name)
+                _ui.value = _ui.value.copy(researcherName = s.model1Name,
+                    model1Name = s.model1Name, model2Name = s.model2Name)
                 viewModelScope.launch(Dispatchers.IO) {
-                    newState?.let { InventStorage.saveSession(ctx, it) }
+                    InventStorage.saveSession(ctx, newState)
                 }
             }
             ModelMode.DUAL -> {
-                // Planner & Coder share (sameModelMode), Researcher separate
-                if (!state.sameModelMode) toggleSameModelMode()
+                // Planner+Coder share, Researcher separate
+                if (sessionState?.sameModelMode != true) toggleSameModelMode()
+                val s = sessionState ?: return
+                // Restore researcher if it was overwritten by SINGLE
+                val newState = if (s.researcherPath == s.model1Path && origResearcherPath != s.model1Path) {
+                    s.copy(researcherPath = origResearcherPath, researcherName = origResearcherName)
+                } else s
+                sessionState = newState
+                _ui.value = _ui.value.copy(researcherName = newState.researcherName)
+                viewModelScope.launch(Dispatchers.IO) {
+                    InventStorage.saveSession(ctx, newState)
+                }
             }
             ModelMode.TRIPLE -> {
                 // All three separate
-                if (state.sameModelMode) toggleSameModelMode()
+                if (sessionState?.sameModelMode == true) toggleSameModelMode()
+                val s = sessionState ?: return
+                // Restore researcher if it was overwritten by SINGLE
+                val newState = if (!s.sameModelMode && s.researcherPath == s.model1Path &&
+                    s.model1Path != origResearcherPath && origResearcherPath.isNotEmpty()) {
+                    s.copy(researcherPath = origResearcherPath, researcherName = origResearcherName)
+                } else s
+                sessionState = newState
+                _ui.value = _ui.value.copy(researcherName = newState.researcherName)
+                viewModelScope.launch(Dispatchers.IO) {
+                    InventStorage.saveSession(ctx, newState)
+                }
             }
         }
     }

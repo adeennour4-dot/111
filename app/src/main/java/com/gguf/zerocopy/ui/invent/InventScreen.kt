@@ -224,50 +224,52 @@ fun InventScreen(
                         }
                     },
                     actions = {
-                        // Export button
-                        if (ui.phase == InventPhase.DONE || ui.phase == InventPhase.DEBUGGING) {
-                            IconButton(
-                                onClick = { vm.exportProjectZip() },
-                                modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp))
-                                    .background(CyanGreen.copy(alpha = 0.12f))
-                            ) {
-                                Icon(Icons.Filled.FileDownload, "Export", tint = CyanGreen, modifier = Modifier.size(16.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(0.dp)
+                        ) {
+                            // Export button
+                            if (ui.phase == InventPhase.DONE || ui.phase == InventPhase.DEBUGGING) {
+                                IconButton(
+                                    onClick = { vm.exportProjectZip() },
+                                    modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp))
+                                        .background(CyanGreen.copy(alpha = 0.12f))
+                                ) {
+                                    Icon(Icons.Filled.FileDownload, "Export", tint = CyanGreen, modifier = Modifier.size(14.dp))
+                                }
                             }
-                        }
-                        // History
-                        IconButton(
-                            onClick = { showSessionPopup = true },
-                            modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp))
-                                .background(Color.White.copy(alpha = 0.08f))
-                        ) {
-                            Icon(Icons.Outlined.History, "History", tint = colors.Text2, modifier = Modifier.size(14.dp))
-                        }
-                        Spacer(Modifier.width(2.dp))
-                        // Settings
-                        IconButton(
-                            onClick = { showSettingsPopup = true },
-                            modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp))
-                                .background(Color.White.copy(alpha = 0.08f))
-                        ) {
-                            Icon(Icons.Filled.Settings, "Settings", tint = colors.Text2, modifier = Modifier.size(14.dp))
-                        }
-                        Spacer(Modifier.width(2.dp))
-                        // Save session
-                        IconButton(
-                            onClick = { vm.saveCurrentSession() },
-                            modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp))
-                                .background(Color.White.copy(alpha = 0.08f))
-                        ) {
-                            Icon(Icons.Filled.Save, "Save", tint = colors.Text2, modifier = Modifier.size(14.dp))
-                        }
-                        Spacer(Modifier.width(2.dp))
-                        // New session
-                        IconButton(
-                            onClick = { vm.startNewSession { onModelsClick() } },
-                            modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp))
-                                .background(Color.White.copy(alpha = 0.08f))
-                        ) {
-                            Icon(Icons.Filled.Add, "New", tint = Color.White, modifier = Modifier.size(14.dp))
+                            // History
+                            IconButton(
+                                onClick = { showSessionPopup = true },
+                                modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp))
+                                    .background(Color.White.copy(alpha = 0.08f))
+                            ) {
+                                Icon(Icons.Outlined.History, "History", tint = colors.Text2, modifier = Modifier.size(14.dp))
+                            }
+                            // Settings
+                            IconButton(
+                                onClick = { showSettingsPopup = true },
+                                modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp))
+                                    .background(Color.White.copy(alpha = 0.08f))
+                            ) {
+                                Icon(Icons.Filled.Settings, "Settings", tint = colors.Text2, modifier = Modifier.size(14.dp))
+                            }
+                            // Save session
+                            IconButton(
+                                onClick = { vm.saveCurrentSession() },
+                                modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp))
+                                    .background(Color.White.copy(alpha = 0.08f))
+                            ) {
+                                Icon(Icons.Filled.Save, "Save", tint = colors.Text2, modifier = Modifier.size(14.dp))
+                            }
+                            // New session
+                            IconButton(
+                                onClick = { vm.startNewSession { onModelsClick() } },
+                                modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp))
+                                    .background(Color.White.copy(alpha = 0.08f))
+                            ) {
+                                Icon(Icons.Filled.Add, "New", tint = Color.White, modifier = Modifier.size(14.dp))
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Surface)
