@@ -503,11 +503,12 @@ fun InventScreen(
 fun ModelPickerDialog(
     roleLabel: String,
     onDismiss: () -> Unit,
-    onSelect: (path: String, name: String) -> Unit,
+    onSelect: (path: String, name: String, useForAll: Boolean) -> Unit,
     colors: ZcPalette
 ) {
     val app = com.gguf.zerocopy.ZeroCopyApp.instance
     val models by app.modelRepository.models.collectAsState()
+    var useForAll by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -542,6 +543,24 @@ fun ModelPickerDialog(
                 HorizontalDivider(color = colors.Border)
                 Spacer(Modifier.height(8.dp))
 
+                // Use for all toggle
+                Row(
+                    Modifier.fillMaxWidth().clickable { useForAll = !useForAll }.padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = useForAll,
+                        onCheckedChange = { useForAll = it },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = CyanGreen,
+                            checkmarkColor = Color.Black
+                        )
+                    )
+                    Text("Use for all roles", fontSize = 12.sp,
+                        color = colors.Text, fontFamily = FontFamily.Monospace)
+                }
+                Spacer(Modifier.height(4.dp))
+
                 if (models.isEmpty()) {
                     Text("No models found. Download one from the Models tab first.",
                         fontSize = 12.sp, color = colors.Text3,
@@ -553,7 +572,7 @@ fun ModelPickerDialog(
                             Surface(
                                 Modifier.fillMaxWidth()
                                     .clickable {
-                                        onSelect(m.path, m.name)
+                                        onSelect(m.path, m.name, useForAll)
                                     },
                                 shape = RoundedCornerShape(12.dp),
                                 color = colors.Surface,
