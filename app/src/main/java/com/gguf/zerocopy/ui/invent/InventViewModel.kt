@@ -609,9 +609,9 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         val m2Path = if (state.sameModelMode || state.model1Path == state.model2Path)
             state.model1Path else state.model2Path
         val perModelCfg = SettingsManager.getModelTokenConfig(m2Path)
-        val maxNew = perModelCfg?.maxNew ?: SettingsManager.maxTokens
-        // Safety margin: leave 256 tokens for the code gen prompt
-        val budget = maxNew - 256
+        val maxNew = perModelCfg?.maxNew?.coerceAtLeast(256) ?: SettingsManager.maxTokens.coerceAtLeast(256)
+        // Safety margin: use 80% of maxNew for generated code, reserve 20% for prompt
+        val budget = (maxNew * 0.8).toInt()
         if (budget <= 128) return false
 
         // Find files that exceed the budget
@@ -1419,65 +1419,44 @@ You are a friendly software project advisor. Your job is to understand what the 
 
 Rules:
 - Ask ONE short, clear question at a time.
-- Listen carefully to the answers before asking the next question.
-- Topics to cover: what the app does, who it's for, platform, language/framework, key features, unique aspects.
-- Keep questions conversational — like a developer colleague chatting.
+- Topics: what app does, who it's for, platform, language/framework, key features, unique aspects.
 - Once you have enough info (5-8 questions), say "Great, I think I have everything I need."
-- Do NOT output JSON, ZCP, or any structured format during this phase.
-- ONE question only per turn.
+- No JSON, no structured output in this phase.
 """.trimIndent()
 
     private fun buildPlanningPrompt(model2Ctx: Int): String = """
-You are a senior software architect and project planner.
+You are a senior software architect. Create a complete build plan.
 
-ZCP output format:
-§APP{name:X|platform:X|language:X|framework:X}
-§IDEA{core:X|features:X,Y,Z|unique:X}
-§VIABLE{status:yes/no|note:X}
-§SEARCH{topic:X|platform:X|question:X|category:X}
-§TREE{path:X|type:dir/file|desc:X}
-§FILEZCP{path:X|description:X|imports:X|classes:X|functions:X|dependencies:Y,Z}
+Output:
+§APP{name|platform|language|framework}
+§IDEA{core|features|unique}
+§VIABLE{status:yes/no|note}
+§TREE{path|type:dir/file|desc}
+§FILEZCP{path|description|imports|classes|functions|dependencies}
 
-Model 2 (coder) context: $model2Ctx tokens.
+Coder context limit: $model2Ctx tokens.
+Each FILEZCP must be self-contained for independent implementation.
 """.trimIndent()
 
     private fun buildCodeGenPrompt(spec: FileSpec, projectZcp: ZcpProtocol): String = buildString {
-        appendLine("ZCP v${projectZcp.version} — File Spec")
-        appendLine("========================================")
-        appendLine()
-        appendLine("Project: ${projectZcp.projectName}")
-        appendLine("Platform: ${projectZcp.platform.joinToString(", ")}")
-        appendLine("Language: ${projectZcp.language.joinToString(", ")}")
-        appendLine("Framework: ${projectZcp.framework}")
-        if (projectZcp.coreIdea.isNotEmpty()) appendLine("Core Idea: ${projectZcp.coreIdea}")
+        appendLine("Project: ${projectZcp.projectName} | ${projectZcp.language.joinToString(", ")} | ${projectZcp.framework}")
+        if (projectZcp.coreIdea.isNotEmpty()) appendLine("Idea: ${projectZcp.coreIdea}")
         if (projectZcp.mainFeatures.isNotEmpty()) appendLine("Features: ${projectZcp.mainFeatures.joinToString(", ")}")
         appendLine()
-        appendLine("--- File to Implement ---")
-        appendLine("Path: ${spec.path}")
-        appendLine("Description: ${spec.description}")
+        appendLine("--- File: ${spec.path} ---")
+        appendLine("Desc: ${spec.description}")
         if (spec.imports.isNotEmpty()) appendLine("Imports: ${spec.imports}")
         if (spec.classes.isNotEmpty()) appendLine("Classes: ${spec.classes}")
         if (spec.functions.isNotEmpty()) appendLine("Functions: ${spec.functions}")
-        if (spec.dependencies.isNotEmpty()) appendLine("Depends on: ${spec.dependencies.joinToString(", ")}")
-        appendLine()
         if (spec.dependencies.isNotEmpty()) {
-            appendLine("Dependency interfaces:")
+            appendLine("Deps:")
             spec.dependencies.forEach { dep ->
-                val depSpec = projectZcp.fileSpecs[dep]
-                if (depSpec != null) {
-                    appendLine("  • $dep → ${depSpec.description}")
-                    if (depSpec.classes.isNotEmpty()) appendLine("    Classes: ${depSpec.classes}")
-                    if (depSpec.functions.isNotEmpty()) appendLine("    Functions: ${depSpec.functions}")
-                }
+                val ds = projectZcp.fileSpecs[dep]
+                if (ds != null) appendLine("  $dep → ${ds.description}")
             }
-            appendLine()
         }
-        appendLine("---")
         appendLine()
-        appendLine("Web search is available. If you need to look up APIs, syntax, or libraries,")
-        appendLine("output [SEARCH: your query] and you'll get results.")
-        appendLine()
-        appendLine("Now write the complete code for this file. Production-ready, no explanations:")
+        appendLine("Write production-ready code. Use [SEARCH: x] for lookups.")
     }
 
     private fun buildResearcherPrompt(content: Map<String, String>, intents: List<SearchIntent>): String {
@@ -1513,22 +1492,33 @@ Model 2 (coder) context: $model2Ctx tokens.
         history: List<Pair<String, String>>,
         user: String
     ): Pair<String, Int> {
-        val availableCtx = SettingsManager.nCtx.coerceAtLeast(1024)
-        val maxNew = SettingsManager.maxTokens.coerceAtLeast(64)
+        // Use per-model context if available, else global
+        val activePath = engineManager.getActiveEngine()?.loadedModelPath ?: ""
+        val modelCfg = SettingsManager.getModelTokenConfig(activePath)
+        val availableCtx = modelCfg?.ctx?.coerceAtLeast(512) ?: SettingsManager.nCtx.coerceAtLeast(1024)
+        val maxNew = modelCfg?.maxNew?.coerceAtLeast(64) ?: SettingsManager.maxTokens.coerceAtLeast(64)
         val budget = availableCtx - maxNew - 256
 
         var compactedHistory = history
-        val estimatedTotal = estimateTokens(system) + history.sumOf { (r, c) -> estimateTokens("$r $c") } + estimateTokens(user)
+        var estimatedTotal = estimateTokens(system) + history.sumOf { (r, c) -> estimateTokens("$r $c") } + estimateTokens(user)
         if (estimatedTotal > budget) {
             val mutable = history.toMutableList()
             while (mutable.isNotEmpty()) {
                 val testTotal = estimateTokens(system) + mutable.sumOf { (r, c) -> estimateTokens("$r $c") } + estimateTokens(user)
                 if (testTotal <= budget) break
-                if (mutable.size > 1) mutable.removeAt(0) else break
+                if (mutable.size > 1) {
+                    // Trim content in remaining messages before dropping more
+                    val first = mutable.first()
+                    val trimmed = first.copy(second = first.second.take(2000))
+                    mutable[0] = trimmed
+                    val retryTotal = estimateTokens(system) + mutable.sumOf { (r, c) -> estimateTokens("$r $c") } + estimateTokens(user)
+                    if (retryTotal <= budget) break
+                    mutable.removeAt(0)
+                } else break
             }
             if (mutable.size < history.size) {
-                val droppedCount = history.size - mutable.size
-                mutable.add(0, "system" to "[Earlier conversation compacted — $droppedCount messages removed to fit context window]")
+                val dropped = history.size - mutable.size
+                mutable.add(0, "system" to "↕ $dropped earlier messages compacted — key info preserved")
             }
             compactedHistory = mutable
         }
