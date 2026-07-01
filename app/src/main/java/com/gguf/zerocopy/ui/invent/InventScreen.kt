@@ -25,6 +25,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gguf.zerocopy.data.invent.*
 import com.gguf.zerocopy.data.local.SettingsManager
@@ -454,6 +455,26 @@ fun InventChatBubble(msg: InventMessage, colors: ZcPalette) {
 
 private fun isSystem(msg: InventMessage) = msg.role == "system"
 
+// ─── Toolbar Toggle ─────────────────────────────────────────────────────────
+@Composable
+private fun ToolbarToggle(
+    icon: ImageVector,
+    label: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    colors: ZcPalette
+) {
+    Surface(
+        modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)).clickable { onClick() },
+        color = if (active) CyanGreen.copy(alpha = 0.12f) else Color.Transparent,
+        border = BorderStroke(1.dp, if (active) CyanGreen.copy(alpha = 0.4f) else colors.Border.copy(alpha = 0.3f))
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Icon(icon, label, tint = if (active) CyanGreen else colors.Text3, modifier = Modifier.size(14.dp))
+        }
+    }
+}
+
 // ─── Input Area ──────────────────────────────────────────────────────────────
 @Composable
 fun InputArea(
@@ -470,22 +491,14 @@ fun InputArea(
             // Toolbar — row of icon toggles + token count
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                listOf(
-                    Triple(Icons.Outlined.AttachFile, "File", false) { onFilePick() },
-                    Triple(Icons.Outlined.Psychology, "Think", showThinking) { onToggleThinking() },
-                    Triple(Icons.Outlined.Search, "Search", showSearch) { onToggleSearch() },
-                ).forEach { (icon, label, active, onClick) ->
-                    Surface(
-                        modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)).clickable { onClick() },
-                        color = if (active) CyanGreen.copy(alpha = 0.12f) else Color.Transparent,
-                        border = BorderStroke(1.dp, if (active) CyanGreen.copy(alpha = 0.4f) else colors.Border.copy(alpha = 0.3f))
-                    ) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Icon(icon, label, tint = if (active) CyanGreen else colors.Text3, modifier = Modifier.size(14.dp))
-                        }
-                    }
-                    Spacer(Modifier.width(4.dp))
-                }
+                // File
+                ToolbarToggle(Icons.Outlined.AttachFile, "File", false, onFilePick, colors)
+                Spacer(Modifier.width(4.dp))
+                // Think
+                ToolbarToggle(Icons.Outlined.Psychology, "Think", showThinking, onToggleThinking, colors)
+                Spacer(Modifier.width(4.dp))
+                // Search
+                ToolbarToggle(Icons.Outlined.Search, "Search", showSearch, onToggleSearch, colors)
                 Spacer(Modifier.weight(1f))
                 // Settings + History pills
                 Surface(modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)).clickable { onSettings() },
@@ -530,7 +543,7 @@ fun InputArea(
                         cursorColor = CyanGreen
                     ),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = onSend),
+                    keyboardActions = KeyboardActions(onSend = { onSend() }),
                     maxLines = 4
                 )
                 Spacer(Modifier.width(6.dp))
