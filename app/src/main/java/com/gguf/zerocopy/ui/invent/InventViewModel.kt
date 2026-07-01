@@ -176,7 +176,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                                 model2Path = path, model2Name = name
                             )
                         } else {
-                            val base = when (tab) {
+                            when (tab) {
                                 0 -> {
                                     val s2 = s.copy(model1Path = path, model1Name = name)
                                     if (s.sameModelMode) s2.copy(model2Path = path, model2Name = name) else s2
