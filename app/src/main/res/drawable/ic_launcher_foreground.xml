@@ -20,12 +20,12 @@
     <path
         android:fillColor="#7C5CFF"
         android:pathData="M72,72 m-8,0 a8,8 0,1 1,16 0 a8,8 0,1 1,-16 0"/>
-    <!-- + sign horizontal bar (slightly left of center) -->
+    <!-- + sign horizontal bar (centered at 54,54) -->
     <path
         android:fillColor="#F0F0F8"
-        android:pathData="M36,52 L66,52 L66,60 L36,60 Z"/>
-    <!-- + sign vertical bar (slightly left of center) -->
+        android:pathData="M39,50 L69,50 L69,58 L39,58 Z"/>
+    <!-- + sign vertical bar (centered at 54,54) -->
     <path
         android:fillColor="#F0F0F8"
-        android:pathData="M47,41 L55,41 L55,71 L47,71 Z"/>
+        android:pathData="M50,39 L58,39 L58,69 L50,69 Z"/>
 </vector>
