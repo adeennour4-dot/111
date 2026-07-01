@@ -157,20 +157,6 @@ fun InventScreen(
                     }
                 },
                 actions = {
-                    // New chat + button with rounded corners
-                    IconButton(
-                        onClick = { vm.startNewSession { onModelsClick() } },
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color.White.copy(alpha = 0.15f))
-                    ) {
-                        Icon(
-                            Icons.Filled.Add, "New",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
                     if (ui.totalTokensUsed > 0) {
                         Box(
                             Modifier.clip(RoundedCornerShape(6.dp))
@@ -194,6 +180,20 @@ fun InventScreen(
                             Icon(Icons.Filled.FileDownload, "Export",
                                 tint = CyanGreen, modifier = Modifier.size(18.dp))
                         }
+                    }
+                    // New chat + button — always rightmost
+                    IconButton(
+                        onClick = { vm.startNewSession { onModelsClick() } },
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color.White.copy(alpha = 0.15f))
+                    ) {
+                        Icon(
+                            Icons.Filled.Add, "New",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Surface)
