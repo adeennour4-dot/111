@@ -83,6 +83,21 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setShowDeleteConfirm(v: Boolean) { _ui.value = _ui.value.copy(showDeleteConfirm = v) }
 
+    fun toggleSameModelMode() {
+        val state = sessionState ?: return
+        val newMode = !state.sameModelMode
+        val newState = if (newMode) {
+            state.copy(sameModelMode = true, model2Path = state.model1Path, model2Name = state.model1Name)
+        } else {
+            state.copy(sameModelMode = false)
+        }
+        sessionState = newState
+        _ui.value = _ui.value.copy(sameModelMode = newMode, model2Name = newState.model2Name)
+        viewModelScope.launch(Dispatchers.IO) {
+            InventStorage.saveSession(ctx, newState)
+        }
+    }
+
     private var sessionState: InventSessionState? = null
     private var zcp: ZcpProtocol = ZcpProtocol()
     private var sessionId: String = ""

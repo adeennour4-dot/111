@@ -195,6 +195,26 @@ fun InventScreen(
                     colors = colors
                 )
 
+                // ── Same-model toggle ─────────────────────────────────
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Same Coder & Planner", fontSize = 9.sp,
+                        color = colors.Text3, fontFamily = FontFamily.Monospace)
+                    Spacer(Modifier.width(6.dp))
+                    Switch(
+                        checked = ui.sameModelMode,
+                        onCheckedChange = { vm.toggleSameModelMode() },
+                        modifier = Modifier.height(24.dp),
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = CyanGreen,
+                            checkedThumbColor = Color.Black
+                        )
+                    )
+                }
+
                 // ── Messages ───────────────────────────────────────────
                 LazyColumn(
                     state = listState,
@@ -578,7 +598,7 @@ fun ModelPickerDialog(
 
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center) {
-        Surface(Modifier.fillMaxWidth(0.7f).fillMaxHeight(0.6f).clickable {},
+        Surface(Modifier.fillMaxWidth(0.85f).fillMaxHeight(0.8f).clickable {},
             shape = RoundedCornerShape(24.dp), color = colors.Card,
             border = BorderStroke(1.dp, CyanGreen.copy(alpha = 0.4f))) {
             Column(Modifier.padding(16.dp)) {
@@ -655,7 +675,7 @@ fun SessionPopup(
 
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center) {
-        Surface(Modifier.fillMaxWidth(0.6f).fillMaxHeight(0.7f).clickable {},
+        Surface(Modifier.fillMaxWidth(0.85f).fillMaxHeight(0.85f).clickable {},
             shape = RoundedCornerShape(24.dp), color = colors.Card,
             border = BorderStroke(1.dp, CyanGreen.copy(alpha = 0.4f))) {
             Column(Modifier.padding(16.dp)) {
@@ -757,9 +777,8 @@ fun SettingsPopup(onDismiss: () -> Unit, colors: ZcPalette,
     model1Path: String, model2Path: String, researcherPath: String, initialTab: Int = 0) {
     var settingsTab by remember { mutableStateOf(initialTab) }
 
-    val getCfg = { role: String, path: String ->
-        if (SettingsManager.inventSyncWithMain) SettingsManager.getModelTokenConfig(path)
-        else SettingsManager.getInventModelConfig(role) ?: SettingsManager.getModelTokenConfig(path)
+    val getCfg = { role: String, _: String ->
+        SettingsManager.getInventModelConfig(role) ?: SettingsManager.getModelTokenConfig("")
     }
     val plannerCfg = remember(model1Path) { getCfg("Planner", model1Path) }
     val researcherCfg = remember(researcherPath) { getCfg("Researcher", researcherPath) }
@@ -767,7 +786,7 @@ fun SettingsPopup(onDismiss: () -> Unit, colors: ZcPalette,
 
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center) {
-        Surface(Modifier.fillMaxWidth(0.65f).fillMaxHeight(0.65f).clickable {},
+        Surface(Modifier.fillMaxWidth(0.85f).fillMaxHeight(0.85f).clickable {},
             shape = RoundedCornerShape(24.dp), color = colors.Card,
             border = BorderStroke(1.dp, CyanGreen.copy(alpha = 0.4f))) {
             Column(Modifier.padding(16.dp)) {
@@ -802,30 +821,127 @@ fun SettingsPopup(onDismiss: () -> Unit, colors: ZcPalette,
 
 @Composable
 fun ModelConfigView(role: String, config: ModelTokenConfig?, modelPath: String, colors: ZcPalette) {
-    val items = if (config != null) listOf(
-        "Model" to modelPath.substringAfterLast('/').substringAfterLast('\\').take(28),
-        "Context" to "${config.ctx}", "Max Tokens" to "${config.maxNew}", "GPU Layers" to "${config.gpuLayers}",
-        "Temperature" to "${config.temperature ?: "global"}", "Top-P" to "${config.topP ?: "global"}",
-        "Min-P" to "${config.minP ?: "global"}", "Top-K" to "${config.topK ?: "global"}",
-        "Repeat" to "${config.repeatPenalty ?: "global"}", "Freq" to "${config.freqPenalty ?: "global"}",
-        "Pres" to "${config.presPenalty ?: "global"}", "Seed" to "${config.seed ?: "global"}",
-        "Flash" to "${if (config.flashAttention == true) "on" else if (config.flashAttention == false) "off" else "global"}",
-        "Low RAM" to "${if (config.lowRamMode == true) "on" else if (config.lowRamMode == false) "off" else "global"}",
-        "Threads" to "${config.threads ?: "global"}", "Batch" to "${config.nBatch ?: "global"}"
-    ) else listOf("Model" to modelPath.substringAfterLast('/').substringAfterLast('\\').take(28),
-        "Note" to "Using global defaults")
+    val modelName = modelPath.substringAfterLast('/').substringAfterLast('\\').take(28)
+
+    // Editable values — initialize from config or defaults
+    var ctx by remember { mutableStateOf(config?.ctx ?: 2048) }
+    var maxNew by remember { mutableStateOf(config?.maxNew ?: 512) }
+    var gpuLayers by remember { mutableStateOf(config?.gpuLayers ?: 0) }
+    var temperature by remember { mutableStateOf(config?.temperature ?: 0.7f) }
+    var topP by remember { mutableStateOf(config?.topP ?: 0.9f) }
+
+    // Save helper
+    fun save() {
+        val existing = config ?: ModelTokenConfig(ctx = 2048, maxNew = 512, gpuLayers = 0)
+        val updated = existing.copy(ctx = ctx, maxNew = maxNew, gpuLayers = gpuLayers,
+            temperature = temperature, topP = topP)
+        SettingsManager.setInventModelConfig(role, updated)
+    }
 
     LazyColumn(modifier = Modifier.fillMaxWidth().fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        item { Text("$role Configuration", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colors.Text, fontFamily = FontFamily.Monospace)
-            Spacer(Modifier.height(4.dp)) }
-        items(items) { (k, v) ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(k, fontSize = 10.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
-                Text(v, fontSize = 10.sp, color = CyanGreen, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
-            }
+        item {
+            Text(role, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                color = CyanGreen, fontFamily = FontFamily.Monospace)
+            Text(modelName, fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.height(6.dp))
         }
-        item { Spacer(Modifier.height(8.dp))
-            Text("GGUF · TFLite · MNN", fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace) }
+
+        // Context slider
+        item {
+            SettingsSlider(
+                label = "Context Window",
+                value = ctx.toFloat(),
+                range = 256f..32768f,
+                steps = 127,
+                format = { "${it.toInt()}" },
+                onValueChange = { ctx = it.toInt(); save() },
+                colors = colors
+            )
+        }
+        // Max tokens slider
+        item {
+            SettingsSlider(
+                label = "Max Tokens",
+                value = maxNew.toFloat(),
+                range = 64f..8192f,
+                steps = 127,
+                format = { "${it.toInt()}" },
+                onValueChange = { maxNew = it.toInt(); save() },
+                colors = colors
+            )
+        }
+        // GPU Layers slider
+        item {
+            SettingsSlider(
+                label = "GPU Layers (-1 = all)",
+                value = gpuLayers.toFloat(),
+                range = -1f..200f,
+                steps = 201,
+                format = { if (it.toInt() < 0) "All" else "${it.toInt()}" },
+                onValueChange = { gpuLayers = it.toInt(); save() },
+                colors = colors
+            )
+        }
+        // Temperature slider
+        item {
+            SettingsSlider(
+                label = "Temperature",
+                value = temperature,
+                range = 0.0f..2.0f,
+                steps = 40,
+                format = { "%.2f".format(it) },
+                onValueChange = { temperature = it; save() },
+                colors = colors
+            )
+        }
+        // Top-P slider
+        item {
+            SettingsSlider(
+                label = "Top-P",
+                value = topP,
+                range = 0.0f..1.0f,
+                steps = 20,
+                format = { "%.2f".format(it) },
+                onValueChange = { topP = it; save() },
+                colors = colors
+            )
+        }
+
+        item {
+            Spacer(Modifier.height(6.dp))
+            Text("GGUF · TFLite · MNN", fontSize = 9.sp,
+                color = colors.Text3, fontFamily = FontFamily.Monospace)
+        }
+    }
+}
+
+@Composable
+fun SettingsSlider(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    format: (Float) -> String,
+    onValueChange: (Float) -> Unit,
+    colors: ZcPalette
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 2.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, fontSize = 10.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+            Text(format(value), fontSize = 10.sp, color = CyanGreen,
+                fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = range,
+            steps = steps,
+            modifier = Modifier.fillMaxWidth().height(24.dp),
+            colors = SliderDefaults.colors(
+                thumbColor = CyanGreen,
+                activeTrackColor = CyanGreen,
+                inactiveTrackColor = colors.Border.copy(alpha = 0.3f)
+            )
+        )
     }
 }

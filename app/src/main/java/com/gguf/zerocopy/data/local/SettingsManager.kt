@@ -241,10 +241,7 @@ object SettingsManager {
     saveInventConfigs(map)
   }
 
-  /** Whether Invent should use the same configs as main settings. */
-  var inventSyncWithMain: Boolean
-    get() = prefs?.getBoolean("invent_sync_config", false) ?: false
-    set(v) { prefs?.edit()?.putBoolean("invent_sync_config", v)?.apply() }
+
 
   var nBatch: Int
     get() = prefs?.getInt("n_batch", 512) ?: 512
