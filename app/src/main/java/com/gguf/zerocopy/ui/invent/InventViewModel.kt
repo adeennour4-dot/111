@@ -156,10 +156,15 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (path.isNotEmpty()) {
                 val ok = loadOrKeepModel(path)
+                // Preserve existing loaded states when not overwriting (supports multi-role selection)
+                val cur = _ui.value
                 _ui.value = _ui.value.copy(
-                    plannerLoaded = (useForAll || tab == 0) && ok,
-                    researcherLoaded = (useForAll || tab == 1) && ok,
-                    coderLoaded = (useForAll || tab == 2) && ok
+                    plannerLoaded = cur.plannerLoaded || ((useForAll || tab == 0) && ok),
+                    researcherLoaded = cur.researcherLoaded || ((useForAll || tab == 1) && ok),
+                    coderLoaded = cur.coderLoaded || ((useForAll || tab == 2) && ok),
+                    model1Name = if (ok && (useForAll || tab == 0) && name.isNotEmpty()) name else cur.model1Name,
+                    model2Name = if (ok && (useForAll || tab == 2) && name.isNotEmpty()) name else cur.model2Name,
+                    researcherName = if (ok && (useForAll || tab == 1) && name.isNotEmpty()) name else cur.researcherName
                 )
                 if (ok) {
                     // Update session state with selected path
@@ -171,10 +176,16 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                                 model2Path = path, model2Name = name
                             )
                         } else {
-                            when (tab) {
-                                0 -> s.copy(model1Path = path, model1Name = name)
+                            val base = when (tab) {
+                                0 -> {
+                                    val s2 = s.copy(model1Path = path, model1Name = name)
+                                    if (s.sameModelMode) s2.copy(model2Path = path, model2Name = name) else s2
+                                }
                                 1 -> s.copy(researcherPath = path, researcherName = name)
-                                2 -> s.copy(model2Path = path, model2Name = name)
+                                2 -> {
+                                    val s2 = s.copy(model2Path = path, model2Name = name)
+                                    if (s.sameModelMode) s2.copy(model1Path = path, model1Name = name) else s2
+                                }
                                 else -> s
                             }
                         }

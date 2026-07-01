@@ -125,6 +125,7 @@ fun InventScreen(
     var showSearch by remember { mutableStateOf(false) }
     var modelPickerRole by remember { mutableStateOf<Int?>(null) }
     var settingsTabToShow by remember { mutableStateOf(-1) }
+    var settingsRestrictRole by remember { mutableStateOf(-1) }
     val listState = rememberLazyListState()
     val context = LocalContext.current
 
@@ -405,18 +406,18 @@ fun InventScreen(
                 )
             }
             if (showSettingsPopup) {
-                val tabIndex = when {
-                    settingsTabToShow >= 0 -> settingsTabToShow
-                    ui.modelMode == ModelMode.SINGLE -> 0
-                    ui.modelMode == ModelMode.DUAL -> if (settingsTabToShow == -2) 0 else 1
-                    else -> 0
+                val shownTab = when (ui.modelMode) {
+                    ModelMode.SINGLE -> 0
+                    ModelMode.DUAL -> if (settingsRestrictRole <= 0) 0 else 1
+                    ModelMode.TRIPLE -> settingsRestrictRole.coerceIn(0, 2)
                 }
                 SettingsPopup(
-                    onDismiss = { showSettingsPopup = false; settingsTabToShow = -1 },
+                    onDismiss = { showSettingsPopup = false; settingsTabToShow = -1; settingsRestrictRole = -1 },
                     colors = colors,
                     model1Path = model1Path, model2Path = model2Path, researcherPath = researcherPath,
-                    initialTab = tabIndex.coerceAtLeast(0),
-                    modelMode = ui.modelMode
+                    initialTab = shownTab,
+                    modelMode = ui.modelMode,
+                    restrictRole = settingsRestrictRole
                 )
             }
             if (modelPickerRole != null) {
@@ -438,14 +439,27 @@ fun InventScreen(
                                 vm.selectModelTab(0, path, name, useAll)
                                 vm.selectModelTab(1, path, name, useAll)
                                 vm.selectModelTab(2, path, name, useAll)
+                                settingsRestrictRole = -1
                             }
                             -2 -> { // Planner + Coder (mode 2)
-                                vm.selectModelTab(0, path, name, useAll)
-                                vm.selectModelTab(2, path, name, useAll)
+                                vm.selectModelTab(0, path, name, false)
+                                vm.selectModelTab(2, path, name, false)
+                                settingsRestrictRole = 0
                             }
-                            else -> vm.selectModelTab(roleIdx, path, name, useAll)
+                            0 -> { // Planner (mode 3)
+                                vm.selectModelTab(0, path, name, false)
+                                settingsRestrictRole = 0
+                            }
+                            1 -> { // Researcher (mode 2 or 3)
+                                vm.selectModelTab(1, path, name, false)
+                                settingsRestrictRole = 1
+                            }
+                            2 -> { // Coder (mode 3)
+                                vm.selectModelTab(2, path, name, false)
+                                settingsRestrictRole = 2
+                            }
                         }
-                        settingsTabToShow = roleIdx; modelPickerRole = null; showSettingsPopup = true
+                        modelPickerRole = null; showSettingsPopup = true
                     },
                     colors = colors
                 )
@@ -894,7 +908,7 @@ fun FileRow(node: FileNode, colors: ZcPalette) {
 @Composable
 fun SettingsPopup(onDismiss: () -> Unit, colors: ZcPalette,
     model1Path: String, model2Path: String, researcherPath: String, initialTab: Int = 0,
-    modelMode: ModelMode = ModelMode.TRIPLE) {
+    modelMode: ModelMode = ModelMode.TRIPLE, restrictRole: Int = -1) {
     var settingsTab by remember { mutableStateOf(initialTab) }
 
     val getCfg = { role: String, _: String ->
@@ -904,13 +918,14 @@ fun SettingsPopup(onDismiss: () -> Unit, colors: ZcPalette,
     val researcherCfg = remember(researcherPath) { getCfg("Researcher", researcherPath) }
     val coderCfg = remember(model2Path) { getCfg("Coder", model2Path) }
 
-    // Tab definitions based on model mode
-    val tabDefs = when (modelMode) {
-        ModelMode.SINGLE -> listOf("All" to "Planner")
+    // Tab definitions based on model mode — filtered by restrictRole
+    val allTabDefs = when (modelMode) {
+        ModelMode.SINGLE -> listOf("Planner" to "Planner", "Researcher" to "Researcher", "Coder" to "Coder")
         ModelMode.DUAL -> listOf("Planner+Coder" to "Planner", "Researcher" to "Researcher")
         ModelMode.TRIPLE -> listOf("Planner" to "Planner", "Researcher" to "Researcher", "Coder" to "Coder")
     }
-
+    val tabDefs = if (restrictRole < 0 || modelMode == ModelMode.SINGLE) allTabDefs
+        else allTabDefs.filterIndexed { i, _ -> i == restrictRole }
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center) {
         Surface(Modifier.fillMaxWidth(0.85f).fillMaxHeight(0.85f).clickable {},
