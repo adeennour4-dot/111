@@ -1573,7 +1573,7 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
         val modelCfg = inventCfg ?: SettingsManager.getModelTokenConfig(activePath)
         val availableCtx = modelCfg?.ctx?.coerceAtLeast(512) ?: SettingsManager.nCtx.coerceAtLeast(1024)
         val maxNew = modelCfg?.maxNew?.coerceAtLeast(64) ?: SettingsManager.maxTokens.coerceAtLeast(64)
-        val budget = availableCtx - maxNew - 256
+        val budget = (availableCtx - maxNew - 256).coerceAtLeast(512)
         val template = detectTemplate(activePath)
 
         var compactedHistory = history

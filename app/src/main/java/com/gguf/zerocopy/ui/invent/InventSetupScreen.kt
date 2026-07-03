@@ -66,6 +66,26 @@ fun InventSetupScreen(
         },
         containerColor = colors.Bg
     ) { pad ->
+        // State for model settings dialog
+        val modelSettingsRole = remember { mutableStateOf<String?>(null) }
+
+        // Show model settings dialog when requested
+        modelSettingsRole.value?.let { role ->
+            val modelPath = when (role) {
+                "Planner" -> model1Path; "Coder" -> model2Path; else -> researcherPath
+            }
+            val modelName = when (role) {
+                "Planner" -> model1Name; "Coder" -> model2Name; else -> researcherName
+            }
+            ModelSettingsDialog(
+                role = role,
+                modelName = modelName,
+                modelPath = modelPath,
+                colors = colors,
+                onDismiss = { modelSettingsRole.value = null },
+                onSaved = { modelSettingsRole.value = null }
+            )
+        }
         Column(
             Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState())
                 .padding(16.dp),
@@ -116,7 +136,7 @@ fun InventSetupScreen(
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.Warning, null, tint = colors.Amber, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(10.dp))
-                        Text("No compatible models found. Import at least 2 GGUF, MNN, or TFLite models to use Invent.",
+                        Text("No GGUF models found. Import at least 2 GGUF models to use Invent.",
                             fontSize = 12.sp, color = colors.Amber, fontFamily = FontFamily.Monospace)
                     }
                 }
@@ -128,6 +148,7 @@ fun InventSetupScreen(
                 subtitle = "Logic — asks questions & plans the project",
                 selected = model1Name,
                 onPick = { showPicker = "m1" },
+                onSettings = { if (model1Path.isNotEmpty()) modelSettingsRole.value = "Planner" },
                 colors = colors
             )
 
@@ -166,6 +187,7 @@ fun InventSetupScreen(
                 subtitle = "Code-specialized — builds the implementation plan",
                 selected = model2Name,
                 onPick = { showPicker = "m2" },
+                onSettings = { if (model2Path.isNotEmpty()) modelSettingsRole.value = "Coder" },
                 colors = colors
             ) else {
                 Surface(
@@ -191,6 +213,7 @@ fun InventSetupScreen(
                 subtitle = "~1B — searches web & extracts info",
                 selected = researcherName,
                 onPick = { showPicker = "res" },
+                onSettings = { if (researcherPath.isNotEmpty()) modelSettingsRole.value = "Researcher" },
                 colors = colors
             )
 
@@ -286,12 +309,19 @@ fun InventSetupScreen(
                                 color = colors.CardLight,
                                 border = BorderStroke(1.dp, colors.Border),
                                 modifier = Modifier.fillMaxWidth().clickable {
+                                    // Set the model path/name
                                     when (showPicker) {
                                         "m1" -> { model1Path = model.path; model1Name = model.name }
                                         "m2" -> { model2Path = model.path; model2Name = model.name }
                                         "res" -> { researcherPath = model.path; researcherName = model.name }
                                     }
+                                    // Determine role for settings
+                                    val settingsRole = when (showPicker) {
+                                        "m1" -> "Planner"; "m2" -> "Coder"; else -> "Researcher"
+                                    }
                                     showPicker = null
+                                    // Open settings dialog for this model
+                                    modelSettingsRole.value = settingsRole
                                 }
                             ) {
                                 Column(Modifier.padding(12.dp)) {
@@ -316,13 +346,85 @@ fun InventSetupScreen(
     }
 }
 
+// ── Model Settings Dialog ────────────────────────────────────────────────
+@Composable
+fun ModelSettingsDialog(
+    role: String,
+    modelName: String,
+    modelPath: String,
+    colors: com.gguf.zerocopy.ui.theme.ZcPalette,
+    onDismiss: () -> Unit,
+    onSaved: () -> Unit
+) {
+    val existingCfg = com.gguf.zerocopy.data.local.SettingsManager.getInventModelConfig(role)
+    var ctx by remember { mutableStateOf(existingCfg?.ctx ?: 2048) }
+    var maxNew by remember { mutableStateOf(existingCfg?.maxNew ?: 512) }
+    var gpuLayers by remember { mutableStateOf(existingCfg?.gpuLayers ?: 0) }
+    var temperature by remember { mutableStateOf(existingCfg?.temperature ?: 0.7f) }
+    var topP by remember { mutableStateOf(existingCfg?.topP ?: 0.9f) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text("$role Settings", fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold, color = colors.Text)
+                Text(modelName.take(30), fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp, color = colors.Text3)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Context Window
+                Text("Context Window: $ctx", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+                Slider(value = ctx.toFloat(), onValueChange = { ctx = it.toInt() },
+                    valueRange = 256f..32768f, steps = 127,
+                    colors = SliderDefaults.colors(thumbColor = colors.Accent, activeTrackColor = colors.Accent))
+                // Max Tokens
+                Text("Max New Tokens: $maxNew", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+                Slider(value = maxNew.toFloat(), onValueChange = { maxNew = it.toInt() },
+                    valueRange = 64f..8192f, steps = 127,
+                    colors = SliderDefaults.colors(thumbColor = colors.Accent, activeTrackColor = colors.Accent))
+                // Temperature
+                Text("Temperature: %.2f".format(temperature), fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+                Slider(value = temperature, onValueChange = { temperature = it },
+                    valueRange = 0.0f..2.0f, steps = 40,
+                    colors = SliderDefaults.colors(thumbColor = colors.Accent, activeTrackColor = colors.Accent))
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    com.gguf.zerocopy.data.local.SettingsManager.setInventModelConfig(role,
+                        com.gguf.zerocopy.data.local.SettingsManager.ModelTokenConfig(
+                            ctx = ctx, maxNew = maxNew, gpuLayers = gpuLayers,
+                            temperature = temperature, topP = topP
+                        )
+                    )
+                    onSaved()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = colors.Accent)
+            ) {
+                Text("✓ Save", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = Color.White)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Skip", color = colors.Text3, fontFamily = FontFamily.Monospace)
+            }
+        },
+        containerColor = colors.Card
+    )
+}
+
 @Composable
 fun InventModelPickerCard(
     label: String,
     subtitle: String,
     selected: String,
     onPick: () -> Unit,
-    colors: com.gguf.zerocopy.ui.theme.ZcPalette
+    colors: com.gguf.zerocopy.ui.theme.ZcPalette,
+    onSettings: (() -> Unit)? = null
 ) {
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -340,6 +442,15 @@ fun InventModelPickerCard(
                     Spacer(Modifier.height(4.dp))
                     Text("✓  $selected", fontSize = 11.sp, color = colors.Accent2,
                         fontFamily = FontFamily.Monospace)
+                }
+            }
+            if (selected.isNotEmpty() && onSettings != null) {
+                // Settings gear button — opens config for this model
+                IconButton(
+                    onClick = onSettings,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(Icons.Filled.Settings, "Settings", tint = colors.Text3, modifier = Modifier.size(16.dp))
                 }
             }
             Icon(
