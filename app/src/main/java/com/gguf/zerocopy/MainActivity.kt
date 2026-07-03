@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
@@ -280,24 +281,50 @@ fun SplashScreen(onDone: () -> Unit) {
 
   LaunchedEffect(Unit) {
     splashAlpha.animateTo(1f, animationSpec = tween(800, easing = FastOutSlowInEasing))
-    delay(400)
-    splashAlpha.animateTo(0f, animationSpec = tween(400))
+    delay(600)
+    splashAlpha.animateTo(0f, animationSpec = tween(500))
     onDone()
   }
+
+  val glow1 = colors.GlowAccent
+  val glow2 = colors.GlowAccent2
 
   Box(
     modifier = Modifier.fillMaxSize().background(colors.Bg),
     contentAlignment = Alignment.Center
   ) {
     Column(modifier = Modifier.graphicsLayer { alpha = splashAlpha.value }, horizontalAlignment = Alignment.CenterHorizontally) {
-      Box(
-        modifier = Modifier.size(100.dp).clip(RoundedCornerShape(28.dp)).background(Brush.linearGradient(listOf(colors.GradientStart, colors.GradientEnd))),
-        contentAlignment = Alignment.Center
-      ) { Text("ZC", fontSize = 36.sp, fontWeight = FontWeight.Black, color = Color.White, fontFamily = FontFamily.Monospace) }
+      // ---- Glowing layered logo ----
+      Box(contentAlignment = Alignment.Center) {
+        // Layer 1 (back): large square glow
+        Box(
+          modifier = Modifier.size(140.dp)
+            .clip(RoundedCornerShape(32.dp))
+            .background(glow1)
+        )
+        // Layer 2 (middle): circle glow
+        Box(
+          modifier = Modifier.size(120.dp)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(glow2)
+        )
+        // Layer 3 (front): main rounded square with ZC
+        Box(
+          modifier = Modifier.size(100.dp)
+            .clip(RoundedCornerShape(28.dp))
+            .background(Brush.linearGradient(listOf(colors.GradientStart, colors.GradientEnd))),
+          contentAlignment = Alignment.Center
+        ) {
+          Text("ZC", fontSize = 36.sp, fontWeight = FontWeight.Black,
+            color = Color.White, fontFamily = FontFamily.Monospace)
+        }
+      }
       Spacer(Modifier.height(20.dp))
-      Text("ZeroCopy", fontSize = 28.sp, fontWeight = FontWeight.Light, color = colors.Text2, fontFamily = FontFamily.Monospace, letterSpacing = 4.sp)
+      Text("ZeroCopy", fontSize = 28.sp, fontWeight = FontWeight.Light,
+        color = colors.Text2, fontFamily = FontFamily.Monospace, letterSpacing = 4.sp)
       Spacer(Modifier.height(8.dp))
-      Text("by adeennour4-dot", fontSize = 12.sp, fontWeight = FontWeight.Normal, color = colors.Text3, fontFamily = FontFamily.Monospace)
+      Text("by adeennour4-dot", fontSize = 12.sp, fontWeight = FontWeight.Normal,
+        color = colors.Text3, fontFamily = FontFamily.Monospace)
     }
   }
 }
