@@ -117,9 +117,11 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     /** Save both session state and ZCP atomically. */
     private fun saveAllState() {
         val s = sessionState ?: return
+        val sid = sessionId
+        val z = zcp
         viewModelScope.launch(Dispatchers.IO) {
             InventStorage.saveSession(ctx, s)
-            InventStorage.saveZcp(ctx, sessionId, zcp)
+            InventStorage.saveZcp(ctx, sid, z)
         }
     }
 
