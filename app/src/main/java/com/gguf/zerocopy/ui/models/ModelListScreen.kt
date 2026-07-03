@@ -96,6 +96,7 @@ fun ModelListScreen(
   var benchmarking by remember { mutableStateOf(false) }
   var tokenConfigModel by remember { mutableStateOf<LocalModel?>(null) }
   var reloading by remember { mutableStateOf(false) }
+  var pendingImport by remember { mutableStateOf(false) }
 
   val activeEngine = app.engineManager.getActiveEngine()
   val isModelLoaded = activeEngine?.isModelLoaded == true
@@ -112,9 +113,9 @@ fun ModelListScreen(
           app.modelRepository.importUri(uri, name)
             .onSuccess { model ->
               loading = false
-              isLoading = true
-              loadModel(model, onModelSelected)
-              isLoading = false
+              // Show settings dialog before loading
+              tokenConfigModel = model
+              pendingImport = true
             }
             .onFailure { loading = false }
         }
@@ -130,6 +131,13 @@ fun ModelListScreen(
     val targetEngine = app.engineManager.selectEngineForFormat(model.path)
     if (isModelLoaded && activeEngine != targetEngine) {
       engineSwitchWarningModel = model
+      return
+    }
+    // Show settings dialog if no per-model config exists yet
+    val existingCfg = SettingsManager.getModelTokenConfig(model.path)
+    if (existingCfg == null) {
+      tokenConfigModel = model
+      pendingImport = true
       return
     }
     isLoading = true
@@ -236,6 +244,7 @@ fun ModelListScreen(
         }
         val isGguf = model.format.equals("gguf", ignoreCase = true)
         val fileSizeMB = if (model.sizeBytes > 0) model.sizeBytes / (1024f * 1024f) else 100f
+        val isFreshImport = pendingImport
         ModelTokenConfigDialog(
           modelName = model.name,
           modelFileSizeMB = fileSizeMB,
@@ -247,20 +256,32 @@ fun ModelListScreen(
           onSave = { cfg ->
             SettingsManager.setModelTokenConfig(model.path, cfg)
             tokenConfigModel = null
-            // Auto-reload if this model is currently loaded
-            if (loadedModelPath == model.path) {
+            pendingImport = false
+            // Load model after config (fresh import or reload)
+            if (isFreshImport || loadedModelPath == model.path) {
               reloading = true
               scope.launch {
-                app.engineManager.unloadAll()
+                if (loadedModelPath == model.path) app.engineManager.unloadAll()
                 loadModel(model, onModelSelected)
                 reloading = false
               }
             }
           },
-          onDismiss = { tokenConfigModel = null },
+          onDismiss = {
+            tokenConfigModel = null
+            if (isFreshImport) {
+              // Load with defaults if user skipped config
+              pendingImport = false
+              scope.launch {
+                loadModel(model, onModelSelected)
+              }
+            }
+          },
           onRemove = {
             SettingsManager.removeModelTokenConfig(model.path)
             tokenConfigModel = null
+            pendingImport = false
+            // Don't load — user chose to remove config
           }
         )
       }
