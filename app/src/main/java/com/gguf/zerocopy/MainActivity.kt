@@ -107,15 +107,15 @@ fun AppRoot() {
   var currentSessionId by remember { mutableStateOf<String?>(SettingsManager.currentSessionId.ifEmpty { null }) }
   var selectedTab by rememberSaveable { mutableIntStateOf(0) }
   var showSessionList by remember { mutableStateOf(false) }
-  var inventStarted by remember { mutableStateOf(false) }
-  var inventModel1Path by remember { mutableStateOf("") }
-  var inventModel1Name by remember { mutableStateOf("") }
-  var inventModel2Path by remember { mutableStateOf("") }
-  var inventModel2Name by remember { mutableStateOf("") }
-  var inventResPath by remember { mutableStateOf("") }
-  var inventResName by remember { mutableStateOf("") }
-  var inventOffline by remember { mutableStateOf(false) }
-  var inventSameModel by remember { mutableStateOf(false) }
+  var inventStarted by rememberSaveable { mutableStateOf(false) }
+  var inventModel1Path by rememberSaveable { mutableStateOf("") }
+  var inventModel1Name by rememberSaveable { mutableStateOf("") }
+  var inventModel2Path by rememberSaveable { mutableStateOf("") }
+  var inventModel2Name by rememberSaveable { mutableStateOf("") }
+  var inventResPath by rememberSaveable { mutableStateOf("") }
+  var inventResName by rememberSaveable { mutableStateOf("") }
+  var inventOffline by rememberSaveable { mutableStateOf(false) }
+  var inventSameModel by rememberSaveable { mutableStateOf(false) }
 
   if (showSplash) {
     SplashScreen(onDone = { showSplash = false })
@@ -232,22 +232,42 @@ fun AppRoot() {
         SettingsScreen(onBack = { selectedTab = 0 })
       }
 
-      // Tab 4: Invent
+      // Tab 4: Invent (setup first, then main screen)
       Box(
         modifier = Modifier.fillMaxSize().graphicsLayer {
           alpha = if (selectedTab == 4) 1f else 0f
           if (selectedTab != 4) { scaleX = 0.001f; scaleY = 0.001f }
         }
       ) {
-        InventScreen(
-            model1Path = inventModel1Path, model1Name = inventModel1Name,
-            model2Path = inventModel2Path, model2Name = inventModel2Name,
-            researcherPath = inventResPath, researcherName = inventResName,
-            offlineMode = inventOffline,
-            sameModelMode = inventSameModel,
-            onBack = { selectedTab = 1 },
-            onModelsClick = { selectedTab = 1 }
-        )
+        if (!inventStarted) {
+          InventSetupScreen(
+            onStart = { m1p, m1n, m2p, m2n, rp, rn, offline, sameModel ->
+              inventModel1Path = m1p; inventModel1Name = m1n
+              inventModel2Path = m2p; inventModel2Name = m2n
+              inventResPath = rp; inventResName = rn
+              inventOffline = offline
+              inventSameModel = sameModel
+              inventStarted = true
+            },
+            onBack = { selectedTab = 0 }
+          )
+        } else {
+          InventScreen(
+              model1Path = inventModel1Path, model1Name = inventModel1Name,
+              model2Path = inventModel2Path, model2Name = inventModel2Name,
+              researcherPath = inventResPath, researcherName = inventResName,
+              offlineMode = inventOffline,
+              sameModelMode = inventSameModel,
+              onNewSession = {
+                inventStarted = false
+                inventModel1Path = ""; inventModel1Name = ""
+                inventModel2Path = ""; inventModel2Name = ""
+                inventResPath = ""; inventResName = ""
+              },
+              onBack = { selectedTab = 0 },
+              onModelsClick = { selectedTab = 1 }
+          )
+        }
       }
     }
   }

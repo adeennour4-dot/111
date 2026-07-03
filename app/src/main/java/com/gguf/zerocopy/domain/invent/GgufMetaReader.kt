@@ -10,7 +10,12 @@ object GgufMetaReader {
 
     private const val GGUF_MAGIC = 0x46554747L // "GGUF"
 
-    fun readContextLength(path: String): Int {
+    /**
+     * Read context_length from GGUF metadata.
+     * @return The context length, or null if not found / file unreadable / not a valid GGUF.
+     *         Callers should use a sensible default (e.g., 2048) when null is returned.
+     */
+    fun readContextLength(path: String): Int? {
         return try {
             RandomAccessFile(File(path), "r").use { raf ->
                 val buf4 = ByteArray(4)
@@ -19,23 +24,30 @@ object GgufMetaReader {
                 // Check magic
                 raf.read(buf4)
                 val magic = ByteBuffer.wrap(buf4).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFFFFFFL
-                if (magic != GGUF_MAGIC) return DEFAULT_CONTEXT
+                if (magic != GGUF_MAGIC) {
+                    android.util.Log.w("GgufMetaReader", "File $path: invalid GGUF magic")
+                    return null
+                }
 
                 // Version
                 raf.read(buf4)
                 val version = ByteBuffer.wrap(buf4).order(ByteOrder.LITTLE_ENDIAN).int
 
-                // Tensor count
+                // Tensor count (skip)
                 raf.read(buf8)
 
                 // KV count
                 raf.read(buf8)
                 val kvCount = ByteBuffer.wrap(buf8).order(ByteOrder.LITTLE_ENDIAN).long
+                if (kvCount <= 0 || kvCount > 50000) {
+                    android.util.Log.w("GgufMetaReader", "File $path: suspicious KV count $kvCount")
+                    return null
+                }
 
                 // Scan KV pairs for context_length
                 for (i in 0 until kvCount) {
                     val keyLen = readU64(raf)
-                    if (keyLen > 512) break
+                    if (keyLen <= 0 || keyLen > 512) break
                     val keyBytes = ByteArray(keyLen.toInt())
                     raf.read(keyBytes)
                     val key = String(keyBytes)
@@ -44,13 +56,17 @@ object GgufMetaReader {
                     val value = readValue(raf, valueType, version)
 
                     if (key == "llm.context_length" && value != null) {
-                        return (value as? Long)?.toInt() ?: DEFAULT_CONTEXT
+                        val ctx = (value as? Long)?.toInt()
+                        if (ctx != null && ctx > 0) return ctx
+                        android.util.Log.w("GgufMetaReader", "File $path: context_length=$ctx (ignored)")
                     }
                 }
-                DEFAULT_CONTEXT
+                android.util.Log.d("GgufMetaReader", "File $path: no context_length found in ${kvCount}kv pairs")
+                null
             }
         } catch (e: Exception) {
-            DEFAULT_CONTEXT
+            android.util.Log.w("GgufMetaReader", "File $path: failed to read", e)
+            null
         }
     }
 
@@ -66,18 +82,18 @@ object GgufMetaReader {
             7 -> { val b = ByteArray(1); raf.read(b); b[0] != 0.toByte() } // BOOL
             8 -> { // STRING
                 val len = readU64(raf)
-                val bytes = ByteArray(len.toInt().coerceAtMost(4096))
+                if (len <= 0 || len > 4096) return null
+                val bytes = ByteArray(len.toInt())
                 raf.read(bytes)
                 String(bytes)
             }
-            9 -> { // ARRAY
+            9 -> { // ARRAY — skip
                 val arrType = readU32(raf)
                 val arrLen = readU64(raf)
-                repeat(arrLen.toInt().coerceAtMost(1024)) { readValue(raf, arrType, version) }
+                repeat(arrLen.toInt().coerceIn(0, 1024)) { readValue(raf, arrType, version) }
                 null
             }
-            10 -> { val b = ByteArray(8); raf.read(b); ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).long } // UINT64
-            11 -> { val b = ByteArray(8); raf.read(b); ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).long } // INT64
+            10, 11 -> { val b = ByteArray(8); raf.read(b); ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).long } // UINT64/INT64
             12 -> { val b = ByteArray(8); raf.read(b); ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).double } // FLOAT64
             else -> null
         }
@@ -94,6 +110,4 @@ object GgufMetaReader {
         raf.read(b)
         return ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).int
     }
-
-    const val DEFAULT_CONTEXT = 0
 }

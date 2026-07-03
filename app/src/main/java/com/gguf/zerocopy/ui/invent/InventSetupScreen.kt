@@ -167,7 +167,24 @@ fun InventSetupScreen(
                 selected = model2Name,
                 onPick = { showPicker = "m2" },
                 colors = colors
-            )
+            ) else {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = colors.Card,
+                    border = BorderStroke(1.dp, colors.Accent.copy(0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("💻  Coder Model", fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                color = colors.Text, fontFamily = FontFamily.Monospace)
+                            Text("Using same model as Planner", fontSize = 11.sp, color = colors.Accent2,
+                                fontFamily = FontFamily.Monospace)
+                        }
+                        Icon(Icons.Filled.CheckCircle, null, tint = colors.Accent2, modifier = Modifier.size(22.dp))
+                    }
+                }
+            }
 
             InventModelPickerCard(
                 label = "🔍  Researcher Model",

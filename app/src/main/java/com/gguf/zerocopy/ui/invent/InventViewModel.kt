@@ -2,6 +2,8 @@ package com.gguf.zerocopy.ui.invent
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
+import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gguf.zerocopy.ZeroCopyApp
@@ -11,15 +13,17 @@ import com.gguf.zerocopy.domain.invent.GgufMetaReader
 import com.gguf.zerocopy.domain.inference.InferenceConfig
 import com.gguf.zerocopy.domain.inference.RepeatPenaltyConfig
 import com.gguf.zerocopy.domain.inference.TokenCallback
+import com.gguf.zerocopy.domain.inference.ToolCall
 import com.gguf.zerocopy.domain.inference.ToolManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
-import java.net.URL
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -49,23 +53,19 @@ data class InventUiState(
     val error: String = "",
     val zipReady: Boolean = false,
     val debugMode: Boolean = false,
-    // Token usage tracking
     val totalTokensUsed: Int = 0,
-    // Stats
     val totalLines: Int = 0,
     val totalGeneratedBytes: Long = 0,
     val debugSessionCount: Int = 0,
-    // Session list
     val sessions: List<SessionInfo> = emptyList(),
     val showSessionList: Boolean = false,
-    // Status bar
     val currentModelLabel: String = "",
     val processLabel: String = "",
-    // Model loading states for Invent
     val plannerLoaded: Boolean = false,
     val researcherLoaded: Boolean = false,
     val coderLoaded: Boolean = false,
-    val modelMode: ModelMode = ModelMode.TRIPLE
+    val modelMode: ModelMode = ModelMode.TRIPLE,
+    val showNavigateAwayDialog: Boolean = false
 )
 
 data class SessionInfo(
@@ -85,6 +85,44 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     private val _ui = MutableStateFlow(InventUiState())
     val ui: StateFlow<InventUiState> = _ui
 
+    /** Single source of truth: session state with embedded ZCP data saved atomically. */
+    private var sessionState: InventSessionState? = null
+        set(value) {
+            field = value
+            value?.let { persistSessionState(it) }
+        }
+    private var zcp: ZcpProtocol = ZcpProtocol()
+        set(value) {
+            field = value
+            sessionState?.let { persistZcp(value) }
+        }
+    private var sessionId: String = ""
+    /** Saved original paths for model mode switching. */
+    private var savedOriginalPaths = mutableMapOf<String, String>()
+
+    // ── Atomic persistence ─────────────────────────────────────────────────
+
+    private fun persistSessionState(state: InventSessionState) {
+        viewModelScope.launch(Dispatchers.IO) {
+            InventStorage.saveSession(ctx, state)
+        }
+    }
+
+    private fun persistZcp(z: ZcpProtocol) {
+        viewModelScope.launch(Dispatchers.IO) {
+            InventStorage.saveZcp(ctx, sessionId, z)
+        }
+    }
+
+    /** Save both session state and ZCP atomically. */
+    private fun saveAllState() {
+        val s = sessionState ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            InventStorage.saveSession(ctx, s)
+            InventStorage.saveZcp(ctx, sessionId, zcp)
+        }
+    }
+
     fun setShowDeleteConfirm(v: Boolean) { _ui.value = _ui.value.copy(showDeleteConfirm = v) }
 
     fun toggleSameModelMode() {
@@ -97,87 +135,63 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         }
         sessionState = newState
         _ui.value = _ui.value.copy(sameModelMode = newMode, model2Name = newState.model2Name)
-        viewModelScope.launch(Dispatchers.IO) {
-            InventStorage.saveSession(ctx, newState)
-        }
     }
 
     fun setModelMode(mode: ModelMode) {
         val state = sessionState ?: return
-        // Save original paths before any mode transition
-        val origResearcherPath = state.researcherPath
-        val origResearcherName = state.researcherName
-        val origModel1Path = state.model1Path
-        val origModel1Name = state.model1Name
+        // Save original paths only on first mode switch from setup
+        if (savedOriginalPaths.isEmpty()) {
+            savedOriginalPaths["planner"] = state.model1Path
+            savedOriginalPaths["plannerName"] = state.model1Name
+            savedOriginalPaths["coder"] = state.model2Path
+            savedOriginalPaths["coderName"] = state.model2Name
+            savedOriginalPaths["researcher"] = state.researcherPath
+            savedOriginalPaths["researcherName"] = state.researcherName
+        }
         _ui.value = _ui.value.copy(modelMode = mode)
 
-        when (mode) {
-            ModelMode.SINGLE -> {
-                if (sessionState?.sameModelMode != true) toggleSameModelMode()
-                val s = sessionState ?: return
-                val newState = s.copy(
-                    researcherPath = s.model1Path, researcherName = s.model1Name
-                )
-                sessionState = newState
-                _ui.value = _ui.value.copy(researcherName = s.model1Name,
-                    model1Name = s.model1Name, model2Name = s.model2Name)
-                viewModelScope.launch(Dispatchers.IO) {
-                    InventStorage.saveSession(ctx, newState)
-                }
-            }
-            ModelMode.DUAL -> {
-                // Planner+Coder share, Researcher separate
-                if (sessionState?.sameModelMode != true) toggleSameModelMode()
-                val s = sessionState ?: return
-                // Restore researcher if it was overwritten by SINGLE
-                val newState = if (s.researcherPath == s.model1Path && origResearcherPath != s.model1Path) {
-                    s.copy(researcherPath = origResearcherPath, researcherName = origResearcherName)
-                } else s
-                sessionState = newState
-                _ui.value = _ui.value.copy(researcherName = newState.researcherName)
-                viewModelScope.launch(Dispatchers.IO) {
-                    InventStorage.saveSession(ctx, newState)
-                }
-            }
-            ModelMode.TRIPLE -> {
-                // All three separate
-                if (sessionState?.sameModelMode == true) toggleSameModelMode()
-                val s = sessionState ?: return
-                // Restore researcher if it was overwritten by SINGLE
-                val newState = if (!s.sameModelMode && s.researcherPath == s.model1Path &&
-                    s.model1Path != origResearcherPath && origResearcherPath.isNotEmpty()) {
-                    s.copy(researcherPath = origResearcherPath, researcherName = origResearcherName)
-                } else s
-                sessionState = newState
-                _ui.value = _ui.value.copy(researcherName = newState.researcherName)
-                viewModelScope.launch(Dispatchers.IO) {
-                    InventStorage.saveSession(ctx, newState)
-                }
-            }
+        val plannerP = savedOriginalPaths["planner"]?.takeIf { it.isNotEmpty() } ?: state.model1Path
+        val plannerN = savedOriginalPaths["plannerName"]?.takeIf { it.isNotEmpty() } ?: state.model1Name
+        val coderP = savedOriginalPaths["coder"]?.takeIf { it.isNotEmpty() } ?: state.model2Path
+        val coderN = savedOriginalPaths["coderName"]?.takeIf { it.isNotEmpty() } ?: state.model2Name
+        val resP = savedOriginalPaths["researcher"]?.takeIf { it.isNotEmpty() } ?: state.researcherPath
+        val resN = savedOriginalPaths["researcherName"]?.takeIf { it.isNotEmpty() } ?: state.researcherName
+
+        val newState = when (mode) {
+            ModelMode.SINGLE -> state.copy(
+                sameModelMode = true,
+                researcherPath = plannerP, researcherName = plannerN,
+                model2Path = plannerP, model2Name = plannerN
+            )
+            ModelMode.DUAL -> state.copy(
+                sameModelMode = true,
+                model2Path = plannerP, model2Name = plannerN,
+                researcherPath = resP, researcherName = resN
+            )
+            ModelMode.TRIPLE -> state.copy(
+                sameModelMode = false,
+                model2Path = coderP, model2Name = coderN,
+                researcherPath = resP, researcherName = resN
+            )
         }
+        sessionState = newState
+        _ui.value = _ui.value.copy(
+            researcherName = newState.researcherName,
+            model1Name = newState.model1Name,
+            model2Name = newState.model2Name,
+            sameModelMode = newState.sameModelMode
+        )
     }
 
-    private var sessionState: InventSessionState? = null
-    private var zcp: ZcpProtocol = ZcpProtocol()
-    private var sessionId: String = ""
-
-    /** Select a model tab (0=Planner, 1=Researcher, 2=Coder) and optionally load it. */
     fun selectModelTab(tab: Int, modelPath: String = "", modelName: String = "", useForAll: Boolean = false) {
         val state = sessionState ?: return
         viewModelScope.launch(Dispatchers.IO) {
             var path = if (modelPath.isNotEmpty()) modelPath else when (tab) {
-                0 -> state.model1Path
-                1 -> state.researcherPath
-                2 -> state.model2Path
-                else -> return@launch
+                0 -> state.model1Path; 1 -> state.researcherPath; 2 -> state.model2Path; else -> return@launch
             }
             var name = if (modelName.isNotEmpty()) modelName else when (tab) {
-                0 -> state.model1Name
-                1 -> state.researcherName
-                2 -> state.model2Name
-                else -> return@launch
+                0 -> state.model1Name; 1 -> state.researcherName; 2 -> state.model2Name; else -> return@launch
             }
-            // Fallback to currently loaded engine model if path empty
             if (path.isEmpty()) {
                 val active = engineManager.getActiveEngine()
                 path = active?.loadedModelPath ?: ""
@@ -185,7 +199,6 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (path.isNotEmpty()) {
                 val ok = loadOrKeepModel(path)
-                // Preserve existing loaded states when not overwriting (supports multi-role selection)
                 val cur = _ui.value
                 _ui.value = _ui.value.copy(
                     plannerLoaded = cur.plannerLoaded || ((useForAll || tab == 0) && ok),
@@ -196,27 +209,16 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                     researcherName = if (ok && (useForAll || tab == 1) && name.isNotEmpty()) name else cur.researcherName
                 )
                 if (ok) {
-                    // Update session state with selected path
                     val newState = sessionState?.let { s ->
-                        if (useForAll) {
-                            s.copy(
-                                model1Path = path, model1Name = name,
-                                researcherPath = path, researcherName = name,
-                                model2Path = path, model2Name = name
-                            )
-                        } else {
-                            when (tab) {
-                                0 -> {
-                                    val s2 = s.copy(model1Path = path, model1Name = name)
-                                    if (s.sameModelMode) s2.copy(model2Path = path, model2Name = name) else s2
-                                }
-                                1 -> s.copy(researcherPath = path, researcherName = name)
-                                2 -> {
-                                    val s2 = s.copy(model2Path = path, model2Name = name)
-                                    if (s.sameModelMode) s2.copy(model1Path = path, model1Name = name) else s2
-                                }
-                                else -> s
-                            }
+                        if (useForAll) s.copy(
+                            model1Path = path, model1Name = name,
+                            researcherPath = path, researcherName = name,
+                            model2Path = path, model2Name = name
+                        ) else when (tab) {
+                            0 -> { val s2 = s.copy(model1Path = path, model1Name = name); if (s.sameModelMode) s2.copy(model2Path = path, model2Name = name) else s2 }
+                            1 -> s.copy(researcherPath = path, researcherName = name)
+                            2 -> { val s2 = s.copy(model2Path = path, model2Name = name); if (s.sameModelMode) s2.copy(model1Path = path, model1Name = name) else s2 }
+                            else -> s
                         }
                     }
                     sessionState = newState
@@ -225,179 +227,144 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun clearToolManagerOnEngines() {
-      engineManager.llamaCpp.setToolManager(null)
-      engineManager.mnn.setToolManager(null)
-      engineManager.liteRt.setToolManager(null)
-    }
+    // ── Navigation guard ───────────────────────────────────────────────────
 
-    /** Set a ToolManager on the active engine so it can use web search. */
-    private fun enableSearchOnEngine() {
-      val eng = engineManager.getActiveEngine()
-      if (eng != null && eng.getToolManager() == null) {
-        eng.setToolManager(toolManager)
-      }
-    }
+    fun setNavigateAway(v: Boolean) { _ui.value = _ui.value.copy(showNavigateAwayDialog = v) }
+
+    fun isBusyGenerating(): Boolean = _ui.value.isGenerating ||
+        _ui.value.phase in listOf(InventPhase.GENERATING, InventPhase.SEARCHING, InventPhase.FINALIZING)
 
     // ── Session Management ─────────────────────────────────────────────────
 
     fun refreshSessionList() {
-      val list = InventStorage.listSessions(ctx).mapNotNull { sid ->
-        val saved = InventStorage.loadSession(ctx, sid)
-        val z = InventStorage.loadZcp(ctx, sid)
-        if (saved != null) {
-          SessionInfo(
-            id = sid,
-            projectName = z?.projectName?.ifEmpty { saved.model1Name } ?: saved.model1Name,
-            phase = saved.phase,
-            fileCount = z?.fileTree?.count { !it.isDir } ?: 0,
-            lastActivity = saved.messages.lastOrNull()?.content?.take(40) ?: ""
-          )
-        } else null
-      }
-      _ui.value = _ui.value.copy(sessions = list)
-    }
-
-    fun toggleSessionList() {
-      if (!_ui.value.showSessionList) refreshSessionList()
-      _ui.value = _ui.value.copy(showSessionList = !_ui.value.showSessionList)
+        val list = InventStorage.listSessions(ctx).mapNotNull { sid ->
+            val saved = InventStorage.loadSession(ctx, sid)
+            val z = InventStorage.loadZcp(ctx, sid)
+            if (saved != null) {
+                SessionInfo(
+                    id = sid,
+                    projectName = z?.projectName?.ifEmpty { saved.model1Name } ?: saved.model1Name,
+                    phase = saved.phase,
+                    fileCount = z?.fileTree?.count { !it.isDir } ?: 0,
+                    lastActivity = saved.messages.lastOrNull()?.content?.take(40) ?: ""
+                )
+            } else null
+        }
+        _ui.value = _ui.value.copy(sessions = list)
     }
 
     fun switchToSession(targetId: String) {
-      viewModelScope.launch(Dispatchers.IO) {
-        val saved = InventStorage.loadSession(ctx, targetId)
-        val savedZcp = InventStorage.loadZcp(ctx, targetId)
-        if (saved != null && savedZcp != null) {
-          engineManager.unloadAll()
-          sessionId = targetId
-          sessionState = saved
-          zcp = savedZcp
-          _ui.value = _ui.value.copy(
-            phase = saved.phase,
-            messages = saved.messages,
-            sessionId = targetId,
-            model1Name = saved.model1Name,
-            model2Name = saved.model2Name,
-            researcherName = saved.researcherName,
-            offlineMode = saved.offlineMode,
-            sameModelMode = saved.sameModelMode,
-            modelMode = when {
-                saved.sameModelMode && saved.researcherPath == saved.model1Path -> ModelMode.SINGLE
-                saved.sameModelMode -> ModelMode.DUAL
-                else -> ModelMode.TRIPLE
-            },
-            fileTree = savedZcp.fileTree,
-            searchRound = saved.searchRound,
-            mergeCount = saved.mergeCount,
-            currentFileIndex = saved.currentFileIndex,
-            totalFiles = saved.totalFiles,
-            debugMode = saved.phase == InventPhase.DEBUGGING,
-            showSessionList = false,
-            zipReady = saved.phase == InventPhase.DONE || saved.phase == InventPhase.DEBUGGING
-          )
-          computeStats()
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = InventStorage.loadSession(ctx, targetId)
+            val savedZcp = InventStorage.loadZcp(ctx, targetId)
+            if (saved != null && savedZcp != null) {
+                engineManager.unloadAll()
+                sessionId = targetId
+                sessionState = saved
+                zcp = savedZcp
+                _ui.value = _ui.value.copy(
+                    phase = saved.phase,
+                    messages = saved.messages,
+                    sessionId = targetId,
+                    model1Name = saved.model1Name, model2Name = saved.model2Name,
+                    researcherName = saved.researcherName,
+                    offlineMode = saved.offlineMode, sameModelMode = saved.sameModelMode,
+                    modelMode = when {
+                        saved.sameModelMode && saved.researcherPath == saved.model1Path -> ModelMode.SINGLE
+                        saved.sameModelMode -> ModelMode.DUAL
+                        else -> ModelMode.TRIPLE
+                    },
+                    fileTree = savedZcp.fileTree,
+                    searchRound = saved.searchRound, mergeCount = saved.mergeCount,
+                    currentFileIndex = saved.currentFileIndex, totalFiles = saved.totalFiles,
+                    debugMode = saved.phase == InventPhase.DEBUGGING,
+                    showSessionList = false,
+                    zipReady = saved.phase == InventPhase.DONE || saved.phase == InventPhase.DEBUGGING
+                )
+                computeStats()
+            }
         }
-      }
     }
 
     fun deleteSessionById(targetId: String) {
-      viewModelScope.launch(Dispatchers.IO) {
-        InventStorage.deleteSession(ctx, targetId)
-        refreshSessionList()
-        if (targetId == sessionId) {
-          _ui.value = InventUiState(sessions = _ui.value.sessions)
+        viewModelScope.launch(Dispatchers.IO) {
+            InventStorage.deleteSession(ctx, targetId)
+            refreshSessionList()
+            if (targetId == sessionId) {
+                _ui.value = InventUiState(sessions = _ui.value.sessions)
+            }
         }
-      }
     }
 
     // ── Stats ──────────────────────────────────────────────────────────────
 
     private fun computeStats() {
-      val projectDir = getProjectDir()
-      var lines = 0L
-      var bytes = 0L
-      for (path in zcp.generatedFiles) {
-        val content = InventStorage.readGeneratedFile(projectDir, path)
-        if (content != null) {
-          lines += content.count { it == '\n' } + 1
-          bytes += content.length.toLong()
+        val projectDir = getProjectDir()
+        var lines = 0L; var bytes = 0L
+        for (path in zcp.generatedFiles) {
+            val content = InventStorage.readGeneratedFile(projectDir, path) ?: continue
+            lines += content.count { it == '\n' } + 1
+            bytes += content.length.toLong()
         }
-      }
-      _ui.value = _ui.value.copy(
-        totalLines = lines.toInt(),
-        totalGeneratedBytes = bytes,
-        debugSessionCount = zcp.debugSessions.size
-      )
+        _ui.value = _ui.value.copy(
+            totalLines = lines.toInt(), totalGeneratedBytes = bytes, debugSessionCount = zcp.debugSessions.size
+        )
     }
 
-    private fun getProjectDir(): java.io.File {
+    private fun getProjectDir(): File {
         val sid = sessionId.ifEmpty { "_" }
         return InventStorage.getProjectDir(ctx, sid, zcp.projectName)
     }
 
-    // ── Setup ────────────────────────────────────────────────────────────────
+    // ── Setup ──────────────────────────────────────────────────────────────
 
     fun setupSession(
         model1Path: String, model1Name: String,
         model2Path: String, model2Name: String,
         researcherPath: String, researcherName: String,
-        offlineMode: Boolean,
-        sameModelMode: Boolean
+        offlineMode: Boolean, sameModelMode: Boolean
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            // Fallback: if no models configured (setup screen removed), use currently loaded engine model
-            var m1p = model1Path
-            var m1n = model1Name
-            var m2p = model2Path
-            var m2n = model2Name
-            var rp = researcherPath
-            var rn = researcherName
+            var m1p = model1Path; var m1n = model1Name
+            var m2p = model2Path; var m2n = model2Name
+            var rp = researcherPath; var rn = researcherName
             if (m1p.isEmpty()) {
                 val active = engineManager.getActiveEngine()
                 val curPath = active?.loadedModelPath ?: ""
                 val curName = if (curPath.isNotEmpty()) curPath.substringAfterLast('/').substringAfterLast('\\') else "Loaded Model"
-                m1p = curPath; m1n = curName
-                m2p = curPath; m2n = curName
-                rp = curPath; rn = curName
+                m1p = curPath; m1n = curName; m2p = curPath; m2n = curName; rp = curPath; rn = curName
             }
 
             clearToolManagerOnEngines()
 
-            // Find the most recent in-progress session (skip DONE/DEBUGGING for auto-load)
+            // Resume most advanced in-progress session
+            val phaseOrder = InventPhase.values().toList()
             val existing = InventStorage.listSessions(ctx)
                 .mapNotNull { sid ->
                     val s = InventStorage.loadSession(ctx, sid)
                     if (s != null && s.phase != InventPhase.DONE && s.phase != InventPhase.DEBUGGING) sid to s else null
                 }
-                .sortedByDescending { (_, s) -> s.messages.lastOrNull()?.content?.length ?: 0 }
+                .sortedByDescending { (_, s) -> phaseOrder.indexOf(s.phase) }
                 .firstOrNull()?.first
 
             if (existing != null) {
                 val saved = InventStorage.loadSession(ctx, existing)
                 val savedZcp = InventStorage.loadZcp(ctx, existing)
                 if (saved != null && savedZcp != null) {
-                    sessionId = existing
-                    sessionState = saved
-                    zcp = savedZcp
+                    sessionId = existing; sessionState = saved; zcp = savedZcp
                     _ui.value = _ui.value.copy(
-                        phase = saved.phase,
-                        messages = saved.messages,
-                        sessionId = existing,
-                        model1Name = saved.model1Name,
-                        model2Name = saved.model2Name,
+                        phase = saved.phase, messages = saved.messages, sessionId = existing,
+                        model1Name = saved.model1Name, model2Name = saved.model2Name,
                         researcherName = saved.researcherName,
-                        offlineMode = saved.offlineMode,
-                        sameModelMode = saved.sameModelMode,
+                        offlineMode = saved.offlineMode, sameModelMode = saved.sameModelMode,
                         modelMode = when {
                             saved.sameModelMode && saved.researcherPath == saved.model1Path -> ModelMode.SINGLE
                             saved.sameModelMode -> ModelMode.DUAL
                             else -> ModelMode.TRIPLE
                         },
                         fileTree = savedZcp.fileTree,
-                        searchRound = saved.searchRound,
-                        mergeCount = saved.mergeCount,
-                        currentFileIndex = saved.currentFileIndex,
-                        totalFiles = saved.totalFiles,
+                        searchRound = saved.searchRound, mergeCount = saved.mergeCount,
+                        currentFileIndex = saved.currentFileIndex, totalFiles = saved.totalFiles,
                         debugMode = saved.phase == InventPhase.DEBUGGING,
                         zipReady = saved.phase == InventPhase.DONE || saved.phase == InventPhase.DEBUGGING
                     )
@@ -408,9 +375,9 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
-            val m1Ctx = GgufMetaReader.readContextLength(m1p).let { if (it <= 0) 2048 else it }
+            val m1Ctx = GgufMetaReader.readContextLength(m1p).let { if (it == null || it <= 0) 2048 else it }
             val m2Ctx = if (sameModelMode) m1Ctx
-                        else GgufMetaReader.readContextLength(m2p).let { if (it <= 0) 2048 else it }
+                        else GgufMetaReader.readContextLength(m2p).let { if (it == null || it <= 0) 2048 else it }
 
             val userCtx = SettingsManager.nCtx
             val effectiveCtx = if (userCtx <= 0) m1Ctx else userCtx.coerceAtMost(m1Ctx)
@@ -422,54 +389,38 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
             sessionId = UUID.randomUUID().toString().take(8)
             zcp = ZcpProtocol(model2ContextSize = m2Ctx, offlineMode = offlineMode)
-
             sessionState = InventSessionState(
-                sessionId = sessionId,
-                phase = InventPhase.QUESTIONING,
-                model1Path = m1p,
-                model1Name = m1n,
+                sessionId = sessionId, phase = InventPhase.QUESTIONING,
+                model1Path = m1p, model1Name = m1n,
                 model2Path = if (sameModelMode) m1p else m2p,
                 model2Name = if (sameModelMode) m1n else m2n,
-                researcherPath = rp,
-                researcherName = rn,
-                model1ContextSize = m1Ctx,
-                model2ContextSize = m2Ctx,
-                offlineMode = offlineMode,
-                sameModelMode = sameModelMode
+                researcherPath = rp, researcherName = rn,
+                model1ContextSize = m1Ctx, model2ContextSize = m2Ctx,
+                offlineMode = offlineMode, sameModelMode = sameModelMode
             )
-
-            InventStorage.saveSession(ctx, sessionState!!)
-            InventStorage.saveZcp(ctx, sessionId, zcp)
+            saveAllState()
 
             _ui.value = _ui.value.copy(
-                phase = InventPhase.QUESTIONING,
-                sessionId = sessionId,
-                model1Name = m1n,
-                model2Name = if (sameModelMode) m1n else m2n,
-                researcherName = rn,
-                offlineMode = offlineMode,
-                sameModelMode = sameModelMode,
-                modelMode = when {
-                    sameModelMode && rp == m1p -> ModelMode.SINGLE
-                    sameModelMode -> ModelMode.DUAL
-                    else -> ModelMode.TRIPLE
-                }
+                phase = InventPhase.QUESTIONING, sessionId = sessionId,
+                model1Name = m1n, model2Name = if (sameModelMode) m1n else m2n,
+                researcherName = rn, offlineMode = offlineMode, sameModelMode = sameModelMode,
+                modelMode = when { sameModelMode && rp == m1p -> ModelMode.SINGLE
+                    sameModelMode -> ModelMode.DUAL; else -> ModelMode.TRIPLE }
             )
-
             startModel1Questioning()
         }
     }
 
-    // ── Phase 1: Model 1 Questions ───────────────────────────────────────────
+    // ── Phase 1: Questioning ───────────────────────────────────────────────
 
     private suspend fun startModel1Questioning() {
         val state = sessionState ?: return
         setSwap("Loading ${state.model1Name}…")
-        val ok = loadOrKeepModel(state.model1Path)
-        if (!ok) { setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name}"); return }
+        if (!loadOrKeepModel(state.model1Path)) {
+            setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name}"); return
+        }
         _ui.value = _ui.value.copy(plannerLoaded = true)
         setSwap("")
-
         val firstQuestion = runInference(
             systemPrompt = buildQuestioningPrompt(),
             userMessage = "Hi! I want to build a software project and need your help planning it. Please start by asking me the first question — one question only."
@@ -479,27 +430,47 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
     fun sendUserMessage(text: String, planWithSearch: Boolean = false, thinkTag: Boolean = false) {
         if (_ui.value.isGenerating) return
+        // Parse attachments for tech stack hints
+        var effectiveText = text
+        if (text.startsWith("[Attached:")) {
+            val hints = extractAttachedFileHints(text)
+            if (hints.isNotEmpty()) effectiveText = "$text\n\n[From attached files, I noticed: $hints]"
+        }
         val processed = buildString {
-            append(text)
+            append(effectiveText)
             if (planWithSearch) append("\n[SEARCH enabled]")
             if (thinkTag) append("\n[THINK]")
         }
         addMessage("user", processed, _ui.value.phase)
         viewModelScope.launch(Dispatchers.IO) {
             when (_ui.value.phase) {
-                InventPhase.QUESTIONING -> handleQuestioningReply(text)
-                InventPhase.DEBUGGING -> handleDebuggingReply(text)
+                InventPhase.QUESTIONING -> handleQuestioningReply(effectiveText)
+                InventPhase.DEBUGGING -> handleDebuggingReply(effectiveText)
                 else -> {}
             }
         }
+    }
+
+    /** Extract tech-stack hints from attached file content to pre-fill ZCP. */
+    private fun extractAttachedFileHints(text: String): String {
+        val hints = mutableListOf<String>()
+        if (text.contains("package ", ignoreCase = true)) hints.add("lang:Kotlin/Java")
+        if (text.contains("import android.", ignoreCase = true)) hints.add("platform:Android")
+        if (text.contains("import kotlinx.", ignoreCase = true)) hints.add("framework:Kotlin Coroutines")
+        if (text.contains("import androidx.", ignoreCase = true)) hints.add("framework:Jetpack")
+        if (text.contains("fun ", ignoreCase = true) && text.contains("main(", ignoreCase = true)) hints.add("lang:Kotlin")
+        if (text.contains("def ", ignoreCase = true) || text.contains("requirements.txt", ignoreCase = true)) hints.add("lang:Python")
+        if (text.contains("node_modules", ignoreCase = true) || text.contains("package.json", ignoreCase = true)) hints.add("lang:JavaScript")
+        if (text.contains("Cargo.toml", ignoreCase = true) || text.contains("fn ", ignoreCase = true)) hints.add("lang:Rust")
+        if (text.contains("flutter", ignoreCase = true) || text.contains("dart", ignoreCase = true)) hints.add("framework:Flutter")
+        return hints.joinToString(", ")
     }
 
     private suspend fun handleQuestioningReply(userText: String) {
         val history = buildConversationHistory()
         val response = runInference(
             systemPrompt = buildQuestioningPrompt(),
-            userMessage = userText,
-            history = history
+            userMessage = userText, history = history
         )
 
         val lowerResp = response.lowercase()
@@ -514,16 +485,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             .trim()
 
         addMessage("model1", cleaned, InventPhase.QUESTIONING)
-
         if (isDone) triggerSearchPhase()
     }
 
-    fun onSearchButtonPressed() {
-        if (_ui.value.isGenerating) return
-        viewModelScope.launch(Dispatchers.IO) { triggerSearchPhase() }
-    }
-
-    // ── Phase 2: Write ZCP + Search ──────────────────────────────────────────
+    // ── Phase 2: ZCP + Search ──────────────────────────────────────────────
 
     private suspend fun triggerSearchPhase() {
         updatePhase(InventPhase.SEARCHING)
@@ -536,10 +501,8 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         )
 
         zcp = parseZcpFromModel1(zcpRaw, zcp)
-        InventStorage.saveZcp(ctx, sessionId, zcp)
         addMessage("system", "ZCP v1 saved ✓  Starting research…", InventPhase.SEARCHING)
         withContext(Dispatchers.IO) { engineManager.unloadAll() }
-
         if (zcp.offlineMode) { startFilePlanning(); return }
 
         val maxRounds = zcp.searchIntents.size.coerceIn(1, 5)
@@ -557,8 +520,9 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             val fetchedContent = fetchSearchContent()
 
             setSwap("Loading ${state.researcherName}…")
-            val researcherOk = loadOrKeepModel(state.researcherPath)
-            if (!researcherOk) { setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load researcher"); return }
+            if (!loadOrKeepModel(state.researcherPath)) {
+                setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load researcher"); return
+            }
             setSwap("")
 
             val extracted = runInference(
@@ -567,83 +531,95 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             )
             InventStorage.saveSearchLog(ctx, sessionId, extracted)
 
-            setSwap("Loading ${state.model1Name} to review results…")
-            val model1Ok = loadOrKeepModel(state.model1Path)
-            if (!model1Ok) { setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name}"); return }
+            setSwap("Loading ${state.model1Name} to review…")
+            if (!loadOrKeepModel(state.model1Path)) {
+                setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name}"); return
+            }
             setSwap("")
 
             val reviewResponse = runInference(
-                systemPrompt = buildPlanningPrompt(zcp.model2ContextSize),
-                userMessage = "Search results:\n$extracted\n\nDo you have all info needed? If yes output [SEARCH_DONE]. If not, output new §SEARCH blocks only."
+                systemPrompt = "Review the search results. If you have enough info, output [SEARCH_DONE]. If not, output new §SEARCH blocks for what's missing.",
+                userMessage = "Search results:\n$extracted\n\nDo you have all info needed? If yes output [SEARCH_DONE]. If not, output new §SEARCH blocks only.",
+                expectedModelPath = state.model1Path
             )
 
             if (reviewResponse.contains("[SEARCH_DONE]", ignoreCase = true) || round >= maxRounds) {
                 zcp = zcp.copy(searchResults = parseSearchResults(extracted, zcp.searchIntents))
-                InventStorage.saveZcp(ctx, sessionId, zcp)
                 withContext(Dispatchers.IO) { engineManager.unloadAll() }
-                startFilePlanning()
-                break
+                startFilePlanning(); break
             } else {
                 val newIntents = parseSearchIntents(reviewResponse)
                 if (newIntents.isNotEmpty()) {
                     zcp = zcp.copy(searchIntents = zcp.searchIntents + newIntents)
-                    InventStorage.saveZcp(ctx, sessionId, zcp)
                 }
                 withContext(Dispatchers.IO) { engineManager.unloadAll() }
             }
         }
     }
 
-    // ── Phase 3: File-by-File ZCP Planning ────────────────────────────────────
+    // ── Phase 3: Planning ──────────────────────────────────────────────────
 
     private suspend fun startFilePlanning() {
         val state = sessionState ?: return
         updatePhase(InventPhase.PLANNING)
         setSwap("Loading ${state.model1Name} for planning…")
-        val ok = loadOrKeepModel(state.model1Path)
-        if (!ok) { setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name} for planning"); return }
+        if (!loadOrKeepModel(state.model1Path)) {
+            setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name}"); return
+        }
         setSwap("")
 
-        val usableCtx = (zcp.model2ContextSize * 0.7).toInt()
         val plan = runInference(
             systemPrompt = buildPlanningPrompt(zcp.model2ContextSize),
             userMessage = "You have all information. First write the complete project file tree using §TREE blocks. Then for EACH file (not directory), write a §FILEZCP block describing what that file should contain — its imports, classes, functions, and how it connects to other files.\n\nFormat:\n§TREE{path:X|type:dir/file|desc:X}\n§FILEZCP{path:X|description:X|imports:X|classes:X|functions:X|dependencies:Y,Z}\n\nEach §FILEZCP must be self-contained so a separate coder model can implement it independently."
         )
 
-        val fileTree = parseFileTree(plan)
-        val fileSpecs = parseFileSpecs(plan)
-        zcp = zcp.copy(fileTree = fileTree, fileSpecs = fileSpecs, phase = InventPhase.PLANNING)
-        InventStorage.saveZcp(ctx, sessionId, zcp)
-        InventStorage.deleteSearchLog(ctx, sessionId)
+        var fileTree = parseFileTree(plan)
+        var fileSpecs = parseFileSpecs(plan)
 
+        // Validation: if parsing returned empty, retry with more explicit instructions
+        if (fileTree.isEmpty()) {
+            addMessage("system", "⚠ Could not parse file tree from planner output. Retrying with explicit format…", InventPhase.PLANNING)
+            val retryPlan = runInference(
+                systemPrompt = buildPlanningPrompt(zcp.model2ContextSize),
+                userMessage = "Output ONLY machine-parseable §TREE and §FILEZCP blocks. No explanations, no markdown, no headers. Use EXACTLY this format:\n§TREE{path:src/main.kt|type:file|desc:Main entry}\n§FILEZCP{path:src/main.kt|description:Entry point|imports:android.os.Bundle|classes:MainActivity|functions:onCreate|dependencies:}\n\nNow write the complete file tree and specs:",
+                expectedModelPath = state.model1Path
+            )
+            fileTree = parseFileTree(retryPlan)
+            fileSpecs = parseFileSpecs(retryPlan)
+            if (fileTree.isEmpty()) {
+                addMessage("system", "⚠ Still could not parse. Creating an empty project structure — you can debug files later.", InventPhase.PLANNING)
+                fileTree = listOf(FileNode("src/main.${zcp.language.firstOrNull()?.lowercase() ?: "kt"}", false, "Main file"))
+            }
+        }
+
+        zcp = zcp.copy(fileTree = fileTree, fileSpecs = fileSpecs, phase = InventPhase.PLANNING)
+        InventStorage.deleteSearchLog(ctx, sessionId)
         addMessage("model1", plan, InventPhase.PLANNING)
         withContext(Dispatchers.IO) { engineManager.unloadAll() }
         loadModel2ForConfirmation()
     }
 
-    // ── Phase 4a: Model 2 Confirms Plan ──────────────────────────────────────
+    // ── Phase 4a: Confirmation ─────────────────────────────────────────────
 
     private suspend fun loadModel2ForConfirmation() {
         val state = sessionState ?: return
         updatePhase(InventPhase.CONFIRMING)
-
-        val isSame = state.sameModelMode || state.model1Path == state.model2Path
-        val targetPath = if (!isSame) state.model2Path else state.model1Path
-        val targetName = if (!isSame) state.model2Name else state.model1Name
+        val targetPath = if (state.sameModelMode || state.model1Path == state.model2Path) state.model1Path else state.model2Path
+        val targetName = if (state.sameModelMode || state.model1Path == state.model2Path) state.model1Name else state.model2Name
 
         setSwap("Loading $targetName (coder review)…")
-        val ok = loadOrKeepModel(targetPath)
-        if (!ok) { setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load $targetName"); return }
+        if (!loadOrKeepModel(targetPath)) {
+            setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load $targetName"); return
+        }
         setSwap("")
 
         val understanding = runInference(
             systemPrompt = "You are a senior software engineer. Read the project plan and describe your full understanding — which files you'll build, the architecture, and any concerns.",
-            userMessage = "Read this project spec and describe your understanding:\n\n${buildZcpSummaryForModel2()}"
+            userMessage = "Read this project spec and describe your understanding:\n\n${buildZcpSummaryForModel2()}",
+            expectedModelPath = targetPath
         )
-
         addMessage("model2", understanding, InventPhase.CONFIRMING)
         _ui.value = _ui.value.copy(showSureButtons = true)
-        saveCurrentState()
     }
 
     fun onSure() {
@@ -655,185 +631,110 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onNotSure() {
         if (_ui.value.mergeCount >= 2) {
-            _ui.value = _ui.value.copy(error = "2 merge attempts reached. Consider starting fresh.")
+            _ui.value = _ui.value.copy(error = "2 merge attempts reached. Tap New Session (+) to restart with different models or settings.")
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
             _ui.value = _ui.value.copy(showSureButtons = false)
             val newMergeCount = _ui.value.mergeCount + 1
-            zcp = zcp.copy(
-                phase = InventPhase.QUESTIONING,
-                mergeCount = newMergeCount,
-                searchResults = emptyList(),
-                fileTree = emptyList(),
-                chunks = emptyList(),
-                fileSpecs = emptyMap(),
-                generatedFiles = emptyList()
-            )
-            InventStorage.saveZcp(ctx, sessionId, zcp)
-            _ui.value = _ui.value.copy(
-                phase = InventPhase.QUESTIONING,
-                mergeCount = newMergeCount,
-                fileTree = emptyList()
-            )
-            addMessage("system", "Let's refine the plan. Tell me what needs to change.", InventPhase.QUESTIONING)
+            // Don't reset to QUESTIONING — keep the existing plan and let user give targeted feedback
+            zcp = zcp.copy(mergeCount = newMergeCount)
+            _ui.value = _ui.value.copy(mergeCount = newMergeCount)
+            addMessage("system", "The coder didn't fully understand the plan. Tell me what needs clarification — be specific about which files or architecture aspects to adjust.", InventPhase.CONFIRMING)
+            // Reload planner to get refined understanding
+            val state = sessionState ?: return@launch
+            setSwap("Loading ${state.model1Name} to refine plan…")
+            if (!loadOrKeepModel(state.model1Path)) {
+                setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name}"); return@launch
+            }
+            setSwap("")
+            // Let the user send a clarifying message next
+            _ui.value = _ui.value.copy(showSureButtons = false)
+            savedOriginalPaths.clear() // Reset so next mode switch captures fresh paths
         }
     }
 
-    // ── Phase 4b: File-by-File Code Generation ────────────────────────────────
+    // ── Phase 4b: File Generation ──────────────────────────────────────────
 
-    /** Rough token estimate: ~1 token per 4 chars, plus overhead per field. */
     private fun estimateFileTokens(spec: FileSpec): Int {
-        val base = spec.description.length / 4
-        val imports = spec.imports.length / 4
-        val classes = spec.classes.length / 4
-        val funcs = spec.functions.length / 4
-        val deps = spec.dependencies.sumOf { it.length / 4 }
-        // Prompt overhead: ~120 tokens for the code gen template
-        // Dependency summaries: ~40 tokens per dependency
-        val overhead = 120 + spec.dependencies.size * 40
-        return base + imports + classes + funcs + deps + overhead
+        // Better heuristic: ~1 token per 4 chars (more accurate for code)
+        val contentLen = spec.description.length + spec.imports.length + spec.classes.length + spec.functions.length
+        val depsLen = spec.dependencies.sumOf { it.length }
+        val overhead = 150 + spec.dependencies.size * 50
+        return (contentLen + depsLen) / 4 + overhead
     }
 
-    /**
-     * Before generating, check if any file spec exceeds Model 2's token budget.
-     * If so, enter REPLANNING: load Model 1 to split the oversized file into
-     * smaller files that together implement the same functionality.
-     */
     private suspend fun checkAndReplanIfNeeded(): Boolean {
         val state = sessionState ?: return false
         val filesToGenerate = zcp.fileTree.filter { !it.isDir }
         if (filesToGenerate.isEmpty()) return false
 
-        // Get Model 2's effective maxNewTokens
-        val m2Path = if (state.sameModelMode || state.model1Path == state.model2Path)
-            state.model1Path else state.model2Path
+        val m2Path = if (state.sameModelMode || state.model1Path == state.model2Path) state.model1Path else state.model2Path
         val perModelCfg = SettingsManager.getModelTokenConfig(m2Path)
         val maxNew = perModelCfg?.maxNew?.coerceAtLeast(256) ?: SettingsManager.maxTokens.coerceAtLeast(256)
-        // Safety margin: use 80% of maxNew for generated code, reserve 20% for prompt
         val budget = (maxNew * 0.8).toInt()
         if (budget <= 128) return false
 
-        // Find files that exceed the budget
         val oversized = filesToGenerate.filter { node ->
             val spec = zcp.fileSpecs[node.path] ?: FileSpec(path = node.path, description = node.description)
-            val est = estimateFileTokens(spec)
-            est > budget
+            estimateFileTokens(spec) > budget
         }
-
         if (oversized.isEmpty()) return false
 
-        // Enter replanning phase
         updatePhase(InventPhase.REPLANNING)
-        val oversizedPaths = oversized.joinToString(", ") { it.path }
-        addMessage("system", "⚠ Some files exceed Model 2's token budget (max $maxNew tokens). Replanning: $oversizedPaths", InventPhase.REPLANNING)
-
+        addMessage("system", "⚠ ${oversized.size} file(s) exceed coder's token budget. Splitting…", InventPhase.REPLANNING)
         setSwap("Replanning oversized files…")
-        val ok = loadOrKeepModel(state.model1Path)
-        if (!ok) { setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name} for replanning"); return false }
+        if (!loadOrKeepModel(state.model1Path)) {
+            setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name}"); return false
+        }
         setSwap("")
 
-        // Build a focused prompt for Model 1: show the oversized file spec and ask for splits
         val oversizedDetails = oversized.joinToString("\n\n") { node ->
             val spec = zcp.fileSpecs[node.path] ?: FileSpec(path = node.path, description = node.description)
-            """
-[OVERSIZE] ${node.path}
-  Description: ${spec.description}
-  Imports: ${spec.imports}
-  Classes: ${spec.classes}
-  Functions: ${spec.functions}
-  Dependencies: ${spec.dependencies.joinToString(", ")}
-  Estimated tokens: ${estimateFileTokens(spec)} (budget: $budget)
-""".trimIndent()
+            buildString {
+                appendLine("[OVERSIZE] ${node.path}")
+                appendLine("  Description: ${spec.description}")
+                appendLine("  Imports: ${spec.imports}")
+                appendLine("  Estimated tokens: ~${estimateFileTokens(spec)} (budget: $budget)")
+            }
         }
 
-        val smallFiles = filesToGenerate.filter { node ->
-            val spec = zcp.fileSpecs[node.path] ?: FileSpec(path = node.path, description = node.description)
-            estimateFileTokens(spec) <= budget
+        val replanPrompt = buildString {
+            appendLine("Split these oversized files for the coder model (budget: $budget tokens per file):")
+            appendLine()
+            appendLine(oversizedDetails)
+            appendLine()
+            appendLine("For each, output a new §TREE and §FILEZCP with the split files.")
+            appendLine("Use §TREE{path:X|type:file|desc:X} and §FILEZCP{path:X|description:X|imports:X|classes:X|functions:X|dependencies:Y,Z|estimatedTokens:N}")
         }
-        val smallSummary = smallFiles.joinToString("\n") { "[OK] ${it.path}" }
-
-        val replanPrompt = """
-The following files in the project are too large for the coder model to generate in one pass.
-The coder can generate at most $budget tokens per file (context limit: $maxNew tokens).
-
-OVERSIZED FILES (need splitting):
-$oversizedDetails
-
-FILES THAT FIT (leave unchanged):
-$smallSummary
-
-Current file tree:
-${zcp.fileTree.joinToString("\n") { "  ${if (it.isDir) "[DIR]" else "[FILE]"} ${it.path}" }}
-
-For EACH oversized file above, split it into smaller files that together implement
-the same functionality. Output the COMPLETE new file tree including ALL files
-(small + unchanged + new split files). Then output a §FILEZCP block for EVERY
-file in the tree (including unchanged ones — copy their existing spec).
-
-Use exactly these formats:
-§TREE{path:X|type:dir/file|desc:X}
-§FILEZCP{path:X|description:X|imports:X|classes:X|functions:X|dependencies:Y,Z|estimatedTokens:N}
-
-IMPORTANT: The estimatedTokens field should reflect the NEW estimated size of each split file.
-Each split file must be under $budget tokens.
-""".trimIndent()
 
         val replanResult = runInference(
-            systemPrompt = "You are a senior software architect. Split oversized files into smaller, focused files that each fit within the coder's token budget. Output ONLY the ZCP file tree and specs.",
-            userMessage = replanPrompt,
-            expectedModelPath = state.model1Path
+            systemPrompt = "You are a senior software architect. Split oversized files into smaller files. Output ONLY §TREE and §FILEZCP blocks.",
+            userMessage = replanPrompt, expectedModelPath = state.model1Path
         )
 
-        // Parse the new file tree and specs
         val newTree = parseFileTree(replanResult)
         val newSpecs = parseFileSpecs(replanResult)
 
         if (newTree.isEmpty()) {
-            // Parsing failed — log and continue with original plan
-            addMessage("system", "⚠ Replanning failed to produce a valid file tree — continuing with original plan.", InventPhase.REPLANNING)
+            addMessage("system", "⚠ Replanning parse failed — continuing with original plan.", InventPhase.REPLANNING)
             withContext(Dispatchers.IO) { engineManager.unloadAll() }
-            updatePhase(InventPhase.GENERATING)
-            return false
+            updatePhase(InventPhase.GENERATING); return false
         }
 
-        // Merge: keep old specs for files that weren't changed, use new specs for everything
         val mergedSpecs = mutableMapOf<String, FileSpec>()
         newTree.filter { !it.isDir }.forEach { node ->
-            val newSpec = newSpecs[node.path]
-            if (newSpec != null) {
-                mergedSpecs[node.path] = newSpec
-            } else {
-                // Keep old spec if it exists and wasn't mentioned in the replan
-                val oldSpec = zcp.fileSpecs[node.path]
-                if (oldSpec != null) mergedSpecs[node.path] = oldSpec
-            }
+            mergedSpecs[node.path] = newSpecs[node.path] ?: zcp.fileSpecs[node.path] ?: FileSpec(path = node.path)
         }
-        // Also copy over any old specs for files that are still in the tree but not in newSpecs
         zcp.fileSpecs.forEach { (path, spec) ->
-            if (newTree.any { it.path == path } && !mergedSpecs.containsKey(path)) {
-                mergedSpecs[path] = spec
-            }
+            if (newTree.any { it.path == path } && !mergedSpecs.containsKey(path)) mergedSpecs[path] = spec
         }
 
         zcp = zcp.copy(fileTree = newTree, fileSpecs = mergedSpecs)
-        InventStorage.saveZcp(ctx, sessionId, zcp)
-
         addMessage("model1", replanResult, InventPhase.REPLANNING)
-        addMessage("system", "✅ File tree updated: ${newTree.count { !it.isDir }} files (${oversized.size} split, ${smallFiles.size} kept)", InventPhase.REPLANNING)
-
-        // Update UI
-        _ui.value = _ui.value.copy(
-            fileTree = newTree,
-            totalFiles = newTree.count { !it.isDir },
-            currentFileIndex = 0
-        )
-        sessionState = sessionState?.copy(
-            totalFiles = newTree.count { !it.isDir },
-            currentFileIndex = 0
-        )
-        saveCurrentState()
-
+        _ui.value = _ui.value.copy(fileTree = newTree, totalFiles = newTree.count { !it.isDir }, currentFileIndex = 0)
+        sessionState = sessionState?.copy(totalFiles = newTree.count { !it.isDir }, currentFileIndex = 0)
+        saveAllState()
         withContext(Dispatchers.IO) { engineManager.unloadAll() }
         updatePhase(InventPhase.GENERATING)
         return true
@@ -846,161 +747,121 @@ Each split file must be under $budget tokens.
         val filesToGenerate = zcp.fileTree.filter { !it.isDir }
         if (filesToGenerate.isEmpty()) { finishGeneration(); return }
 
-        // Re-read after possible replanning (simple check, skip if already generated)
-        val finalFiles = zcp.fileTree.filter { !it.isDir }
-        if (finalFiles.isEmpty()) { finishGeneration(); return }
-
-        val totalFiles = finalFiles.size
-        sessionState = sessionState?.copy(totalFiles = totalFiles, currentFileIndex = 0)
-        saveCurrentState()
-        _ui.value = _ui.value.copy(totalFiles = totalFiles, currentFileIndex = 0, fileTree = zcp.fileTree)
-
-        val projectDir = InventStorage.getProjectDir(ctx, sessionId, zcp.projectName)
+        // Keep model loaded across all file generations
         val isSame = state.sameModelMode || state.model1Path == state.model2Path
         val targetPath = if (!isSame) state.model2Path else state.model1Path
         val targetName = if (!isSame) state.model2Name else state.model1Name
 
-        // First, create all directories from the file tree
-        zcp.fileTree.filter { it.isDir }.forEach { node ->
-          File(projectDir, node.path).mkdirs()
-        }
+        _ui.value = _ui.value.copy(totalFiles = filesToGenerate.size, currentFileIndex = 0)
+        sessionState = sessionState?.copy(totalFiles = filesToGenerate.size, currentFileIndex = 0)
+        saveAllState()
 
-        for ((idx, fileNode) in finalFiles.withIndex()) {
+        val projectDir = InventStorage.getProjectDir(ctx, sessionId, zcp.projectName)
+        zcp.fileTree.filter { it.isDir }.forEach { File(projectDir, it.path).mkdirs() }
+
+        // Load coder model ONCE for all files
+        setSwap("Loading $targetName…")
+        if (!loadOrKeepModel(targetPath)) {
+            setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load $targetName"); return
+        }
+        enableSearchOnEngine()
+        setSwap("")
+
+        for ((idx, fileNode) in filesToGenerate.withIndex()) {
             if (_ui.value.phase != InventPhase.GENERATING) break
 
             val fileSpec = zcp.fileSpecs[fileNode.path] ?: FileSpec(path = fileNode.path, description = fileNode.description)
 
-            sessionState = sessionState?.copy(currentFileIndex = idx + 1)
             _ui.value = _ui.value.copy(currentFileIndex = idx + 1, currentFileName = fileNode.path)
-            saveCurrentState()
+            sessionState = sessionState?.copy(currentFileIndex = idx + 1)
+            saveAllState()
 
-            // Load Model 2 with FRESH context + search enabled
-            setSwap("Generating ${fileNode.path} (${idx + 1}/$totalFiles)…")
-            val m2Ok = loadOrKeepModel(targetPath)
-            if (!m2Ok) { setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load $targetName"); return }
+            // Check if search is needed BEFORE inference to avoid wasting first pass
+            val preSearchResults = checkAndRunPreSearch(fileSpec)
+            val generatedCode = generateCodeWithPreSearch(fileSpec, projectDir, preSearchResults)
+            if (generatedCode == null) {
+                setSwap(""); _ui.value = _ui.value.copy(error = "Failed to generate ${fileNode.path}"); return
+            }
 
-            // Enable web search for Model 2 (coder)
-            enableSearchOnEngine()
-
-            val generatedCode = generateCodeWithSearch(fileSpec, projectDir)
-            if (generatedCode == null) { setSwap(""); _ui.value = _ui.value.copy(error = "Failed to generate ${fileNode.path}"); return }
-
-            // Save generated code (content on disk, only path in ZCP)
             InventStorage.writeGeneratedFile(projectDir, fileNode.path, generatedCode)
             zcp = zcp.copy(generatedFiles = zcp.generatedFiles + fileNode.path)
-            InventStorage.saveZcp(ctx, sessionId, zcp)
-
-            // Clear search + unload Model 2
-            clearToolManagerOnEngines()
-            withContext(Dispatchers.IO) { engineManager.unloadAll() }
-
+            sessionState = sessionState?.copy(totalFiles = filesToGenerate.size)
+            saveAllState()
             addMessage("system", "✓ Generated ${fileNode.path} (${generatedCode.count { it == '\n' } + 1} lines)", InventPhase.GENERATING)
         }
 
+        // Unload only after all files are done
+        clearToolManagerOnEngines()
+        withContext(Dispatchers.IO) { engineManager.unloadAll() }
         finishGeneration()
     }
 
-    /**
-     * Run Model 2 inference with search capability.
-     * If the model outputs [SEARCH: query], we run the web search,
-     * inject results, and re-run until no more search markers.
-     */
-    private suspend fun generateCodeWithSearch(spec: FileSpec, projectDir: java.io.File): String? {
-        val state = sessionState ?: return null
-        val isSame = state.sameModelMode || state.model1Path == state.model2Path
-        val targetPath = if (!isSame) state.model2Path else state.model1Path
-        val targetName = if (!isSame) state.model2Name else state.model1Name
+    /** Before running code generation, check if search is likely needed and fetch results. */
+    private suspend fun checkAndRunPreSearch(spec: FileSpec): String? {
+        val searchTriggers = listOf("api", "sdk", "library", "dependency", "import",
+            "version", "setup", "install", "configure", "example", "tutorial")
+        val desc = spec.description.lowercase()
+        val imports = spec.imports.lowercase()
+        val classes = spec.classes.lowercase()
+        val functions = spec.functions.lowercase()
+        val combined = "$desc $imports $classes $functions"
 
-        val codeGenPrompt = buildCodeGenPrompt(spec, zcp)
+        val needsSearch = searchTriggers.any { combined.contains(it) }
+        if (!needsSearch) return null
 
-        // First attempt
-        var result = runInference(
-            systemPrompt = "You are a senior software engineer. You have web search available — use [SEARCH: your query] if you need to look up APIs, syntax, or libraries. After searching, continue generating code. Output ONLY the code for this file. No explanations.",
-            userMessage = codeGenPrompt,
-            expectedModelPath = targetPath
-        )
-
-        // Handle search markers (up to 3 rounds)
-        var searchRounds = 0
-        val searchMarker = Regex("""\[SEARCH:\s*(.+?)]""", RegexOption.IGNORE_CASE)
-        while (searchRounds < 3) {
-            val match = searchMarker.find(result)
-            if (match == null) break
-            searchRounds++
-
-            val query = match.groupValues[1].trim()
-            setSwap("Coder searching: $query…")
-
-            val searchResults = runWebSearch(query)
-            if (searchResults == null) {
-                // Search failed, remove marker and continue
-                result = result.replace(match.value, "")
-                continue
-            }
-
-            // Re-run with search results injected into the prompt
-            val searchAugmentedPrompt = buildString {
-                appendLine("Web search results for \"$query\":")
-                appendLine(searchResults)
-                appendLine()
-                appendLine("---")
-                appendLine()
-                appendLine(codeGenPrompt)
-            }
-
-            val m2Ok = loadOrKeepModel(targetPath)
-            if (!m2Ok) return null
-            enableSearchOnEngine()
-
-            result = runInference(
-                systemPrompt = "You are a senior software engineer. Use the web search results above to write production-ready code. Output ONLY the code for this file. No explanations.",
-                userMessage = searchAugmentedPrompt,
-                expectedModelPath = targetPath
-            )
-        }
-
-        // Remove any remaining search markers from output
-        result = result.replace(searchMarker, "").trim()
-        return result.ifEmpty { null }
+        val query = "How to implement ${spec.path} ${spec.description} ${zcp.language.joinToString(" ")} ${zcp.framework}"
+        val args = JSONObject().apply { put("query", query.take(150)); put("num_results", 3) }
+        val call = ToolCall("presearch_${System.currentTimeMillis()}", "web_search", args)
+        return try {
+            val res = toolManager.executeTool(call)
+            val t = res.result.trim()
+            if (t.isNotBlank() && !t.startsWith("Error", true) && !t.startsWith("No results", true) && !t.startsWith("Web search failed", true)) t
+            else null
+        } catch (_: Exception) { null }
     }
 
-    private fun runWebSearch(query: String): String? {
-        val tm = ZeroCopyApp.instance.toolManager
-        val args = org.json.JSONObject().apply {
-            put("query", query)
-            put("num_results", 3)
+    /** Generate code with pre-fetched search results plus dependency code context. */
+    private suspend fun generateCodeWithPreSearch(spec: FileSpec, projectDir: File, preSearchResults: String?): String? {
+        val codeGenPrompt = buildCodeGenPrompt(spec, zcp, projectDir)
+        val fullPrompt = if (preSearchResults != null) {
+            "Web research for this file:\n$preSearchResults\n\n---\n\n$codeGenPrompt"
+        } else codeGenPrompt
+
+        return runInference(
+            systemPrompt = "You are a senior software engineer. Output ONLY the code for this file. No explanations, no markdown.",
+            userMessage = fullPrompt
+        ).let { result ->
+            val cleaned = result.replace(Regex("""\[SEARCH:\s*(.+?)]""", RegexOption.IGNORE_CASE), "").trim()
+            cleaned.ifEmpty { null }
         }
-        val call = com.gguf.zerocopy.domain.inference.ToolCall("invent_${System.currentTimeMillis()}", "web_search", args)
-        return try {
-            val res = tm.executeTool(call)
-            val text = res.result.trim()
-            if (text.isBlank() || text.startsWith("Error", true) || text.startsWith("No results", true)) null
-            else text
-        } catch (e: Exception) { null }
     }
 
     private suspend fun resumeGeneration() {
+        val state = sessionState ?: return
         val filesToGenerate = zcp.fileTree.filter { !it.isDir }
         val startFrom = _ui.value.currentFileIndex.coerceAtLeast(0)
-        val state = sessionState ?: return
         val isSame = state.sameModelMode || state.model1Path == state.model2Path
         val targetPath = if (!isSame) state.model2Path else state.model1Path
         val targetName = if (!isSame) state.model2Name else state.model1Name
         val projectDir = InventStorage.getProjectDir(ctx, sessionId, zcp.projectName)
 
-        // Check remaining files for replanning
         val remaining = filesToGenerate.drop(startFrom).filter { !zcp.generatedFiles.contains(it.path) }
         if (remaining.isNotEmpty()) {
             updatePhase(InventPhase.GENERATING)
-            val replanned = checkAndReplanIfNeeded()
-            if (!replanned && _ui.value.phase != InventPhase.GENERATING) return
+            checkAndReplanIfNeeded()
         }
 
-        // Re-read after possible replanning
         val finalFiles = zcp.fileTree.filter { !it.isDir }
         val finalStartFrom = _ui.value.currentFileIndex.coerceAtLeast(0)
-        val totalFiles = finalFiles.size
-        _ui.value = _ui.value.copy(totalFiles = totalFiles)
+        _ui.value = _ui.value.copy(totalFiles = finalFiles.size)
+
+        // Load model once for all files
+        setSwap("Loading $targetName…")
+        if (!loadOrKeepModel(targetPath)) {
+            setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load $targetName"); return
+        }
+        enableSearchOnEngine()
+        setSwap("")
 
         for (idx in finalStartFrom until finalFiles.size) {
             val fileNode = finalFiles[idx]
@@ -1008,90 +869,66 @@ Each split file must be under $budget tokens.
             if (zcp.generatedFiles.contains(fileNode.path)) continue
 
             val fileSpec = zcp.fileSpecs[fileNode.path] ?: FileSpec(path = fileNode.path, description = fileNode.description)
-            sessionState = sessionState?.copy(currentFileIndex = idx + 1)
             _ui.value = _ui.value.copy(currentFileIndex = idx + 1, currentFileName = fileNode.path)
-            saveCurrentState()
+            sessionState = sessionState?.copy(currentFileIndex = idx + 1)
+            saveAllState()
 
-            setSwap("Generating ${fileNode.path} (${idx + 1}/$totalFiles)…")
-            val m2Ok = loadOrKeepModel(targetPath)
-            if (!m2Ok) { setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load $targetName"); return }
-            enableSearchOnEngine()
+            val preSearch = checkAndRunPreSearch(fileSpec)
+            val code = generateCodeWithPreSearch(fileSpec, projectDir, preSearch)
+            if (code == null) {
+                setSwap(""); _ui.value = _ui.value.copy(error = "Failed to generate ${fileNode.path}"); return
+            }
 
-            val generatedCode = generateCodeWithSearch(fileSpec, projectDir)
-            if (generatedCode == null) { setSwap(""); _ui.value = _ui.value.copy(error = "Failed to generate ${fileNode.path}"); return }
-
-            InventStorage.writeGeneratedFile(projectDir, fileNode.path, generatedCode)
+            InventStorage.writeGeneratedFile(projectDir, fileNode.path, code)
             zcp = zcp.copy(generatedFiles = zcp.generatedFiles + fileNode.path)
-            InventStorage.saveZcp(ctx, sessionId, zcp)
-
-            clearToolManagerOnEngines()
-            withContext(Dispatchers.IO) { engineManager.unloadAll() }
-            addMessage("system", "✓ Generated ${fileNode.path} (${generatedCode.count { it == '\n' } + 1} lines)", InventPhase.GENERATING)
+            saveAllState()
+            addMessage("system", "✓ Generated ${fileNode.path} (${code.count { it == '\n' } + 1} lines)", InventPhase.GENERATING)
         }
+
+        clearToolManagerOnEngines()
+        withContext(Dispatchers.IO) { engineManager.unloadAll() }
         finishGeneration()
     }
 
     private suspend fun finishGeneration() {
         runFinalizeStep()
         zcp = zcp.copy(phase = InventPhase.DONE)
-        InventStorage.saveZcp(ctx, sessionId, zcp)
         updatePhase(InventPhase.DONE)
         computeStats()
         _ui.value = _ui.value.copy(zipReady = true)
-        addMessage("system", "✓ All ${zcp.generatedFiles.size} files generated. Ready to export .zip!", InventPhase.DONE)
+        addMessage("system", "✓ All ${zcp.generatedFiles.size} files generated. Ready to export!", InventPhase.DONE)
     }
 
-
+    /** Generate README from file content on disk — no model context juggling. */
     private suspend fun runFinalizeStep() {
         val state = sessionState ?: return
         if (zcp.generatedFiles.isEmpty()) return
         updatePhase(InventPhase.FINALIZING)
-        _ui.value = _ui.value.copy(currentModelLabel = state.model1Name, processLabel = "Reading project…")
-        setSwap("Loading ${state.model1Name} for final review…")
-        val ok = loadOrKeepModel(state.model1Path)
-        if (!ok) { setSwap(""); _ui.value = _ui.value.copy(currentModelLabel = "", processLabel = ""); return }
-        setSwap("")
+        _ui.value = _ui.value.copy(currentModelLabel = state.model1Name, processLabel = "Generating README…")
+
         val projectDir = InventStorage.getProjectDir(ctx, sessionId, zcp.projectName)
-        val filePaths = zcp.generatedFiles.sorted().filter { it != "README.txt" }
-        val summaries = mutableListOf<String>()
-        for ((idx, path) in filePaths.withIndex()) {
-            _ui.value = _ui.value.copy(processLabel = "Reading $path (${idx + 1}/${filePaths.size})…")
-            val content = InventStorage.readGeneratedFile(projectDir, path) ?: continue
-            val preview = content.take(2000)
-            val lineCount = content.count { it == '\n' } + 1
-            val kvBefore = engineManager.getActiveEngine()?.getKvUsage() ?: 0
-            if (kvBefore > 80 && summaries.isNotEmpty()) {
-                val summaryRestore = summaries.joinToString("\n")
-                addMessage("system", "[Context at ${kvBefore}% — compacting. Retaining ${summaries.size} file summaries.]", InventPhase.FINALIZING)
-                resetEngineContext(state.model1Path)
-                runInference(systemPrompt = "You have summarized these files so far:\n$summaryRestore\n\nContinue reading.", userMessage = "Resuming. Next file to read: $path", expectedModelPath = state.model1Path)
-                continue
-            }
-            val readPrompt = buildString {
-                appendLine("Read this file and output \$FILE_READ\$ plus one summary line.")
-                appendLine("--- $path ($lineCount lines) ---")
-                appendLine(preview)
-                if (content.length > 2000) appendLine("...[truncated, full content on disk]")
-            }
-            val response = runInference(
-                systemPrompt = "Read the file and output \$FILE_READ\$ plus one summary line.",
-                userMessage = readPrompt,
-                expectedModelPath = state.model1Path
-            )
-            val summaryLine = response.takeLast(200).replace(Regex("\\\$FILE_READ\\\$"), "").trim().take(150)
-            summaries.add("$path: $summaryLine")
+        val filePaths = zcp.generatedFiles.sorted()
+
+        // Read file summaries directly from disk — no model inference needed
+        val summaries = filePaths.mapNotNull { path ->
+            val content = InventStorage.readGeneratedFile(projectDir, path)
+            if (content != null) {
+                val lines = content.count { it == '\n' } + 1
+                val firstLine = content.lines().firstOrNull()?.take(80) ?: ""
+                "$path ($lines lines) — $firstLine"
+            } else null
         }
-        // After reading all files, research build instructions and write README
+
+        // Get build instructions from web search
         _ui.value = _ui.value.copy(processLabel = "Researching build instructions…")
         val platform = zcp.platform.joinToString(", ").ifEmpty { "general" }
         val language = zcp.language.joinToString(", ").ifEmpty { "unknown" }
         val framework = zcp.framework.ifEmpty { "none" }
         val searchQuery = "How to build and compile $language $framework project for $platform"
-        setSwap("Researching build instructions…")
         val buildInstructions = runWebSearch(searchQuery) ?: "No web search results available."
-        setSwap("")
-        // Write README
-        _ui.value = _ui.value.copy(processLabel = "Writing README.txt…")
+
+        // Write README from summaries + search, not from model's failing memory
+        _ui.value = _ui.value.copy(processLabel = "Writing README…")
         val readmeContent = buildString {
             appendLine("========================================")
             appendLine("${zcp.projectName} — Build Instructions")
@@ -1106,73 +943,75 @@ Each split file must be under $budget tokens.
             appendLine("--- Project Overview ---")
             appendLine(zcp.coreIdea)
             appendLine()
-            appendLine("--- Files Generated ---")
-            filePaths.forEach { appendLine("  - $it") }
+            appendLine("--- Features ---")
+            zcp.mainFeatures.forEach { appendLine("  - $it") }
             appendLine()
-            appendLine("--- File Summaries ---")
+            appendLine("--- Files Generated (${filePaths.size} total) ---")
             summaries.forEach { appendLine("  - $it") }
             appendLine()
             appendLine("--- How to Build ---")
             appendLine(buildInstructions.take(3000))
             appendLine()
             appendLine("--- Prerequisites ---")
-            appendLine("You may need to download the following:")
-            if (language.contains("kotlin", true) || language.contains("java", true) || platform.contains("android", true)) {
-                appendLine("  - Android Studio (developer.android.com/studio)")
-                appendLine("  - Android SDK (bundled with Android Studio)")
-                appendLine("  - JDK 17+")
-            }
-            if (language.contains("python", true)) {
-                appendLine("  - Python 3.10+ (python.org)")
-                appendLine("  - pip install -r requirements.txt (if provided)")
-            }
-            if (language.contains("javascript", true) || language.contains("typescript", true)) {
-                appendLine("  - Node.js 18+ (nodejs.org)")
-                appendLine("  - npm install (then npm run build)")
-            }
-            if (framework.contains("flutter", true)) {
-                appendLine("  - Flutter SDK (flutter.dev)")
-                appendLine("  - Dart SDK (bundled with Flutter)")
-            }
-            if (framework.contains("react", true)) {
-                appendLine("  - Node.js 18+")
-                appendLine("  - npm install && npm start")
-            }
+            appendPrerequisites(language, framework, platform)
             appendLine()
             appendLine("--- Quick Start ---")
-            appendLine("1. Install prerequisites listed above")
+            appendLine("1. Install prerequisites")
             appendLine("2. Open a terminal in this directory")
-            appendLine("3. Follow the build instructions for your specific platform")
-            appendLine("4. Refer to the individual file summaries for architecture details")
+            appendLine("3. Follow build instructions for your platform")
+            appendLine("4. Refer to file summaries for architecture details")
             appendLine()
-            appendLine("Generated by ZeroCopy Invent — adeennour4-dot/111")
+            appendLine("Generated by ZeroCopy Invent — github.com/adeennour4-dot/111")
         }
+
         InventStorage.writeGeneratedFile(projectDir, "README.txt", readmeContent)
         if (!zcp.generatedFiles.contains("README.txt")) {
             zcp = zcp.copy(generatedFiles = zcp.generatedFiles + "README.txt")
         }
-        InventStorage.saveZcp(ctx, sessionId, zcp)
-        addMessage("system", "✅ README.txt written with build instructions for $platform", InventPhase.FINALIZING)
+        addMessage("system", "✅ README.txt written with build instructions", InventPhase.FINALIZING)
         _ui.value = _ui.value.copy(currentModelLabel = "", processLabel = "")
-        withContext(Dispatchers.IO) { engineManager.unloadAll() }
     }
 
-    private fun resetEngineContext(modelPath: String) {
-        try {
-            engineManager.getActiveEngine()?.resetContext()
-        } catch (_: Exception) {}
+    private fun appendPrerequisites(language: String, framework: String, platform: String) {
+        if (language.contains("kotlin", true) || language.contains("java", true) || platform.contains("android", true)) {
+            appendLine("  - Android Studio (developer.android.com/studio)")
+            appendLine("  - Android SDK (bundled with Android Studio)")
+            appendLine("  - JDK 17+")
+        }
+        if (language.contains("python", true)) {
+            appendLine("  - Python 3.10+ (python.org)")
+            appendLine("  - pip install -r requirements.txt")
+        }
+        if (language.contains("javascript", true) || language.contains("typescript", true)) {
+            appendLine("  - Node.js 18+ (nodejs.org)")
+            appendLine("  - npm install && npm run build")
+        }
+        if (framework.contains("flutter", true)) {
+            appendLine("  - Flutter SDK (flutter.dev)")
+            appendLine("  - Dart SDK (bundled with Flutter)")
+        }
+        if (framework.contains("react", true)) {
+            appendLine("  - Node.js 18+")
+            appendLine("  - npm install && npm start")
+        }
+        if (language.contains("rust", true)) {
+            appendLine("  - Rust toolchain (rustup.rs)")
+            appendLine("  - cargo build")
+        }
     }
-    // ── Phase 5: Export .ZIP ─────────────────────────────────────────────────
 
-    fun exportProjectZip(): java.io.File? {
+    // ── Export .ZIP ────────────────────────────────────────────────────────
+
+    fun exportProjectZip(): File? {
         if (_ui.value.phase != InventPhase.DONE && _ui.value.phase != InventPhase.DEBUGGING) return null
         return try {
             val projectName = zcp.projectName.ifEmpty { sessionId }.ifEmpty { "invent_project" }
-            val zipDir = java.io.File(ctx.cacheDir, "invent_exports").also { it.mkdirs() }
-            val zipFile = java.io.File(zipDir, "${projectName}.zip")
-
+            val zipDir = File(ctx.cacheDir, "invent_exports").also { it.mkdirs() }
+            val zipFile = File(zipDir, "${projectName}.zip")
             val projectDir = getProjectDir()
+
             ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
+                // README.md (canonical export — not duplicated with README.txt)
                 val readme = buildString {
                     appendLine("# ${zcp.projectName}")
                     appendLine()
@@ -1209,16 +1048,25 @@ Each split file must be under $budget tokens.
                 zos.write(zcpJson.toByteArray(Charsets.UTF_8))
                 zos.closeEntry()
 
-                // All generated files with actual code (read from disk)
+                // All generated files (skip README.txt duplicated by finalize)
                 for (path in zcp.generatedFiles) {
-                    val code = InventStorage.readGeneratedFile(projectDir, path)
-                    if (code != null) {
-                        zos.putNextEntry(ZipEntry(path))
-                        zos.write(code.toByteArray(Charsets.UTF_8))
-                        zos.closeEntry()
-                    }
+                    if (path == "README.txt") continue
+                    val code = InventStorage.readGeneratedFile(projectDir, path) ?: continue
+                    zos.putNextEntry(ZipEntry(path))
+                    zos.write(code.toByteArray(Charsets.UTF_8))
+                    zos.closeEntry()
                 }
             }
+
+            // Share intent
+            val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", zipFile)
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/zip"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            ctx.startActivity(Intent.createChooser(shareIntent, "Share ${projectName}.zip"))
             zipFile
         } catch (e: Exception) {
             android.util.Log.e("InventViewModel", "Failed to create zip: ${e.message}")
@@ -1227,7 +1075,7 @@ Each split file must be under $budget tokens.
     }
 
     private fun buildZcpExportJson(): String {
-        return org.json.JSONObject().apply {
+        return JSONObject().apply {
             put("projectName", zcp.projectName)
             put("platform", org.json.JSONArray(zcp.platform))
             put("language", org.json.JSONArray(zcp.language))
@@ -1238,7 +1086,7 @@ Each split file must be under $budget tokens.
             put("viable", zcp.viable)
             val treeArr = org.json.JSONArray()
             zcp.fileTree.forEach { fn ->
-                treeArr.put(org.json.JSONObject().apply {
+                treeArr.put(JSONObject().apply {
                     put("path", fn.path)
                     put("type", if (fn.isDir) "dir" else "file")
                     put("description", fn.description)
@@ -1250,7 +1098,7 @@ Each split file must be under $budget tokens.
             if (zcp.debugSessions.isNotEmpty()) {
                 val debugArr = org.json.JSONArray()
                 zcp.debugSessions.forEach { ds ->
-                    debugArr.put(org.json.JSONObject().apply {
+                    debugArr.put(JSONObject().apply {
                         put("filePath", ds.filePath)
                         put("problem", ds.problem)
                         put("timestamp", ds.timestamp)
@@ -1261,19 +1109,18 @@ Each split file must be under $budget tokens.
         }.toString(2)
     }
 
-    // ── Phase 6: Debugging ───────────────────────────────────────────────────
+    // ── Debugging ──────────────────────────────────────────────────────────
 
     fun startDebugging() {
         viewModelScope.launch(Dispatchers.IO) {
             updatePhase(InventPhase.DEBUGGING)
             _ui.value = _ui.value.copy(debugMode = true)
-
             val state = sessionState ?: return@launch
             setSwap("Loading ${state.model1Name}…")
-            val ok = loadOrKeepModel(state.model1Path)
-            if (!ok) { setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name}"); return@launch }
+            if (!loadOrKeepModel(state.model1Path)) {
+                setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name}"); return@launch
+            }
             setSwap("")
-
             addMessage("model1", "I'm ready for debugging. Tell me which file has an issue and describe the problem.", InventPhase.DEBUGGING)
         }
     }
@@ -1282,7 +1129,6 @@ Each split file must be under $budget tokens.
         viewModelScope.launch(Dispatchers.IO) {
             _ui.value = _ui.value.copy(debugMode = false)
             zcp = zcp.copy(phase = InventPhase.DONE)
-            InventStorage.saveZcp(ctx, sessionId, zcp)
             updatePhase(InventPhase.DONE)
             _ui.value = _ui.value.copy(zipReady = true)
             computeStats()
@@ -1294,95 +1140,85 @@ Each split file must be under $budget tokens.
         val state = sessionState ?: return
         val history = buildConversationHistory()
 
+        // Provide project context for debugging
+        val projectOverview = buildString {
+            appendLine("Project: ${zcp.projectName}")
+            appendLine("Total files: ${zcp.generatedFiles.size}")
+            appendLine("File tree:")
+            zcp.fileTree.filter { !it.isDir }.forEach { appendLine("  - ${it.path}: ${it.description}") }
+            appendLine()
+            appendLine("Debug sessions so far: ${zcp.debugSessions.size}")
+        }
+
         val diagnosis = runInference(
-            systemPrompt = "You are a debugging assistant. Identify which file has the bug and what needs to change. Use §FILE{path:X} to specify the file. If the user says 'done' or 'exit', just say [DEBUG_DONE].",
-            userMessage = userText,
+            systemPrompt = "You are a debugging assistant. Identify which file has the bug and what needs to change. Use §FILE{path:X} to specify the file. If the user says 'done' or 'exit', output [DEBUG_DONE].",
+            userMessage = "Project context:\n$projectOverview\n\nUser bug report: $userText",
             history = history
         )
 
-        if (diagnosis.contains("[DEBUG_DONE]", ignoreCase = true)) {
-            exitDebugging()
-            return
-        }
+        if (diagnosis.contains("[DEBUG_DONE]", ignoreCase = true)) { exitDebugging(); return }
 
         addMessage("model1", diagnosis, InventPhase.DEBUGGING)
 
         val filePath = Regex("§FILE\\{path:([^}]+)\\}").find(diagnosis)?.groupValues?.get(1)?.trim()
         if (filePath == null || !zcp.generatedFiles.contains(filePath)) {
-            addMessage("system", "Could not identify which file to fix. Use the exact file path.", InventPhase.DEBUGGING)
+            addMessage("system", "Could not identify the file. Use the exact path from the file tree.", InventPhase.DEBUGGING)
             return
         }
 
         val projectDir = InventStorage.getProjectDir(ctx, sessionId, zcp.projectName)
         val originalCode = InventStorage.readGeneratedFile(projectDir, filePath) ?: ""
-        val isSame = state.sameModelMode || state.model1Path == state.model2Path
-        val targetPath = if (!isSame) state.model2Path else state.model1Path
-        val targetName = if (!isSame) state.model2Name else state.model1Name
+        val targetPath = if (state.sameModelMode || state.model1Path == state.model2Path) state.model1Path else state.model2Path
+        val targetName = if (state.sameModelMode || state.model1Path == state.model2Path) state.model1Name else state.model2Name
 
         setSwap("Loading $targetName to fix $filePath…")
-        val m2Ok = loadOrKeepModel(targetPath)
-        if (!m2Ok) { setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load $targetName"); return }
+        if (!loadOrKeepModel(targetPath)) {
+            setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load $targetName"); return
+        }
         enableSearchOnEngine()
 
+        // Include related file context for the fix
+        val relatedContext = buildString {
+            val deps = zcp.fileSpecs[filePath]?.dependencies ?: emptyList()
+            deps.take(3).forEach { depPath ->
+                val depCode = InventStorage.readGeneratedFile(projectDir, depPath)
+                if (depCode != null) {
+                    appendLine("--- Dependency: $depPath (first 30 lines) ---")
+                    appendLine(depCode.lines().take(30).joinToString("\n"))
+                    appendLine()
+                }
+            }
+        }
+
         val fixPrompt = buildString {
-            appendLine("Fix the following bug in this file.")
+            appendLine("Fix this bug.")
             appendLine("Problem: $userText")
             appendLine()
-            appendLine("Current code:")
+            appendLine("Project context: ${zcp.projectName} (${zcp.language.joinToString(", ")} / ${zcp.framework})")
+            if (relatedContext.isNotBlank()) { appendLine(); appendLine(relatedContext) }
+            appendLine()
+            appendLine("Buggy file — $filePath:")
             appendLine("```")
             appendLine(originalCode)
             appendLine("```")
             appendLine()
-            appendLine("You have web search available — use [SEARCH: query] if you need to look up anything.")
-            appendLine("Output ONLY the fixed code. No explanations.")
+            appendLine("Output ONLY the corrected code. No explanations.")
         }
 
         val fixedCode = runInference(
-            systemPrompt = "You are a senior software engineer fixing a bug. Use web search if needed via [SEARCH: query]. Output ONLY the corrected code.",
-            userMessage = fixPrompt,
-            expectedModelPath = targetPath
-        )
+            systemPrompt = "You are a senior software engineer fixing a bug. Output ONLY the corrected code.",
+            userMessage = fixPrompt, expectedModelPath = targetPath
+        ).trim()
 
-        // Handle any search markers in the fix response
-        val searchMarker = Regex("""\[SEARCH:\s*(.+?)]""", RegexOption.IGNORE_CASE)
-        val finalCode = if (searchMarker.containsMatchIn(fixedCode)) {
-            val query = searchMarker.find(fixedCode)!!.groupValues[1].trim()
-            val searchResults = runWebSearch(query)
-            if (searchResults != null) {
-                val redoPrompt = buildString {
-                    appendLine("Web search results for \"$query\":")
-                    appendLine(searchResults)
-                    appendLine()
-                    appendLine("---")
-                    appendLine()
-                    appendLine(fixPrompt)
-                }
-                runInference(
-                    systemPrompt = "You are a senior software engineer fixing a bug. Use the search results to write the fix. Output ONLY the corrected code.",
-                    userMessage = redoPrompt,
-                    expectedModelPath = targetPath
-                ).replace(searchMarker, "").trim()
-            } else {
-                fixedCode.replace(searchMarker, "").trim()
-            }
-        } else {
-            fixedCode.trim()
-        }
+        // Remove any remaining search markers
+        val cleanCode = fixedCode.replace(Regex("""\[SEARCH:\s*(.+?)]""", RegexOption.IGNORE_CASE), "").trim()
 
-        InventStorage.writeGeneratedFile(projectDir, filePath, finalCode)
-        if (!zcp.generatedFiles.contains(filePath)) {
-            zcp = zcp.copy(generatedFiles = zcp.generatedFiles + filePath)
-        }
-        zcp = zcp.copy(
-            debugSessions = zcp.debugSessions + com.gguf.zerocopy.data.invent.DebugSession(
-                filePath = filePath,
-                problem = userText,
-                originalCode = originalCode,
-                fixedCode = finalCode
-            )
-        )
-        InventStorage.saveZcp(ctx, sessionId, zcp)
-        InventStorage.writeGeneratedFile(projectDir, filePath, finalCode)
+        InventStorage.writeGeneratedFile(projectDir, filePath, cleanCode)
+        if (!zcp.generatedFiles.contains(filePath)) zcp = zcp.copy(generatedFiles = zcp.generatedFiles + filePath)
+        zcp = zcp.copy(debugSessions = zcp.debugSessions + DebugSession(
+            filePath = filePath, problem = userText, originalCode = originalCode, fixedCode = cleanCode
+        ))
+        saveAllState()
 
         withContext(Dispatchers.IO) { engineManager.unloadAll() }
         clearToolManagerOnEngines()
@@ -1392,28 +1228,22 @@ Each split file must be under $budget tokens.
         loadOrKeepModel(state.model1Path)
         setSwap("")
 
-        addMessage("system", "✓ Fixed $filePath. Tell me about any other bugs, or say 'done' to finish.", InventPhase.DEBUGGING)
-        saveCurrentState()
+        addMessage("system", "✓ Fixed $filePath. Tell me about other bugs, or say 'done' to finish.", InventPhase.DEBUGGING)
     }
+
+    // ── Session lifecycle ──────────────────────────────────────────────────
 
     fun startNewSession(onDone: () -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             engineManager.unloadAll()
             _ui.value = InventUiState()
-            sessionState = null
-            zcp = ZcpProtocol()
-            sessionId = ""
+            sessionState = null; zcp = ZcpProtocol(); sessionId = ""
+            savedOriginalPaths.clear()
             onDone()
         }
     }
 
-    fun saveCurrentSession() {
-        val state = sessionState ?: return
-        viewModelScope.launch(Dispatchers.IO) {
-            InventStorage.saveSession(ctx, state)
-            InventStorage.saveZcp(ctx, sessionId, zcp)
-        }
-    }
+    fun saveCurrentSession() { saveAllState() }
 
     fun onDeleteConfirmed() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -1423,7 +1253,7 @@ Each split file must be under $budget tokens.
         }
     }
 
-    // ── Inference ─────────────────────────────────────────────────────────────
+    // ── Inference ──────────────────────────────────────────────────────────
 
     private suspend fun loadOrKeepModel(path: String): Boolean {
         val engine = engineManager.getActiveEngine()
@@ -1457,7 +1287,6 @@ Each split file must be under $budget tokens.
         }
     }
 
-    /** Reload the currently active engine with the Invent config for the matching role. */
     fun reloadInventModel() {
         viewModelScope.launch(Dispatchers.IO) {
             val active = engineManager.getActiveEngine()
@@ -1474,23 +1303,16 @@ Each split file must be under $budget tokens.
                 engineManager.unloadAll()
                 val engine = engineManager.selectEngineForFormat(path)
                 engine.config = InferenceConfig(
-                    nCtx = inventCfg.ctx,
-                    maxNewTokens = inventCfg.maxNew,
-                    nGpuLayers = inventCfg.gpuLayers,
-                    temperature = inventCfg.temperature ?: 0.7f,
-                    topP = inventCfg.topP ?: 0.9f,
-                    minP = inventCfg.minP ?: 0f,
-                    topK = inventCfg.topK ?: 40,
-                    seed = inventCfg.seed ?: -1,
-                    flashAttention = inventCfg.flashAttention ?: false,
-                    lowRamMode = inventCfg.lowRamMode ?: false,
-                    nThreads = inventCfg.threads ?: 4,
-                    nBatch = inventCfg.nBatch ?: 512
+                    nCtx = inventCfg.ctx, maxNewTokens = inventCfg.maxNew,
+                    nGpuLayers = inventCfg.gpuLayers, temperature = inventCfg.temperature ?: 0.7f,
+                    topP = inventCfg.topP ?: 0.9f, minP = inventCfg.minP ?: 0f,
+                    topK = inventCfg.topK ?: 40, seed = inventCfg.seed ?: -1,
+                    flashAttention = inventCfg.flashAttention ?: false, lowRamMode = inventCfg.lowRamMode ?: false,
+                    nThreads = inventCfg.threads ?: 4, nBatch = inventCfg.nBatch ?: 512
                 )
                 engine.repeatPenalty = RepeatPenaltyConfig(
                     repeatPenalty = inventCfg.repeatPenalty ?: 1.1f,
-                    freqPenalty = inventCfg.freqPenalty ?: 0f,
-                    presPenalty = inventCfg.presPenalty ?: 0f
+                    freqPenalty = inventCfg.freqPenalty ?: 0f, presPenalty = inventCfg.presPenalty ?: 0f
                 )
                 engine.loadModel(path)
             } catch (_: Exception) { }
@@ -1502,20 +1324,16 @@ Each split file must be under $budget tokens.
     private fun checkCompactionAndNotify(historySize: Int, compactedSize: Int, phase: InventPhase) {
         if (compactedSize < historySize && phase == InventPhase.QUESTIONING) {
             val now = System.currentTimeMillis()
-            if (now - lastCompactionNotified > 30_000) {  // at most once per 30s
-                lastCompactionNotified = now
-                val dropped = historySize - compactedSize
-                addMessage("system",
-                    "⚠ Context limit reached — $dropped oldest messages compacted. " +
-                    "Go to Models → gear icon ⚙ to increase context size.",
-                    phase)
+            if (now - lastCompactionNotified > 30_000) {
+                lastCompactionNotified = now; val dropped = historySize - compactedSize
+                addMessage("system", "⚠ Context limit reached — $dropped oldest messages compacted. Go to Settings to increase context size.", phase)
             }
         }
     }
 
+    /** Run inference with timeout to prevent hangs. */
     private suspend fun runInference(
-        systemPrompt: String,
-        userMessage: String,
+        systemPrompt: String, userMessage: String,
         history: List<Pair<String, String>> = emptyList(),
         expectedModelPath: String? = null
     ): String = withContext(Dispatchers.IO) {
@@ -1523,8 +1341,7 @@ Each split file must be under $budget tokens.
         val sb = StringBuilder()
 
         if (expectedModelPath != null && !ensureEngineReady(expectedModelPath)) {
-            val reloaded = reloadEngineFor(expectedModelPath)
-            if (!reloaded) {
+            if (!reloadEngineFor(expectedModelPath)) {
                 _ui.value = _ui.value.copy(isGenerating = false, error = "Failed to load $expectedModelPath")
                 return@withContext "[Failed to load model]"
             }
@@ -1548,19 +1365,25 @@ Each split file must be under $budget tokens.
             }
             override fun onError(error: String) { sb.append("[ERROR: $error]") }
             override fun onKvUsage(percent: Int) {}
-            override fun onTokensGenerated(count: Int) {
-                streamedTokens = count
-            }
+            override fun onTokensGenerated(count: Int) { streamedTokens = count }
         }
 
-        try { engine.executeInference(fullPrompt, callback) }
-        catch (e: Exception) { sb.append("[ERROR: ${e.message}]") }
+        try {
+            withTimeout(120_000L) { // 2 min timeout to prevent hangs
+                engine.executeInference(fullPrompt, callback)
+            }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            sb.append("[ERROR: Inference timed out after 2 minutes]")
+            engine.abortInference()
+        } catch (e: Exception) {
+            sb.append("[ERROR: ${e.message}]")
+        }
 
         _ui.value = _ui.value.copy(isGenerating = false)
         sb.toString().trim()
     }
 
-    // ── Prompt Builders ───────────────────────────────────────────────────────
+    // ── Prompt Builders ────────────────────────────────────────────────────
 
     private fun buildQuestioningPrompt(): String = """
 You are a friendly software project advisor. Your job is to understand what the user wants to build.
@@ -1575,18 +1398,20 @@ Rules:
     private fun buildPlanningPrompt(model2Ctx: Int): String = """
 You are a senior software architect. Create a complete build plan.
 
-Output:
-§APP{name|platform|language|framework}
-§IDEA{core|features|unique}
-§VIABLE{status:yes/no|note}
-§TREE{path|type:dir/file|desc}
-§FILEZCP{path|description|imports|classes|functions|dependencies}
+Output these blocks exactly:
+§APP{name:X|platform:Y|language:Z|framework:W}
+§IDEA{core:X|features:Y|unique:Z}
+§VIABLE{status:yes/no|note:X}
+§SEARCH{topic:X|platform:Y|question:Z|category:W}
+§TREE{path:X|type:dir/file|desc:X}
+§FILEZCP{path:X|description:X|imports:X|classes:X|functions:X|dependencies:Y,Z}
 
 Coder context limit: $model2Ctx tokens.
 Each FILEZCP must be self-contained for independent implementation.
+Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
 """.trimIndent()
 
-    private fun buildCodeGenPrompt(spec: FileSpec, projectZcp: ZcpProtocol): String = buildString {
+    private fun buildCodeGenPrompt(spec: FileSpec, projectZcp: ZcpProtocol, projectDir: File): String = buildString {
         appendLine("Project: ${projectZcp.projectName} | ${projectZcp.language.joinToString(", ")} | ${projectZcp.framework}")
         if (projectZcp.coreIdea.isNotEmpty()) appendLine("Idea: ${projectZcp.coreIdea}")
         if (projectZcp.mainFeatures.isNotEmpty()) appendLine("Features: ${projectZcp.mainFeatures.joinToString(", ")}")
@@ -1597,21 +1422,30 @@ Each FILEZCP must be self-contained for independent implementation.
         if (spec.classes.isNotEmpty()) appendLine("Classes: ${spec.classes}")
         if (spec.functions.isNotEmpty()) appendLine("Functions: ${spec.functions}")
         if (spec.dependencies.isNotEmpty()) {
-            appendLine("Deps:")
+            appendLine("Dependencies with existing code:")
             spec.dependencies.forEach { dep ->
                 val ds = projectZcp.fileSpecs[dep]
                 if (ds != null) appendLine("  $dep → ${ds.description}")
+                // Include actual dependency code if already generated
+                val depCode = InventStorage.readGeneratedFile(projectDir, dep)
+                if (depCode != null) {
+                    val preview = depCode.lines().take(20).joinToString("\n")
+                    appendLine("  [$dep source preview (first 20 lines)]:")
+                    appendLine("  ```")
+                    appendLine(preview.lines().joinToString("\n  "))
+                    appendLine("  ```")
+                }
             }
         }
         appendLine()
-        appendLine("Write production-ready code. Use [SEARCH: x] for lookups.")
+        appendLine("Write production-ready code. No explanations. No markdown fences.")
     }
 
     private fun buildResearcherPrompt(content: Map<String, String>, intents: List<SearchIntent>): String {
         val sb = StringBuilder("Extract the following from fetched content:\n\n")
         intents.forEachIndexed { i, intent ->
-            sb.append("SLOT_${i + 1}: ${intent.question} (${intent.category})\n")
-            sb.append("Content: ${content[intent.category]?.take(1500) ?: "No content"}\n\n")
+            sb.appendLine("SLOT_${i + 1}: ${intent.question} (${intent.category})")
+            sb.appendLine("Content: ${content[intent.category]?.take(1500) ?: "No content"}\n")
         }
         sb.append("\nOutput:\nSLOT_1: [answer]\nSLOT_2: [answer]\n…")
         return sb.toString()
@@ -1628,12 +1462,14 @@ Each FILEZCP must be self-contained for independent implementation.
         appendLine("§FILE_SPECS{")
         zcp.fileSpecs.forEach { (path, spec) ->
             appendLine("  $path → ${spec.description.take(100)}")
+            if (spec.classes.isNotEmpty()) appendLine("    classes: ${spec.classes.take(100)}")
+            if (spec.functions.isNotEmpty()) appendLine("    functions: ${spec.functions.take(100)}")
         }
         appendLine("}")
     }
 
-    /** Rough token estimate: ~3.5 chars per token for code/text. */
-    private fun estimateTokens(text: String): Int = (text.length / 3.5f).toInt() + 1
+    /** Token estimate: ~1 token per 4 chars for code/text (better than /3.5 for code). */
+    private fun estimateTokens(text: String): Int = (text.length / 4).coerceAtLeast(1) + 1
 
     private fun getInventConfigForActiveModel(): SettingsManager.ModelTokenConfig? {
         val activePath = engineManager.getActiveEngine()?.loadedModelPath ?: return null
@@ -1646,18 +1482,99 @@ Each FILEZCP must be self-contained for independent implementation.
         }
     }
 
+    private fun clearToolManagerOnEngines() {
+        engineManager.llamaCpp.setToolManager(null)
+        engineManager.mnn.setToolManager(null)
+        engineManager.liteRt.setToolManager(null)
+    }
+
+    private fun enableSearchOnEngine() {
+        val eng = engineManager.getActiveEngine()
+        if (eng != null && eng.getToolManager() == null) eng.setToolManager(toolManager)
+    }
+
+    // ── Template-aware prompt builder ──────────────────────────────────────
+
+    private fun detectTemplate(modelPath: String): String {
+        val name = modelPath.substringAfterLast('/').substringAfterLast('\\').lowercase()
+        return when {
+            name.contains("gemma") -> "gemma"
+            name.contains("llama") && (name.contains("3") || name.contains("3.1") || name.contains("3.2") || name.contains("3.3")) -> "llama3"
+            name.contains("deepseek") -> "deepseek"
+            name.contains("qwen") -> "qwen"
+            name.contains("phi") -> "phi"
+            name.contains("mistral") || name.contains("mixtral") -> "mistral"
+            name.contains("command") -> "command"
+            else -> "chatml"
+        }
+    }
+
+    private fun formatRole(template: String, role: String): Pair<String, String> = when (template) {
+        "gemma" -> {
+            val (h, f) = when (role) {
+                "user" -> "<start_of_turn>user\n" to "<end_of_turn>\n<start_of_turn>model\n"
+                "assistant" -> "<start_of_turn>model\n" to "<end_of_turn>\n"
+                else -> "<start_of_turn>user\n" to "<end_of_turn>\n<start_of_turn>model\n"
+            }
+            h to f
+        }
+        "llama3" -> {
+            val (h, f) = when (role) {
+                "system" -> "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n" to "<|eot_id|>\n"
+                "user" -> "<|start_header_id|>user<|end_header_id|>\n\n" to "<|eot_id|>\n"
+                "assistant" -> "<|start_header_id|>assistant<|end_header_id|>\n\n" to "<|eot_id|>\n"
+                else -> "<|start_header_id|>user<|end_header_id|>\n\n" to "<|eot_id|>\n"
+            }
+            h to f
+        }
+        "qwen" -> {
+            val (h, f) = when (role) {
+                "system" -> "<|im_start|>system\n" to "<|im_end|>\n"
+                "user" -> "<|im_start|>user\n" to "<|im_end|>\n"
+                "assistant" -> "<|im_start|>assistant\n" to "<|im_end|>\n"
+                else -> "<|im_start|>user\n" to "<|im_end|>\n"
+            }
+            h to f
+        }
+        "phi" -> {
+            val (h, f) = when (role) {
+                "system" -> "<|system|>\n" to "<|end|>\n"
+                "user" -> "<|user|>\n" to "<|end|>\n"
+                "assistant" -> "<|assistant|>\n" to "<|end|>\n"
+                else -> "<|user|>\n" to "<|end|>\n"
+            }
+            h to f
+        }
+        "deepseek" -> Pair( when (role) {
+            "system" -> "<｜begin▁of▁sentence｜>"
+            "user" -> "<｜User｜>"
+            "assistant" -> "<｜Assistant｜>"
+            else -> "<｜User｜>"
+        }, when (role) {
+            "assistant" -> "<｜User｜>"
+            else -> ""
+        })
+        else -> { // ChatML / default
+            val (h, f) = when (role) {
+                "system" -> "<|im_start|>system\n" to "<|im_end|>\n"
+                "user" -> "<|im_start|>user\n" to "<|im_end|>\n"
+                "assistant" -> "<|im_start|>assistant\n" to "<|im_end|>\n"
+                else -> "<|im_start|>user\n" to "<|im_end|>\n"
+            }
+            h to f
+        }
+    }
+
     private fun buildPromptWithInfo(
-        system: String,
-        history: List<Pair<String, String>>,
-        user: String
+        system: String, history: List<Pair<String, String>>, user: String
     ): Pair<String, Int> {
-        // Use per-model context if available, else global
         val activePath = engineManager.getActiveEngine()?.loadedModelPath ?: ""
         val inventCfg = getInventConfigForActiveModel()
         val modelCfg = inventCfg ?: SettingsManager.getModelTokenConfig(activePath)
         val availableCtx = modelCfg?.ctx?.coerceAtLeast(512) ?: SettingsManager.nCtx.coerceAtLeast(1024)
         val maxNew = modelCfg?.maxNew?.coerceAtLeast(64) ?: SettingsManager.maxTokens.coerceAtLeast(64)
         val budget = availableCtx - maxNew - 256
+        val template = detectTemplate(activePath)
 
         var compactedHistory = history
         var estimatedTotal = estimateTokens(system) + history.sumOf { (r, c) -> estimateTokens("$r $c") } + estimateTokens(user)
@@ -1667,10 +1584,8 @@ Each FILEZCP must be self-contained for independent implementation.
                 val testTotal = estimateTokens(system) + mutable.sumOf { (r, c) -> estimateTokens("$r $c") } + estimateTokens(user)
                 if (testTotal <= budget) break
                 if (mutable.size > 1) {
-                    // Trim content in remaining messages before dropping more
                     val first = mutable.first()
-                    val trimmed = first.copy(second = first.second.take(2000))
-                    mutable[0] = trimmed
+                    mutable[0] = first.copy(second = first.second.take(2000))
                     val retryTotal = estimateTokens(system) + mutable.sumOf { (r, c) -> estimateTokens("$r $c") } + estimateTokens(user)
                     if (retryTotal <= budget) break
                     mutable.removeAt(0)
@@ -1684,35 +1599,42 @@ Each FILEZCP must be self-contained for independent implementation.
         }
 
         val prompt = buildString {
-            appendLine("<|im_start|>system")
-            appendLine(system)
-            appendLine("<|im_end|>")
-            compactedHistory.forEach { (role, content) ->
-                val mappedRole = if (role == "user") "user" else if (role == "system") "system" else "assistant"
-                appendLine("<|im_start|>$mappedRole")
-                val truncated = if (content.length > 16_000) content.take(16_000) + "…" else content
-                appendLine(truncated)
-                appendLine("<|im_end|>")
+            if (template == "deepseek") {
+                val (sysH, _) = formatRole(template, "system")
+                append(sysH); appendLine(system)
+                compactedHistory.forEach { (role, content) ->
+                    val mappedRole = if (role == "user") "user" else if (role == "system") "system" else "assistant"
+                    val (h, f) = formatRole(template, mappedRole)
+                    append(h); appendLine(content.take(16_000)); if (f.isNotEmpty()) append(f)
+                }
+                val (uH, uF) = formatRole(template, "user")
+                append(uH); appendLine(user.take(16_000)); if (uF.isNotEmpty()) append(uF)
+                append(formatRole(template, "assistant").first)
+            } else {
+                val (sysH, sysF) = formatRole(template, "system")
+                append(sysH); appendLine(system); if (sysF.isNotEmpty()) append(sysF)
+                compactedHistory.forEach { (role, content) ->
+                    val mappedRole = if (role == "user") "user" else if (role == "system") "system" else "assistant"
+                    val (h, f) = formatRole(template, mappedRole)
+                    append(h); appendLine(content.take(16_000)); if (f.isNotEmpty()) append(f)
+                }
+                val (uH, uF) = formatRole(template, "user")
+                append(uH); appendLine(user.take(16_000)); if (uF.isNotEmpty()) append(uF)
+                append(formatRole(template, "assistant").first)
             }
-            appendLine("<|im_start|>user")
-            val truncatedUser = if (user.length > 16_000) user.take(16_000) + "…" else user
-            appendLine(truncatedUser)
-            appendLine("<|im_end|>")
-            append("<|im_start|>assistant")
         }
         return prompt to compactedHistory.size
     }
+
+    // ── Conversation history ───────────────────────────────────────────────
 
     private fun buildConversationHistory(): List<Pair<String, String>> =
         _ui.value.messages
             .filter { it.role != "system" }
             .takeLast(20)
-            .map { msg ->
-                val role = if (msg.role == "user") "user" else "assistant"
-                role to msg.content
-            }
+            .map { msg -> (if (msg.role == "user") "user" else "assistant") to msg.content }
 
-    // ── Parsers ───────────────────────────────────────────────────────────────
+    // ── Parsers with validation ────────────────────────────────────────────
 
     private fun parseZcpFromModel1(raw: String, existing: ZcpProtocol): ZcpProtocol {
         fun extract(tag: String, field: String): String =
@@ -1743,13 +1665,14 @@ Each FILEZCP must be self-contained for independent implementation.
     }
 
     private fun parseFileTree(raw: String): List<FileNode> =
-        Regex("§TREE\\{([^}]+)\\}").findAll(raw).map { m ->
+        Regex("§TREE\\{([^}]+)\\}").findAll(raw).mapNotNull { m ->
             val kv = m.groupValues[1].split("|").associate {
                 val p = it.split(":", limit = 2)
                 p[0].trim() to (p.getOrNull(1)?.trim() ?: "")
             }
-            FileNode(path = kv["path"] ?: "", isDir = kv["type"] == "dir", description = kv["desc"] ?: "")
-        }.filter { it.path.isNotEmpty() }.toList()
+            val path = kv["path"] ?: return@mapNotNull null
+            if (path.isNotEmpty()) FileNode(path = path, isDir = kv["type"] == "dir", description = kv["desc"] ?: "") else null
+        }
 
     private fun parseFileSpecs(raw: String): Map<String, FileSpec> {
         val specs = mutableMapOf<String, FileSpec>()
@@ -1759,18 +1682,13 @@ Each FILEZCP must be self-contained for independent implementation.
                 p[0].trim() to (p.getOrNull(1)?.trim() ?: "")
             }
             val path = kv["path"] ?: return@forEach
-            if (path.isNotEmpty()) {
-                specs[path] = FileSpec(
-                    path = path,
-                    description = kv["description"] ?: "",
-                    imports = kv["imports"] ?: "",
-                    classes = kv["classes"] ?: "",
-                    functions = kv["functions"] ?: "",
-                    dependencies = (kv["dependencies"] ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() },
-                    estimatedTokens = (kv["estimatedTokens"] ?: "0").toIntOrNull() ?: 0,
-                    continuationOf = kv["continuationOf"] ?: ""
-                )
-            }
+            if (path.isNotEmpty()) specs[path] = FileSpec(
+                path = path, description = kv["description"] ?: "",
+                imports = kv["imports"] ?: "", classes = kv["classes"] ?: "", functions = kv["functions"] ?: "",
+                dependencies = (kv["dependencies"] ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() },
+                estimatedTokens = (kv["estimatedTokens"] ?: "0").toIntOrNull() ?: 0,
+                continuationOf = kv["continuationOf"] ?: ""
+            )
         }
         return specs
     }
@@ -1778,8 +1696,7 @@ Each FILEZCP must be self-contained for independent implementation.
     private fun parseSearchIntents(raw: String): List<SearchIntent> =
         Regex("§SEARCH\\{([^}]+)\\}").findAll(raw).map { m ->
             val kv = m.groupValues[1].split("|").associate {
-                val p = it.split(":", limit = 2)
-                p[0].trim() to (p.getOrNull(1)?.trim() ?: "")
+                val p = it.split(":", limit = 2); p[0].trim() to (p.getOrNull(1)?.trim() ?: "")
             }
             SearchIntent(kv["topic"] ?: "", kv["platform"] ?: "", kv["question"] ?: "", kv["category"] ?: "general")
         }.toList()
@@ -1791,65 +1708,66 @@ Each FILEZCP must be self-contained for independent implementation.
             SearchResult(intent, content, intent.category, true)
         }
 
-    // ── URL Fetcher ───────────────────────────────────────────────────────────
+    // ── Search ─────────────────────────────────────────────────────────────
 
+    /** Actual web search using ToolManager — not domain homepages. */
     private suspend fun fetchSearchContent(): Map<String, String> = withContext(Dispatchers.IO) {
         val result = mutableMapOf<String, String>()
         zcp.searchIntents.forEach { intent ->
-            val domains = InventStorage.resolveDomainsForCategory(ctx, intent.category)
-            domains.forEach { domain ->
-                if (!result.containsKey(intent.category)) {
+            val key = intent.category
+            if (!result.containsKey(key)) {
+                val query = intent.question.ifEmpty { "${intent.topic} ${intent.platform}" }
+                if (query.isNotBlank()) {
+                    val args = JSONObject().apply { put("query", query); put("num_results", 3) }
+                    val call = ToolCall("search_${System.currentTimeMillis()}", "web_search", args)
                     try {
-                        val conn = URL("https://$domain").openConnection()
-                        conn.connectTimeout = 5000
-                        conn.readTimeout = 5000
-                        val text = conn.getInputStream().bufferedReader().readText()
-                        result[intent.category] = text
-                            .replace(Regex("<[^>]+>"), " ")
-                            .replace(Regex("\\s+"), " ")
-                            .take(3000)
-                    } catch (e: Exception) {
-                        result[intent.category] = "[fetch failed: ${e.message}]"
-                    }
-                }
+                        val res = toolManager.executeTool(call)
+                        val text = res.result.trim()
+                        result[key] = if (text.isNotBlank() && !text.startsWith("Error", true) &&
+                            !text.startsWith("No results", true) && !text.startsWith("Web search failed", true)
+                        ) text.take(3000) else "[No search results for: $query]"
+                    } catch (e: Exception) { result[key] = "[Search failed: ${e.message}]" }
+                } else result[key] = "[No query available]"
             }
         }
         result
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    private fun runWebSearch(query: String): String? {
+        val args = JSONObject().apply { put("query", query); put("num_results", 3) }
+        val call = ToolCall("invent_${System.currentTimeMillis()}", "web_search", args)
+        return try {
+            val res = toolManager.executeTool(call); val text = res.result.trim()
+            if (text.isBlank() || text.startsWith("Error", true) || text.startsWith("No results", true)) null else text
+        } catch (e: Exception) { null }
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────
 
     private fun addMessage(role: String, content: String, phase: InventPhase) {
         val updated = _ui.value.messages + InventMessage(role, content, phase)
         _ui.value = _ui.value.copy(messages = updated)
         sessionState = sessionState?.copy(messages = updated)
-        saveCurrentState()
     }
 
     private fun updatePhase(phase: InventPhase) {
         _ui.value = _ui.value.copy(phase = phase)
         sessionState = sessionState?.copy(phase = phase)
-        saveCurrentState()
+        saveAllState()
     }
 
     private fun updateSearchRound(round: Int) {
         _ui.value = _ui.value.copy(searchRound = round)
         sessionState = sessionState?.copy(searchRound = round)
-        saveCurrentState()
+        saveAllState()
     }
 
     private fun setSwap(info: String) { _ui.value = _ui.value.copy(swapInfo = info) }
 
-    private fun saveCurrentState() {
-        sessionState?.let { InventStorage.saveSession(ctx, it) }
-        // Sync projectName from ZCP to UI
-        if (zcp.projectName.isNotEmpty() && _ui.value.projectName != zcp.projectName) {
-            _ui.value = _ui.value.copy(projectName = zcp.projectName)
-        }
-    }
-
     override fun onCleared() {
         super.onCleared()
-        viewModelScope.launch(Dispatchers.IO) { engineManager.unloadAll() }
+        kotlinx.coroutines.runBlocking {
+            withTimeout(2000L) { withContext(Dispatchers.IO) { engineManager.unloadAll() } }
+        }
     }
 }

@@ -634,7 +634,7 @@ private suspend fun loadModel(
   }
 
   val tunedConfig = if (model.format == "gguf") {
-    val nativeCtx = com.gguf.zerocopy.domain.invent.GgufMetaReader.readContextLength(model.path)
+    val nativeCtx = com.gguf.zerocopy.domain.invent.GgufMetaReader.readContextLength(model.path) ?: -1
     if (nativeCtx > 0 && (config.nCtx <= 0 || config.nCtx > nativeCtx)) {
       config.copy(nCtx = nativeCtx)
     } else config

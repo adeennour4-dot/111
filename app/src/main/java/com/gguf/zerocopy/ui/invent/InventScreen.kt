@@ -36,6 +36,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
@@ -113,6 +115,7 @@ fun InventScreen(
     offlineMode: Boolean, sameModelMode: Boolean,
     onBack: () -> Unit,
     onModelsClick: () -> Unit,
+    onNewSession: (() -> Unit)? = null,
     vm: InventViewModel = viewModel()
 ) {
     val ui by vm.ui.collectAsState()
@@ -132,32 +135,42 @@ fun InventScreen(
     // Build log lines from messages
     val logLines = remember(ui.messages, ui.phase) { buildLog(ui.messages, ui.phase) }
 
+    val scope = rememberCoroutineScope()
     val filePickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
-        uris.forEach { uri ->
-            try {
-                val dir = File(context.filesDir, "invent_attachments").also { it.mkdirs() }
-                val mime = context.contentResolver.getType(uri) ?: "*/*"
-                val ext = when {
-                    mime.contains("text") || mime.contains("json") || mime.contains("kotlin") ||
-                    mime.contains("python") || mime.contains("java") || mime.contains("xml") ||
-                    mime.contains("javascript") || mime.contains("html") || mime.contains("css") ||
-                    mime.contains("yaml") || mime.contains("toml") || mime.contains("md") ->
-                        ".${mime.substringAfterLast('/')}"
-                    mime.contains("pdf") -> ".pdf"
-                    else -> ".bin"
-                }
-                val name = "att_${System.currentTimeMillis()}$ext"
-                val file = File(dir, name)
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    file.outputStream().use { output -> input.copyTo(output) }
-                }
-                val content = if (file.length() < 50_000) file.readText()
-                    else "[File too large: ${file.length()} bytes]"
-                vm.sendUserMessage("[Attached: ${uri.lastPathSegment}]\n\n$content",
-                    planWithSearch = showSearch, thinkTag = showThinking)
-            } catch (_: Exception) { }
+        scope.launch {
+            uris.forEach { uri ->
+                try {
+                    // Copy file to app storage on IO dispatcher
+                    val file = withContext(Dispatchers.IO) {
+                        val dir = File(context.filesDir, "invent_attachments").also { it.mkdirs() }
+                        val mime = context.contentResolver.getType(uri) ?: "*/*"
+                        val ext = when {
+                            mime.contains("text") || mime.contains("json") || mime.contains("kotlin") ||
+                            mime.contains("python") || mime.contains("java") || mime.contains("xml") ||
+                            mime.contains("javascript") || mime.contains("html") || mime.contains("css") ||
+                            mime.contains("yaml") || mime.contains("toml") || mime.contains("md") ->
+                                ".${mime.substringAfterLast('/')}"
+                            mime.contains("pdf") -> ".pdf"
+                            else -> ".bin"
+                        }
+                        val name = "att_${System.currentTimeMillis()}$ext"
+                        val f = File(dir, name)
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            f.outputStream().use { output -> input.copyTo(output) }
+                        }
+                        f
+                    }
+                    // Read content off main thread
+                    val content = withContext(Dispatchers.IO) {
+                        if (file.length() < 50_000) file.readText()
+                        else "[File too large: ${file.length()} bytes]"
+                    }
+                    vm.sendUserMessage("[Attached: ${uri.lastPathSegment}]\n\n$content",
+                        planWithSearch = showSearch, thinkTag = showThinking)
+                } catch (_: Exception) { }
+            }
         }
     }
 
@@ -219,7 +232,9 @@ fun InventScreen(
                         }
                     },
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
+                        IconButton(onClick = {
+                            if (vm.isBusyGenerating()) vm.setNavigateAway(true) else onBack()
+                        }) {
                             Icon(Icons.Filled.ArrowBack, "Back", tint = colors.Text2, modifier = Modifier.size(20.dp))
                         }
                     },
@@ -262,9 +277,13 @@ fun InventScreen(
                             ) {
                                 Icon(Icons.Filled.Save, "Save", tint = colors.Text2, modifier = Modifier.size(14.dp))
                             }
-                            // New session
+                            // New session — reset to setup
                             IconButton(
-                                onClick = { vm.startNewSession { onModelsClick() } },
+                                onClick = {
+                                    vm.startNewSession {
+                                        onNewSession?.invoke()
+                                    }
+                                },
                                 modifier = Modifier.size(24.dp).clip(RoundedCornerShape(6.dp))
                                     .background(Color.White.copy(alpha = 0.08f))
                             ) {
@@ -484,6 +503,23 @@ fun InventScreen(
                         modelPickerRole = null; showSettingsPopup = true
                     },
                     colors = colors
+                )
+            }
+            // ── Navigation guard ───────────────────────────────────────────
+            if (ui.showNavigateAwayDialog) {
+                AlertDialog(
+                    onDismissRequest = { vm.setNavigateAway(false) },
+                    title = { Text("Generation in Progress", fontFamily = FontFamily.Monospace) },
+                    text = { Text("A project is being generated. If you leave now, files already generated will be saved. You can resume later.", fontFamily = FontFamily.Monospace) },
+                    confirmButton = {
+                        TextButton(onClick = { vm.setNavigateAway(false); onBack() }) {
+                            Text("Leave", fontFamily = FontFamily.Monospace) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { vm.setNavigateAway(false) }) {
+                            Text("Stay", fontFamily = FontFamily.Monospace) }
+                    },
+                    containerColor = colors.Card
                 )
             }
         }
@@ -932,7 +968,8 @@ fun SettingsPopup(onDismiss: () -> Unit, colors: ZcPalette,
     model1Path: String, model2Path: String, researcherPath: String, initialTab: Int = 0,
     modelMode: ModelMode = ModelMode.TRIPLE, restrictRole: Int = -1,
     onReload: () -> Unit = {}) {
-    var settingsTab by remember { mutableStateOf(initialTab) }
+    // Reset tab when initialTab changes (e.g., opening from different model role clicks)
+    var settingsTab by remember(initialTab) { mutableStateOf(initialTab) }
 
     val getCfg = { role: String, _: String ->
         SettingsManager.getInventModelConfig(role) ?: SettingsManager.getModelTokenConfig("")
