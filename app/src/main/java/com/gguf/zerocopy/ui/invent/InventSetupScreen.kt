@@ -44,10 +44,16 @@ fun InventSetupScreen(
     var researcherPath by remember { mutableStateOf("") }
     var researcherName by remember { mutableStateOf("") }
     var offlineMode by remember { mutableStateOf(false) }
-    var sameModelMode by remember { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf<String?>(null) } // "m1","m2","res"
+    // 1 = one model all roles, 2 = researcher + combined, 3 = all separate
+    var modelMode by remember { mutableStateOf(1) }
 
-    val canStart = model1Path.isNotEmpty() && (sameModelMode || model2Path.isNotEmpty()) && researcherPath.isNotEmpty()
+    val canStart = when (modelMode) {
+        1 -> model1Path.isNotEmpty()
+        2 -> researcherPath.isNotEmpty() && model1Path.isNotEmpty()
+        3 -> model1Path.isNotEmpty() && model2Path.isNotEmpty() && researcherPath.isNotEmpty()
+        else -> false
+    }
 
     Scaffold(
         topBar = {
@@ -142,80 +148,106 @@ fun InventSetupScreen(
                 }
             }
 
-            // ── Model pickers ───────────────────────────────────────────────
-            InventModelPickerCard(
-                label = "⚙  Planner Model",
-                subtitle = "Logic — asks questions & plans the project",
-                selected = model1Name,
-                onPick = { showPicker = "m1" },
-                onSettings = { if (model1Path.isNotEmpty()) modelSettingsRole.value = "Planner" },
-                colors = colors
-            )
-
-
-            // ── Same model toggle ───────────────────────────────────────────────────
+            // ── Model mode selector ────────────────────────────────────────
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = colors.Card,
-                border = BorderStroke(1.dp, if (sameModelMode) colors.Accent.copy(0.4f) else colors.Border),
+                border = BorderStroke(1.dp, colors.Border),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Use same model for Planner + Coder", fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold, color = colors.Text,
-                            fontFamily = FontFamily.Monospace)
-                        Text(
-                            if (sameModelMode) "Planner model handles both roles — saves RAM."
-                            else "Separate coder model for code-heavy projects.",
-                            fontSize = 11.sp, color = colors.Text3, fontFamily = FontFamily.Monospace
-                        )
+                Column(Modifier.padding(14.dp)) {
+                    Text("How many models?", fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                        color = colors.Text, fontFamily = FontFamily.Monospace)
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(1, 2, 3).forEach { mode ->
+                            val active = modelMode == mode
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (active) colors.Accent.copy(alpha = 0.2f) else colors.Surface,
+                                border = BorderStroke(1.dp, if (active) colors.Accent else colors.Border),
+                                modifier = Modifier.weight(1f).clickable { modelMode = mode }
+                            ) {
+                                Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("$mode", fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                                        color = if (active) colors.Accent else colors.Text2,
+                                        fontFamily = FontFamily.Monospace)
+                                    Text(
+                                        when (mode) {
+                                            1 -> "All-in-one"
+                                            2 -> "Two models"
+                                            else -> "Three models"
+                                        },
+                                        fontSize = 9.sp, color = if (active) colors.Accent else colors.Text3,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+                        }
                     }
-                    Switch(
-                        checked = sameModelMode,
-                        onCheckedChange = { sameModelMode = it },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = colors.Accent,
-                            checkedTrackColor = colors.Accent.copy(alpha = 0.3f)
-                        )
+                }
+            }
+
+            // ── Model group cards ──────────────────────────────────────────
+            when (modelMode) {
+                1 -> {
+                    // One card: Planner + Researcher + Coder (all same model)
+                    InventGroupCard(
+                        roles = "Planner + Researcher + Coder",
+                        subtitle = "One model handles all three roles",
+                        selected = model1Name,
+                        onPick = { showPicker = "m1" },
+                        onSettings = { if (model1Path.isNotEmpty()) modelSettingsRole.value = "Planner" },
+                        colors = colors
+                    )
+                }
+                2 -> {
+                    // Two cards: Researcher + Planner+Coder
+                    InventGroupCard(
+                        roles = "🔍  Researcher",
+                        subtitle = "~1B — searches web & extracts info",
+                        selected = researcherName,
+                        onPick = { showPicker = "res" },
+                        onSettings = { if (researcherPath.isNotEmpty()) modelSettingsRole.value = "Researcher" },
+                        colors = colors
+                    )
+                    InventGroupCard(
+                        roles = "⚙  Planner + 💻  Coder",
+                        subtitle = "Logic, planning & code generation",
+                        selected = model1Name,
+                        onPick = { showPicker = "m1" },
+                        onSettings = { if (model1Path.isNotEmpty()) modelSettingsRole.value = "Planner" },
+                        colors = colors
+                    )
+                }
+                3 -> {
+                    // Three separate cards
+                    InventGroupCard(
+                        roles = "⚙  Planner",
+                        subtitle = "Logic — asks questions & plans the project",
+                        selected = model1Name,
+                        onPick = { showPicker = "m1" },
+                        onSettings = { if (model1Path.isNotEmpty()) modelSettingsRole.value = "Planner" },
+                        colors = colors
+                    )
+                    InventGroupCard(
+                        roles = "💻  Coder",
+                        subtitle = "Code-specialized — builds the implementation plan",
+                        selected = model2Name,
+                        onPick = { showPicker = "m2" },
+                        onSettings = { if (model2Path.isNotEmpty()) modelSettingsRole.value = "Coder" },
+                        colors = colors
+                    )
+                    InventGroupCard(
+                        roles = "🔍  Researcher",
+                        subtitle = "~1B — searches web & extracts info",
+                        selected = researcherName,
+                        onPick = { showPicker = "res" },
+                        onSettings = { if (researcherPath.isNotEmpty()) modelSettingsRole.value = "Researcher" },
+                        colors = colors
                     )
                 }
             }
-
-            if (!sameModelMode) InventModelPickerCard(
-                label = "💻  Coder Model",
-                subtitle = "Code-specialized — builds the implementation plan",
-                selected = model2Name,
-                onPick = { showPicker = "m2" },
-                onSettings = { if (model2Path.isNotEmpty()) modelSettingsRole.value = "Coder" },
-                colors = colors
-            ) else {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = colors.Card,
-                    border = BorderStroke(1.dp, colors.Accent.copy(0.4f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("💻  Coder Model", fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                                color = colors.Text, fontFamily = FontFamily.Monospace)
-                            Text("Using same model as Planner", fontSize = 11.sp, color = colors.Accent2,
-                                fontFamily = FontFamily.Monospace)
-                        }
-                        Icon(Icons.Filled.CheckCircle, null, tint = colors.Accent2, modifier = Modifier.size(22.dp))
-                    }
-                }
-            }
-
-            InventModelPickerCard(
-                label = "🔍  Researcher Model",
-                subtitle = "~1B — searches web & extracts info",
-                selected = researcherName,
-                onPick = { showPicker = "res" },
-                onSettings = { if (researcherPath.isNotEmpty()) modelSettingsRole.value = "Researcher" },
-                colors = colors
-            )
 
             // ── Offline toggle ──────────────────────────────────────────────
             Surface(
@@ -264,10 +296,15 @@ fun InventSetupScreen(
                         else Brush.horizontalGradient(listOf(colors.Border, colors.Border))
                     )
                     .then(if (canStart) Modifier.clickable {
-                        onStart(model1Path, model1Name,
-                            if (sameModelMode) model1Path else model2Path,
-                            if (sameModelMode) model1Name else model2Name,
-                            researcherPath, researcherName, offlineMode, sameModelMode)
+                        val coderPath = if (modelMode == 3) model2Path else model1Path
+                        val coderName = if (modelMode == 3) model2Name else model1Name
+                        val allSame = modelMode == 1
+                        onStart(
+                            model1Path, model1Name,
+                            coderPath, coderName,
+                            researcherPath, researcherName,
+                            offlineMode, allSame
+                        )
                     } else Modifier),
                 contentAlignment = Alignment.Center
             ) {
@@ -418,8 +455,8 @@ fun ModelSettingsDialog(
 }
 
 @Composable
-fun InventModelPickerCard(
-    label: String,
+fun InventGroupCard(
+    roles: String,
     subtitle: String,
     selected: String,
     onPick: () -> Unit,
@@ -432,33 +469,41 @@ fun InventModelPickerCard(
         border = BorderStroke(1.dp, if (selected.isNotEmpty()) colors.Accent.copy(0.4f) else colors.Border),
         modifier = Modifier.fillMaxWidth().clickable { onPick() }
     ) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                    color = colors.Text, fontFamily = FontFamily.Monospace)
-                Text(subtitle, fontSize = 11.sp, color = colors.Text3,
-                    fontFamily = FontFamily.Monospace)
-                if (selected.isNotEmpty()) {
-                    Spacer(Modifier.height(4.dp))
-                    Text("✓  $selected", fontSize = 11.sp, color = colors.Accent2,
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(roles, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                        color = colors.Text, fontFamily = FontFamily.Monospace)
+                    Text(subtitle, fontSize = 11.sp, color = colors.Text3,
                         fontFamily = FontFamily.Monospace)
                 }
+                if (selected.isNotEmpty() && onSettings != null) {
+                    IconButton(
+                        onClick = onSettings,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(Icons.Filled.Settings, "Settings", tint = colors.Text3, modifier = Modifier.size(16.dp))
+                    }
+                }
+                Icon(
+                    if (selected.isNotEmpty()) Icons.Filled.CheckCircle else Icons.Outlined.AddCircleOutline,
+                    null,
+                    tint = if (selected.isNotEmpty()) colors.Accent2 else colors.Text3,
+                    modifier = Modifier.size(22.dp)
+                )
             }
-            if (selected.isNotEmpty() && onSettings != null) {
-                // Settings gear button — opens config for this model
-                IconButton(
-                    onClick = onSettings,
-                    modifier = Modifier.size(28.dp)
+            if (selected.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = colors.Accent.copy(alpha = 0.1f),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Filled.Settings, "Settings", tint = colors.Text3, modifier = Modifier.size(16.dp))
+                    Text("   Model:  $selected", fontSize = 12.sp, color = colors.Accent2,
+                        fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(vertical = 5.dp, horizontal = 8.dp))
                 }
             }
-            Icon(
-                if (selected.isNotEmpty()) Icons.Filled.CheckCircle else Icons.Outlined.AddCircleOutline,
-                null,
-                tint = if (selected.isNotEmpty()) colors.Accent2 else colors.Text3,
-                modifier = Modifier.size(22.dp)
-            )
         }
     }
 }
