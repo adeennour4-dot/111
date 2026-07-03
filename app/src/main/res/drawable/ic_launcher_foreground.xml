@@ -4,39 +4,32 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Outer bloom glow (40dp, 8% alpha) - large soft aura -->
-    <path
-        android:fillColor="#0D00E5A0"
-        android:pathData="M20,20 L52,20 C53.1,20 54,20.9 54,22 L54,50 C54,51.1 53.1,52 52,52 L22,52 C20.9,52 20,51.1 20,50 Z"/>
-    <!-- Primary square glow (28dp, 20% alpha) -->
-    <path
-        android:fillColor="#3300E5A0"
-        android:pathData="M22,22 L50,22 C51.1,22 52,22.9 52,24 L52,50 C52,51.1 51.1,52 50,52 L24,52 C22.9,52 22,51.1 22,50 Z"/>
-    <!-- Inner square glow (20dp, 30% alpha) -->
-    <path
-        android:fillColor="#4D00E5A0"
-        android:pathData="M25,25 L47,25 C48.1,25 49,25.9 49,27 L49,45 C49,46.1 48.1,47 47,47 L27,47 C25.9,47 25,46.1 25,45 Z"/>
-    <!-- Small rounded cube (14dp, solid) -->
+
+    <!-- ─── Left side: square + circle on top ─── -->
+
+    <!-- Main square (14dp solid cyan) -->
     <path
         android:fillColor="#00E5A0"
         android:pathData="M29,29 L41,29 C42.1,29 43,29.9 43,31 L43,41 C43,42.1 42.1,43 41,43 L31,43 C29.9,43 29,42.1 29,41 Z"/>
 
-    <!-- Outer bloom glow for circle (radius 14, 8% alpha) -->
+    <!-- Circle ON the main square (5dp white, positioned top-right on square) -->
     <path
-        android:fillColor="#0D7C5CFF"
-        android:pathData="M72,72 m-14,0 a14,14 0,1 1,28 0 a14,14 0,1 1,-28 0"/>
-    <!-- Primary circle glow (radius 12, 20% alpha) -->
-    <path
-        android:fillColor="#337C5CFF"
-        android:pathData="M72,72 m-12,0 a12,12 0,1 1,24 0 a12,12 0,1 1,-24 0"/>
-    <!-- Inner circle glow (radius 9, 30% alpha) -->
-    <path
-        android:fillColor="#4D7C5CFF"
-        android:pathData="M72,72 m-9,0 a9,9 0,1 1,18 0 a9,9 0,1 1,-18 0"/>
-    <!-- Small circle (radius 7, solid) -->
+        android:fillColor="#FFFFFF"
+        android:pathData="M40,30 m-2.5,0 a2.5,2.5 0,1 1,5 0 a2.5,2.5 0,1 1,-5 0"/>
+
+    <!-- ─── Right side: purple square behind + main circle ─── -->
+
+    <!-- Purple square behind the main circle (12dp, behind/below circle) -->
     <path
         android:fillColor="#7C5CFF"
+        android:pathData="M65,65 L79,65 C80.1,65 81,65.9 81,67 L81,79 C81,80.1 80.1,81 79,81 L67,81 C65.9,81 65,80.1 65,79 Z"/>
+
+    <!-- Main circle (radius 7 solid purple, on top of the square) -->
+    <path
+        android:fillColor="#00E5A0"
         android:pathData="M72,72 m-7,0 a7,7 0,1 1,14 0 a7,7 0,1 1,-14 0"/>
+
+    <!-- ─── Center: Plus sign ─── -->
 
     <!-- Plus sign horizontal bar (rounded ends) -->
     <path
@@ -46,4 +39,5 @@
     <path
         android:fillColor="#F0F0F8"
         android:pathData="M50,43 L50,65 Q50,69 54,69 Q58,69 58,65 L58,43 Q58,39 54,39 Q50,39 50,43 Z"/>
+
 </vector>
