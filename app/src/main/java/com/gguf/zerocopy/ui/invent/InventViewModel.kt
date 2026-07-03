@@ -1249,7 +1249,6 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             // 1. Save the current conversation under the old session ID
             saveAllState()
             // 2. Assign a new session ID so the old one is preserved in history
-            val oldId = sessionId
             val newId = UUID.randomUUID().toString().take(8)
             sessionId = newId
             val s = _ui.value
