@@ -55,6 +55,9 @@ fun InventSetupScreen(
         else -> false
     }
 
+    // State for model settings dialog (function scope — used inside Scaffold and picker dialog)
+    val modelSettingsRole = remember { mutableStateOf<String?>(null) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -72,10 +75,7 @@ fun InventSetupScreen(
         },
         containerColor = colors.Bg
     ) { pad ->
-        // State for model settings dialog
-        val modelSettingsRole = remember { mutableStateOf<String?>(null) }
-
-        // Show model settings dialog when requested
+        // Show model settings dialog when requested (declaration is in outer scope)
         modelSettingsRole.value?.let { role ->
             val modelPath = when (role) {
                 "Planner" -> model1Path; "Coder" -> model2Path; else -> researcherPath
