@@ -5,46 +5,44 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- ─── Left side: teal square + darker teal circle at 30% opacity ─── -->
+    <!-- ─── Center: Cyan + sign with rounded corners + glow ─── -->
 
-    <path
-        android:fillColor="#00E5A0"
-        android:pathData="M29,29 L41,29 C42.1,29 43,29.9 43,31 L43,41 C43,42.1 42.1,43 41,43 L31,43 C29.9,43 29,42.1 29,41 Z"/>
-    <path
-        android:fillColor="#4D00E5A0"
-        android:pathData="M40,30 m-2.5,0 a2.5,2.5 0,1 1,5 0 a2.5,2.5 0,1 1,-5 0"/>
-
-    <!-- ─── Right side: purple square + small darker purple circle at 30% opacity ─── -->
-
-    <path
-        android:fillColor="#7C5CFF"
-        android:pathData="M65,65 L79,65 C80.1,65 81,65.9 81,67 L81,79 C81,80.1 80.1,81 79,81 L67,81 C65.9,81 65,80.1 65,79 Z"/>
-    <path
-        android:fillColor="#4D7C5CFF"
-        android:pathData="M78,67 m-3,0 a3,3 0,1 1,6 0 a3,3 0,1 1,-6 0"/>
-
-    <!-- ─── Plus sign with glow layers ─── -->
-
-    <!-- Outer glow (12% white, scale 1.12 from center 54,54) -->
+    <!-- Outer glow (15% cyan, scale 1.12) -->
     <group android:pivotX="54" android:pivotY="54" android:scaleX="1.12" android:scaleY="1.12">
-        <path android:fillColor="#1FFFFFFF"
+        <path android:fillColor="#2600E5A0"
             android:pathData="M43,50 L65,50 Q69,50 69,54 Q69,58 65,58 L43,58 Q39,58 39,54 Q39,50 43,50 Z"/>
-        <path android:fillColor="#1FFFFFFF"
+        <path android:fillColor="#2600E5A0"
             android:pathData="M50,43 L50,65 Q50,69 54,69 Q58,69 58,65 L58,43 Q58,39 54,39 Q50,39 50,43 Z"/>
     </group>
-
-    <!-- Mid glow (25% teal horizontal, 25% purple vertical, scale 1.06) -->
-    <group android:pivotX="54" android:pivotY="54" android:scaleX="1.06" android:scaleY="1.06">
-        <path android:fillColor="#4000E5A0"
+    <!-- Inner glow (30% cyan, scale 1.05) -->
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="1.05" android:scaleY="1.05">
+        <path android:fillColor="#4D00E5A0"
             android:pathData="M43,50 L65,50 Q69,50 69,54 Q69,58 65,58 L43,58 Q39,58 39,54 Q39,50 43,50 Z"/>
-        <path android:fillColor="#407C5CFF"
+        <path android:fillColor="#4D00E5A0"
             android:pathData="M50,43 L50,65 Q50,69 54,69 Q58,69 58,65 L58,43 Q58,39 54,39 Q50,39 50,43 Z"/>
     </group>
-
-    <!-- Main plus (solid white) -->
-    <path android:fillColor="#F0F0F8"
+    <!-- Main plus (solid cyan) -->
+    <path android:fillColor="#00E5A0"
         android:pathData="M43,50 L65,50 Q69,50 69,54 Q69,58 65,58 L43,58 Q39,58 39,54 Q39,50 43,50 Z"/>
-    <path android:fillColor="#F0F0F8"
+    <path android:fillColor="#00E5A0"
         android:pathData="M50,43 L50,65 Q50,69 54,69 Q58,69 58,65 L58,43 Q58,39 54,39 Q50,39 50,43 Z"/>
+
+    <!-- ─── Top-right: Teal rounded cube + bigger circle at 40% opacity ─── -->
+
+    <!-- Bigger circle (40% bigger than cube → radius 10, 40% opacity) -->
+    <path android:fillColor="#6600E5A0"
+        android:pathData="M72,30 m-10,0 a10,10 0,1 1,20 0 a10,10 0,1 1,-20 0"/>
+    <!-- Rounded-edge cube (14×14, corner radius 3, solid teal) -->
+    <path android:fillColor="#00E5A0"
+        android:pathData="M65,26 A3,3 0,0,1 68,23 L76,23 A3,3 0,0,1 79,26 L79,34 A3,3 0,0,1 76,37 L68,37 A3,3 0,0,1 65,34 Z"/>
+
+    <!-- ─── Bottom-left: Purple circle + 40% bigger rounded cube at 40% opacity ─── -->
+
+    <!-- 40% bigger rounded cube (20×20, corner radius 4, 40% opacity) -->
+    <path android:fillColor="#667C5CFF"
+        android:pathData="M26,72 A4,4 0,0,1 30,68 L42,68 A4,4 0,0,1 46,72 L46,84 A4,4 0,0,1 42,88 L30,88 A4,4 0,0,1 26,84 Z"/>
+    <!-- Purple circle (radius 7, solid) -->
+    <path android:fillColor="#7C5CFF"
+        android:pathData="M36,78 m-7,0 a7,7 0,1 1,14 0 a7,7 0,1 1,-14 0"/>
 
 </vector>
