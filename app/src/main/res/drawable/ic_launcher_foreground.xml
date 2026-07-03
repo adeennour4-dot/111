@@ -5,29 +5,27 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- ─── Left side: square + circle on top ─── -->
+    <!-- ─── Left side: teal square + darker teal circle at 30% opacity ─── -->
 
-    <!-- Main square (14dp solid cyan) -->
+    <!-- Main square (14dp solid teal) -->
     <path
         android:fillColor="#00E5A0"
         android:pathData="M29,29 L41,29 C42.1,29 43,29.9 43,31 L43,41 C43,42.1 42.1,43 41,43 L31,43 C29.9,43 29,42.1 29,41 Z"/>
-
-    <!-- Circle ON the main square (5dp white, positioned top-right on square) -->
+    <!-- Circle at 30% opacity (same teal, semi-transparent) on top-right of square -->
     <path
-        android:fillColor="#FFFFFF"
+        android:fillColor="#4D00E5A0"
         android:pathData="M40,30 m-2.5,0 a2.5,2.5 0,1 1,5 0 a2.5,2.5 0,1 1,-5 0"/>
 
-    <!-- ─── Right side: purple square behind + main circle ─── -->
+    <!-- ─── Right side: purple square + small darker purple circle at 30% opacity ─── -->
 
-    <!-- Purple square behind the main circle (12dp, behind/below circle) -->
+    <!-- Big purple square (14dp solid) -->
     <path
         android:fillColor="#7C5CFF"
         android:pathData="M65,65 L79,65 C80.1,65 81,65.9 81,67 L81,79 C81,80.1 80.1,81 79,81 L67,81 C65.9,81 65,80.1 65,79 Z"/>
-
-    <!-- Main circle (radius 7 solid purple, on top of the square) -->
+    <!-- Circle at 30% opacity (same purple, semi-transparent) on top-right of square -->
     <path
-        android:fillColor="#00E5A0"
-        android:pathData="M72,72 m-7,0 a7,7 0,1 1,14 0 a7,7 0,1 1,-14 0"/>
+        android:fillColor="#4D7C5CFF"
+        android:pathData="M78,67 m-3,0 a3,3 0,1 1,6 0 a3,3 0,1 1,-6 0"/>
 
     <!-- ─── Center: Plus sign ─── -->
 
