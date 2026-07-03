@@ -1246,8 +1246,16 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     fun restartConversation() {
         // Keep session, models, and mode — just clear messages and reset phase
         viewModelScope.launch(Dispatchers.IO) {
+            // 1. Save the current conversation under the old session ID
+            saveAllState()
+            // 2. Assign a new session ID so the old one is preserved in history
+            val oldId = sessionId
+            val newId = UUID.randomUUID().toString().take(8)
+            sessionId = newId
             val s = _ui.value
+            // 3. Reset UI state with new session ID
             _ui.value = s.copy(
+                sessionId = newId,
                 phase = InventPhase.QUESTIONING,
                 messages = emptyList(),
                 fileTree = emptyList(),
@@ -1257,15 +1265,18 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 showSureButtons = false, error = "", swapInfo = "",
                 zipReady = false, debugMode = false
             )
-            // Reset ZCP protocol state
+            // 4. Reset ZCP protocol and session state
             zcp = ZcpProtocol(offlineMode = s.offlineMode)
-            sessionState = sessionState?.copy(
-                phase = InventPhase.QUESTIONING,
-                messages = emptyList(),
-                fileTree = emptyList(),
-                currentFileIndex = 0, totalFiles = 0,
-                searchRound = 0, mergeCount = 0
-            )
+            sessionState = sessionState?.let { st ->
+                st.copy(
+                    sessionId = newId,
+                    phase = InventPhase.QUESTIONING,
+                    messages = emptyList(),
+                    searchRound = 0, mergeCount = 0,
+                    currentFileIndex = 0, totalFiles = 0
+                )
+            }
+            // 5. Save the fresh empty state
             saveAllState()
         }
     }
