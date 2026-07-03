@@ -1253,7 +1253,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             val newId = UUID.randomUUID().toString().take(8)
             sessionId = newId
             val s = _ui.value
-            // 3. Reset UI state with new session ID
+            // 3. Reset UI state with new session ID (explicitly clear isGenerating)
             _ui.value = s.copy(
                 sessionId = newId,
                 phase = InventPhase.QUESTIONING,
@@ -1263,7 +1263,8 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 searchRound = 0, mergeCount = 0,
                 totalLines = 0, totalGeneratedBytes = 0L, debugSessionCount = 0,
                 showSureButtons = false, error = "", swapInfo = "",
-                zipReady = false, debugMode = false
+                zipReady = false, debugMode = false,
+                isGenerating = false
             )
             // 4. Reset ZCP protocol and session state
             zcp = ZcpProtocol(offlineMode = s.offlineMode)

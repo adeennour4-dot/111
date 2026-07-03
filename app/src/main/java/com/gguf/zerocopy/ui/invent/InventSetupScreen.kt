@@ -298,11 +298,14 @@ fun InventSetupScreen(
                     .then(if (canStart) Modifier.clickable {
                         val coderPath = if (modelMode == 3) model2Path else model1Path
                         val coderName = if (modelMode == 3) model2Name else model1Name
+                        // In mode 1 (all same), researcher uses the same model as planner
+                        val actualResPath = if (modelMode == 1) model1Path else researcherPath
+                        val actualResName = if (modelMode == 1) model1Name else researcherName
                         val allSame = modelMode == 1
                         onStart(
                             model1Path, model1Name,
                             coderPath, coderName,
-                            researcherPath, researcherName,
+                            actualResPath, actualResName,
                             offlineMode, allSame
                         )
                     } else Modifier),
