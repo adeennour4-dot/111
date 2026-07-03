@@ -201,8 +201,8 @@ fun InventScreen(
                     }
                     HeaderBtn(Icons.Outlined.History, "Sessions", colors.Text2, onClick = { showSessions = true })
                     HeaderBtn(Icons.Filled.Settings, "Settings", colors.Text2, onClick = { showSettings = true })
-                    HeaderBtn(Icons.Filled.Add, "New", Color.White, onClick = {
-                        vm.startNewSession { onNewSession?.invoke() }
+                    HeaderBtn(Icons.Filled.Refresh, "Restart", Color.White, onClick = {
+                        vm.restartConversation()
                     })
                 }
                 // Progress bar
