@@ -469,7 +469,8 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun handleQuestioningReply(userText: String) {
-        val history = buildConversationHistory()
+        // Exclude last entry — it's the user message we just added via addMessage()
+        val history = buildConversationHistory(excludeLast = 1)
         val response = runInference(
             systemPrompt = buildQuestioningPrompt(),
             userMessage = userText, history = history
@@ -1140,7 +1141,8 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun handleDebuggingReply(userText: String) {
         val state = sessionState ?: return
-        val history = buildConversationHistory()
+        // Exclude last entry — it's the user message we just added via addMessage()
+        val history = buildConversationHistory(excludeLast = 1)
 
         // Provide project context for debugging
         val projectOverview = buildString {
@@ -1554,7 +1556,8 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
             val (h, f) = when (role) {
                 "user" -> "<start_of_turn>user\n" to "<end_of_turn>\n<start_of_turn>model\n"
                 "assistant" -> "<start_of_turn>model\n" to "<end_of_turn>\n"
-                else -> "<start_of_turn>user\n" to "<end_of_turn>\n<start_of_turn>model\n"
+                "system" -> "<start_of_turn>user\n" to "<end_of_turn>\n"
+                else -> "<start_of_turn>user\n" to "<end_of_turn>\n"
             }
             h to f
         }
@@ -1668,10 +1671,13 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
 
     // ── Conversation history ───────────────────────────────────────────────
 
-    private fun buildConversationHistory(): List<Pair<String, String>> =
+    /** Build conversation history, optionally excluding the last N messages
+     *  (used when the last message was just added and will be sent separately). */
+    private fun buildConversationHistory(excludeLast: Int = 0): List<Pair<String, String>> =
         _ui.value.messages
             .filter { it.role != "system" }
-            .takeLast(20)
+            .takeLast(20 + excludeLast)
+            .dropLast(excludeLast)
             .map { msg -> (if (msg.role == "user") "user" else "assistant") to msg.content }
 
     // ── Parsers with validation ────────────────────────────────────────────
