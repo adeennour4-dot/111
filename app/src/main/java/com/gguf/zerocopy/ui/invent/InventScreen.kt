@@ -445,12 +445,12 @@ private fun ModelPills(
         pills.add(2 to Triple("CODER", coderLoaded, coderName))
     }
     val accents = listOf(Am, Pr, Cy)
-    ScrollableTabRow(
-        selectedTabIndex = -1,
-        edgePadding = 10.dp,
-        modifier = Modifier.fillMaxWidth(),
-        containerColor = colors.Bg,
-        divider = {}
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         pills.forEach { (idx, info) ->
             val (label, loaded, name) = info
@@ -458,7 +458,7 @@ private fun ModelPills(
             val shortName = name.substringBeforeLast('.').take(10).ifEmpty { if (loaded) "ready" else "off" }
             Surface(
                 modifier = Modifier
-                    .padding(vertical = 3.dp, horizontal = 2.dp)
+                    .padding(vertical = 3.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .clickable { onTap(idx) },
                 color = if (loaded) accent.copy(alpha = 0.08f) else colors.Surface,
