@@ -972,7 +972,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         _ui.value = _ui.value.copy(currentModelLabel = "", processLabel = "")
     }
 
-    private fun appendPrerequisites(language: String, framework: String, platform: String) {
+    private fun StringBuilder.appendPrerequisites(language: String, framework: String, platform: String) {
         if (language.contains("kotlin", true) || language.contains("java", true) || platform.contains("android", true)) {
             appendLine("  - Android Studio (developer.android.com/studio)")
             appendLine("  - Android SDK (bundled with Android Studio)")
@@ -1672,7 +1672,7 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
             }
             val path = kv["path"] ?: return@mapNotNull null
             if (path.isNotEmpty()) FileNode(path = path, isDir = kv["type"] == "dir", description = kv["desc"] ?: "") else null
-        }
+        }.toList()
 
     private fun parseFileSpecs(raw: String): Map<String, FileSpec> {
         val specs = mutableMapOf<String, FileSpec>()
