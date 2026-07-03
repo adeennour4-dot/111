@@ -28,21 +28,23 @@
         android:pathData="M50,43 L50,65 Q50,69 54,69 Q58,69 58,65 L58,43 Q58,39 54,39 Q50,39 50,43 Z"/>
 
     <!-- ─── Top-right: Teal rounded cube + bigger circle at 40% opacity ─── -->
+    <!-- Centered at (81, 27) — middle of top-right quadrant -->
 
     <!-- Bigger circle (40% bigger than cube → radius 10, 40% opacity) -->
     <path android:fillColor="#6600E5A0"
-        android:pathData="M72,30 m-10,0 a10,10 0,1 1,20 0 a10,10 0,1 1,-20 0"/>
+        android:pathData="M81,27 m-10,0 a10,10 0,1 1,20 0 a10,10 0,1 1,-20 0"/>
     <!-- Rounded-edge cube (14×14, corner radius 3, solid teal) -->
     <path android:fillColor="#00E5A0"
-        android:pathData="M65,26 A3,3 0,0,1 68,23 L76,23 A3,3 0,0,1 79,26 L79,34 A3,3 0,0,1 76,37 L68,37 A3,3 0,0,1 65,34 Z"/>
+        android:pathData="M74,23 A3,3 0,0,1 77,20 L85,20 A3,3 0,0,1 88,23 L88,31 A3,3 0,0,1 85,34 L77,34 A3,3 0,0,1 74,31 Z"/>
 
     <!-- ─── Bottom-left: Purple circle + 40% bigger rounded cube at 40% opacity ─── -->
+    <!-- Centered at (27, 81) — middle of bottom-left quadrant -->
 
     <!-- 40% bigger rounded cube (20×20, corner radius 4, 40% opacity) -->
     <path android:fillColor="#667C5CFF"
-        android:pathData="M26,72 A4,4 0,0,1 30,68 L42,68 A4,4 0,0,1 46,72 L46,84 A4,4 0,0,1 42,88 L30,88 A4,4 0,0,1 26,84 Z"/>
+        android:pathData="M17,75 A4,4 0,0,1 21,71 L33,71 A4,4 0,0,1 37,75 L37,87 A4,4 0,0,1 33,91 L21,91 A4,4 0,0,1 17,87 Z"/>
     <!-- Purple circle (radius 7, solid) -->
     <path android:fillColor="#7C5CFF"
-        android:pathData="M36,78 m-7,0 a7,7 0,1 1,14 0 a7,7 0,1 1,-14 0"/>
+        android:pathData="M27,81 m-7,0 a7,7 0,1 1,14 0 a7,7 0,1 1,-14 0"/>
 
 </vector>
