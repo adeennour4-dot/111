@@ -242,7 +242,7 @@ fun InventScreen(
 
             // ── Chat scroll ─────────────────────────────────────────────────
             Box(Modifier.weight(1f)) {
-                if (chats.isEmpty() && ui.swapInfo.isEmpty() && ui.error.isEmpty()) {
+                if (chats.isEmpty() && ui.streamingResponse.isEmpty() && ui.swapInfo.isEmpty() && ui.error.isEmpty()) {
                     EmptyState(ui.phase, phaseColor, colors)
                 } else {
                     LazyColumn(
