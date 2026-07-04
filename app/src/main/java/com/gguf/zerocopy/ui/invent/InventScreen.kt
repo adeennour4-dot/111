@@ -601,7 +601,8 @@ private fun ChatBubbleCard(bubble: ChatBubble, colors: ZcPalette) {
 private fun StreamingCursor(color: Color) {
     val alpha = remember { Animatable(1f) }
     LaunchedEffect(Unit) {
-        while (isActive) {
+        // Infinite blink — cancelled automatically when composable leaves tree
+        while (true) {
             alpha.animateTo(0f, animationSpec = tween(400))
             alpha.animateTo(1f, animationSpec = tween(400))
         }
