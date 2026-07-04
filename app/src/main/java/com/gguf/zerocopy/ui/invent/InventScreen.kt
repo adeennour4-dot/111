@@ -54,7 +54,8 @@ private data class ChatBubble(
     val content: String,
     val phase: InventPhase,
     val isUser: Boolean = false,
-    val isError: Boolean = false
+    val isError: Boolean = false,
+    val isStreaming: Boolean = false
 )
 
 private fun buildChat(messages: List<InventMessage>): List<ChatBubble> {
@@ -265,6 +266,19 @@ fun InventScreen(
                         // Chat bubbles
                         itemsIndexed(chats, key = { i, _ -> "c_$i" }) { _, bubble ->
                             ChatBubbleCard(bubble, colors)
+                        }
+                        // Live streaming response (model currently writing)
+                        if (ui.streamingResponse.isNotEmpty()) {
+                            item(key = "stream") {
+                                ChatBubbleCard(
+                                    ChatBubble(
+                                        role = "model1", content = ui.streamingResponse,
+                                        phase = InventPhase.QUESTIONING,
+                                        isUser = false, isError = false,
+                                        isStreaming = true
+                                    ), colors
+                                )
+                            }
                         }
                         // File progress
                         if (ui.phase == InventPhase.GENERATING && ui.totalFiles > 0) {
@@ -569,15 +583,30 @@ private fun ChatBubbleCard(bubble: ChatBubble, colors: ZcPalette) {
             border = BorderStroke(1.dp, if (bubble.isUser) Cy.copy(0.08f) else colors.Border.copy(0.2f)),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(
-                bubble.content,
-                fontSize = 11.sp, color = if (bubble.isError) Rd else colors.Text,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier.padding(10.dp)
-            )
+            Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    bubble.content,
+                    fontSize = 11.sp, color = if (bubble.isError) Rd else colors.Text,
+                    fontFamily = FontFamily.Monospace
+                )
+                if (bubble.isStreaming) {
+                    StreamingCursor(roleColor)
+                }
+            }
         }
     }
 }
+
+@Composable
+private fun StreamingCursor(color: Color) {
+    val alpha = remember { Animatable(1f) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            alpha.animateTo(0f, animationSpec = tween(400))
+            alpha.animateTo(1f, animationSpec = tween(400))
+        }
+    }
+    Box(Modifier.width(2.dp).height(12.dp).background(color.copy(alpha = alpha.value)))
 
 // ─── File progress ────────────────────────────────────────────────────────────
 @Composable

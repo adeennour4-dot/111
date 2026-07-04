@@ -68,7 +68,8 @@ data class InventUiState(
     val showNavigateAwayDialog: Boolean = false,
     val showPlanReview: Boolean = false,
     val pendingPlan: String = "",
-    val chatStarted: Boolean = false
+    val chatStarted: Boolean = false,
+    val streamingResponse: String = ""
 )
 
 data class SessionInfo(
@@ -428,8 +429,12 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         setSwap("")
         val opening = runInference(
             systemPrompt = buildQuestioningPrompt(),
-            userMessage = "Hi! I want to build a software project. Please help me plan it by asking about my requirements — one question at a time."
+            userMessage = "Hi! I want to build a software project. Please help me plan it by asking about my requirements — one question at a time.",
+            onStream = { partial ->
+                _ui.value = _ui.value.copy(streamingResponse = partial)
+            }
         )
+        _ui.value = _ui.value.copy(streamingResponse = "")
         addMessage("model1", opening, InventPhase.QUESTIONING)
     }
 
@@ -483,8 +488,12 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         val history = buildConversationHistory(excludeLast = 1)
         val response = runInference(
             systemPrompt = buildQuestioningPrompt(),
-            userMessage = userText, history = history
+            userMessage = userText, history = history,
+            onStream = { partial ->
+                _ui.value = _ui.value.copy(streamingResponse = partial)
+            }
         )
+        _ui.value = _ui.value.copy(streamingResponse = "")
         addMessage("model1", response.trim(), InventPhase.QUESTIONING)
     }
 
@@ -500,8 +509,12 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 val planRaw = runInference(
                     systemPrompt = buildPlanningPrompt(zcp.model2ContextSize.coerceAtLeast(2048)),
                     userMessage = "Based on our full conversation, write the complete build plan now. Include §APP, §IDEA, §VIABLE, all §SEARCH intents, and every §TREE/§FILEZCP block for each file needed.",
-                    history = buildConversationHistory()
+                    history = buildConversationHistory(),
+                    onStream = { partial ->
+                        _ui.value = _ui.value.copy(streamingResponse = partial)
+                    }
                 )
+                _ui.value = _ui.value.copy(streamingResponse = "", isGenerating = true)
                 zcp = parseZcpFromModel1(planRaw, zcp)
 
                 // Format a readable summary for display
@@ -1452,7 +1465,8 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun runInference(
         systemPrompt: String, userMessage: String,
         history: List<Pair<String, String>> = emptyList(),
-        expectedModelPath: String? = null
+        expectedModelPath: String? = null,
+        onStream: ((String) -> Unit)? = null
     ): String = withContext(Dispatchers.IO) {
         _ui.value = _ui.value.copy(isGenerating = true)
         val sb = StringBuilder()
@@ -1474,8 +1488,16 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         var streamedTokens = 0
+        var flushCount = 0
         val callback = object : TokenCallback {
-            override fun onToken(token: String) { sb.append(token) }
+            override fun onToken(token: String) {
+                sb.append(token)
+                flushCount++
+                // Flush to UI every ~5 tokens for live streaming
+                if (onStream != null && flushCount % 5 == 0) {
+                    onStream(sb.toString())
+                }
+            }
             override fun onDone() {
                 val current = _ui.value.totalTokensUsed
                 _ui.value = _ui.value.copy(totalTokensUsed = current + streamedTokens)
@@ -1496,7 +1518,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             sb.append("[ERROR: ${e.message}]")
         }
 
-        _ui.value = _ui.value.copy(isGenerating = false)
+        _ui.value = _ui.value.copy(isGenerating = false, streamingResponse = "")
         sb.toString().trim()
     }
 
