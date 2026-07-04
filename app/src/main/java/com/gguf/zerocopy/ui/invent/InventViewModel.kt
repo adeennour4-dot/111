@@ -541,9 +541,14 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onPlanApproved() {
+        if (_ui.value.isGenerating) return
+        _ui.value = _ui.value.copy(isGenerating = true, showPlanReview = false, pendingPlan = "")
         viewModelScope.launch(Dispatchers.IO) {
-            _ui.value = _ui.value.copy(showPlanReview = false, pendingPlan = "")
-            triggerSearchPhase(zcpAlreadyGenerated = true)
+            try {
+                triggerSearchPhase(zcpAlreadyGenerated = true)
+            } catch (e: Exception) {
+                _ui.value = _ui.value.copy(isGenerating = false, error = "Research failed: ${e.message}")
+            }
         }
     }
 

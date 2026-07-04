@@ -650,11 +650,10 @@ private fun PlanReviewCard(
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Surface(
-                        onClick = onApprove,
                         shape = RoundedCornerShape(8.dp),
                         color = Cy.copy(alpha = 0.15f),
                         border = BorderStroke(1.dp, Cy),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f).clickable(onClick = onApprove)
                     ) {
                         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically) {
@@ -665,11 +664,10 @@ private fun PlanReviewCard(
                         }
                     }
                     Surface(
-                        onClick = { showInput = true },
                         shape = RoundedCornerShape(8.dp),
                         color = Am.copy(alpha = 0.12f),
                         border = BorderStroke(1.dp, Am),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f).clickable { showInput = true }
                     ) {
                         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically) {
