@@ -566,10 +566,15 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onPlanClarify(text: String) {
-        _ui.value = _ui.value.copy(showPlanReview = false, pendingPlan = "")
+        if (_ui.value.isGenerating) return
+        _ui.value = _ui.value.copy(isGenerating = true, showPlanReview = false, pendingPlan = "")
         addMessage("user", text, InventPhase.QUESTIONING)
         viewModelScope.launch(Dispatchers.IO) {
-            handleQuestioningReply(text)
+            try {
+                handleQuestioningReply(text)
+            } catch (e: Exception) {
+                _ui.value = _ui.value.copy(isGenerating = false, error = "Clarification failed: ${e.message}")
+            }
         }
     }
 
