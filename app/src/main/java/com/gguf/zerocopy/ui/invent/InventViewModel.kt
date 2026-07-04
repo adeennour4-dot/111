@@ -428,8 +428,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         }
         _ui.value = _ui.value.copy(plannerLoaded = true)
         setSwap("")
-        // Fresh conversation — reset native cache, send full prompt + greeting
-        withContext(Dispatchers.IO) { engineManager.getActiveEngine()?.resetContext() }
+        // runInference resets context internally before inference
         val opening = runInference(
             systemPrompt = buildQuestioningPrompt(),
             userMessage = "Hi! I want to build a software project. Please help me plan it by asking about my requirements — one question at a time.",
@@ -487,44 +486,17 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun handleQuestioningReply(userText: String) {
-        _ui.value = _ui.value.copy(isGenerating = true)
-        val activePath = engineManager.getActiveEngine()?.loadedModelPath ?: ""
-        val template = detectTemplate(activePath)
-        // Format ONLY the new user message as a user turn — the native bridge's
-        // internal cache already has the system prompt and prior conversation.
-        // Sending the full prompt again would conflict with the cached state.
-        val (uH, _) = formatRole(template, "user")
-        val (_, uF) = formatRole(template, "user")
-        val continuation = "$uH$userText\n$uF"
-
-        val sb = StringBuilder()
-        var streamedTokens = 0
-        var flushCount = 0
-        val callback = object : TokenCallback {
-            override fun onToken(token: String) {
-                sb.append(token); flushCount++
-                if (flushCount % 5 == 0)
-                    _ui.value = _ui.value.copy(streamingResponse = sb.toString())
+        // Full prompt with entire conversation — no cache dependency
+        val response = runInference(
+            systemPrompt = buildQuestioningPrompt(),
+            userMessage = userText,
+            history = buildConversationHistory(excludeLast = 1),
+            onStream = { partial ->
+                _ui.value = _ui.value.copy(streamingResponse = partial)
             }
-            override fun onDone() {
-                val cur = _ui.value.totalTokensUsed
-                _ui.value = _ui.value.copy(totalTokensUsed = cur + streamedTokens)
-            }
-            override fun onError(error: String) { sb.append("[ERROR: $error]") }
-            override fun onKvUsage(percent: Int) {}
-            override fun onTokensGenerated(count: Int) { streamedTokens = count }
-        }
-
-        engineManager.getActiveEngine()?.let { engine ->
-            withContext(Dispatchers.IO) {
-                try {
-                    engine.executeInference(continuation, callback)
-                } catch (_: Exception) {}
-            }
-        }
-
-        _ui.value = _ui.value.copy(isGenerating = false, streamingResponse = "")
-        val trimmed = sb.toString().trim()
+        )
+        _ui.value = _ui.value.copy(streamingResponse = "")
+        val trimmed = response.trim()
         if (trimmed.isNotEmpty()) {
             addMessage("model1", trimmed, InventPhase.QUESTIONING)
         } else {
@@ -540,38 +512,15 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val state = sessionState ?: return@launch
-                // Append plan instruction as a user turn — continues from cache
-                val activePath = engineManager.getActiveEngine()?.loadedModelPath ?: ""
-                val template = detectTemplate(activePath)
-                val (uH, _) = formatRole(template, "user")
-                val (_, uF) = formatRole(template, "user")
-                val planInstruction = "Based on our full conversation, write the complete build plan now. Include §APP, §IDEA, §VIABLE, all §SEARCH intents, and every §TREE/§FILEZCP block for each file needed."
-                val continuation = "$uH$planInstruction\n$uF"
-
-                val sb = StringBuilder()
-                var streamedTokens = 0
-                var flushCount = 0
-                val callback = object : TokenCallback {
-                    override fun onToken(token: String) {
-                        sb.append(token); flushCount++
-                        if (flushCount % 5 == 0)
-                            _ui.value = _ui.value.copy(streamingResponse = sb.toString())
+                // Full prompt with planning system — model sees entire conversation
+                val planRaw = runInference(
+                    systemPrompt = buildPlanningPrompt(zcp.model2ContextSize.coerceAtLeast(2048)),
+                    userMessage = "Based on our full conversation, write the complete build plan now. Include §APP, §IDEA, §VIABLE, all §SEARCH intents, and every §TREE/§FILEZCP block for each file needed.",
+                    history = buildConversationHistory(),
+                    onStream = { partial ->
+                        _ui.value = _ui.value.copy(streamingResponse = partial)
                     }
-                    override fun onDone() {
-                        val cur = _ui.value.totalTokensUsed
-                        _ui.value = _ui.value.copy(totalTokensUsed = cur + streamedTokens)
-                    }
-                    override fun onError(error: String) { sb.append("[ERROR: $error]") }
-                    override fun onKvUsage(percent: Int) {}
-                    override fun onTokensGenerated(count: Int) { streamedTokens = count }
-                }
-
-                engineManager.getActiveEngine()?.let { engine ->
-                    withContext(Dispatchers.IO) {
-                        try { engine.executeInference(continuation, callback) } catch (_: Exception) {}
-                    }
-                }
-                val planRaw = sb.toString().trim()
+                )
                 _ui.value = _ui.value.copy(streamingResponse = "", isGenerating = true)
                 zcp = parseZcpFromModel1(planRaw, zcp)
 
@@ -1571,6 +1520,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         try {
+            engine.resetContext()
             withTimeout(120_000L) { // 2 min timeout to prevent hangs
                 engine.executeInference(fullPrompt, callback)
             }
@@ -1956,7 +1906,15 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
     // ── Helpers ────────────────────────────────────────────────────────────
 
     private fun addMessage(role: String, content: String, phase: InventPhase) {
-        val updated = _ui.value.messages + InventMessage(role, content, phase)
+        // Strip turn-ending tokens the model may have generated — prevents
+        // double endings in the next prompt's template-formatted history.
+        val cleaned = content.trimEnd()
+            .removeSuffix("<|eot_id|>")
+            .removeSuffix("<|im_end|>")
+            .removeSuffix("<|end|>")
+            .removeSuffix("<end_of_turn>")
+            .removeSuffix("<｜User｜>").trimEnd()
+        val updated = _ui.value.messages + InventMessage(role, cleaned, phase)
         val started = _ui.value.chatStarted || role == "model1" || role == "model2" || role == "researcher"
         // Track conversation depth (user + model chars) for Done button threshold (~1000 tokens ≈ 4000 chars)
         val added = if (role == "user" || role == "model1" || role == "model2" || role == "researcher") content.length else 0
