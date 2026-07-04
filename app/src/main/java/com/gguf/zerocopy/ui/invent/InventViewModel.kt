@@ -495,7 +495,13 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             }
         )
         _ui.value = _ui.value.copy(streamingResponse = "")
-        addMessage("model1", response.trim(), InventPhase.QUESTIONING)
+        val trimmed = response.trim()
+        if (trimmed.isNotEmpty()) {
+            addMessage("model1", trimmed, InventPhase.QUESTIONING)
+        } else {
+            // Fallback: model returned nothing — prompt again
+            addMessage("model1", "I see! What else can you tell me about this project?", InventPhase.QUESTIONING)
+        }
     }
 
     // ── Done button: generate plan ─────────────────────────────────────────
