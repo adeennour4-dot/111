@@ -1,31 +1,80 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- ─── Center: Cyan + sign with rounded corners + glow ─── -->
+    <!-- ─── Center: + sign with purple→teal gradient (bottom-left→top-right) + glow ─── -->
 
-    <!-- Outer glow (15% cyan, scale 1.12) -->
+    <!-- Outer glow (15% gradient, scale 1.12) -->
     <group android:pivotX="54" android:pivotY="54" android:scaleX="1.12" android:scaleY="1.12">
-        <path android:fillColor="#2600E5A0"
-            android:pathData="M43,50 L65,50 Q69,50 69,54 Q69,58 65,58 L43,58 Q39,58 39,54 Q39,50 43,50 Z"/>
-        <path android:fillColor="#2600E5A0"
-            android:pathData="M50,43 L50,65 Q50,69 54,69 Q58,69 58,65 L58,43 Q58,39 54,39 Q50,39 50,43 Z"/>
+        <path android:pathData="M43,50 L65,50 Q69,50 69,54 Q69,58 65,58 L43,58 Q39,58 39,54 Q39,50 43,50 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:startX="0" android:startY="108"
+                    android:endX="108" android:endY="0"
+                    android:type="linear"
+                    android:startColor="#267C5CFF"
+                    android:endColor="#2600E5A0"/>
+            </aapt:attr>
+        </path>
+        <path android:pathData="M50,43 L50,65 Q50,69 54,69 Q58,69 58,65 L58,43 Q58,39 54,39 Q50,39 50,43 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:startX="0" android:startY="108"
+                    android:endX="108" android:endY="0"
+                    android:type="linear"
+                    android:startColor="#267C5CFF"
+                    android:endColor="#2600E5A0"/>
+            </aapt:attr>
+        </path>
     </group>
-    <!-- Inner glow (30% cyan, scale 1.05) -->
+    <!-- Inner glow (30% gradient, scale 1.05) -->
     <group android:pivotX="54" android:pivotY="54" android:scaleX="1.05" android:scaleY="1.05">
-        <path android:fillColor="#4D00E5A0"
-            android:pathData="M43,50 L65,50 Q69,50 69,54 Q69,58 65,58 L43,58 Q39,58 39,54 Q39,50 43,50 Z"/>
-        <path android:fillColor="#4D00E5A0"
-            android:pathData="M50,43 L50,65 Q50,69 54,69 Q58,69 58,65 L58,43 Q58,39 54,39 Q50,39 50,43 Z"/>
+        <path android:pathData="M43,50 L65,50 Q69,50 69,54 Q69,58 65,58 L43,58 Q39,58 39,54 Q39,50 43,50 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:startX="0" android:startY="108"
+                    android:endX="108" android:endY="0"
+                    android:type="linear"
+                    android:startColor="#4D7C5CFF"
+                    android:endColor="#4D00E5A0"/>
+            </aapt:attr>
+        </path>
+        <path android:pathData="M50,43 L50,65 Q50,69 54,69 Q58,69 58,65 L58,43 Q58,39 54,39 Q50,39 50,43 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:startX="0" android:startY="108"
+                    android:endX="108" android:endY="0"
+                    android:type="linear"
+                    android:startColor="#4D7C5CFF"
+                    android:endColor="#4D00E5A0"/>
+            </aapt:attr>
+        </path>
     </group>
-    <!-- Main plus (solid cyan) -->
-    <path android:fillColor="#00E5A0"
-        android:pathData="M43,50 L65,50 Q69,50 69,54 Q69,58 65,58 L43,58 Q39,58 39,54 Q39,50 43,50 Z"/>
-    <path android:fillColor="#00E5A0"
-        android:pathData="M50,43 L50,65 Q50,69 54,69 Q58,69 58,65 L58,43 Q58,39 54,39 Q50,39 50,43 Z"/>
+    <!-- Main plus (purple→teal gradient bottom-left to top-right) -->
+    <path android:pathData="M43,50 L65,50 Q69,50 69,54 Q69,58 65,58 L43,58 Q39,58 39,54 Q39,50 43,50 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0" android:startY="108"
+                android:endX="108" android:endY="0"
+                android:type="linear"
+                android:startColor="#FF7C5CFF"
+                android:endColor="#FF00E5A0"/>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M50,43 L50,65 Q50,69 54,69 Q58,69 58,65 L58,43 Q58,39 54,39 Q50,39 50,43 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0" android:startY="108"
+                android:endX="108" android:endY="0"
+                android:type="linear"
+                android:startColor="#FF7C5CFF"
+                android:endColor="#FF00E5A0"/>
+        </aapt:attr>
+    </path>
 
     <!-- ─── Top-right: Teal rounded cube + bigger circle at 40% opacity ─── -->
     <!-- Centered at (74, 34) — pulled toward the center + sign -->
