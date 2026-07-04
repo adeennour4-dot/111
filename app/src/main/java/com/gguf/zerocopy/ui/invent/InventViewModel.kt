@@ -69,7 +69,8 @@ data class InventUiState(
     val showPlanReview: Boolean = false,
     val pendingPlan: String = "",
     val chatStarted: Boolean = false,
-    val streamingResponse: String = ""
+    val streamingResponse: String = "",
+    val conversationDepth: Int = 0  // total chars in user+model messages, for Done threshold
 )
 
 data class SessionInfo(
@@ -1521,9 +1522,11 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             engine.abortInference()
         } catch (e: Exception) {
             sb.append("[ERROR: ${e.message}]")
+        } finally {
+            // Always reset generating state, even on cancellation
+            _ui.value = _ui.value.copy(isGenerating = false, streamingResponse = "")
         }
 
-        _ui.value = _ui.value.copy(isGenerating = false, streamingResponse = "")
         sb.toString().trim()
     }
 
@@ -1898,7 +1901,9 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
     private fun addMessage(role: String, content: String, phase: InventPhase) {
         val updated = _ui.value.messages + InventMessage(role, content, phase)
         val started = _ui.value.chatStarted || role == "model1" || role == "model2" || role == "researcher"
-        _ui.value = _ui.value.copy(messages = updated, chatStarted = started)
+        // Track conversation depth (user + model chars) for Done button threshold (~1000 tokens ≈ 4000 chars)
+        val added = if (role == "user" || role == "model1" || role == "model2" || role == "researcher") content.length else 0
+        _ui.value = _ui.value.copy(messages = updated, chatStarted = started, conversationDepth = _ui.value.conversationDepth + added)
         sessionState = sessionState?.copy(messages = updated)
     }
 

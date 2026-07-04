@@ -321,8 +321,9 @@ fun InventScreen(
                     }
                 }
             } else {
-                // Done button (visible during Q&A after chat started)
-                if (ui.phase == InventPhase.QUESTIONING && ui.chatStarted && !ui.isGenerating) {
+                // Done button (visible after ~1000 tokens of Q&A)
+                if (ui.phase == InventPhase.QUESTIONING && ui.chatStarted && !ui.isGenerating
+                    && ui.conversationDepth >= 4000) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
                         horizontalArrangement = Arrangement.End) {
                         Surface(
