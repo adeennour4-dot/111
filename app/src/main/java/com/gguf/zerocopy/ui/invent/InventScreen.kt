@@ -286,25 +286,67 @@ fun InventScreen(
                 }
             }
 
-            // ── Input area ──────────────────────────────────────────────────
-            InputArea(
-                inputText = inputText,
-                onTextChange = { inputText = it },
-                showThinking = showThinking,
-                showSearch = showSearch,
-                onToggleThinking = { showThinking = !showThinking },
-                onToggleSearch = { showSearch = !showSearch },
-                onFilePick = { filePickerLauncher.launch(arrayOf("*/*")) },
-                onSend = {
-                    if (inputText.isNotBlank()) {
-                        vm.sendUserMessage(inputText, planWithSearch = showSearch, thinkTag = showThinking)
-                        inputText = ""
+            // ── Plan review / Input area ───────────────────────────────────
+            if (ui.showPlanReview) {
+                PlanReviewCard(
+                    planText = ui.pendingPlan,
+                    onApprove = vm::onPlanApproved,
+                    onClarify = { text ->
+                        vm.onPlanClarify(text)
+                    },
+                    colors = colors
+                )
+            } else if (!ui.chatStarted && ui.phase == InventPhase.QUESTIONING) {
+                // Loading state — model is preparing first message
+                Surface(Modifier.fillMaxWidth(), color = colors.Surface, shadowElevation = 2.dp) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 1.5.dp, color = Cy)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Planner is thinking of a first question…", fontSize = 11.sp,
+                            color = colors.Text3, fontFamily = FontFamily.Monospace)
                     }
-                },
-                phase = ui.phase,
-                totalTokens = ui.totalTokensUsed,
-                colors = colors
-            )
+                }
+            } else {
+                // Done button (visible during Q&A after chat started)
+                if (ui.phase == InventPhase.QUESTIONING && ui.chatStarted && !ui.isGenerating) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.End) {
+                        Surface(
+                            onClick = vm::onDonePressed,
+                            shape = RoundedCornerShape(8.dp),
+                            color = Cy.copy(alpha = 0.15f),
+                            border = BorderStroke(1.dp, Cy)
+                        ) {
+                            Row(Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Outlined.Check, "Done", tint = Cy, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Done Gathering Info", fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold, color = Cy,
+                                    fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                    }
+                }
+                InputArea(
+                    inputText = inputText,
+                    onTextChange = { inputText = it },
+                    showThinking = showThinking,
+                    showSearch = showSearch,
+                    onToggleThinking = { showThinking = !showThinking },
+                    onToggleSearch = { showSearch = !showSearch },
+                    onFilePick = { filePickerLauncher.launch(arrayOf("*/*")) },
+                    onSend = {
+                        if (inputText.isNotBlank()) {
+                            vm.sendUserMessage(inputText, planWithSearch = showSearch, thinkTag = showThinking)
+                            inputText = ""
+                        }
+                    },
+                    phase = ui.phase,
+                    totalTokens = ui.totalTokensUsed,
+                    colors = colors
+                )
+            }
         }
 
         // ── Dialogs ─────────────────────────────────────────────────────────
@@ -575,6 +617,119 @@ private fun DoneStats(lines: Int, bytes: Long, debugCount: Int, colors: ZcPalett
     Text("📦  Lines: $lines  ·  Size: ${bytes / 1024}KB  ·  Debug sessions: $debugCount",
         fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace,
         modifier = Modifier.padding(vertical = 4.dp))
+}
+
+// ─── Plan Review Card ──────────────────────────────────────────────────────
+@Composable
+private fun PlanReviewCard(
+    planText: String,
+    onApprove: () -> Unit,
+    onClarify: (String) -> Unit,
+    colors: ZcPalette
+) {
+    var showInput by remember { mutableStateOf(false) }
+    var clarifyText by remember { mutableStateOf("") }
+
+    Surface(Modifier.fillMaxWidth(), color = colors.Surface, shadowElevation = 2.dp) {
+        Column(Modifier.padding(10.dp)) {
+            if (!showInput) {
+                // Plan preview
+                Text("📋 Build Plan", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    color = Cy, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.height(4.dp))
+                Box(
+                    Modifier.fillMaxWidth().heightIn(max = 150.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(colors.Bg.copy(alpha = 0.5f))
+                        .verticalScroll(rememberScrollState())
+                        .padding(8.dp)
+                ) {
+                    Text(planText, fontSize = 9.sp, color = colors.Text2,
+                        fontFamily = FontFamily.Monospace)
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Surface(
+                        onClick = onApprove,
+                        shape = RoundedCornerShape(8.dp),
+                        color = Cy.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, Cy),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.PlayArrow, "", tint = Cy, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Start Research", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                color = Cy, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                    Surface(
+                        onClick = { showInput = true },
+                        shape = RoundedCornerShape(8.dp),
+                        color = Am.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, Am),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Edit, "", tint = Am, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Clarify", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                color = Am, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
+            } else {
+                // Clarification input
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { showInput = false }) {
+                        Icon(Icons.Filled.ArrowBack, "Back", tint = colors.Text3, modifier = Modifier.size(18.dp))
+                    }
+                    Text("Clarify plan", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                        color = Am, fontFamily = FontFamily.Monospace)
+                }
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.Bottom) {
+                    OutlinedTextField(
+                        value = clarifyText,
+                        onValueChange = { clarifyText = it },
+                        modifier = Modifier.weight(1f).heightIn(min = 36.dp, max = 60.dp),
+                        singleLine = false,
+                        placeholder = { Text("What should I clarify?", fontSize = 11.sp, color = colors.Text3) },
+                        textStyle = LocalTextStyle.current.copy(fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace, color = colors.Text),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Am.copy(alpha = 0.5f),
+                            unfocusedBorderColor = colors.Border,
+                            cursorColor = Am
+                        ),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = {
+                            if (clarifyText.isNotBlank()) {
+                                onClarify(clarifyText.trim())
+                                clarifyText = ""
+                            }
+                        }),
+                        maxLines = 2
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    IconButton(
+                        onClick = {
+                            if (clarifyText.isNotBlank()) {
+                                onClarify(clarifyText.trim())
+                                clarifyText = ""
+                            }
+                        },
+                        modifier = Modifier.size(36.dp).background(Cy, RoundedCornerShape(8.dp))
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = colors.Bg, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+        }
+    }
 }
 
 // ─── Input area ──────────────────────────────────────────────────────────────

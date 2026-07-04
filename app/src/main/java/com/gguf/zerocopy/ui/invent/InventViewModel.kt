@@ -65,7 +65,10 @@ data class InventUiState(
     val researcherLoaded: Boolean = false,
     val coderLoaded: Boolean = false,
     val modelMode: ModelMode = ModelMode.TRIPLE,
-    val showNavigateAwayDialog: Boolean = false
+    val showNavigateAwayDialog: Boolean = false,
+    val showPlanReview: Boolean = false,
+    val pendingPlan: String = "",
+    val chatStarted: Boolean = false
 )
 
 data class SessionInfo(
@@ -423,15 +426,22 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         }
         _ui.value = _ui.value.copy(plannerLoaded = true)
         setSwap("")
-        val firstQuestion = runInference(
+        val opening = runInference(
             systemPrompt = buildQuestioningPrompt(),
-            userMessage = "Hi! I want to build a software project and need your help planning it. Please start by asking me the first question — one question only."
+            userMessage = "Hi! I want to build a software project. Please help me plan it by asking about my requirements — one question at a time."
         )
-        addMessage("model1", firstQuestion, InventPhase.QUESTIONING)
+        addMessage("model1", opening, InventPhase.QUESTIONING)
     }
 
     fun sendUserMessage(text: String, planWithSearch: Boolean = false, thinkTag: Boolean = false) {
         if (_ui.value.isGenerating) return
+
+        // If in plan review mode, treat as a clarification → go back to Q&A
+        if (_ui.value.showPlanReview) {
+            onPlanClarify(text)
+            return
+        }
+
         // Parse attachments for tech stack hints
         var effectiveText = text
         if (text.startsWith("[Attached:")) {
@@ -475,35 +485,95 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             systemPrompt = buildQuestioningPrompt(),
             userMessage = userText, history = history
         )
+        addMessage("model1", response.trim(), InventPhase.QUESTIONING)
+    }
 
-        val lowerResp = response.lowercase()
-        val isDone = response.contains("[INFO_COMPLETE]", ignoreCase = true) ||
-            response.contains("[READY_TO_SEARCH]", ignoreCase = true) ||
-            (lowerResp.contains("have all") && lowerResp.contains("information")) ||
-            (lowerResp.contains("ready to") && (lowerResp.contains("plan") || lowerResp.contains("search")))
+    // ── Done button: generate plan ─────────────────────────────────────────
 
-        val cleaned = response
-            .replace("[INFO_COMPLETE]", "", ignoreCase = true)
-            .replace("[READY_TO_SEARCH]", "", ignoreCase = true)
-            .trim()
+    fun onDonePressed() {
+        if (_ui.value.isGenerating) return
+        _ui.value = _ui.value.copy(isGenerating = true)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val state = sessionState ?: return@launch
+                // Generate the full build plan (ZCP blocks)
+                val planRaw = runInference(
+                    systemPrompt = buildPlanningPrompt(zcp.model2ContextSize.coerceAtLeast(2048)),
+                    userMessage = "Based on our full conversation, write the complete build plan now. Include §APP, §IDEA, §VIABLE, all §SEARCH intents, and every §TREE/§FILEZCP block for each file needed.",
+                    history = buildConversationHistory()
+                )
+                zcp = parseZcpFromModel1(planRaw, zcp)
 
-        addMessage("model1", cleaned, InventPhase.QUESTIONING)
-        if (isDone) triggerSearchPhase()
+                // Format a readable summary for display
+                val planSummary = buildString {
+                    appendLine("══════════════ BUILD PLAN ══════════════")
+                    appendLine("Project: ${zcp.projectName.ifEmpty {"<auto>"}}")
+                    if (zcp.coreIdea.isNotEmpty()) {
+                        appendLine()
+                        appendLine("■ Core idea: ${zcp.coreIdea}")
+                    }
+                    if (zcp.mainFeatures.isNotEmpty()) {
+                        appendLine()
+                        appendLine("■ Key features:")
+                        zcp.mainFeatures.forEach { appendLine("  • $it") }
+                    }
+                    if (zcp.fileTree.isNotEmpty()) {
+                        appendLine()
+                        appendLine("■ File structure (${zcp.fileTree.count {!it.isDir}} files):")
+                        zcp.fileTree.filter { !it.isDir }.forEach {
+                            appendLine("  • ${it.path} — ${it.description.take(80)}")
+                        }
+                    }
+                    appendLine()
+                    appendLine("─────────────────────────────────────────")
+                    appendLine("Press ✓ Done again to start research & code generation,")
+                    appendLine("or send a message to clarify any part.")
+                }
+
+                withContext(Dispatchers.Main) {
+                    addMessage("system", planSummary, InventPhase.QUESTIONING)
+                    _ui.value = _ui.value.copy(isGenerating = false, showPlanReview = true, pendingPlan = planSummary)
+                }
+            } catch (e: Exception) {
+                _ui.value = _ui.value.copy(isGenerating = false, error = "Plan generation failed: ${e.message}")
+            }
+        }
+    }
+
+    fun onPlanApproved() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _ui.value = _ui.value.copy(showPlanReview = false, pendingPlan = "")
+            triggerSearchPhase(zcpAlreadyGenerated = true)
+        }
+    }
+
+    fun onPlanClarify(text: String) {
+        _ui.value = _ui.value.copy(showPlanReview = false, pendingPlan = "")
+        addMessage("user", text, InventPhase.QUESTIONING)
+        viewModelScope.launch(Dispatchers.IO) {
+            handleQuestioningReply(text)
+        }
     }
 
     // ── Phase 2: ZCP + Search ──────────────────────────────────────────────
 
-    private suspend fun triggerSearchPhase() {
+    /**
+     * @param zcpAlreadyGenerated When true (called from onPlanApproved), skip ZCP inference
+     *   because it was already done in onDonePressed().
+     */
+    private suspend fun triggerSearchPhase(zcpAlreadyGenerated: Boolean = false) {
         updatePhase(InventPhase.SEARCHING)
         val state = sessionState ?: return
 
-        val zcpRaw = runInference(
-            systemPrompt = buildPlanningPrompt(zcp.model2ContextSize),
-            userMessage = "Based on everything we discussed, write the complete ZCP protocol now. Include §APP, §IDEA, §VIABLE, all §SEARCH intents, and §TREE blocks.",
-            history = buildConversationHistory()
-        )
+        if (!zcpAlreadyGenerated) {
+            val zcpRaw = runInference(
+                systemPrompt = buildPlanningPrompt(zcp.model2ContextSize),
+                userMessage = "Based on everything we discussed, write the complete ZCP protocol now. Include §APP, §IDEA, §VIABLE, all §SEARCH intents, and §TREE blocks.",
+                history = buildConversationHistory()
+            )
+            zcp = parseZcpFromModel1(zcpRaw, zcp)
+        }
 
-        zcp = parseZcpFromModel1(zcpRaw, zcp)
         addMessage("system", "ZCP v1 saved ✓  Starting research…", InventPhase.SEARCHING)
         withContext(Dispatchers.IO) { engineManager.unloadAll() }
         if (zcp.offlineMode) { startFilePlanning(); return }
@@ -1428,13 +1498,18 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     // ── Prompt Builders ────────────────────────────────────────────────────
 
     private fun buildQuestioningPrompt(): String = """
-You are a friendly software project advisor. Your job is to understand what the user wants to build.
+You are a curious detective interviewing a client about their project. Your job is to gather every detail needed to build it.
+
+Style:
+- Ask ONE short, natural question at a time — like a detective following a lead.
+- Be curious. Dig deeper into interesting answers. Ask "why?" and "how?" when needed.
+- Picture what they're building and identify missing pieces.
+- Topics: what it does, who it's for, platform, tech stack, features, tricky parts.
 
 Rules:
-- Ask ONE short, clear question at a time.
-- Topics: what app does, who it's for, platform, language/framework, key features, unique aspects.
-- Once you have enough info (5-8 questions), say "Great, I think I have everything I need."
-- No JSON, no structured output in this phase.
+- Keep investigating until the client says they're done — they will press a "Done" button.
+- When done, you'll write the full blueprint. For now, just ask questions.
+- No JSON, no structured output yet — just conversation.
 """.trimIndent()
 
     private fun buildPlanningPrompt(model2Ctx: Int): String = """
@@ -1792,7 +1867,8 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
 
     private fun addMessage(role: String, content: String, phase: InventPhase) {
         val updated = _ui.value.messages + InventMessage(role, content, phase)
-        _ui.value = _ui.value.copy(messages = updated)
+        val started = _ui.value.chatStarted || role == "model1" || role == "model2" || role == "researcher"
+        _ui.value = _ui.value.copy(messages = updated, chatStarted = started)
         sessionState = sessionState?.copy(messages = updated)
     }
 
