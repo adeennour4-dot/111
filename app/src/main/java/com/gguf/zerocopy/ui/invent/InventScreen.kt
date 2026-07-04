@@ -607,6 +607,8 @@ private fun StreamingCursor(color: Color) {
         }
     }
     Box(Modifier.width(2.dp).height(12.dp).background(color.copy(alpha = alpha.value)))
+    {}
+}
 
 // ─── File progress ────────────────────────────────────────────────────────────
 @Composable
