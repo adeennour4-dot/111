@@ -344,6 +344,7 @@ fun InventScreen(
                     },
                     phase = ui.phase,
                     totalTokens = ui.totalTokensUsed,
+                    isGenerating = ui.isGenerating,
                     colors = colors
                 )
             }
@@ -738,6 +739,7 @@ private fun InputArea(
     onToggleThinking: () -> Unit, onToggleSearch: () -> Unit,
     onFilePick: () -> Unit, onSend: () -> Unit,
     phase: InventPhase, totalTokens: Int,
+    isGenerating: Boolean = false,
     colors: ZcPalette
 ) {
     Surface(Modifier.fillMaxWidth().imePadding(), color = colors.Surface, shadowElevation = 2.dp) {
@@ -750,6 +752,10 @@ private fun InputArea(
                 Spacer(Modifier.width(3.dp))
                 MiniToggle(Icons.Outlined.Search, "Search", showSearch, onToggleSearch, colors)
                 Spacer(Modifier.weight(1f))
+                if (isGenerating) {
+                    CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp, color = Cy)
+                    Spacer(Modifier.width(4.dp))
+                }
                 if (totalTokens > 0) {
                     Text("${totalTokens}t", fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
                     Spacer(Modifier.width(4.dp))
@@ -760,11 +766,13 @@ private fun InputArea(
                 OutlinedTextField(
                     value = inputText,
                     onValueChange = onTextChange,
+                    enabled = !isGenerating,
                     modifier = Modifier.weight(1f).heightIn(min = 36.dp, max = 72.dp),
                     singleLine = false,
                     placeholder = {
                         Text(
                             when {
+                                isGenerating -> "Waiting for response…"
                                 phase == InventPhase.QUESTIONING -> "Describe your project…"
                                 phase == InventPhase.DONE -> "All done! Export or start new."
                                 else -> ">  type here…"
@@ -779,11 +787,11 @@ private fun InputArea(
                         cursorColor = Cy
                     ),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { if (inputText.isNotBlank()) onSend() }),
+                    keyboardActions = KeyboardActions(onSend = { if (inputText.isNotBlank() && !isGenerating) onSend() }),
                     maxLines = 2
                 )
                 Spacer(Modifier.width(6.dp))
-                val canSend = inputText.isNotBlank()
+                val canSend = inputText.isNotBlank() && !isGenerating
                 Box(
                     modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp))
                         .let { m ->

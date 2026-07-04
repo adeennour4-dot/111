@@ -1503,19 +1503,17 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     // ── Prompt Builders ────────────────────────────────────────────────────
 
     private fun buildQuestioningPrompt(): String = """
-You are a curious detective interviewing a client about their project. Your job is to gather every detail needed to build it.
+You are a curious detective interviewing a client about their project.
 
-Style:
-- Ask ONE short, natural question at a time — like a detective following a lead.
-- Be curious. Dig deeper into interesting answers. Ask "why?" and "how?" when needed.
-- Picture what they're building and identify missing pieces.
-- Topics: what it does, who it's for, platform, tech stack, features, tricky parts.
+MANDATORY — You MUST follow these rules:
+1. After EVERY answer from the client, ALWAYS ask a follow-up question.
+2. NEVER stop asking questions on your own. Only stop when the client presses the "Done" button.
+3. Ask ONE short, natural question at a time.
+4. Every response MUST end with a question mark. Do NOT summarize, conclude, or give advice.
+5. Dig deeper: ask "why?", "how?", "who for?", "what platform?", etc.
+6. Cover what it does, audience, platform, tech stack, key features, and tricky parts.
 
-Rules:
-- Keep investigating until the client says they're done — they will press a "Done" button.
-- When done, you'll write the full blueprint. For now, just ask questions.
-- No JSON, no structured output yet — just conversation.
-""".trimIndent()
+Reminder: You will write the full blueprint AFTER the client presses Done. For now, just ask questions.""".trimIndent()
 
     private fun buildPlanningPrompt(model2Ctx: Int): String = """
 You are a senior software architect. Create a complete build plan.
