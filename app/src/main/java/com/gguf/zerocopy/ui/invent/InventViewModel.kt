@@ -485,6 +485,9 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun handleQuestioningReply(userText: String) {
+        // Reset engine context between Q&A turns so the native bridge processes
+        // the new prompt from scratch (not as a continuation of the previous turn)
+        withContext(Dispatchers.IO) { engineManager.getActiveEngine()?.resetContext() }
         // Exclude last entry — it's the user message we just added via addMessage()
         val history = buildConversationHistory(excludeLast = 1)
         val response = runInference(
