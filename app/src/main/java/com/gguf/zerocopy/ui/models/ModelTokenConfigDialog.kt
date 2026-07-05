@@ -181,7 +181,8 @@ fun ModelTokenConfigDialog(
                                 cursorColor = colors.Accent,
                                 focusedTextColor = colors.Text, unfocusedTextColor = colors.Text
                             ),
-                            shape = RoundedCornerShape(6.dp)
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                         )
                     }
                     Slider(
@@ -224,7 +225,8 @@ fun ModelTokenConfigDialog(
                                 cursorColor = colors.Accent2,
                                 focusedTextColor = colors.Text, unfocusedTextColor = colors.Text
                             ),
-                            shape = RoundedCornerShape(6.dp)
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                         )
                     }
                     Slider(
