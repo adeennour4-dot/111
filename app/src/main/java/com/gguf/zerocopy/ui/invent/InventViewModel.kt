@@ -533,7 +533,12 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // ── Done button: generate plan ─────────────────────────────────────────
+    // ── Done button: full pipeline ──────────────────────────────────────────
+    //  1. Planner creates project summary + research prompt
+    //  2. Researcher loads, searches web, saves to search.txt
+    //  3. Planner reloads with search results, creates folder tree + .txt
+    //     placeholder files + CODER_INSTRUCTIONS.txt
+    //  4. Done
 
     fun onDonePressed() {
         if (_ui.value.isGenerating) return
@@ -541,336 +546,158 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val state = sessionState ?: return@launch
-                // Full prompt with planning system — model sees entire conversation
-                val planRaw = runInference(
-                    systemPrompt = buildPlanningPrompt(zcp.model2ContextSize.coerceAtLeast(2048)),
-                    userMessage = "Based on our full conversation, write the complete build plan now. Include §APP, §IDEA, §VIABLE, all §SEARCH intents, and every §TREE/§FILEZCP block for each file needed.",
+                setSwap("Planner summarizing project…")
+                addMessage("system", "▶ Pipeline started: planner → research → structure → ready", InventPhase.PLANNING)
+
+                // ── Step 1: Comprehensive project summary ──
+                val summary = runInference(
+                    systemPrompt = "You are a senior project architect. Summarize everything known about this project from the Q&A.\n\nOutput exactly:\n§PROJECT{name:X|desc:X|platform:Y|lang:Z|framework:W}\n§FEATURES{list:f1,f2,f3}\n§ARCH{style:X|pattern:Y|notes:Z}\n§VERSIONS{known:p3.10,k1.9,f3.16}\n§SEARCH_NEEDS{list:topic1,topic2}",
+                    userMessage = "Write the complete project summary using § blocks. Cover all requirements, tech stack, architecture, and what needs online research.",
                     history = buildConversationHistory(),
-                    onStream = { partial ->
-                        _ui.value = _ui.value.copy(streamingResponse = partial)
-                    }
+                    onStream = { partial -> _ui.value = _ui.value.copy(streamingResponse = partial) }
                 )
-                _ui.value = _ui.value.copy(streamingResponse = "", isGenerating = true)
-                zcp = parseZcpFromModel1(planRaw, zcp)
+                _ui.value = _ui.value.copy(streamingResponse = "")
+                addMessage("system", "✓ Project summary ready", InventPhase.PLANNING)
 
-                // Format a readable summary for display
-                val planSummary = buildString {
-                    appendLine("══════════════ BUILD PLAN ══════════════")
-                    appendLine("Project: ${zcp.projectName.ifEmpty {"<auto>"}}")
-                    if (zcp.coreIdea.isNotEmpty()) {
-                        appendLine()
-                        appendLine("■ Core idea: ${zcp.coreIdea}")
-                    }
-                    if (zcp.mainFeatures.isNotEmpty()) {
-                        appendLine()
-                        appendLine("■ Key features:")
-                        zcp.mainFeatures.forEach { appendLine("  • $it") }
-                    }
-                    if (zcp.fileTree.isNotEmpty()) {
-                        appendLine()
-                        appendLine("■ File structure (${zcp.fileTree.count {!it.isDir}} files):")
-                        zcp.fileTree.filter { !it.isDir }.forEach {
-                            appendLine("  • ${it.path} — ${it.description.take(80)}")
-                        }
-                    }
+                // ── Step 2: Research prompt ──
+                setSwap("Creating research prompt…")
+                val researchPrompt = runInference(
+                    systemPrompt = "Create a concise research prompt listing exactly which version numbers to verify and which official URLs to query (e.g. python.org, flutter.dev, kotlinlang.org).",
+                    userMessage = "Project:\n$summary\n\nList topics + official URLs to search.",
+                    expectedModelPath = state.model1Path
+                )
+                addMessage("system", "✓ Research prompt ready", InventPhase.PLANNING)
+
+                // ── Step 3: Research phase ──
+                updatePhase(InventPhase.SEARCHING)
+                withContext(Dispatchers.IO) { engineManager.unloadAll() }
+                setSwap("Loading ${state.researcherName}…")
+                if (!loadOrKeepModel(state.researcherPath)) {
+                    setSwap(""); _ui.value = _ui.value.copy(error = "Researcher load failed"); return@launch
+                }
+                setSwap("Searching latest versions…")
+                val fetched = fetchSearchContent(researchPrompt)
+
+                setSwap("Extracting results…")
+                val searchResults = runInference(
+                    systemPrompt = "Extract ONLY latest version numbers, release dates, and key API changes. Output KEY:VALUE pairs.",
+                    userMessage = "Research prompt:\n$researchPrompt\n\nSearch results:\n$fetched\n\nExtract latest versions and changes."
+                )
+
+                // Save search.txt
+                val projName = zcp.projectName.ifEmpty { "project_$sessionId" }
+                val projDir = InventStorage.getProjectDir(ctx, sessionId, projName)
+                projDir.mkdirs()
+                File(projDir, "search.txt").writeText(
+                    "SEARCH RESULTS\n============\n\nPrompt:\n$researchPrompt\n\nResults:\n$searchResults"
+                )
+                addMessage("system", "✓ search.txt saved", InventPhase.SEARCHING)
+
+                // ── Step 4: Reload planner ──
+                withContext(Dispatchers.IO) { engineManager.unloadAll() }
+                setSwap("Loading ${state.model1Name} for architecture…")
+                if (!loadOrKeepModel(state.model1Path)) {
+                    setSwap(""); _ui.value = _ui.value.copy(error = "Planner reload failed"); return@launch
+                }
+                setSwap("Building project structure…")
+                updatePhase(InventPhase.PLANNING)
+
+                val structPrompt = buildString {
+                    appendLine("You are a project architect. You have ALL info.")
                     appendLine()
-                    appendLine("─────────────────────────────────────────")
-                    appendLine("Press ✓ Done again to start research & code generation,")
-                    appendLine("or send a message to clarify any part.")
+                    appendLine("=== PROJECT ===")
+                    appendLine(summary)
+                    appendLine()
+                    appendLine("=== RESEARCH ===")
+                    appendLine(searchResults)
+                    appendLine()
+                    appendLine("=== TASK ===")
+                    appendLine("1. Output §PROJECT{name:X}")
+                    appendLine("2. Output §TREE blocks for every file")
+                    appendLine("3. For EACH file, output §PROMPT{path:X|desc:X|imports:X|classes:X|functions:X}")
+                    appendLine("4. If a file exceeds ${zcp.model2ContextSize} tokens, split it into smaller files")
+                    appendLine()
+                    appendLine("§TREE{path:src/main.dart|type:file|desc:Main entry}")
+                    appendLine("§PROMPT{path:src/main.dart|desc:Entry point|imports:flutter/material|classes:MyApp|functions:main,build}")
+                    appendLine()
+                    appendLine("Output ONLY blocks — no prose.")
+                }
+                val structure = runInference(
+                    systemPrompt = "You output machine-parseable project blocks only.",
+                    userMessage = structPrompt
+                )
+
+                zcp = parseZcpFromModel1(structure, zcp)
+                val tree = parseFileTree(structure)
+                zcp = zcp.copy(fileTree = tree, phase = InventPhase.PLANNING)
+
+                // ── Step 5: Create .txt placeholder files ──
+                val specs = parsePlannerPrompts(structure)
+                var created = 0
+                for ((path, spec) in specs) {
+                    val txtFile = File(projDir, "$path.txt")
+                    txtFile.parentFile?.mkdirs()
+                    txtFile.writeText(buildString {
+                        appendLine("PROMPT FOR THIS FILE")
+                        appendLine("====================")
+                        appendLine()
+                        appendLine("Replace this .txt with the real source file.")
+                        appendLine()
+                        appendLine("File: $path")
+                        if (spec.description.isNotEmpty()) appendLine("Description: ${spec.description}")
+                        if (spec.imports.isNotEmpty()) appendLine("Imports: ${spec.imports}")
+                        if (spec.classes.isNotEmpty()) appendLine("Classes: ${spec.classes}")
+                        if (spec.functions.isNotEmpty()) appendLine("Functions: ${spec.functions}")
+                        if (spec.dependencies.isNotEmpty()) appendLine("Dependencies: ${spec.dependencies.joinToString(", ")}")
+                    })
+                    created++
                 }
 
+                // ── Step 6: CODER_INSTRUCTIONS.txt ──
+                File(projDir, "CODER_INSTRUCTIONS.txt").writeText(buildString {
+                    appendLine("CODER INSTRUCTIONS")
+                    appendLine("==================")
+                    appendLine()
+                    appendLine("Project root: ${projDir.absolutePath}")
+                    appendLine()
+                    appendLine("Folder tree:")
+                    tree.filter { !it.isDir }.forEach { appendLine("  ${it.path}") }
+                    appendLine()
+                    appendLine("Instructions:")
+                    appendLine("1. Read each *.txt file in the project — it describes one source file.")
+                    appendLine("2. Create the real source file (e.g. main.dart) based on the .txt prompt.")
+                    appendLine("3. Delete the .txt file after creating the real file.")
+                    appendLine("4. Use version info from search.txt for latest APIs.")
+                    appendLine("5. Files: ${tree.count { !it.isDir }}")
+                    appendLine()
+                    appendLine("${summary.take(500)}")
+                })
+
+                val finalMsg = buildString {
+                    appendLine("══════ PROJECT READY ══════")
+                    appendLine("├─ ${projDir.name}/")
+                    appendLine("├─ search.txt — versions")
+                    appendLine("├─ *.txt — file prompts")
+                    appendLine("└─ CODER_INSTRUCTIONS.txt")
+                    appendLine()
+                    appendLine("$created files planned. Start a new session to generate code.")
+                }
                 withContext(Dispatchers.Main) {
-                    addMessage("system", planSummary, InventPhase.QUESTIONING)
-                    _ui.value = _ui.value.copy(isGenerating = false, showPlanReview = true, pendingPlan = planSummary)
+                    addMessage("system", finalMsg, InventPhase.DONE)
+                    _ui.value = _ui.value.copy(
+                        isGenerating = false, phase = InventPhase.DONE,
+                        zipReady = true, fileTree = tree,
+                        totalFiles = tree.count { !it.isDir }
+                    )
+                    updatePhase(InventPhase.DONE)
                 }
             } catch (e: Exception) {
-                _ui.value = _ui.value.copy(isGenerating = false, error = "Plan generation failed: ${e.message}")
+                _ui.value = _ui.value.copy(isGenerating = false, error = "Pipeline: ${e.message}")
             }
         }
     }
 
-    fun onPlanApproved() {
-        if (_ui.value.isGenerating) return
-        _ui.value = _ui.value.copy(isGenerating = true, showPlanReview = false, pendingPlan = "")
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                triggerSearchPhase(zcpAlreadyGenerated = true)
-            } catch (e: Exception) {
-                _ui.value = _ui.value.copy(isGenerating = false, error = "Research failed: ${e.message}")
-            }
-        }
-    }
-
-    fun onPlanClarify(text: String) {
-        if (_ui.value.isGenerating) return
-        _ui.value = _ui.value.copy(isGenerating = true, showPlanReview = false, pendingPlan = "")
-        addMessage("user", text, InventPhase.QUESTIONING)
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                handleQuestioningReply(text)
-            } catch (e: Exception) {
-                _ui.value = _ui.value.copy(isGenerating = false, error = "Clarification failed: ${e.message}")
-            }
-        }
-    }
-
-    // ── Phase 2: ZCP + Search ──────────────────────────────────────────────
-
-    /**
-     * @param zcpAlreadyGenerated When true (called from onPlanApproved), skip ZCP inference
-     *   because it was already done in onDonePressed().
-     */
-    private suspend fun triggerSearchPhase(zcpAlreadyGenerated: Boolean = false) {
-        updatePhase(InventPhase.SEARCHING)
-        val state = sessionState ?: return
-
-        if (!zcpAlreadyGenerated) {
-            val zcpRaw = runInference(
-                systemPrompt = buildPlanningPrompt(zcp.model2ContextSize),
-                userMessage = "Based on everything we discussed, write the complete ZCP protocol now. Include §APP, §IDEA, §VIABLE, all §SEARCH intents, and §TREE blocks.",
-                history = buildConversationHistory()
-            )
-            zcp = parseZcpFromModel1(zcpRaw, zcp)
-        }
-
-        addMessage("system", "ZCP v1 saved ✓  Starting research…", InventPhase.SEARCHING)
-        withContext(Dispatchers.IO) { engineManager.unloadAll() }
-        if (zcp.offlineMode) { startFilePlanning(); return }
-
-        val maxRounds = zcp.searchIntents.size.coerceIn(1, 5)
-        runSearchRounds(maxRounds)
-    }
-
-    private suspend fun runSearchRounds(maxRounds: Int) {
-        val state = sessionState ?: return
-        var round = sessionState?.searchRound ?: 0
-
-        while (round < maxRounds) {
-            round++
-            updateSearchRound(round)
-            setSwap("Fetching sources (round $round/$maxRounds)…")
-            val fetchedContent = fetchSearchContent()
-
-            setSwap("Loading ${state.researcherName}…")
-            if (!loadOrKeepModel(state.researcherPath)) {
-                setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load researcher"); return
-            }
-            setSwap("")
-
-            val extracted = runInference(
-                systemPrompt = "You are a precise information extractor. Fill given slots with exact values from the provided content. Output ONLY slot:value pairs. No explanations.",
-                userMessage = buildResearcherPrompt(fetchedContent, zcp.searchIntents)
-            )
-            InventStorage.saveSearchLog(ctx, sessionId, extracted)
-
-            setSwap("Loading ${state.model1Name} to review…")
-            if (!loadOrKeepModel(state.model1Path)) {
-                setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name}"); return
-            }
-            setSwap("")
-
-            val reviewResponse = runInference(
-                systemPrompt = "Review the search results. If you have enough info, output [SEARCH_DONE]. If not, output new §SEARCH blocks for what's missing.",
-                userMessage = "Search results:\n$extracted\n\nDo you have all info needed? If yes output [SEARCH_DONE]. If not, output new §SEARCH blocks only.",
-                expectedModelPath = state.model1Path
-            )
-
-            if (reviewResponse.contains("[SEARCH_DONE]", ignoreCase = true) || round >= maxRounds) {
-                zcp = zcp.copy(searchResults = parseSearchResults(extracted, zcp.searchIntents))
-                withContext(Dispatchers.IO) { engineManager.unloadAll() }
-                startFilePlanning(); break
-            } else {
-                val newIntents = parseSearchIntents(reviewResponse)
-                if (newIntents.isNotEmpty()) {
-                    zcp = zcp.copy(searchIntents = zcp.searchIntents + newIntents)
-                }
-                withContext(Dispatchers.IO) { engineManager.unloadAll() }
-            }
-        }
-    }
-
-    // ── Phase 3: Planning ──────────────────────────────────────────────────
-
-    private suspend fun startFilePlanning() {
-        val state = sessionState ?: return
-        updatePhase(InventPhase.PLANNING)
-        setSwap("Loading ${state.model1Name} for planning…")
-        if (!loadOrKeepModel(state.model1Path)) {
-            setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name}"); return
-        }
-        setSwap("")
-
-        val plan = runInference(
-            systemPrompt = buildPlanningPrompt(zcp.model2ContextSize),
-            userMessage = "You have all information. First write the complete project file tree using §TREE blocks. Then for EACH file (not directory), write a §FILEZCP block describing what that file should contain — its imports, classes, functions, and how it connects to other files.\n\nFormat:\n§TREE{path:X|type:dir/file|desc:X}\n§FILEZCP{path:X|description:X|imports:X|classes:X|functions:X|dependencies:Y,Z}\n\nEach §FILEZCP must be self-contained so a separate coder model can implement it independently."
-        )
-
-        var fileTree = parseFileTree(plan)
-        var fileSpecs = parseFileSpecs(plan)
-
-        // Validation: if parsing returned empty, retry with more explicit instructions
-        if (fileTree.isEmpty()) {
-            addMessage("system", "⚠ Could not parse file tree from planner output. Retrying with explicit format…", InventPhase.PLANNING)
-            val retryPlan = runInference(
-                systemPrompt = buildPlanningPrompt(zcp.model2ContextSize),
-                userMessage = "Output ONLY machine-parseable §TREE and §FILEZCP blocks. No explanations, no markdown, no headers. Use EXACTLY this format:\n§TREE{path:src/main.kt|type:file|desc:Main entry}\n§FILEZCP{path:src/main.kt|description:Entry point|imports:android.os.Bundle|classes:MainActivity|functions:onCreate|dependencies:}\n\nNow write the complete file tree and specs:",
-                expectedModelPath = state.model1Path
-            )
-            fileTree = parseFileTree(retryPlan)
-            fileSpecs = parseFileSpecs(retryPlan)
-            if (fileTree.isEmpty()) {
-                addMessage("system", "⚠ Still could not parse. Creating an empty project structure — you can debug files later.", InventPhase.PLANNING)
-                fileTree = listOf(FileNode("src/main.${zcp.language.firstOrNull()?.lowercase() ?: "kt"}", false, "Main file"))
-            }
-        }
-
-        zcp = zcp.copy(fileTree = fileTree, fileSpecs = fileSpecs, phase = InventPhase.PLANNING)
-        InventStorage.deleteSearchLog(ctx, sessionId)
-        addMessage("model1", plan, InventPhase.PLANNING)
-        withContext(Dispatchers.IO) { engineManager.unloadAll() }
-        loadModel2ForConfirmation()
-    }
-
-    // ── Phase 4a: Confirmation ─────────────────────────────────────────────
-
-    private suspend fun loadModel2ForConfirmation() {
-        val state = sessionState ?: return
-        updatePhase(InventPhase.CONFIRMING)
-        val targetPath = if (state.sameModelMode || state.model1Path == state.model2Path) state.model1Path else state.model2Path
-        val targetName = if (state.sameModelMode || state.model1Path == state.model2Path) state.model1Name else state.model2Name
-
-        setSwap("Loading $targetName (coder review)…")
-        if (!loadOrKeepModel(targetPath)) {
-            setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load $targetName"); return
-        }
-        setSwap("")
-
-        val understanding = runInference(
-            systemPrompt = "You are a senior software engineer. Read the project plan and describe your full understanding — which files you'll build, the architecture, and any concerns.",
-            userMessage = "Read this project spec and describe your understanding:\n\n${buildZcpSummaryForModel2()}",
-            expectedModelPath = targetPath
-        )
-        addMessage("model2", understanding, InventPhase.CONFIRMING)
-        _ui.value = _ui.value.copy(showSureButtons = true)
-    }
-
-    fun onSure() {
-        viewModelScope.launch(Dispatchers.IO) {
-            _ui.value = _ui.value.copy(showSureButtons = false)
-            startFileGeneration()
-        }
-    }
-
-    fun onNotSure() {
-        if (_ui.value.mergeCount >= 2) {
-            _ui.value = _ui.value.copy(error = "2 merge attempts reached. Tap New Session (+) to restart with different models or settings.")
-            return
-        }
-        viewModelScope.launch(Dispatchers.IO) {
-            _ui.value = _ui.value.copy(showSureButtons = false)
-            val newMergeCount = _ui.value.mergeCount + 1
-            // Don't reset to QUESTIONING — keep the existing plan and let user give targeted feedback
-            zcp = zcp.copy(mergeCount = newMergeCount)
-            _ui.value = _ui.value.copy(mergeCount = newMergeCount)
-            addMessage("system", "The coder didn't fully understand the plan. Tell me what needs clarification — be specific about which files or architecture aspects to adjust.", InventPhase.CONFIRMING)
-            // Reload planner to get refined understanding
-            val state = sessionState ?: return@launch
-            setSwap("Loading ${state.model1Name} to refine plan…")
-            if (!loadOrKeepModel(state.model1Path)) {
-                setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name}"); return@launch
-            }
-            setSwap("")
-            // Let the user send a clarifying message next
-            _ui.value = _ui.value.copy(showSureButtons = false)
-            savedOriginalPaths.clear() // Reset so next mode switch captures fresh paths
-        }
-    }
-
-    // ── Phase 4b: File Generation ──────────────────────────────────────────
-
-    private fun estimateFileTokens(spec: FileSpec): Int {
-        // Better heuristic: ~1 token per 4 chars (more accurate for code)
-        val contentLen = spec.description.length + spec.imports.length + spec.classes.length + spec.functions.length
-        val depsLen = spec.dependencies.sumOf { it.length }
-        val overhead = 150 + spec.dependencies.size * 50
-        return (contentLen + depsLen) / 4 + overhead
-    }
-
-    private suspend fun checkAndReplanIfNeeded(): Boolean {
-        val state = sessionState ?: return false
-        val filesToGenerate = zcp.fileTree.filter { !it.isDir }
-        if (filesToGenerate.isEmpty()) return false
-
-        val m2Path = if (state.sameModelMode || state.model1Path == state.model2Path) state.model1Path else state.model2Path
-        val perModelCfg = SettingsManager.getModelTokenConfig(m2Path)
-        val maxNew = perModelCfg?.maxNew?.coerceAtLeast(256) ?: SettingsManager.maxTokens.coerceAtLeast(256)
-        val budget = (maxNew * 0.8).toInt()
-        if (budget <= 128) return false
-
-        val oversized = filesToGenerate.filter { node ->
-            val spec = zcp.fileSpecs[node.path] ?: FileSpec(path = node.path, description = node.description)
-            estimateFileTokens(spec) > budget
-        }
-        if (oversized.isEmpty()) return false
-
-        updatePhase(InventPhase.REPLANNING)
-        addMessage("system", "⚠ ${oversized.size} file(s) exceed coder's token budget. Splitting…", InventPhase.REPLANNING)
-        setSwap("Replanning oversized files…")
-        if (!loadOrKeepModel(state.model1Path)) {
-            setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name}"); return false
-        }
-        setSwap("")
-
-        val oversizedDetails = oversized.joinToString("\n\n") { node ->
-            val spec = zcp.fileSpecs[node.path] ?: FileSpec(path = node.path, description = node.description)
-            buildString {
-                appendLine("[OVERSIZE] ${node.path}")
-                appendLine("  Description: ${spec.description}")
-                appendLine("  Imports: ${spec.imports}")
-                appendLine("  Estimated tokens: ~${estimateFileTokens(spec)} (budget: $budget)")
-            }
-        }
-
-        val replanPrompt = buildString {
-            appendLine("Split these oversized files for the coder model (budget: $budget tokens per file):")
-            appendLine()
-            appendLine(oversizedDetails)
-            appendLine()
-            appendLine("For each, output a new §TREE and §FILEZCP with the split files.")
-            appendLine("Use §TREE{path:X|type:file|desc:X} and §FILEZCP{path:X|description:X|imports:X|classes:X|functions:X|dependencies:Y,Z|estimatedTokens:N}")
-        }
-
-        val replanResult = runInference(
-            systemPrompt = "You are a senior software architect. Split oversized files into smaller files. Output ONLY §TREE and §FILEZCP blocks.",
-            userMessage = replanPrompt, expectedModelPath = state.model1Path
-        )
-
-        val newTree = parseFileTree(replanResult)
-        val newSpecs = parseFileSpecs(replanResult)
-
-        if (newTree.isEmpty()) {
-            addMessage("system", "⚠ Replanning parse failed — continuing with original plan.", InventPhase.REPLANNING)
-            withContext(Dispatchers.IO) { engineManager.unloadAll() }
-            updatePhase(InventPhase.GENERATING); return false
-        }
-
-        val mergedSpecs = mutableMapOf<String, FileSpec>()
-        newTree.filter { !it.isDir }.forEach { node ->
-            mergedSpecs[node.path] = newSpecs[node.path] ?: zcp.fileSpecs[node.path] ?: FileSpec(path = node.path)
-        }
-        zcp.fileSpecs.forEach { (path, spec) ->
-            if (newTree.any { it.path == path } && !mergedSpecs.containsKey(path)) mergedSpecs[path] = spec
-        }
-
-        zcp = zcp.copy(fileTree = newTree, fileSpecs = mergedSpecs)
-        addMessage("model1", replanResult, InventPhase.REPLANNING)
-        _ui.value = _ui.value.copy(fileTree = newTree, totalFiles = newTree.count { !it.isDir }, currentFileIndex = 0)
-        sessionState = sessionState?.copy(totalFiles = newTree.count { !it.isDir }, currentFileIndex = 0)
-        saveAllState()
-        withContext(Dispatchers.IO) { engineManager.unloadAll() }
-        updatePhase(InventPhase.GENERATING)
-        return true
-    }
+    // The new pipeline runs everything inside onDonePressed().
 
     private suspend fun startFileGeneration() {
         val state = sessionState ?: return
@@ -1883,6 +1710,24 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
                 dependencies = (kv["dependencies"] ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() },
                 estimatedTokens = (kv["estimatedTokens"] ?: "0").toIntOrNull() ?: 0,
                 continuationOf = kv["continuationOf"] ?: ""
+            )
+        }
+        return specs
+    }
+
+    /** Parse §PROMPT blocks (new pipeline format for .txt placeholders). */
+    private fun parsePlannerPrompts(raw: String): Map<String, FileSpec> {
+        val specs = mutableMapOf<String, FileSpec>()
+        Regex("§PROMPT\\{([^}]+)\\}").findAll(raw).forEach { m ->
+            val kv = m.groupValues[1].split("|").associate {
+                val p = it.split(":", limit = 2)
+                p[0].trim() to (p.getOrNull(1)?.trim() ?: "")
+            }
+            val path = kv["path"] ?: return@forEach
+            if (path.isNotEmpty()) specs[path] = FileSpec(
+                path = path, description = kv["desc"] ?: "",
+                imports = kv["imports"] ?: "", classes = kv["classes"] ?: "",
+                functions = kv["functions"] ?: ""
             )
         }
         return specs

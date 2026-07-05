@@ -307,9 +307,6 @@ fun InventScreen(
                             }
                         }
                         // Sure buttons
-                        if (ui.showSureButtons && ui.phase == InventPhase.CONFIRMING) {
-                            item(key = "sure") { SureRow(onSure = vm::onSure, onNotSure = vm::onNotSure, colors) }
-                        }
                         // Done stats
                         if (ui.phase == InventPhase.DONE) {
                             item(key = "stats") {
@@ -320,17 +317,8 @@ fun InventScreen(
                 }
             }
 
-            // ── Plan review / Input area ───────────────────────────────────
-            if (ui.showPlanReview) {
-                PlanReviewCard(
-                    planText = ui.pendingPlan,
-                    onApprove = vm::onPlanApproved,
-                    onClarify = { text ->
-                        vm.onPlanClarify(text)
-                    },
-                    colors = colors
-                )
-            } else if (!ui.chatStarted && ui.phase == InventPhase.QUESTIONING) {
+            // ── Empty / Input area ────────────────────────────────────────
+            if (!ui.chatStarted && ui.phase == InventPhase.QUESTIONING) {
                 // Loading state — model is preparing first message
                 Surface(Modifier.fillMaxWidth(), color = colors.Surface, shadowElevation = 2.dp) {
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -673,21 +661,6 @@ private fun FileProgress(index: Int, total: Int, name: String, accent: Color, co
 }
 
 // ─── Sure buttons row ─────────────────────────────────────────────────────────
-@Composable
-private fun SureRow(onSure: () -> Unit, onNotSure: () -> Unit, colors: ZcPalette) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
-        OutlinedButton(onClick = onNotSure, shape = RoundedCornerShape(10.dp),
-            border = BorderStroke(1.dp, Am.copy(0.5f)),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = Am)) {
-            Text("Not Sure", fontFamily = FontFamily.Monospace, fontSize = 11.sp)
-        }
-        Button(onClick = onSure, shape = RoundedCornerShape(10.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Cy)) {
-            Text("Sure ✓", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = Color.Black)
-        }
-    }
-}
-
 // ─── Done stats ───────────────────────────────────────────────────────────────
 @Composable
 private fun DoneStats(lines: Int, bytes: Long, debugCount: Int, colors: ZcPalette) {
@@ -699,115 +672,6 @@ private fun DoneStats(lines: Int, bytes: Long, debugCount: Int, colors: ZcPalett
 
 // ─── Plan Review Card ──────────────────────────────────────────────────────
 @Composable
-private fun PlanReviewCard(
-    planText: String,
-    onApprove: () -> Unit,
-    onClarify: (String) -> Unit,
-    colors: ZcPalette
-) {
-    var showInput by remember { mutableStateOf(false) }
-    var clarifyText by remember { mutableStateOf("") }
-
-    Surface(Modifier.fillMaxWidth(), color = colors.Surface, shadowElevation = 2.dp) {
-        Column(Modifier.padding(10.dp)) {
-            if (!showInput) {
-                // Plan preview
-                Text("📋 Build Plan", fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                    color = Cy, fontFamily = FontFamily.Monospace)
-                Spacer(Modifier.height(4.dp))
-                Box(
-                    Modifier.fillMaxWidth().heightIn(max = 150.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(colors.Bg.copy(alpha = 0.5f))
-                        .verticalScroll(rememberScrollState())
-                        .padding(8.dp)
-                ) {
-                    Text(planText, fontSize = 9.sp, color = colors.Text2,
-                        fontFamily = FontFamily.Monospace)
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Cy.copy(alpha = 0.15f),
-                        border = BorderStroke(1.dp, Cy),
-                        modifier = Modifier.weight(1f).clickable(onClick = onApprove)
-                    ) {
-                        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.PlayArrow, "", tint = Cy, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Start Research", fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                                color = Cy, fontFamily = FontFamily.Monospace)
-                        }
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Am.copy(alpha = 0.12f),
-                        border = BorderStroke(1.dp, Am),
-                        modifier = Modifier.weight(1f).clickable { showInput = true }
-                    ) {
-                        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Edit, "", tint = Am, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Clarify", fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                                color = Am, fontFamily = FontFamily.Monospace)
-                        }
-                    }
-                }
-            } else {
-                // Clarification input
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { showInput = false }) {
-                        Icon(Icons.Filled.ArrowBack, "Back", tint = colors.Text3, modifier = Modifier.size(18.dp))
-                    }
-                    Text("Clarify plan", fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                        color = Am, fontFamily = FontFamily.Monospace)
-                }
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.Bottom) {
-                    OutlinedTextField(
-                        value = clarifyText,
-                        onValueChange = { clarifyText = it },
-                        modifier = Modifier.weight(1f).heightIn(min = 36.dp, max = 60.dp),
-                        singleLine = false,
-                        placeholder = { Text("What should I clarify?", fontSize = 11.sp, color = colors.Text3) },
-                        textStyle = LocalTextStyle.current.copy(fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace, color = colors.Text),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Am.copy(alpha = 0.5f),
-                            unfocusedBorderColor = colors.Border,
-                            cursorColor = Am
-                        ),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(onSend = {
-                            if (clarifyText.isNotBlank()) {
-                                onClarify(clarifyText.trim())
-                                clarifyText = ""
-                            }
-                        }),
-                        maxLines = 2
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    IconButton(
-                        onClick = {
-                            if (clarifyText.isNotBlank()) {
-                                onClarify(clarifyText.trim())
-                                clarifyText = ""
-                            }
-                        },
-                        modifier = Modifier.size(36.dp).background(Cy, RoundedCornerShape(8.dp))
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = colors.Bg, modifier = Modifier.size(16.dp))
-                    }
-                }
-            }
-        }
-    }
-}
-
 // ─── Input area ──────────────────────────────────────────────────────────────
 @Composable
 private fun InputArea(
