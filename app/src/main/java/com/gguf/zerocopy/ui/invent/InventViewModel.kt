@@ -70,7 +70,8 @@ data class InventUiState(
     val pendingPlan: String = "",
     val chatStarted: Boolean = false,
     val streamingResponse: String = "",
-    val conversationDepth: Int = 0  // total chars in user+model messages, for Done threshold
+    val conversationDepth: Int = 0,  // total chars in user+model messages, for Done threshold
+    val reasoningEnabled: Boolean = false
 )
 
 data class SessionInfo(
@@ -486,6 +487,16 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun handleQuestioningReply(userText: String) {
+        // Make sure the engine is still loaded and ready
+        val state = sessionState ?: return
+        val active = engineManager.getActiveEngine()
+        if (active == null || !active.isModelLoaded) {
+            addMessage("model1", "Reloading planner…", InventPhase.QUESTIONING)
+            if (!loadOrKeepModel(state.model1Path)) {
+                addMessage("model1", "Failed to reload planner model after unload.", InventPhase.QUESTIONING)
+                return
+            }
+        }
         // Full prompt with entire conversation — no cache dependency
         val response = runInference(
             systemPrompt = buildQuestioningPrompt(),
@@ -1520,6 +1531,8 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         try {
+            // Reset native KV cache so each inference starts with a clean slate.
+            // The full prompt already contains all context, so no information is lost.
             engine.resetContext()
             withTimeout(120_000L) { // 2 min timeout to prevent hangs
                 engine.executeInference(fullPrompt, callback)

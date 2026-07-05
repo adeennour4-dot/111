@@ -159,8 +159,30 @@ fun ModelTokenConfigDialog(
             ) {
                 HorizontalDivider(color = colors.Border)
 
-                // ── Context + Max New ──
-                SliderSection("Context window", "${ctxSlider}", colors) { axisLabel ->
+                // ── Context + Max New (slider + editable number) ──
+                Column {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Context window", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+                        // Editable number alongside the slider value
+                        OutlinedTextField(
+                            value = ctxSlider.toString(),
+                            onValueChange = { v ->
+                                val n = v.filter { it.isDigit() || it == '-' }.toIntOrNull()
+                                if (n != null) ctxSlider = n.coerceIn(512, 32768)
+                            },
+                            modifier = Modifier.width(88.dp).height(36.dp),
+                            singleLine = true,
+                            textStyle = LocalTextStyle.current.copy(
+                                fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                                color = colors.Accent, fontWeight = FontWeight.Bold
+                            ),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
+                                cursorColor = colors.Accent
+                            ),
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                    }
                     Slider(
                         value = ctxSlider.toFloat(),
                         onValueChange = { v -> ctxSlider = v.roundToInt().coerceIn(512, 32768) },
@@ -168,14 +190,40 @@ fun ModelTokenConfigDialog(
                         colors = SliderDefaults.colors(thumbColor = colors.Accent, activeTrackColor = colors.Accent, inactiveTrackColor = colors.Border),
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        listOf(512, 1024, 2048, 4096, 8192, 16384, 32768).forEach { tick ->
-                            Text("$tick", fontSize = 6.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                    // Tick marks aligned with slider positions using proportional spacing
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        val ticks = listOf(512, 2048, 8192, 16384, 32768)
+                        ticks.forEach { tick ->
+                            Text(formatTick(tick), fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
                         }
                     }
                 }
 
-                SliderSection("Max new tokens", "${maxNewSlider}", colors) { axisLabel ->
+                Column {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Max new tokens", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+                        OutlinedTextField(
+                            value = maxNewSlider.toString(),
+                            onValueChange = { v ->
+                                val n = v.filter { it.isDigit() || it == '-' }.toIntOrNull()
+                                if (n != null) maxNewSlider = n.coerceIn(64, ctxSlider - 64)
+                            },
+                            modifier = Modifier.width(88.dp).height(36.dp),
+                            singleLine = true,
+                            textStyle = LocalTextStyle.current.copy(
+                                fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                                color = colors.Accent2, fontWeight = FontWeight.Bold
+                            ),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = colors.Accent2, unfocusedBorderColor = colors.Border,
+                                cursorColor = colors.Accent2
+                            ),
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                    }
                     Slider(
                         value = maxNewSlider.toFloat(),
                         onValueChange = { v -> maxNewSlider = v.roundToInt().coerceIn(64, ctxSlider - 64) },
@@ -446,4 +494,10 @@ private fun RamRow(label: String, value: String, color: androidx.compose.ui.grap
         Text(label, fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
         Text(value, fontSize = 10.sp, color = color, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
     }
+}
+
+/** Format large numbers with K suffix for compact tick labels. */
+private fun formatTick(v: Int): String = when {
+    v >= 1000 -> "${v / 1000}K"
+    else -> "$v"
 }
