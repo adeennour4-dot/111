@@ -456,12 +456,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             val hints = extractAttachedFileHints(text)
             if (hints.isNotEmpty()) effectiveText = "$text\n\n[From attached files, I noticed: $hints]"
         }
-        val processed = buildString {
-            append(effectiveText)
-            if (planWithSearch) append("\n[SEARCH enabled]")
-            if (thinkTag) append("\n[THINK]")
-        }
-        addMessage("user", processed, _ui.value.phase)
+        addMessage("user", effectiveText, _ui.value.phase)
         viewModelScope.launch(Dispatchers.IO) {
             when (_ui.value.phase) {
                 InventPhase.QUESTIONING -> handleQuestioningReply(effectiveText)
