@@ -71,7 +71,7 @@ data class InventUiState(
     val chatStarted: Boolean = false,
     val streamingResponse: String = "",
     val conversationDepth: Int = 0,  // total chars in user+model messages, for Done threshold
-    val reasoningEnabled: Boolean = false
+    val reasoningEnabled: Boolean = false,
     val thinkingContent: String = ""  // extracted from <think> tags during streaming
 )
 
