@@ -161,8 +161,8 @@ fun ModelTokenConfigDialog(
 
                 // ── Context + Max New (slider + editable number) ──
                 Column {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Context window", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Context window", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
                         // Editable number alongside the slider value
                         OutlinedTextField(
                             value = ctxSlider.toString(),
@@ -170,11 +170,11 @@ fun ModelTokenConfigDialog(
                                 val n = v.filter { it.isDigit() || it == '-' }.toIntOrNull()
                                 if (n != null) ctxSlider = n.coerceIn(512, 32768)
                             },
-                            modifier = Modifier.width(120.dp).height(40.dp),
+                            modifier = Modifier.widthIn(min = 100.dp, max = 160.dp),
                             singleLine = true,
                             textStyle = LocalTextStyle.current.copy(
-                                fontSize = 13.sp, fontFamily = FontFamily.Monospace,
-                                color = colors.Text, fontWeight = FontWeight.Bold
+                                fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                                color = colors.Text
                             ),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
@@ -205,19 +205,19 @@ fun ModelTokenConfigDialog(
                 }
 
                 Column {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Max new tokens", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Max new tokens", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
                         OutlinedTextField(
                             value = maxNewSlider.toString(),
                             onValueChange = { v ->
                                 val n = v.filter { it.isDigit() || it == '-' }.toIntOrNull()
                                 if (n != null) maxNewSlider = n.coerceIn(64, ctxSlider - 64)
                             },
-                            modifier = Modifier.width(120.dp).height(40.dp),
+                            modifier = Modifier.widthIn(min = 100.dp, max = 160.dp),
                             singleLine = true,
                             textStyle = LocalTextStyle.current.copy(
-                                fontSize = 13.sp, fontFamily = FontFamily.Monospace,
-                                color = colors.Text, fontWeight = FontWeight.Bold
+                                fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                                color = colors.Text
                             ),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = colors.Accent2, unfocusedBorderColor = colors.Border,

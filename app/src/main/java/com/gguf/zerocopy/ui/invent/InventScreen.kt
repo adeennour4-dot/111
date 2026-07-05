@@ -1033,17 +1033,17 @@ private fun ConfigSliders(role: String, config: ModelTokenConfig?, modelPath: St
         Text(modelName, fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
         Spacer(Modifier.height(4.dp))
 
-        // Context — slider + editable number
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Context", fontSize = 8.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+        // Context — label + number field
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Context", fontSize = 10.sp, color = colors.Text2, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             OutlinedTextField(
                 value = ctx.toString(),
                 onValueChange = { v -> val n = v.filter { it.isDigit() }.toIntOrNull(); if (n != null) { ctx = n.coerceIn(512, 32768); save() } },
-                modifier = Modifier.width(100.dp).height(36.dp),
+                modifier = Modifier.widthIn(min = 80.dp, max = 140.dp),
                 singleLine = true,
-                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text, fontWeight = FontWeight.Bold),
+                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Cy, unfocusedBorderColor = colors.Border, cursorColor = Cy, focusedTextColor = colors.Text, unfocusedTextColor = colors.Text),
-                shape = RoundedCornerShape(4.dp)
+                shape = RoundedCornerShape(6.dp)
             )
         }
         Slider(value = ctx.toFloat(), onValueChange = { ctx = it.roundToInt().coerceIn(512, 32768); save() },
@@ -1051,17 +1051,17 @@ private fun ConfigSliders(role: String, config: ModelTokenConfig?, modelPath: St
             modifier = Modifier.fillMaxWidth().height(18.dp),
             colors = SliderDefaults.colors(thumbColor = Cy, activeTrackColor = Cy, inactiveTrackColor = colors.Border.copy(alpha = 0.2f)))
 
-        // Max New — slider + editable number
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Max Tokens", fontSize = 8.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+        // Max New — label + number field
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Max Tokens", fontSize = 10.sp, color = colors.Text2, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             OutlinedTextField(
                 value = maxNew.toString(),
                 onValueChange = { v -> val n = v.filter { it.isDigit() }.toIntOrNull(); if (n != null) { maxNew = n.coerceIn(64, ctx - 64); save() } },
-                modifier = Modifier.width(100.dp).height(36.dp),
+                modifier = Modifier.widthIn(min = 80.dp, max = 140.dp),
                 singleLine = true,
-                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text, fontWeight = FontWeight.Bold),
+                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Cy, unfocusedBorderColor = colors.Border, cursorColor = Cy, focusedTextColor = colors.Text, unfocusedTextColor = colors.Text),
-                shape = RoundedCornerShape(4.dp)
+                shape = RoundedCornerShape(6.dp)
             )
         }
         Slider(value = maxNew.toFloat(), onValueChange = { maxNew = it.roundToInt().coerceIn(64, ctx - 64); save() },
