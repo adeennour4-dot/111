@@ -47,7 +47,7 @@ class ZeroCopyApp : Application() {
     modelRepository = ModelRepository(this)
     chatRepository = ChatRepository(this)
     modelServer = ModelServer()
-    ragEngine = RagEngine(this)
+    ragEngine = RagEngine(this, maxFiles = SettingsManager.ragFileLimit)
 
     // Apply device-optimized inference settings on FIRST launch.
     // After the user has customized their settings, we never override.

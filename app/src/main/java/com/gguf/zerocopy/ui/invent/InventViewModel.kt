@@ -72,6 +72,7 @@ data class InventUiState(
     val streamingResponse: String = "",
     val conversationDepth: Int = 0,  // total chars in user+model messages, for Done threshold
     val reasoningEnabled: Boolean = false
+    val thinkingContent: String = ""  // extracted from <think> tags during streaming
 )
 
 data class SessionInfo(
@@ -441,6 +442,11 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         addMessage("model1", opening, InventPhase.QUESTIONING)
     }
 
+    fun toggleReasoning() {
+        val enabled = !_ui.value.reasoningEnabled
+        _ui.value = _ui.value.copy(reasoningEnabled = enabled)
+    }
+
     fun sendUserMessage(text: String, planWithSearch: Boolean = false, thinkTag: Boolean = false) {
         if (_ui.value.isGenerating) return
 
@@ -509,7 +515,19 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         _ui.value = _ui.value.copy(streamingResponse = "")
         val trimmed = response.trim()
         if (trimmed.isNotEmpty()) {
-            addMessage("model1", trimmed, InventPhase.QUESTIONING)
+            // Extract thinking content and strip <think> tags
+            val thinkMatch = Regex("<think>([\\s\\S]*?)<\\/think>").find(trimmed)
+            val cleanContent = when {
+                thinkMatch != null -> {
+                    val thinking = thinkMatch.groupValues[1].trim()
+                    _ui.value = _ui.value.copy(thinkingContent = thinking)
+                    trimmed.replace(Regex("<think>[\\s\\S]*?<\\/think>"), "").trim()
+                }
+                else -> trimmed
+            }
+            if (cleanContent.isNotEmpty() || thinkMatch == null) {
+                addMessage("model1", cleanContent.ifEmpty { trimmed }, InventPhase.QUESTIONING)
+            }
         } else {
             addMessage("model1", "I see! What else can you tell me about this project?", InventPhase.QUESTIONING)
         }
@@ -1501,7 +1519,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
 
-        val (fullPrompt, compacted) = buildPromptWithInfo(systemPrompt, history, userMessage)
+        // Prepend think instruction when reasoning toggle is on
+        val thinkPrefix = if (_ui.value.reasoningEnabled)
+            "Use <think> tags for step-by-step reasoning before answering.\n\n" else ""
+        val (fullPrompt, compacted) = buildPromptWithInfo(systemPrompt, history, "$thinkPrefix$userMessage")
         checkCompactionAndNotify(history.size, compacted, _ui.value.phase)
         val engine = engineManager.getActiveEngine()
 

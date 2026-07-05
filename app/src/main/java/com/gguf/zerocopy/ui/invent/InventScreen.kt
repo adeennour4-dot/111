@@ -55,7 +55,8 @@ private data class ChatBubble(
     val phase: InventPhase,
     val isUser: Boolean = false,
     val isError: Boolean = false,
-    val isStreaming: Boolean = false
+    val isStreaming: Boolean = false,
+    val thinkingContent: String = ""
 )
 
 private fun buildChat(messages: List<InventMessage>): List<ChatBubble> {
@@ -200,6 +201,19 @@ fun InventScreen(
                     if (ui.phase == InventPhase.DONE || ui.phase == InventPhase.DEBUGGING) {
                         HeaderBtn(Icons.Filled.FileDownload, "Export", Cy, onClick = { vm.exportProjectZip() })
                     }
+                    // Thinking toggle
+                    val thinkColor = if (ui.reasoningEnabled) colors.Accent2 else colors.Text3
+                    TextButton(
+                        onClick = { vm.toggleReasoning() },
+                        modifier = Modifier.height(28.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp)
+                    ) {
+                        Text(
+                            if (ui.reasoningEnabled) "🧠" else "🧠",
+                            fontSize = 12.sp,
+                            color = thinkColor
+                        )
+                    }
                     HeaderBtn(Icons.Outlined.History, "Sessions", colors.Text2, onClick = { showSessions = true })
                     HeaderBtn(Icons.Filled.Settings, "Settings", colors.Text2, onClick = { showSettings = true })
                     HeaderBtn(Icons.Filled.Refresh, "Restart", Color.White, onClick = {
@@ -270,13 +284,20 @@ fun InventScreen(
                         }
                         // Live streaming response (model currently writing)
                         if (ui.streamingResponse.isNotEmpty()) {
+                            // Extract thinking from streaming response
+                            val streamThink = Regex("<think>([\\s\\S]*?)(<\\/think>|$)").find(ui.streamingResponse)
+                            val streamContent = ui.streamingResponse
+                                .replace(Regex("<think>[\\s\\S]*?(<\\/think>|$)"), "").trim()
+                            val thinkText = streamThink?.groupValues?.getOrNull(1)?.trim() ?: ""
                             item(key = "stream") {
                                 ChatBubbleCard(
                                     ChatBubble(
-                                        role = "model1", content = ui.streamingResponse,
+                                        role = "model1",
+                                        content = streamContent.ifEmpty { ui.streamingResponse },
                                         phase = InventPhase.QUESTIONING,
                                         isUser = false, isError = false,
-                                        isStreaming = true
+                                        isStreaming = true,
+                                        thinkingContent = thinkText
                                     ), colors
                                 )
                             }
@@ -577,6 +598,32 @@ private fun ChatBubbleCard(bubble: ChatBubble, colors: ZcPalette) {
             Spacer(Modifier.width(6.dp))
             Text(roleLabel, fontSize = 9.sp, fontWeight = FontWeight.Bold,
                 color = roleColor, fontFamily = FontFamily.Monospace)
+        }
+        // Thinking block — collapsible reasoning from <think> tags
+        if (bubble.thinkingContent.isNotEmpty()) {
+            var expanded by remember { mutableStateOf(false) }
+            Spacer(Modifier.height(4.dp))
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = colors.Accent2.copy(alpha = 0.06f),
+                border = BorderStroke(1.dp, colors.Accent2.copy(0.15f)),
+                modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }
+            ) {
+                Column(Modifier.padding(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🧠  Reasoning", fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold, color = colors.Accent2,
+                            fontFamily = FontFamily.Monospace)
+                        Spacer(Modifier.weight(1f))
+                        Text(if (expanded) "▲" else "▼", fontSize = 8.sp, color = colors.Text3)
+                    }
+                    if (expanded) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(bubble.thinkingContent, fontSize = 9.sp,
+                            color = colors.Text3, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            }
         }
         Spacer(Modifier.height(2.dp))
         Surface(

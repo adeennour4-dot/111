@@ -13,9 +13,10 @@ import com.gguf.zerocopy.domain.ocr.PdfTextExtractor
  * - avgDocLen is computed once per retrieve() call, not per-chunk
  * - MAX_TOTAL_CHUNKS caps memory use (~400 chars × 2000 chunks = 800 KB max)
  */
-class RagEngine(context: Context) {
+class RagEngine(context: Context, maxFiles: Int = 5) {
 
     private val ocr = PdfTextExtractor(context)
+    private val _maxFiles = maxFiles.coerceIn(1, 50)
 
     companion object {
         private const val CHUNK_SIZE        = 400
@@ -51,7 +52,14 @@ class RagEngine(context: Context) {
         }
     }
 
+    val fileCount: Int get() = synchronized(lock) { sourceNames.size }
+
     fun ingest(uri: Uri, context: Context): IngestResult {
+        // Enforce max file limit
+        synchronized(lock) {
+            if (sourceNames.size >= _maxFiles)
+                return IngestResult.Failed("Max $_maxFiles documents reached")
+        }
         val mime = context.contentResolver.getType(uri) ?: ""
         val name = getFileName(uri, context)
         return when {

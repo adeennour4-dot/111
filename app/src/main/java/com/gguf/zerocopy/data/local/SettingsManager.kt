@@ -318,6 +318,10 @@ object SettingsManager {
     get() = prefs?.getBoolean("rag_enabled", true) ?: true
     set(v) { prefs?.edit()?.putBoolean("rag_enabled", v)?.apply() }
 
+  var ragFileLimit: Int
+    get() = prefs?.getInt("rag_file_limit", 5) ?: 5
+    set(v) { prefs?.edit()?.putInt("rag_file_limit", v.coerceIn(1, 50))?.apply() }
+
   var serverEnabled: Boolean
     get() = prefs?.getBoolean("server_enabled", false) ?: false
     set(v) { prefs?.edit()?.putBoolean("server_enabled", v)?.apply() }

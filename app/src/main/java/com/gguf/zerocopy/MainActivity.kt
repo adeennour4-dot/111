@@ -105,7 +105,8 @@ fun AppRoot() {
   var showWelcome by rememberSaveable { mutableStateOf(!SettingsManager.welcomeDone) }
   var loadedModelPath by remember { mutableStateOf("") }
   var loadedModelName by remember { mutableStateOf("") }
-  var currentSessionId by remember { mutableStateOf<String?>(SettingsManager.currentSessionId.ifEmpty { null }) }
+  var currentSessionId by remember { mutableStateOf<String?>(null) }  // start with new session
+  LaunchedEffect(Unit) { SettingsManager.currentSessionId = "" }
   var selectedTab by rememberSaveable { mutableIntStateOf(0) }
   var showSessionList by remember { mutableStateOf(false) }
   var inventStarted by rememberSaveable { mutableStateOf(false) }
