@@ -67,7 +67,8 @@ private fun buildChat(messages: List<InventMessage>): List<ChatBubble> {
             content = msg.content,
             phase = msg.phase,
             isUser = msg.role == "user",
-            isError = msg.role == "system" && msg.content.contains("error", ignoreCase = true)
+            isError = msg.role == "system" && msg.content.contains("error", ignoreCase = true),
+            thinkingContent = msg.thinkingContent
         )
     }
 }

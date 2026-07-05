@@ -516,9 +516,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (thinkMatch != null && cleanContent.isEmpty()) {
                 // Model only output <think> tags — show thinking content as message
-                addMessage("model1", "[Thinking... ${_ui.value.thinkingContent.take(200)}]", InventPhase.QUESTIONING)
+                addMessage("model1", "[Thinking... ${_ui.value.thinkingContent.take(200)}]", InventPhase.QUESTIONING, _ui.value.thinkingContent)
             } else {
-                addMessage("model1", cleanContent.ifEmpty { trimmed }, InventPhase.QUESTIONING)
+                val think = _ui.value.thinkingContent
+                addMessage("model1", cleanContent.ifEmpty { trimmed }, InventPhase.QUESTIONING, think)
             }
         } else {
             addMessage("model1", "I see! What else can you tell me about this project?", InventPhase.QUESTIONING)
@@ -1791,7 +1792,7 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
 
     // ── Helpers ────────────────────────────────────────────────────────────
 
-    private fun addMessage(role: String, content: String, phase: InventPhase) {
+    private fun addMessage(role: String, content: String, phase: InventPhase, thinkingContent: String = "") {
         // Strip turn-ending tokens the model may have generated — prevents
         // double endings in the next prompt's template-formatted history.
         val cleaned = content.trimEnd()
@@ -1800,7 +1801,7 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
             .removeSuffix("<|end|>")
             .removeSuffix("<end_of_turn>")
             .removeSuffix("<｜User｜>").trimEnd()
-        val updated = _ui.value.messages + InventMessage(role, cleaned, phase)
+        val updated = _ui.value.messages + InventMessage(role, cleaned, phase, thinkingContent)
         val started = _ui.value.chatStarted || role == "model1" || role == "model2" || role == "researcher"
         // Track conversation depth (user + model chars) for Done button threshold (~1000 tokens ≈ 4000 chars)
         val added = if (role == "user" || role == "model1" || role == "model2" || role == "researcher") content.length else 0

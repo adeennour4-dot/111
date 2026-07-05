@@ -114,7 +114,8 @@ data class InventSessionState(
 data class InventMessage(
     val role: String, // "model1", "model2", "researcher", "user", "system"
     val content: String,
-    val phase: InventPhase
+    val phase: InventPhase,
+    val thinkingContent: String = ""
 )
 
 // ─── Domain Registry ────────────────────────────────────────────────────────
@@ -226,6 +227,7 @@ object InventStorage {
                     put("role", m.role)
                     put("content", m.content)
                     put("phase", m.phase.name)
+                    put("thinkingContent", m.thinkingContent)
                 })
             }
             put("messages", msgs)
@@ -244,7 +246,8 @@ object InventStorage {
                 InventMessage(
                     role = m.getString("role"),
                     content = m.getString("content"),
-                    phase = InventPhase.valueOf(m.optString("phase", "QUESTIONING"))
+                    phase = InventPhase.valueOf(m.optString("phase", "QUESTIONING")),
+                    thinkingContent = m.optString("thinkingContent", "")
                 )
             }
             InventSessionState(
