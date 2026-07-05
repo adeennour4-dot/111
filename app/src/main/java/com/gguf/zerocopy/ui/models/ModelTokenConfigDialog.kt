@@ -190,15 +190,16 @@ fun ModelTokenConfigDialog(
                         colors = SliderDefaults.colors(thumbColor = colors.Accent, activeTrackColor = colors.Accent, inactiveTrackColor = colors.Border),
                         modifier = Modifier.fillMaxWidth()
                     )
-                    // Tick marks aligned with slider positions using proportional spacing
+                    // Tick marks — readable guides, not exact positions
                     Row(
-                        Modifier.fillMaxWidth(),
+                        Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        val ticks = listOf(512, 2048, 8192, 16384, 32768)
-                        ticks.forEach { tick ->
-                            Text(formatTick(tick), fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-                        }
+                        Text("512", fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                        Text("8K", fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                        Text("16K", fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                        Text("24K", fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                        Text("32K", fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
                     }
                 }
 
