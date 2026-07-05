@@ -447,14 +447,8 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         _ui.value = _ui.value.copy(reasoningEnabled = enabled)
     }
 
-    fun sendUserMessage(text: String, planWithSearch: Boolean = false, thinkTag: Boolean = false) {
+    fun sendUserMessage(text: String) {
         if (_ui.value.isGenerating) return
-
-        // If in plan review mode, treat as a clarification → go back to Q&A
-        if (_ui.value.showPlanReview) {
-            onPlanClarify(text)
-            return
-        }
 
         // Parse attachments for tech stack hints
         var effectiveText = text
@@ -803,12 +797,6 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         val targetPath = if (!isSame) state.model2Path else state.model1Path
         val targetName = if (!isSame) state.model2Name else state.model1Name
         val projectDir = InventStorage.getProjectDir(ctx, sessionId, zcp.projectName)
-
-        val remaining = filesToGenerate.drop(startFrom).filter { !zcp.generatedFiles.contains(it.path) }
-        if (remaining.isNotEmpty()) {
-            updatePhase(InventPhase.GENERATING)
-            checkAndReplanIfNeeded()
-        }
 
         val finalFiles = zcp.fileTree.filter { !it.isDir }
         val finalStartFrom = _ui.value.currentFileIndex.coerceAtLeast(0)
@@ -1751,23 +1739,44 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
     // ── Search ─────────────────────────────────────────────────────────────
 
     /** Actual web search using ToolManager — not domain homepages. */
-    private suspend fun fetchSearchContent(): Map<String, String> = withContext(Dispatchers.IO) {
+    private suspend fun fetchSearchContent(promptArg: String = ""): Map<String, String> = withContext(Dispatchers.IO) {
         val result = mutableMapOf<String, String>()
-        zcp.searchIntents.forEach { intent ->
-            val key = intent.category
-            if (!result.containsKey(key)) {
-                val query = intent.question.ifEmpty { "${intent.topic} ${intent.platform}" }
-                if (query.isNotBlank()) {
-                    val args = JSONObject().apply { put("query", query); put("num_results", 3) }
-                    val call = ToolCall("search_${System.currentTimeMillis()}", "web_search", args)
-                    try {
-                        val res = toolManager.executeTool(call)
-                        val text = res.result.trim()
-                        result[key] = if (text.isNotBlank() && !text.startsWith("Error", true) &&
-                            !text.startsWith("No results", true) && !text.startsWith("Web search failed", true)
-                        ) text.take(3000) else "[No search results for: $query]"
-                    } catch (e: Exception) { result[key] = "[Search failed: ${e.message}]" }
-                } else result[key] = "[No query available]"
+        if (promptArg.isNotBlank()) {
+            // Use the research prompt directly — extract topic lines and search each
+            val topics = promptArg.lines().map { it.trim() }.filter {
+                it.isNotBlank() && it.length > 10 && !it.startsWith("§")
+            }.ifEmpty { listOf(promptArg.take(200)) }
+            topics.forEach { topic ->
+                val query = topic.take(200)
+                val key = "research_${result.size}"
+                val args = JSONObject().apply { put("query", query); put("num_results", 3) }
+                val call = ToolCall("search_${System.currentTimeMillis()}", "web_search", args)
+                try {
+                    val res = toolManager.executeTool(call)
+                    val text = res.result.trim()
+                    result[key] = if (text.isNotBlank() && !text.startsWith("Error", true) &&
+                        !text.startsWith("No results", true) && !text.startsWith("Web search failed", true)
+                    ) text.take(3000) else "[No search results for: $query]"
+                } catch (e: Exception) { result[key] = "[Search failed: ${e.message}]" }
+            }
+        } else {
+            // Fall back to zcp.searchIntents (old path)
+            zcp.searchIntents.forEach { intent ->
+                val key = intent.category
+                if (!result.containsKey(key)) {
+                    val query = intent.question.ifEmpty { "${intent.topic} ${intent.platform}" }
+                    if (query.isNotBlank()) {
+                        val args = JSONObject().apply { put("query", query); put("num_results", 3) }
+                        val call = ToolCall("search_${System.currentTimeMillis()}", "web_search", args)
+                        try {
+                            val res = toolManager.executeTool(call)
+                            val text = res.result.trim()
+                            result[key] = if (text.isNotBlank() && !text.startsWith("Error", true) &&
+                                !text.startsWith("No results", true) && !text.startsWith("Web search failed", true)
+                            ) text.take(3000) else "[No search results for: $query]"
+                        } catch (e: Exception) { result[key] = "[Search failed: ${e.message}]" }
+                    } else result[key] = "[No query available]"
+                }
             }
         }
         result

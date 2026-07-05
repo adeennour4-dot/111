@@ -33,6 +33,7 @@ import com.gguf.zerocopy.ui.theme.ZcPalette
 import com.gguf.zerocopy.ui.theme.currentPalette
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import kotlin.math.roundToInt
 import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
@@ -127,8 +128,7 @@ fun InventScreen(
                         if (file.length() < 50_000) file.readText()
                         else "[File too large: ${file.length()} bytes]"
                     }
-                    vm.sendUserMessage("[Attached: ${uri.lastPathSegment}]\n\n$content",
-                        planWithSearch = showSearch, thinkTag = showThinking)
+                    vm.sendUserMessage("[Attached: ${uri.lastPathSegment}]\n\n$content")
                 } catch (_: Exception) { }
             }
         }
@@ -670,8 +670,6 @@ private fun DoneStats(lines: Int, bytes: Long, debugCount: Int, colors: ZcPalett
         modifier = Modifier.padding(vertical = 4.dp))
 }
 
-// ─── Plan Review Card ──────────────────────────────────────────────────────
-@Composable
 // ─── Input area ──────────────────────────────────────────────────────────────
 @Composable
 private fun InputArea(
