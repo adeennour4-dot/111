@@ -1038,7 +1038,7 @@ private fun ConfigSliders(role: String, config: ModelTokenConfig?, modelPath: St
             OutlinedTextField(
                 value = ctx.toString(),
                 onValueChange = { v -> val n = v.filter { it.isDigit() }.toIntOrNull(); if (n != null) { ctx = n.coerceIn(512, 32768); save() } },
-                modifier = Modifier.width(88.dp).height(30.dp),
+                modifier = Modifier.width(100.dp).height(36.dp),
                 singleLine = true,
                 textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text, fontWeight = FontWeight.Bold),
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Cy, unfocusedBorderColor = colors.Border, cursorColor = Cy, focusedTextColor = colors.Text, unfocusedTextColor = colors.Text),
@@ -1056,7 +1056,7 @@ private fun ConfigSliders(role: String, config: ModelTokenConfig?, modelPath: St
             OutlinedTextField(
                 value = maxNew.toString(),
                 onValueChange = { v -> val n = v.filter { it.isDigit() }.toIntOrNull(); if (n != null) { maxNew = n.coerceIn(64, ctx - 64); save() } },
-                modifier = Modifier.width(88.dp).height(30.dp),
+                modifier = Modifier.width(100.dp).height(36.dp),
                 singleLine = true,
                 textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text, fontWeight = FontWeight.Bold),
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Cy, unfocusedBorderColor = colors.Border, cursorColor = Cy, focusedTextColor = colors.Text, unfocusedTextColor = colors.Text),

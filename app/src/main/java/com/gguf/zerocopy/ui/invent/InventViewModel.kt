@@ -514,7 +514,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 else -> trimmed
             }
-            if (cleanContent.isNotEmpty() || thinkMatch == null) {
+            if (thinkMatch != null && cleanContent.isEmpty()) {
+                // Model only output <think> tags — show thinking content as message
+                addMessage("model1", "[Thinking... ${_ui.value.thinkingContent.take(200)}]", InventPhase.QUESTIONING)
+            } else {
                 addMessage("model1", cleanContent.ifEmpty { trimmed }, InventPhase.QUESTIONING)
             }
         } else {

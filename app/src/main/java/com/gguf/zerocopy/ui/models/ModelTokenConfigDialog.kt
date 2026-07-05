@@ -170,7 +170,7 @@ fun ModelTokenConfigDialog(
                                 val n = v.filter { it.isDigit() || it == '-' }.toIntOrNull()
                                 if (n != null) ctxSlider = n.coerceIn(512, 32768)
                             },
-                            modifier = Modifier.width(108.dp).height(36.dp),
+                            modifier = Modifier.width(120.dp).height(40.dp),
                             singleLine = true,
                             textStyle = LocalTextStyle.current.copy(
                                 fontSize = 13.sp, fontFamily = FontFamily.Monospace,
@@ -213,7 +213,7 @@ fun ModelTokenConfigDialog(
                                 val n = v.filter { it.isDigit() || it == '-' }.toIntOrNull()
                                 if (n != null) maxNewSlider = n.coerceIn(64, ctxSlider - 64)
                             },
-                            modifier = Modifier.width(108.dp).height(36.dp),
+                            modifier = Modifier.width(120.dp).height(40.dp),
                             singleLine = true,
                             textStyle = LocalTextStyle.current.copy(
                                 fontSize = 13.sp, fontFamily = FontFamily.Monospace,
