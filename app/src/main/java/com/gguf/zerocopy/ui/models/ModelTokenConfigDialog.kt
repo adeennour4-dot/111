@@ -170,15 +170,16 @@ fun ModelTokenConfigDialog(
                                 val n = v.filter { it.isDigit() || it == '-' }.toIntOrNull()
                                 if (n != null) ctxSlider = n.coerceIn(512, 32768)
                             },
-                            modifier = Modifier.width(88.dp).height(36.dp),
+                            modifier = Modifier.width(108.dp).height(36.dp),
                             singleLine = true,
                             textStyle = LocalTextStyle.current.copy(
-                                fontSize = 12.sp, fontFamily = FontFamily.Monospace,
-                                color = colors.Accent, fontWeight = FontWeight.Bold
+                                fontSize = 13.sp, fontFamily = FontFamily.Monospace,
+                                color = colors.Text, fontWeight = FontWeight.Bold
                             ),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
-                                cursorColor = colors.Accent
+                                cursorColor = colors.Accent,
+                                focusedTextColor = colors.Text, unfocusedTextColor = colors.Text
                             ),
                             shape = RoundedCornerShape(6.dp)
                         )
@@ -212,15 +213,16 @@ fun ModelTokenConfigDialog(
                                 val n = v.filter { it.isDigit() || it == '-' }.toIntOrNull()
                                 if (n != null) maxNewSlider = n.coerceIn(64, ctxSlider - 64)
                             },
-                            modifier = Modifier.width(88.dp).height(36.dp),
+                            modifier = Modifier.width(108.dp).height(36.dp),
                             singleLine = true,
                             textStyle = LocalTextStyle.current.copy(
-                                fontSize = 12.sp, fontFamily = FontFamily.Monospace,
-                                color = colors.Accent2, fontWeight = FontWeight.Bold
+                                fontSize = 13.sp, fontFamily = FontFamily.Monospace,
+                                color = colors.Text, fontWeight = FontWeight.Bold
                             ),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = colors.Accent2, unfocusedBorderColor = colors.Border,
-                                cursorColor = colors.Accent2
+                                cursorColor = colors.Accent2,
+                                focusedTextColor = colors.Text, unfocusedTextColor = colors.Text
                             ),
                             shape = RoundedCornerShape(6.dp)
                         )

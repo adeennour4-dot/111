@@ -87,8 +87,6 @@ fun InventScreen(
     val ui by vm.ui.collectAsState()
     val colors = currentPalette()
     var inputText by remember { mutableStateOf("") }
-    var showThinking by remember { mutableStateOf(false) }
-    var showSearch by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showSessions by remember { mutableStateOf(false) }
     var showModelPicker by remember { mutableStateOf<Int?>(null) }
@@ -368,14 +366,10 @@ fun InventScreen(
                 InputArea(
                     inputText = inputText,
                     onTextChange = { inputText = it },
-                    showThinking = showThinking,
-                    showSearch = showSearch,
-                    onToggleThinking = { showThinking = !showThinking },
-                    onToggleSearch = { showSearch = !showSearch },
                     onFilePick = { filePickerLauncher.launch(arrayOf("*/*")) },
                     onSend = {
                         if (inputText.isNotBlank()) {
-                            vm.sendUserMessage(inputText, planWithSearch = showSearch, thinkTag = showThinking)
+                            vm.sendUserMessage(inputText)
                             inputText = ""
                         }
                     },
@@ -403,7 +397,9 @@ fun InventScreen(
                 colors = colors,
                 model1Path = model1Path, model2Path = model2Path, researcherPath = researcherPath,
                 modelMode = ui.modelMode, restrictRole = settingsRestrictRole,
-                onReload = { vm.reloadInventModel() }
+                onReload = { vm.reloadInventModel() },
+                reasoningEnabled = ui.reasoningEnabled,
+                onToggleReasoning = { vm.toggleReasoning() }
             )
         }
         showModelPicker?.let { roleIdx ->
@@ -816,8 +812,6 @@ private fun PlanReviewCard(
 @Composable
 private fun InputArea(
     inputText: String, onTextChange: (String) -> Unit,
-    showThinking: Boolean, showSearch: Boolean,
-    onToggleThinking: () -> Unit, onToggleSearch: () -> Unit,
     onFilePick: () -> Unit, onSend: () -> Unit,
     phase: InventPhase, totalTokens: Int,
     isGenerating: Boolean = false,
@@ -825,13 +819,9 @@ private fun InputArea(
 ) {
     Surface(Modifier.fillMaxWidth().imePadding(), color = colors.Surface, shadowElevation = 2.dp) {
         Column {
-            // Toolbar
+            // Toolbar — only attach file, no think/search toggles
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 MiniToggle(Icons.Outlined.AttachFile, "Attach", false, onFilePick, colors)
-                Spacer(Modifier.width(3.dp))
-                MiniToggle(Icons.Outlined.Psychology, "Think", showThinking, onToggleThinking, colors)
-                Spacer(Modifier.width(3.dp))
-                MiniToggle(Icons.Outlined.Search, "Search", showSearch, onToggleSearch, colors)
                 Spacer(Modifier.weight(1f))
                 if (isGenerating) {
                     CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp, color = Cy)
@@ -1083,7 +1073,9 @@ private fun SettingsPopup2(
     onDismiss: () -> Unit, colors: ZcPalette,
     model1Path: String, model2Path: String, researcherPath: String,
     modelMode: ModelMode = ModelMode.TRIPLE, restrictRole: Int = -1,
-    onReload: () -> Unit = {}
+    onReload: () -> Unit = {},
+    reasoningEnabled: Boolean = false,
+    onToggleReasoning: () -> Unit = {}
 ) {
     var settingsTab by remember { mutableIntStateOf(0) }
 
@@ -1134,6 +1126,21 @@ private fun SettingsPopup2(
                     "Planner" -> model1Path; "Researcher" -> researcherPath; else -> model2Path
                 }
                 ConfigSliders(role = roleKey, config = cfg, modelPath = path, colors)
+                Spacer(Modifier.height(4.dp))
+                // Thinking toggle
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("🧠 Reasoning", fontSize = 9.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+                    Spacer(Modifier.weight(1f))
+                    Switch(
+                        checked = reasoningEnabled,
+                        onCheckedChange = { onToggleReasoning() },
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = Cy, checkedThumbColor = colors.Bg,
+                            uncheckedTrackColor = colors.Border, uncheckedThumbColor = colors.Text3
+                        ),
+                        modifier = Modifier.height(24.dp)
+                    )
+                }
                 Spacer(Modifier.height(6.dp))
                 Button(onClick = { onReload(); onDismiss() }, modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp), colors = ButtonDefaults.buttonColors(containerColor = Cy)) {
@@ -1158,12 +1165,47 @@ private fun ConfigSliders(role: String, config: ModelTokenConfig?, modelPath: St
         SettingsManager.setInventModelConfig(role, base.copy(ctx = ctx, maxNew = maxNew, gpuLayers = gpuLayers, temperature = temp, topP = topP))
     }
 
-    Column(Modifier.fillMaxWidth().heightIn(max = 300.dp).verticalScroll(rememberScrollState())) {
+    Column(Modifier.fillMaxWidth().heightIn(max = 350.dp).verticalScroll(rememberScrollState())) {
         Text(role, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.Monospace)
         Text(modelName, fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
         Spacer(Modifier.height(4.dp))
-        SliderRow("Context", ctx.toFloat(), 256f..32768f, 127, { "${it.toInt()}" }, { ctx = it.toInt(); save() }, colors)
-        SliderRow("Max Tokens", maxNew.toFloat(), 64f..8192f, 127, { "${it.toInt()}" }, { maxNew = it.toInt(); save() }, colors)
+
+        // Context — slider + editable number
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Context", fontSize = 8.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+            OutlinedTextField(
+                value = ctx.toString(),
+                onValueChange = { v -> val n = v.filter { it.isDigit() }.toIntOrNull(); if (n != null) { ctx = n.coerceIn(512, 32768); save() } },
+                modifier = Modifier.width(88.dp).height(30.dp),
+                singleLine = true,
+                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text, fontWeight = FontWeight.Bold),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Cy, unfocusedBorderColor = colors.Border, cursorColor = Cy, focusedTextColor = colors.Text, unfocusedTextColor = colors.Text),
+                shape = RoundedCornerShape(4.dp)
+            )
+        }
+        Slider(value = ctx.toFloat(), onValueChange = { ctx = it.roundToInt().coerceIn(512, 32768); save() },
+            valueRange = 512f..32768f,
+            modifier = Modifier.fillMaxWidth().height(18.dp),
+            colors = SliderDefaults.colors(thumbColor = Cy, activeTrackColor = Cy, inactiveTrackColor = colors.Border.copy(alpha = 0.2f)))
+
+        // Max New — slider + editable number
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Max Tokens", fontSize = 8.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+            OutlinedTextField(
+                value = maxNew.toString(),
+                onValueChange = { v -> val n = v.filter { it.isDigit() }.toIntOrNull(); if (n != null) { maxNew = n.coerceIn(64, ctx - 64); save() } },
+                modifier = Modifier.width(88.dp).height(30.dp),
+                singleLine = true,
+                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text, fontWeight = FontWeight.Bold),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Cy, unfocusedBorderColor = colors.Border, cursorColor = Cy, focusedTextColor = colors.Text, unfocusedTextColor = colors.Text),
+                shape = RoundedCornerShape(4.dp)
+            )
+        }
+        Slider(value = maxNew.toFloat(), onValueChange = { maxNew = it.roundToInt().coerceIn(64, ctx - 64); save() },
+            valueRange = 64f..(ctx - 64).coerceAtLeast(128).toFloat(),
+            modifier = Modifier.fillMaxWidth().height(18.dp),
+            colors = SliderDefaults.colors(thumbColor = Cy, activeTrackColor = Cy, inactiveTrackColor = colors.Border.copy(alpha = 0.2f)))
+
         SliderRow("GPU Layers", gpuLayers.toFloat(), -1f..200f, 201, { if (it.toInt() < 0) "All" else "${it.toInt()}" }, { gpuLayers = it.toInt(); save() }, colors)
         SliderRow("Temperature", temp, 0.0f..2.0f, 40, { "%.2f".format(it) }, { temp = it; save() }, colors)
         SliderRow("Top-P", topP, 0.0f..1.0f, 20, { "%.2f".format(it) }, { topP = it; save() }, colors)
