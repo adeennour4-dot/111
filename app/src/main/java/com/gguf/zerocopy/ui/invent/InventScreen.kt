@@ -1061,8 +1061,7 @@ private fun ConfigSliders(role: String, config: ModelTokenConfig?, modelPath: St
                 singleLine = true,
                 textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Cy, unfocusedBorderColor = colors.Border, cursorColor = Cy, focusedTextColor = colors.Text, unfocusedTextColor = colors.Text),
-                shape = RoundedCornerShape(6.dp),
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                shape = RoundedCornerShape(6.dp)
             )
         }
         Slider(value = maxNew.toFloat(), onValueChange = { maxNew = it.roundToInt().coerceIn(64, ctx - 64); save() },
