@@ -14,7 +14,7 @@ static SCHEDULER: Mutex<Option<InferenceScheduler>> = Mutex::new(None);
 static MEMORY: Mutex<Option<MemoryMonitor>> = Mutex::new(None);
 
 #[no_mangle]
-pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_init(
+pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_nativeInit(
     _env: JNIEnv, _class: JClass,
     total_ram_mb: jint, cpu_cores: jint
 ) {
@@ -31,7 +31,7 @@ pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_init(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_optimizeThreadConfig<'local>(
+pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_nativeOptimizeThreadConfig<'local>(
     mut env: JNIEnv<'local>, _class: JClass<'local>,
     model_size_mb: jint, gpu_layers: jint
 ) -> jstring {
@@ -45,7 +45,7 @@ pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_optimize
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_getMemoryAdvice<'local>(
+pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_nativeGetMemoryAdvice<'local>(
     mut env: JNIEnv<'local>, _class: JClass<'local>
 ) -> jstring {
     let mem = MEMORY.lock().unwrap();
@@ -58,7 +58,7 @@ pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_getMemor
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_shouldReduceContext(
+pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_nativeShouldReduceContext(
     _env: JNIEnv, _class: JClass
 ) -> jboolean {
     let mem = MEMORY.lock().unwrap();
@@ -70,7 +70,7 @@ pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_shouldRe
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_recordUsage(
+pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_nativeRecordUsage(
     _env: JNIEnv, _class: JClass,
     used_mb: jni::sys::jlong
 ) {

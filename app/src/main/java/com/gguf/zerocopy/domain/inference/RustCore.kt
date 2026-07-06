@@ -39,8 +39,9 @@ object RustCore {
     if (available) {
       try {
         nativeInit(totalRamMB.toInt(), cpuCores)
-      } catch (e: Exception) {
+      } catch (e: Throwable) {
         Log.w(TAG, "Rust init failed: ${e.message}")
+        available = false
       }
     }
   }
@@ -56,8 +57,9 @@ object RustCore {
         useBigCores = j.optBoolean("use_big_cores", true),
         gpuOffload = j.optBoolean("gpu_offload", true)
       )
-    } catch (e: Exception) {
+    } catch (e: Throwable) {
       Log.w(TAG, "Thread optimization failed: ${e.message}")
+      available = false
       ThreadConfig()
     }
   }
@@ -75,7 +77,8 @@ object RustCore {
         recommendOffload = j.optBoolean("recommend_offload", false),
         shouldReduceContext = j.optBoolean("should_reduce_context", false)
       )
-    } catch (e: Exception) {
+    } catch (e: Throwable) {
+      available = false
       MemoryAdvice()
     }
   }
@@ -84,7 +87,8 @@ object RustCore {
     if (!available) return false
     return try {
       nativeShouldReduceContext()
-    } catch (e: Exception) {
+    } catch (e: Throwable) {
+      available = false
       false
     }
   }
@@ -94,8 +98,9 @@ object RustCore {
     if (!available) return
     try {
       nativeRecordUsage(usedMb)
-    } catch (e: Exception) {
+    } catch (e: Throwable) {
       Log.w(TAG, "recordUsage failed: ${e.message}")
+      available = false
     }
   }
 
