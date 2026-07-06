@@ -2,8 +2,10 @@ package com.gguf.zerocopy.domain.server
 
 import android.util.Log
 import com.gguf.zerocopy.ZeroCopyApp
+import com.gguf.zerocopy.domain.inference.NativeBridge
 import com.gguf.zerocopy.domain.inference.TokenCallback
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStream
@@ -726,7 +728,8 @@ async function send(){
       if (timedOut) {
         // Report timeout so the client knows the response was interrupted
         try {
-          out.write("data: {"id":"$id","object":"chat.completion.chunk","created":${System.currentTimeMillis()/1000},"model":"$model","choices":[{"index":0,"delta":{},"finish_reason":"error"}],"error":"inference_timed_out"}\n\n".toByteArray())
+          val errChunk = """{"id":"$id","object":"chat.completion.chunk","created":${System.currentTimeMillis()/1000},"model":"$model","choices":[{"index":0,"delta":{},"finish_reason":"error"}],"error":"inference_timed_out"}"""
+          out.write("data: $errChunk\n\n".toByteArray())
           out.write("data: [DONE]\n\n".toByteArray())
           out.flush()
         } catch (_: Exception) {}
