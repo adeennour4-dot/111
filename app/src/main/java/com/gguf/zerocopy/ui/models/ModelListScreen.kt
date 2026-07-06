@@ -132,6 +132,20 @@ fun ModelListScreen(
   }
 
   fun handleModelTap(model: LocalModel) {
+    // Abort any running inference before touching the model.
+    // If inference is still active when we free the C++ globals
+    // (model, context, sampler) via unloadModel/loadModel, the
+    // inference thread will crash with a use-after-free.
+    val runningEngine = app.engineManager.getActiveEngine()
+    if (runningEngine != null && !runningEngine.isInferenceDone()) {
+      runningEngine.abortInference()
+      // Spin-wait for inference to actually finish (max ~2s)
+      var waited = 0
+      while (!runningEngine.isInferenceDone() && waited < 2000) {
+        Thread.sleep(50)
+        waited += 50
+      }
+    }
     if (loadedModelPath == model.path && activeEngine != null) {
       activeEngine.unloadModel()
       return
@@ -157,6 +171,16 @@ fun ModelListScreen(
 
   fun confirmEngineSwitch(model: LocalModel) {
     engineSwitchWarningModel = null
+    // Abort running inference before unloading all engines
+    val runningEngine = app.engineManager.getActiveEngine()
+    if (runningEngine != null && !runningEngine.isInferenceDone()) {
+      runningEngine.abortInference()
+      var waited = 0
+      while (!runningEngine.isInferenceDone() && waited < 2000) {
+        Thread.sleep(50)
+        waited += 50
+      }
+    }
     isLoading = true
     scope.launch {
       app.engineManager.unloadAll()
@@ -167,7 +191,16 @@ fun ModelListScreen(
 
   fun confirmDelete(model: LocalModel) {
     if (loadedModelPath == model.path) {
-      app.engineManager.getActiveEngine()?.unloadModel()
+      val engine = app.engineManager.getActiveEngine()
+      if (engine != null && !engine.isInferenceDone()) {
+        engine.abortInference()
+        var waited = 0
+        while (!engine.isInferenceDone() && waited < 2000) {
+          Thread.sleep(50)
+          waited += 50
+        }
+      }
+      engine?.unloadModel()
     }
     app.modelRepository.deleteModel(model.id)
     modelToDelete = null

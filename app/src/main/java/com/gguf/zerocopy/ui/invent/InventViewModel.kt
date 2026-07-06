@@ -107,6 +107,44 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     /** Saved original paths for model mode switching. */
     private var savedOriginalPaths = mutableMapOf<String, String>()
 
+    init {
+        // Restore the most advanced in-progress session on ViewModel creation.
+        // This ensures session state survives tab switches (where the ViewModel
+        // may be recreated) and app restarts (where the saved instance state
+        // restores inventStarted but the ViewModel starts fresh).
+        // Runs synchronously because file I/O on small JSON is negligible.
+        restoreLastSession()
+    }
+
+    private fun restoreLastSession() {
+        val phaseOrder = InventPhase.values().toList()
+        val existing = InventStorage.listSessions(ctx)
+            .mapNotNull { sid ->
+                val s = InventStorage.loadSession(ctx, sid)
+                if (s != null && s.phase != InventPhase.DONE && s.phase != InventPhase.DEBUGGING) sid to s else null
+            }
+            .sortedByDescending { (_, s) -> phaseOrder.indexOf(s.phase) }
+            .firstOrNull()?.first ?: return
+        val saved = InventStorage.loadSession(ctx, existing) ?: return
+        val savedZcp = InventStorage.loadZcp(ctx, existing) ?: return
+        sessionId = existing; sessionState = saved; zcp = savedZcp
+        _ui.value = _ui.value.copy(
+            phase = saved.phase, messages = saved.messages, sessionId = existing,
+            model1Name = saved.model1Name, model2Name = saved.model2Name,
+            researcherName = saved.researcherName,
+            offlineMode = saved.offlineMode, sameModelMode = saved.sameModelMode,
+            modelMode = when {
+                saved.sameModelMode && saved.researcherPath == saved.model1Path -> ModelMode.SINGLE
+                saved.sameModelMode -> ModelMode.DUAL
+                else -> ModelMode.TRIPLE
+            },
+            searchRound = saved.searchRound, mergeCount = saved.mergeCount,
+            currentFileIndex = saved.currentFileIndex, totalFiles = saved.totalFiles,
+            debugMode = saved.phase == InventPhase.DEBUGGING,
+            zipReady = saved.phase == InventPhase.DONE || saved.phase == InventPhase.DEBUGGING
+        )
+    }
+
     // ── Atomic persistence ─────────────────────────────────────────────────
 
     private fun persistSessionState(state: InventSessionState) {
