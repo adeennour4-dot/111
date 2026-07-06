@@ -408,14 +408,14 @@ private fun CheckOverride(
 ) {
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(
+            Switch(
                 checked = checked,
                 onCheckedChange = onCheck,
-                colors = CheckboxDefaults.colors(checkedColor = colors.Accent, checkmarkColor = colors.Bg,
-                    uncheckedColor = colors.Text3),
-                modifier = Modifier.size(20.dp)
+                colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg,
+                    uncheckedTrackColor = colors.Border, uncheckedThumbColor = colors.Text3),
+                modifier = Modifier.height(24.dp)
             )
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(8.dp))
             Text(label, fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
         }
         if (checked) {
@@ -438,14 +438,14 @@ private fun SamplingField(
 ) {
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(
+            Switch(
                 checked = enabled,
                 onCheckedChange = onEnabled,
-                colors = CheckboxDefaults.colors(checkedColor = colors.Accent, checkmarkColor = colors.Bg,
-                    uncheckedColor = colors.Text3),
-                modifier = Modifier.size(20.dp)
+                colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg,
+                    uncheckedTrackColor = colors.Border, uncheckedThumbColor = colors.Text3),
+                modifier = Modifier.height(24.dp)
             )
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(8.dp))
             Text(label, fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
         }
         if (enabled) {
@@ -478,14 +478,14 @@ private fun SwitchField(
 ) {
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(
+            Switch(
                 checked = enabled,
                 onCheckedChange = onEnabled,
-                colors = CheckboxDefaults.colors(checkedColor = colors.Accent, checkmarkColor = colors.Bg,
-                    uncheckedColor = colors.Text3),
-                modifier = Modifier.size(20.dp)
+                colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg,
+                    uncheckedTrackColor = colors.Border, uncheckedThumbColor = colors.Text3),
+                modifier = Modifier.height(24.dp)
             )
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(8.dp))
             Text(label, fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
         }
         if (enabled) {
