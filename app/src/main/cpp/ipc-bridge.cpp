@@ -733,19 +733,19 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_formatWithChatTemplateNativ
         if (n >= 0) result = std::string(buf.data(), n);
     }
 
-    // Free strdup'd strings
-    for (auto& m : msgs) {
-        free((void*)m.role);
-        free((void*)m.content);
-    }
-
     if (result.empty()) {
-        // Fallback: ChatML
+        // Fallback: ChatML (use msgs BEFORE freeing)
         result = "<|im_start|>system\nYou are a helpful AI assistant<|im_end|>\n";
         for (auto& m : msgs) {
             result += "<|im_start|>" + std::string(m.role) + "\n" + std::string(m.content) + "<|im_end|>\n";
         }
         result += "<|im_start|>assistant\n";
+    }
+
+    // Free strdup'd strings (after fallback which reads them)
+    for (auto& m : msgs) {
+        free((void*)m.role);
+        free((void*)m.content);
     }
 
     return env->NewStringUTF(result.c_str());
