@@ -132,6 +132,9 @@ fun ChatScreen(
   var streamedTokens by remember { mutableIntStateOf(0) }
   var streamedTps by remember { mutableFloatStateOf(0f) }
 
+  var attachmentUris by remember { mutableStateOf(listOf<Uri>()) }
+  var attachmentFileNames by remember { mutableStateOf(listOf<String>()) }
+
   LaunchedEffect(sessionId) {
     if (sessionId != null) {
       chatId = sessionId
@@ -148,8 +151,6 @@ fun ChatScreen(
   }
 
   val messages by app.chatRepository.currentMessages.collectAsState()
-  var attachmentUris by remember { mutableStateOf(listOf<Uri>()) }
-  var attachmentFileNames by remember { mutableStateOf(listOf<String>()) }
   var cameraImageUriStr by rememberSaveable { mutableStateOf("") }
   var reasoningEnabled by remember { mutableStateOf(SettingsManager.reasoningEnabled) }
   var ragEnabled by remember { mutableStateOf(SettingsManager.ragEnabled) }

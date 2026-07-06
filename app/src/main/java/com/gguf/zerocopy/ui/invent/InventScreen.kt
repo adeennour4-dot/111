@@ -1038,13 +1038,12 @@ private fun ConfigSliders(role: String, config: ModelTokenConfig?, modelPath: St
             Text("Context", fontSize = 10.sp, color = colors.Text2, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             OutlinedTextField(
                 value = ctx.toString(),
-                onValueChange = { v -> val n = v.filter { it.isDigit() }.toIntOrNull(); if (n != null) { ctx = n.coerceIn(512, 32768); save() } },
-                modifier = Modifier.widthIn(min = 80.dp, max = 140.dp),
+                onValueChange = { v: String -> val n = v.filter { it.isDigit() }.toIntOrNull(); if (n != null) { ctx = n.coerceIn(512, 32768); save() } },
+                modifier = Modifier.widthIn(min = 80.dp, max = 140.dp).padding(horizontal = 6.dp, vertical = 6.dp),
                 singleLine = true,
                 textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Cy, unfocusedBorderColor = colors.Border, cursorColor = Cy, focusedTextColor = colors.Text, unfocusedTextColor = colors.Text),
-                shape = RoundedCornerShape(6.dp),
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                shape = RoundedCornerShape(6.dp)
             )
         }
         Slider(value = ctx.toFloat(), onValueChange = { ctx = it.roundToInt().coerceIn(512, 32768); save() },
@@ -1057,8 +1056,8 @@ private fun ConfigSliders(role: String, config: ModelTokenConfig?, modelPath: St
             Text("Max Tokens", fontSize = 10.sp, color = colors.Text2, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             OutlinedTextField(
                 value = maxNew.toString(),
-                onValueChange = { v -> val n = v.filter { it.isDigit() }.toIntOrNull(); if (n != null) { maxNew = n.coerceIn(64, ctx - 64); save() } },
-                modifier = Modifier.widthIn(min = 80.dp, max = 140.dp),
+                onValueChange = { v: String -> val n = v.filter { it.isDigit() }.toIntOrNull(); if (n != null) { maxNew = n.coerceIn(64, ctx - 64); save() } },
+                modifier = Modifier.widthIn(min = 80.dp, max = 140.dp).padding(horizontal = 6.dp, vertical = 6.dp),
                 singleLine = true,
                 textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Cy, unfocusedBorderColor = colors.Border, cursorColor = Cy, focusedTextColor = colors.Text, unfocusedTextColor = colors.Text),
