@@ -166,11 +166,11 @@ fun ModelTokenConfigDialog(
                         // Editable number alongside the slider value
                         OutlinedTextField(
                             value = ctxSlider.toString(),
-                            onValueChange = { v ->
+                            onValueChange = { v: String ->
                                 val n = v.filter { it.isDigit() || it == '-' }.toIntOrNull()
                                 if (n != null) ctxSlider = n.coerceIn(512, 32768)
                             },
-                            modifier = Modifier.widthIn(min = 100.dp, max = 160.dp),
+                            modifier = Modifier.widthIn(min = 100.dp, max = 160.dp).padding(horizontal = 8.dp, vertical = 6.dp),
                             singleLine = true,
                             textStyle = LocalTextStyle.current.copy(
                                 fontSize = 12.sp, fontFamily = FontFamily.Monospace,
@@ -181,8 +181,7 @@ fun ModelTokenConfigDialog(
                                 cursorColor = colors.Accent,
                                 focusedTextColor = colors.Text, unfocusedTextColor = colors.Text
                             ),
-                            shape = RoundedCornerShape(6.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                            shape = RoundedCornerShape(6.dp)
                         )
                     }
                     Slider(
