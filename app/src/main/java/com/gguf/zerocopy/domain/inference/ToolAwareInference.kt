@@ -74,7 +74,9 @@ object ToolAwareInference {
             runSingleRound(userPrompt, runInference, callback, isAborted)
         }
 
-        callback.onDone()
+        // IMPORTANT: onDone() is already called inside runSingleRound via the
+        // inner callback's onDone/onError. DO NOT call it again here or the
+        // ChatScreen will receive a duplicate completion signal, corrupting state.
     }
 
     // ── Single round runner ─────────────────────────────────────────────────

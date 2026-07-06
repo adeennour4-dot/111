@@ -19,7 +19,11 @@ class MnnEngine : InferenceEngine {
   override var config = InferenceConfig()
   override var repeatPenalty = RepeatPenaltyConfig()
   override var systemPrompt = ""
+  // MNN does not support mmproj/vision — override hasVisionCapability via InferenceEngine
   override var mmprojPath: String = ""
+
+  // MNN does not support multimodal/vision models — always return false
+  override val hasVisionCapability: Boolean get() = false
 
   private val inferenceDone = AtomicBoolean(true)
   private val tokensGenerated = AtomicInteger(0)
@@ -84,7 +88,10 @@ class MnnEngine : InferenceEngine {
   }
 
   override suspend fun executeInferenceWithImage(prompt: String, imagePath: String, callback: TokenCallback) {
-    executeInference("[Image: $imagePath]\n$prompt", callback)
+    // MNN engine does not support actual multimodal inference.
+    // We inform the user rather than silently faking it with text-only input.
+    callback.onError("MNN engine does not support vision/multimodal input. Use llama.cpp (GGUF) for vision.")
+    callback.onDone()
   }
 
   // ── Tool-aware agentic loop — delegates to shared ToolAwareInference ─────

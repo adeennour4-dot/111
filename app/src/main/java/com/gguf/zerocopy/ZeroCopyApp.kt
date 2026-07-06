@@ -9,6 +9,7 @@ import com.gguf.zerocopy.data.repository.ChatRepository
 import com.gguf.zerocopy.data.repository.ModelRepository
 import com.gguf.zerocopy.domain.device.DeviceUtils
 import com.gguf.zerocopy.domain.inference.EngineManager
+import com.gguf.zerocopy.domain.inference.RustCore
 import com.gguf.zerocopy.domain.inference.ToolManager
 import com.gguf.zerocopy.domain.rag.RagEngine
 import com.gguf.zerocopy.domain.server.ModelServer
@@ -44,6 +45,10 @@ class ZeroCopyApp : Application() {
 
     deviceUtils = DeviceUtils(this)
     engineManager = EngineManager(this)
+
+    // Initialize Rust optimization layer (optional — silently no-ops if native lib is unavailable)
+    val deviceInfo = deviceUtils.detect()
+    RustCore.init(deviceInfo.totalRamMB, deviceInfo.cpuCores)
     modelRepository = ModelRepository(this)
     chatRepository = ChatRepository(this)
     modelServer = ModelServer()

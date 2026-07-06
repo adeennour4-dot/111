@@ -164,7 +164,13 @@ fun SettingsScreen(onBack: () -> Unit) {
 
     val active = engineManager.getActiveEngine()
     active?.let {
-      it.config = cfg
+      // Use per-model config merged with global defaults if available
+      val modelPath = it.loadedModelPath
+      if (modelPath != null) {
+        it.config = SettingsManager.toConfig(modelPath)
+      } else {
+        it.config = cfg
+      }
       it.repeatPenalty = rp
       it.systemPrompt = sysPrompt
     }
@@ -390,7 +396,13 @@ fun SettingsScreen(onBack: () -> Unit) {
           batch = SettingsManager.nBatch.toString()
           gpu = SettingsManager.gpuLayers.toString()
           threads = SettingsManager.threads.toString()
-          scope.launch { snackbarHostState.showSnackbar("Device defaults applied") }
+          // Also sync to active engine immediately so changes take effect without manual save
+          val active = engineManager.getActiveEngine()
+          active?.let {
+            it.config = SettingsManager.toConfig(it.loadedModelPath)
+            it.repeatPenalty = SettingsManager.toRepeatPenalty()
+          }
+          scope.launch { snackbarHostState.showSnackbar("Device defaults applied and synced") }
         },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),

@@ -93,6 +93,7 @@ import com.gguf.zerocopy.ui.chat.components.getFileName
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -125,22 +126,24 @@ fun ChatScreen(
   val hasVision = engine?.hasVisionCapability == true
 
   var chatId by remember { mutableStateOf(sessionId) }
+  var inferenceActive by remember { mutableStateOf(false) }
+  var isInferring by remember { mutableStateOf(false) }
+  var streamedContent by remember { mutableStateOf("") }
+  var streamedTokens by remember { mutableIntStateOf(0) }
+  var streamedTps by remember { mutableFloatStateOf(0f) }
 
   LaunchedEffect(sessionId) {
     if (sessionId != null) {
       chatId = sessionId
       app.chatRepository.selectSession(sessionId)
       SettingsManager.currentSessionId = sessionId
+      // Clear any stale attachments from previous sessions
+      attachmentUris = emptyList()
+      attachmentFileNames = emptyList()
     }
   }
 
   val messages by app.chatRepository.currentMessages.collectAsState()
-
-  var isInferring by remember { mutableStateOf(false) }
-  var streamedContent by remember { mutableStateOf("") }
-  var streamedTokens by remember { mutableIntStateOf(0) }
-  var streamedTps by remember { mutableFloatStateOf(0f) }
-  var inferenceActive by remember { mutableStateOf(false) }
   var attachmentUris by remember { mutableStateOf(listOf<Uri>()) }
   var attachmentFileNames by remember { mutableStateOf(listOf<String>()) }
   var cameraImageUriStr by rememberSaveable { mutableStateOf("") }
@@ -296,6 +299,8 @@ fun ChatScreen(
       return
     }
 
+    // Use AtomicBoolean to safely coordinate flushJob vs onDone/onError
+    val runningFlag = AtomicBoolean(true)
     inferenceActive = true
     isInferring = true
     streamedContent = ""
@@ -307,7 +312,9 @@ fun ChatScreen(
     val rawResponse = StringBuilder()
 
     val flushJob = scope.launch {
-      while (isInferring || tokenBuffer.get().isNotEmpty()) {
+      // Use the local runningFlag (set by onDone/onError) OR the global
+      // inferenceActive (set by stopInference) as exit conditions.
+      while ((runningFlag.get() && inferenceActive) || tokenBuffer.get().isNotEmpty()) {
         val buffered = tokenBuffer.getAndSet("")
         if (buffered.isNotEmpty()) {
           streamedContent += buffered
@@ -412,12 +419,14 @@ fun ChatScreen(
       val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
       val callback = object : TokenCallback {
         override fun onToken(token: String) {
-          if (!inferenceActive) return
+          if (!runningFlag.get()) return
           rawResponse.append(token)
           tokenBuffer.getAndUpdate { it + token }
           streamedTokens++
         }
         override fun onDone() {
+          // Signal flushJob to stop BEFORE manipulating state (atomic, no main thread delay)
+          runningFlag.set(false)
           val elapsed = (System.currentTimeMillis() - startTime) / 1000f
           val tpsVal  = if (elapsed > 0) streamedTokens / elapsed else 0f
           val raw = rawResponse.toString()
@@ -436,6 +445,7 @@ fun ChatScreen(
           }
         }
         override fun onError(error: String) {
+          runningFlag.set(false)
           mainHandler.post {
             if (!inferenceActive) return@post
             inferenceActive = false
@@ -464,6 +474,7 @@ fun ChatScreen(
         }
       } catch (e: Exception) {
         android.util.Log.e("ChatScreen", "Exception during inference: ${e.message}")
+        runningFlag.set(false)
         if (inferenceActive) {
           inferenceActive = false
           isInferring     = false
@@ -592,6 +603,14 @@ fun ChatScreen(
   LaunchedEffect(streamedContent) {
     if (isInferring && streamedContent.isNotEmpty()) {
       listState.animateScrollToItem(messages.size)
+    }
+  }
+
+  // Scroll to the latest message when inference finishes (streaming item removed)
+  LaunchedEffect(isInferring) {
+    if (!isInferring && messages.isNotEmpty()) {
+      delay(50) // brief delay to let the list recompose after the streaming item is removed
+      listState.animateScrollToItem(messages.size - 1)
     }
   }
 
@@ -811,8 +830,9 @@ fun ChatScreen(
         ) {
           Spacer(Modifier.height(48.dp))
           Text(
-            text = "Start a conversation",
-            color = colors.Text3,
+            text = if (engine?.isModelLoaded == true) "Start a conversation"
+                   else "No model loaded — tap the model name at top to load one",
+            color = if (engine?.isModelLoaded == true) colors.Text3 else colors.Amber,
             fontSize = 15.sp
           )
         }

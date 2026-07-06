@@ -99,16 +99,23 @@ class LiteRtEngine : InferenceEngine {
           userPrompt = prompt,
           originalSystemPrompt = systemPrompt,
           toolManager = tm,
-          setSystemPrompt = { /* LiteRT-LM has no native system prompt setter — rebuild conversation */
-            try {
-              conversation?.close()
-            } catch (_: Exception) {}
-            conversation = engine?.createConversation()
-            if (it.isNotEmpty()) {
+          setSystemPrompt = { newSysPrompt ->
+            // LiteRT-LM has no native system prompt setter after conversation creation.
+            // The system prompt is only set on the FIRST inference via the outer
+            // `if (conversation == null)` block. For tool-mode rounds, we store
+            // the prompt but don't destroy the conversation (which would lose history).
+            systemPrompt = newSysPrompt
+            if (conversation == null) {
               try {
-                conversation?.sendMessage(Message.system(Contents.of(it)), emptyMap())
+                conversation = engine?.createConversation()
+                if (newSysPrompt.isNotEmpty()) {
+                  conversation?.sendMessage(Message.system(Contents.of(newSysPrompt)), emptyMap())
+                }
               } catch (_: Exception) {}
             }
+            // If conversation already exists, we cannot change system prompt
+            // without losing history — the model still has the original system
+            // context, which is acceptable for tool-augmented rounds.
           },
           runInference = { p, tokenSink, doneSignal ->
             try {

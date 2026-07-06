@@ -44,8 +44,9 @@ fun ExportSessionDialog(
   val colors = currentPalette()
   var exportProgress by remember { mutableFloatStateOf(0f) }
 
+  // Reset progress when dialog is dismissed so next open shows empty bar
   AlertDialog(
-    onDismissRequest = onDismiss,
+    onDismissRequest = { exportProgress = 0f; onDismiss() },
     containerColor = colors.Surface,
     shape = RoundedCornerShape(16.dp),
     title = {

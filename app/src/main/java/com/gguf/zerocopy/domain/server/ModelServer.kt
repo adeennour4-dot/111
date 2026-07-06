@@ -61,7 +61,7 @@ class ModelServer(val port: Int = 8080) {
         val modelInfo = app.modelRepository.models.value.find { it.path == autoModelPath }
         if (modelInfo != null) {
           engine?.let { e ->
-            val config = com.gguf.zerocopy.data.local.SettingsManager.toConfig()
+            val config = com.gguf.zerocopy.data.local.SettingsManager.toConfig(autoModelPath)
             // Apply native GGUF context length as upper bound
             val tunedConfig = if (autoModelPath.endsWith(".gguf")) {
               val nativeCtx = com.gguf.zerocopy.domain.invent.GgufMetaReader.readContextLength(autoModelPath) ?: -1

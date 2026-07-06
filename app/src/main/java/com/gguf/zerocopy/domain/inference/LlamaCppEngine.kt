@@ -10,12 +10,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class LlamaCppEngine : InferenceEngine {
-  private val nativeLibLoaded: Boolean by lazy {
-    try { System.loadLibrary("ipc-bridge"); true }
-    catch (e: UnsatisfiedLinkError) {
-      Log.e("LlamaCppEngine", "Failed to load native library: ${e.message}"); false
-    }
-  }
+  // Relies on NativeBridge for native library loading. If NativeBridge failed
+  // to load the library, all native methods will throw UnsatisfiedLinkError,
+  // which we catch in each executeInference/loadModel call.
+  private val nativeLibLoaded: Boolean get() = NativeBridge.nativeLibLoaded
   override val engineType = EngineType.LLAMA_CPP
   override val engineName = "llama.cpp"
   override var isModelLoaded = false
