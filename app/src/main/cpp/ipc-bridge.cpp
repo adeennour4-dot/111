@@ -1015,13 +1015,12 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
     LOGI("Image callback stored as global reference: %p", g_callback);
     g_abort.store(false);
 
+    // Copy user_input BEFORE releasing the JNI reference
+    std::string prompt(user_input);
     g_current_image_path = std::string(image_path);
     env->ReleaseStringUTFChars(jprompt, user_input);
     env->ReleaseStringUTFChars(jimagePath, image_path);
 
-    // Same as executeWithCallbackNative: use the Kotlin-formatted prompt
-    // directly instead of calling build_chat_prompt() to avoid double-wrapping.
-    std::string prompt(user_input);
     LOGI("Image-prompt len=%zu image=%s", prompt.size(), g_current_image_path.c_str());
 
     int n_max = (int)llama_model_n_ctx_train(g_model);
