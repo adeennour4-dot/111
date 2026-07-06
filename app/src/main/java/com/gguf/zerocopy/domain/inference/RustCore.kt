@@ -89,8 +89,19 @@ object RustCore {
     }
   }
 
+  /** Feed current memory usage to the Rust memory advisor. Call periodically. */
+  fun recordUsage(usedMb: Long) {
+    if (!available) return
+    try {
+      nativeRecordUsage(usedMb)
+    } catch (e: Exception) {
+      Log.w(TAG, "recordUsage failed: ${e.message}")
+    }
+  }
+
   private external fun nativeInit(totalRamMB: Int, cpuCores: Int)
   private external fun nativeOptimizeThreadConfig(modelSizeMB: Int, gpuLayers: Int): String
   private external fun nativeGetMemoryAdvice(): String
   private external fun nativeShouldReduceContext(): Boolean
+  private external fun nativeRecordUsage(usedMb: Long)
 }

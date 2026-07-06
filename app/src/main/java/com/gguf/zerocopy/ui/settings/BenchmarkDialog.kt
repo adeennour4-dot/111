@@ -94,6 +94,11 @@ fun BenchmarkDialog(
                             error = null
                             scope.launch(Dispatchers.IO) {
                                 try {
+                                    // Save currently loaded model so we can restore later
+                                    val savedEngine = engineManager.getActiveEngine()
+                                    val savedPath = savedEngine?.loadedModelPath ?: ""
+                                    val savedWasLoaded = savedEngine?.isModelLoaded == true
+
                                     // Unload current model, load benchmark model
                                     engineManager.unloadAll()
                                     val engine = engineManager.selectEngineForFormat(model.path)
@@ -104,6 +109,12 @@ fun BenchmarkDialog(
                                         engine.unloadModel()
                                     } else {
                                         error = "Failed to load model: ${loadResult.exceptionOrNull()?.message}"
+                                    }
+
+                                    // Restore the user's previously loaded model
+                                    if (savedWasLoaded && savedPath.isNotEmpty() && savedPath != model.path) {
+                                        val restoreEngine = engineManager.selectEngineForFormat(savedPath)
+                                        restoreEngine.loadModel(savedPath)
                                     }
                                 } catch (e: Exception) {
                                     error = e.message ?: "Benchmark failed"

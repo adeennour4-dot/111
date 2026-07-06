@@ -157,14 +157,16 @@ object InventStorage {
     }
 
     fun saveZcp(ctx: Context, sessionId: String, zcp: ZcpProtocol) {
-        // Write large search result content to disk, keep only metadata in ZCP
+        // Write search result content to disk, keep only metadata in ZCP.
+        // IMPORTANT: only write to disk if content is non-empty to avoid overwriting
+        // previously saved files with empty strings (the content is already stripped
+        // on the first save, so subsequent saves would lose data).
         val searchDir = File(getDir(ctx), "zcp_${sessionId}_sr")
         searchDir.mkdirs()
-        // Delete old search result files
-        searchDir.listFiles()?.forEach { it.delete() }
         val metaResults = zcp.searchResults.mapIndexed { i, sr ->
-            val srFile = File(searchDir, "$i.txt")
-            srFile.writeText(sr.content)
+            if (sr.content.isNotEmpty()) {
+                File(searchDir, "$i.txt").writeText(sr.content)
+            }
             SearchResult(sr.intent, "", sr.domain, sr.verified)
         }
         val stripped = zcp.copy(searchResults = metaResults)

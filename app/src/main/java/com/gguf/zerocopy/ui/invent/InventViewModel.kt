@@ -666,61 +666,52 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                     appendLine("${summary.take(500)}")
                 })
 
-                val finalMsg = buildString {
-                    appendLine("══════ PROJECT READY ══════")
-                    appendLine("├─ ${projDir.name}/")
-                    appendLine("├─ search.txt — versions")
-                    appendLine("├─ *.txt — file prompts")
-                    appendLine("└─ CODER_INSTRUCTIONS.txt")
-                    appendLine()
-                    appendLine("$created files planned. Start a new session to generate code.")
-                }
-                withContext(Dispatchers.Main) {
-                    addMessage("system", finalMsg, InventPhase.DONE)
-                    _ui.value = _ui.value.copy(
-                        isGenerating = false, phase = InventPhase.DONE,
-                        zipReady = true, fileTree = tree,
-                        totalFiles = tree.count { !it.isDir }
-                    )
-                    updatePhase(InventPhase.DONE)
-                }
+                // Save the file specs so startFileGeneration can use them
+                zcp = zcp.copy(
+                    fileSpecs = parsePlannerPrompts(structure),
+                    fileTree = tree,
+                    phase = InventPhase.PLANNING
+                )
+                addMessage("system", "▶ Project structure ready. Starting code generation with coder model…", InventPhase.PLANNING)
+                // Generate actual source code files using the coder model
+                startFileGeneration()
             } catch (e: Exception) {
                 _ui.value = _ui.value.copy(isGenerating = false, error = "Pipeline: ${e.message}")
+            } finally {
+                _ui.value = _ui.value.copy(isGenerating = false)
             }
         }
     }
 
-    // The new pipeline runs everything inside onDonePressed().
-
-    private suspend fun startFileGeneration() {
+    /** Shared file generation loop — used by both startFileGeneration and resumeGeneration. */
+    private suspend fun generateFiles(startFrom: Int = 0, skipExisting: Boolean = false) {
         val state = sessionState ?: return
-        updatePhase(InventPhase.GENERATING)
-
         val filesToGenerate = zcp.fileTree.filter { !it.isDir }
         if (filesToGenerate.isEmpty()) { finishGeneration(); return }
 
-        // Keep model loaded across all file generations
+        val startIdx = startFrom.coerceAtLeast(0)
+        _ui.value = _ui.value.copy(totalFiles = filesToGenerate.size, currentFileIndex = startIdx)
+        sessionState = sessionState?.copy(totalFiles = filesToGenerate.size, currentFileIndex = startIdx)
+        saveAllState()
+
         val isSame = state.sameModelMode || state.model1Path == state.model2Path
         val targetPath = if (!isSame) state.model2Path else state.model1Path
         val targetName = if (!isSame) state.model2Name else state.model1Name
 
-        _ui.value = _ui.value.copy(totalFiles = filesToGenerate.size, currentFileIndex = 0)
-        sessionState = sessionState?.copy(totalFiles = filesToGenerate.size, currentFileIndex = 0)
-        saveAllState()
-
         val projectDir = InventStorage.getProjectDir(ctx, sessionId, zcp.projectName)
         zcp.fileTree.filter { it.isDir }.forEach { File(projectDir, it.path).mkdirs() }
 
-        // Load coder model ONCE for all files
         setSwap("Loading $targetName…")
         if (!loadOrKeepModel(targetPath)) {
-            setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load $targetName"); return
+            setSwap(""); _ui.value = _ui.value.copy(isGenerating = false, error = "Failed to load $targetName"); return
         }
         enableSearchOnEngine()
         setSwap("")
 
-        for ((idx, fileNode) in filesToGenerate.withIndex()) {
+        for (idx in startIdx until filesToGenerate.size) {
+            val fileNode = filesToGenerate[idx]
             if (_ui.value.phase != InventPhase.GENERATING) break
+            if (skipExisting && zcp.generatedFiles.contains(fileNode.path)) continue
 
             val fileSpec = zcp.fileSpecs[fileNode.path] ?: FileSpec(path = fileNode.path, description = fileNode.description)
 
@@ -728,24 +719,26 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             sessionState = sessionState?.copy(currentFileIndex = idx + 1)
             saveAllState()
 
-            // Check if search is needed BEFORE inference to avoid wasting first pass
             val preSearchResults = checkAndRunPreSearch(fileSpec)
-            val generatedCode = generateCodeWithPreSearch(fileSpec, projectDir, preSearchResults)
-            if (generatedCode == null) {
-                setSwap(""); _ui.value = _ui.value.copy(error = "Failed to generate ${fileNode.path}"); return
+            val code = generateCodeWithPreSearch(fileSpec, projectDir, preSearchResults)
+            if (code == null) {
+                setSwap(""); _ui.value = _ui.value.copy(isGenerating = false, error = "Failed to generate ${fileNode.path}"); return
             }
 
-            InventStorage.writeGeneratedFile(projectDir, fileNode.path, generatedCode)
+            InventStorage.writeGeneratedFile(projectDir, fileNode.path, code)
             zcp = zcp.copy(generatedFiles = zcp.generatedFiles + fileNode.path)
-            sessionState = sessionState?.copy(totalFiles = filesToGenerate.size)
             saveAllState()
-            addMessage("system", "✓ Generated ${fileNode.path} (${generatedCode.count { it == '\n' } + 1} lines)", InventPhase.GENERATING)
+            addMessage("system", "✓ Generated ${fileNode.path} (${code.count { it == '\n' } + 1} lines)", InventPhase.GENERATING)
         }
 
-        // Unload only after all files are done
         clearToolManagerOnEngines()
         withContext(Dispatchers.IO) { engineManager.unloadAll() }
         finishGeneration()
+    }
+
+    private suspend fun startFileGeneration() {
+        updatePhase(InventPhase.GENERATING)
+        generateFiles(startFrom = 0, skipExisting = false)
     }
 
     /** Before running code generation, check if search is likely needed and fetch results. */
@@ -789,51 +782,9 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun resumeGeneration() {
-        val state = sessionState ?: return
-        val filesToGenerate = zcp.fileTree.filter { !it.isDir }
+        updatePhase(InventPhase.GENERATING)
         val startFrom = _ui.value.currentFileIndex.coerceAtLeast(0)
-        val isSame = state.sameModelMode || state.model1Path == state.model2Path
-        val targetPath = if (!isSame) state.model2Path else state.model1Path
-        val targetName = if (!isSame) state.model2Name else state.model1Name
-        val projectDir = InventStorage.getProjectDir(ctx, sessionId, zcp.projectName)
-
-        val finalFiles = zcp.fileTree.filter { !it.isDir }
-        val finalStartFrom = _ui.value.currentFileIndex.coerceAtLeast(0)
-        _ui.value = _ui.value.copy(totalFiles = finalFiles.size)
-
-        // Load model once for all files
-        setSwap("Loading $targetName…")
-        if (!loadOrKeepModel(targetPath)) {
-            setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load $targetName"); return
-        }
-        enableSearchOnEngine()
-        setSwap("")
-
-        for (idx in finalStartFrom until finalFiles.size) {
-            val fileNode = finalFiles[idx]
-            if (_ui.value.phase != InventPhase.GENERATING) break
-            if (zcp.generatedFiles.contains(fileNode.path)) continue
-
-            val fileSpec = zcp.fileSpecs[fileNode.path] ?: FileSpec(path = fileNode.path, description = fileNode.description)
-            _ui.value = _ui.value.copy(currentFileIndex = idx + 1, currentFileName = fileNode.path)
-            sessionState = sessionState?.copy(currentFileIndex = idx + 1)
-            saveAllState()
-
-            val preSearch = checkAndRunPreSearch(fileSpec)
-            val code = generateCodeWithPreSearch(fileSpec, projectDir, preSearch)
-            if (code == null) {
-                setSwap(""); _ui.value = _ui.value.copy(error = "Failed to generate ${fileNode.path}"); return
-            }
-
-            InventStorage.writeGeneratedFile(projectDir, fileNode.path, code)
-            zcp = zcp.copy(generatedFiles = zcp.generatedFiles + fileNode.path)
-            saveAllState()
-            addMessage("system", "✓ Generated ${fileNode.path} (${code.count { it == '\n' } + 1} lines)", InventPhase.GENERATING)
-        }
-
-        clearToolManagerOnEngines()
-        withContext(Dispatchers.IO) { engineManager.unloadAll() }
-        finishGeneration()
+        generateFiles(startFrom = startFrom, skipExisting = true)
     }
 
     private suspend fun finishGeneration() {
@@ -1243,7 +1194,6 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun loadOrKeepModel(path: String): Boolean {
         val engine = engineManager.getActiveEngine()
         if (engine != null && engine.isModelLoaded && engine.loadedModelPath == path) {
-            withContext(Dispatchers.IO) { engine.resetContext() }
             return true
         }
         return withContext(Dispatchers.IO) {
@@ -1366,9 +1316,6 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         try {
-            // Reset native KV cache so each inference starts with a clean slate.
-            // The full prompt already contains all context, so no information is lost.
-            engine.resetContext()
             withTimeout(120_000L) { // 2 min timeout to prevent hangs
                 engine.executeInference(fullPrompt, callback)
             }
@@ -1597,9 +1544,10 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
                     mutable.removeAt(0)
                 } else break
             }
+            // Removed: the info message consumed tokens, making compaction counterproductive.
+            // The oldest messages are simply dropped silently.
             if (mutable.size < history.size) {
-                val dropped = history.size - mutable.size
-                mutable.add(0, "system" to "↕ $dropped earlier messages compacted — key info preserved")
+                // Messages were compacted — no notification needed
             }
             compactedHistory = mutable
         }

@@ -74,6 +74,8 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -97,6 +99,7 @@ fun ModelListScreen(
   var tokenConfigModel by remember { mutableStateOf<LocalModel?>(null) }
   var reloading by remember { mutableStateOf(false) }
   var pendingImport by remember { mutableStateOf(false) }
+  val snackbarHostState = remember { SnackbarHostState() }
 
   val activeEngine = app.engineManager.getActiveEngine()
   val isModelLoaded = activeEngine?.isModelLoaded == true
@@ -117,7 +120,12 @@ fun ModelListScreen(
               tokenConfigModel = model
               pendingImport = true
             }
-            .onFailure { loading = false }
+            .onFailure { error ->
+              loading = false
+              scope.launch {
+                snackbarHostState.showSnackbar("Import failed: ${error.message?.take(100) ?: "Unknown error"}")
+              }
+            }
         }
       }
     }
@@ -192,6 +200,7 @@ fun ModelListScreen(
         colors = TopAppBarDefaults.topAppBarColors(containerColor = colors.Bg)
       )
     },
+    snackbarHost = { SnackbarHost(snackbarHostState) },
     containerColor = colors.Bg
   ) { pad ->
     Box(modifier = Modifier.padding(pad).fillMaxSize()) {

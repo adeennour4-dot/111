@@ -140,6 +140,10 @@ fun ChatScreen(
       // Clear any stale attachments from previous sessions
       attachmentUris = emptyList()
       attachmentFileNames = emptyList()
+      // Reset the engine's KV cache so the new session starts fresh
+      withContext(kotlinx.coroutines.Dispatchers.IO) {
+        app.engineManager.getActiveEngine()?.resetContext()
+      }
     }
   }
 

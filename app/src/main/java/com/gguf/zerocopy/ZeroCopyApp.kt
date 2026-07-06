@@ -13,6 +13,11 @@ import com.gguf.zerocopy.domain.inference.RustCore
 import com.gguf.zerocopy.domain.inference.ToolManager
 import com.gguf.zerocopy.domain.rag.RagEngine
 import com.gguf.zerocopy.domain.server.ModelServer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class ZeroCopyApp : Application() {
   lateinit var engineManager: EngineManager
@@ -66,6 +71,19 @@ class ZeroCopyApp : Application() {
     if (SettingsManager.serverEnabled && SettingsManager.lastModelPath.isNotEmpty()) {
       modelServer.setAutoModel(SettingsManager.lastModelPath, SettingsManager.lastModelName)
       startService(Intent(this, ModelServerService::class.java))
+    }
+
+    // Feed memory usage to the Rust memory advisor every 30 seconds.
+    // This enables the Rust core to make informed decisions about KV cache
+    // quantization, layer offloading, and context reduction under memory pressure.
+    val memoryMonitorScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    memoryMonitorScope.launch {
+      while (true) {
+        delay(30_000L)
+        val rt = Runtime.getRuntime()
+        val usedMb = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024)
+        RustCore.recordUsage(usedMb)
+      }
     }
   }
 

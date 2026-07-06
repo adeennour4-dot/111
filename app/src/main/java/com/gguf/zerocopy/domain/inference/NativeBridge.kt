@@ -70,4 +70,5 @@ object NativeBridge {
   external fun getKvCacheUsageNative(): Int
 
   external fun restoreHistoryNative(messagesJson: String)
+  external fun formatWithChatTemplateNative(messagesJson: String): String
 }

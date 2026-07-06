@@ -66,7 +66,7 @@
         <!-- Receives BOOT_COMPLETED to auto-start the server when enabled in Settings -->
         <receiver
             android:name=".BootReceiver"
-            android:exported="false"
+            android:exported="true"
             android:enabled="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

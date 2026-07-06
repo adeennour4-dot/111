@@ -72,9 +72,9 @@ object GgufMetaReader {
 
     private fun readValue(raf: RandomAccessFile, type: Int, version: Int): Any? {
         return when (type) {
-            0 -> { val b = ByteArray(1); raf.read(b); b[0].toInt() } // UINT8
+            0 -> { val b = ByteArray(1); raf.read(b); b[0].toInt() and 0xFF } // UINT8 — mask to unsigned
             1 -> { val b = ByteArray(1); raf.read(b); b[0].toInt() } // INT8
-            2 -> { val b = ByteArray(2); raf.read(b); ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).short.toInt() } // UINT16
+            2 -> { val b = ByteArray(2); raf.read(b); ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).short.toInt() and 0xFFFF } // UINT16 — mask to unsigned
             3 -> { val b = ByteArray(2); raf.read(b); ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).short.toInt() } // INT16
             4 -> { val b = ByteArray(4); raf.read(b); ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFFFFFFL } // UINT32
             5 -> { val b = ByteArray(4); raf.read(b); ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).int.toLong() } // INT32

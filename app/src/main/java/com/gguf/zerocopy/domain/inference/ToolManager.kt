@@ -6,6 +6,8 @@ import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -14,6 +16,7 @@ data class ToolCall(val id: String, val name: String, val arguments: JSONObject)
 data class ToolResult(val callId: String, val name: String, val result: String)
 
 class ToolManager {
+  private val threadPool = Executors.newCachedThreadPool()
   private data class ToolEntry(val definition: ToolDefinition, val executor: (JSONObject) -> String)
   private val tools = mutableMapOf<String, ToolEntry>()
 
@@ -71,6 +74,7 @@ class ToolManager {
   }
   fun unregister(name: String) = tools.remove(name) != null
   fun clearAll() { tools.clear(); registerBuiltinTools() }
+  fun shutdown() { threadPool.shutdownNow() }
   fun hasTool(name: String) = tools.containsKey(name)
   fun getToolNames() = tools.keys.toList()
   fun getToolCount() = tools.size
@@ -228,10 +232,9 @@ class ToolManager {
     return if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
       doSearch()
     } else {
-      var result = "Web search timed out after 25 s"
-      val t = Thread { result = doSearch() }
-      t.start()
-      try { t.join(25_000L) } catch (_: InterruptedException) {}
+      var result = "Web search timed out after 60 s"
+      val future: Future<String> = threadPool.submit(java.util.concurrent.Callable { doSearch() })
+      try { result = future.get(60, java.util.concurrent.TimeUnit.SECONDS) } catch (_: Exception) { future.cancel(true) }
       result
     }
   }

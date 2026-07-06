@@ -681,26 +681,34 @@ async function send(){
       val fullText = StringBuilder()
 
       runBlocking {
-        engine.executeInference(prompt, object : TokenCallback {
-          override fun onToken(token: String) {
-            fullText.append(token)
-            val escaped = token
-              .replace("\\", "\\\\")
-              .replace("\"", "\\\"")
-              .replace("\n", "\\n")
-              .replace("\r", "\\r")
-              .replace("\t", "\\t")
-            val chunk = """{"id":"$id","object":"chat.completion.chunk","created":${System.currentTimeMillis()/1000},"model":"$model","choices":[{"index":0,"delta":{"content":"$escaped"},"finish_reason":null}]}"""
-            try {
-              out.write("data: $chunk\n\n".toByteArray())
-              out.flush()
-            } catch (_: Exception) {}
+        try {
+          withTimeout(120_000L) {
+            engine.executeInference(prompt, object : TokenCallback {
+              override fun onToken(token: String) {
+                fullText.append(token)
+                val escaped = token
+                  .replace("\\", "\\\\")
+                  .replace("\"", "\\\"")
+                  .replace("\n", "\\n")
+                  .replace("\r", "\\r")
+                  .replace("\t", "\\t")
+                val chunk = """{"id":"$id","object":"chat.completion.chunk","created":${System.currentTimeMillis()/1000},"model":"$model","choices":[{"index":0,"delta":{"content":"$escaped"},"finish_reason":null}]}"""
+                try {
+                  out.write("data: $chunk\n\n".toByteArray())
+                  out.flush()
+                } catch (_: Exception) {}
+              }
+              override fun onDone() { done.set(true) }
+              override fun onError(error: String) { errorRef[0] = error; done.set(true) }
+              override fun onKvUsage(percent: Int) {}
+              override fun onTokensGenerated(count: Int) {}
+            })
           }
-          override fun onDone() { done.set(true) }
-          override fun onError(error: String) { errorRef[0] = error; done.set(true) }
-          override fun onKvUsage(percent: Int) {}
-          override fun onTokensGenerated(count: Int) {}
-        })
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+          engine.abortInference()
+          errorRef[0] = "Inference timed out"
+          done.set(true)
+        }
       }
 
       var waited = 0
@@ -709,10 +717,25 @@ async function send(){
         waited += 50
       }
 
-      val finish = """{"id":"$id","object":"chat.completion.chunk","created":${System.currentTimeMillis()/1000},"model":"$model","choices":[{"index":0,"delta":{},"finish_reason":"${if (errorRef[0] != null) "error" else "stop"}"}]}"""
-      out.write("data: $finish\n\n".toByteArray())
-      out.write("data: [DONE]\n\n".toByteArray())
-      out.flush()
+      val timedOut = !done.get()
+      val finishReason = when {
+        errorRef[0] != null -> "error"
+        timedOut -> "error"
+        else -> "stop"
+      }
+      if (timedOut) {
+        // Report timeout so the client knows the response was interrupted
+        try {
+          out.write("data: {"id":"$id","object":"chat.completion.chunk","created":${System.currentTimeMillis()/1000},"model":"$model","choices":[{"index":0,"delta":{},"finish_reason":"error"}],"error":"inference_timed_out"}\n\n".toByteArray())
+          out.write("data: [DONE]\n\n".toByteArray())
+          out.flush()
+        } catch (_: Exception) {}
+      } else {
+        val finish = """{"id":"$id","object":"chat.completion.chunk","created":${System.currentTimeMillis()/1000},"model":"$model","choices":[{"index":0,"delta":{},"finish_reason":"$finishReason"}]}"""
+        out.write("data: $finish\n\n".toByteArray())
+        out.write("data: [DONE]\n\n".toByteArray())
+        out.flush()
+      }
     } catch (_: Exception) {} finally { activeClients.remove(ip) }
   }
 
@@ -723,19 +746,33 @@ async function send(){
     val tokCount = AtomicLong(0)
 
     runBlocking {
-      engine.executeInference(prompt, object : TokenCallback {
-        override fun onToken(token: String) { resultBuilder.append(token) }
-        override fun onDone() { done.set(true) }
-        override fun onError(error: String) { errorMsg = error; done.set(true) }
-        override fun onKvUsage(percent: Int) {}
-        override fun onTokensGenerated(count: Int) { tokCount.set(count.toLong()) }
-      })
+      try {
+        withTimeout(120_000L) {
+          engine.executeInference(prompt, object : TokenCallback {
+            override fun onToken(token: String) { resultBuilder.append(token) }
+            override fun onDone() { done.set(true) }
+            override fun onError(error: String) { errorMsg = error; done.set(true) }
+            override fun onKvUsage(percent: Int) {}
+            override fun onTokensGenerated(count: Int) { tokCount.set(count.toLong()) }
+          })
+        }
+      } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+        engine.abortInference()
+        errorMsg = "Inference timed out"
+        done.set(true)
+      }
     }
 
     var waited = 0
     while (!done.get() && waited < 120_000) {
       Thread.sleep(100)
       waited += 100
+    }
+
+    if (!done.get()) {
+      // Inference timed out
+      respond(out, 504, """{"error":"inference_timed_out","message":"Inference timed out after 120 seconds","type":"server_error"}""")
+      return
     }
 
     if (errorMsg != null) {
@@ -749,6 +786,26 @@ async function send(){
   }
 
   private fun buildPrompt(messages: org.json.JSONArray): String {
+    // Use the model's actual chat template via JNI if available,
+    // otherwise fall back to ChatML.
+    try {
+      val msgsJson = org.json.JSONArray()
+      for (i in 0 until messages.length()) {
+        val msg = messages.getJSONObject(i)
+        val role = msg.optString("role", "user")
+        val content = msg.optString("content", "")
+        if (content.isNotEmpty()) {
+          msgsJson.put(org.json.JSONObject().apply {
+            put("role", role)
+            put("content", content)
+          })
+        }
+      }
+      val formatted = NativeBridge.formatWithChatTemplateNative(msgsJson.toString())
+      if (formatted.isNotEmpty()) return formatted
+    } catch (_: Exception) {}
+
+    // Fallback: ChatML
     val sb = StringBuilder()
     for (i in 0 until messages.length()) {
       val msg = messages.getJSONObject(i)

@@ -155,10 +155,10 @@ fun CloudScreen(onBack: () -> Unit) {
 
       Button(
         onClick = {
+          saveSettings()
           if (isRunning) {
             context.stopService(Intent(context, ModelServerService::class.java))
           } else {
-            saveSettings()
             app.modelServer.setAutoModel(serverModelPath.ifEmpty { SettingsManager.lastModelPath }, serverModelName.ifEmpty { SettingsManager.lastModelName })
             context.startService(Intent(context, ModelServerService::class.java))
           }

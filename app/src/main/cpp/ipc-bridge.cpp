@@ -679,6 +679,78 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_getKvCacheUsageNative(
     return (total > 0) ? ((used * 100) / total) : 0;
 }
 
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_gguf_zerocopy_domain_inference_NativeBridge_formatWithChatTemplateNative(
+        JNIEnv* env, jobject, jstring messagesJson) {
+    const char* json = env->GetStringUTFChars(messagesJson, nullptr);
+    if (!json) return env->NewStringUTF("");
+
+    // Parse JSON array of {role, content} messages
+    std::string input(json);
+    env->ReleaseStringUTFChars(messagesJson, json);
+
+    std::vector<llama_chat_message> msgs;
+    size_t pos = 0;
+    while (pos < input.size()) {
+        pos = input.find('{', pos);
+        if (pos == std::string::npos) break;
+        size_t end = input.find('}', pos);
+        if (end == std::string::npos) break;
+        std::string obj = input.substr(pos, end - pos + 1);
+        pos = end + 1;
+
+        auto extract = [&](const std::string& key) -> std::string {
+            std::string needle = "\"" + key + "\":\"";
+            size_t k = obj.find(needle);
+            if (k == std::string::npos) return "";
+            size_t vs = k + needle.size();
+            std::string val;
+            bool esc = false;
+            for (size_t i = vs; i < obj.size(); i++) {
+                char c = obj[i];
+                if (esc) { if (c == 'n') val += '\n'; else val += c; esc = false; continue; }
+                if (c == '\\') { esc = true; continue; }
+                if (c == '"') break;
+                val += c;
+            }
+            return val;
+        };
+
+        std::string role    = extract("role");
+        std::string content = extract("content");
+        if (!role.empty() && !content.empty()) {
+            msgs.push_back({strdup(role.c_str()), strdup(content.c_str())});
+        }
+    }
+
+    std::string result;
+    if (g_model) {
+        const char* tmpl = llama_model_chat_template(g_model, nullptr);
+        if (!tmpl) tmpl = "chatml";
+        std::vector<char> buf(65536);
+        int n = llama_chat_apply_template(tmpl, msgs.data(), (int)msgs.size(), true, buf.data(), (int)buf.size());
+        if (n > (int)buf.size()) { buf.resize(n + 1); n = llama_chat_apply_template(tmpl, msgs.data(), (int)msgs.size(), true, buf.data(), (int)buf.size()); }
+        if (n >= 0) result = std::string(buf.data(), n);
+    }
+
+    // Free strdup'd strings
+    for (auto& m : msgs) {
+        free((void*)m.role);
+        free((void*)m.content);
+    }
+
+    if (result.empty()) {
+        // Fallback: ChatML
+        result = "<|im_start|>system\nYou are a helpful AI assistant<|im_end|>\n";
+        for (auto& m : msgs) {
+            result += "<|im_start|>" + std::string(m.role) + "\n" + std::string(m.content) + "<|im_end|>\n";
+        }
+        result += "<|im_start|>assistant\n";
+    }
+
+    return env->NewStringUTF(result.c_str());
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_restoreHistoryNative(
         JNIEnv* env, jobject, jstring messagesJson) {
@@ -773,10 +845,13 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
     LOGI("Callback stored as global reference: %p", g_callback);
     g_abort.store(false);
 
-    g_history.push_back({"user", std::string(user_input)});
+    // NOTE: The prompt from Kotlin is ALREADY fully formatted with the correct
+    // chat template (ChatML, Gemma, Llama3, etc.) via buildPromptWithInfo().
+    // We use it directly instead of calling build_chat_prompt() which would
+    // double-wrap the already-formatted prompt. The Kotlin side handles
+    // template detection and formatting.
+    std::string prompt(user_input);
     env->ReleaseStringUTFChars(jprompt, user_input);
-
-    std::string prompt = build_chat_prompt();
     LOGI("Prompt len=%zu", prompt.size());
 
     int n_max = (int)llama_model_n_ctx_train(g_model);
@@ -789,7 +864,6 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
     int n_toks = llama_tokenize(llama_model_get_vocab(g_model), prompt.c_str(), prompt.size(), tokens.data(), n_max, false, true);
     if (n_toks <= 0) {
         LOGE("Tokenization returned %d tokens, prompt len=%zu", n_toks, prompt.size());
-        g_history.pop_back();
         call_callback_on_error("Tokenization failed");
         release_callback();
         return;
@@ -811,13 +885,9 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
            discard, (int)tokens.size(), g_cfg.n_ctx);
     }
 
-    // build_chat_prompt() always renders the FULL conversation (system +
-    // entire g_history) from scratch on every call. The KV cache, however,
-    // is persistent across calls. If we don't clear it here, the freshly
-    // rendered prompt (which already contains all prior turns) gets decoded
-    // on top of the old cached tokens at the wrong positions, duplicating
-    // the conversation and corrupting context. This was the main cause of
-    // garbled, empty, or "disappearing" responses after the first message.
+    // The prompt contains the FULL conversation (already formatted by Kotlin).
+    // Since we're re-sending the entire conversation, clear the KV cache to
+    // avoid position collision with previously cached tokens.
     llama_memory_clear(get_mem(), true);
 
     // Manually prepend BOS token on the very first decode (KV cache empty).
@@ -945,12 +1015,13 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
     LOGI("Image callback stored as global reference: %p", g_callback);
     g_abort.store(false);
 
-    g_history.push_back({"user", std::string(user_input)});
     g_current_image_path = std::string(image_path);
     env->ReleaseStringUTFChars(jprompt, user_input);
     env->ReleaseStringUTFChars(jimagePath, image_path);
 
-    std::string prompt = build_chat_prompt();
+    // Same as executeWithCallbackNative: use the Kotlin-formatted prompt
+    // directly instead of calling build_chat_prompt() to avoid double-wrapping.
+    std::string prompt(user_input);
     LOGI("Image-prompt len=%zu image=%s", prompt.size(), g_current_image_path.c_str());
 
     int n_max = (int)llama_model_n_ctx_train(g_model);
@@ -959,7 +1030,6 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
     int n_toks = llama_tokenize(llama_model_get_vocab(g_model), prompt.c_str(), prompt.size(), tokens.data(), n_max, false, true);
     if (n_toks <= 0) {
         LOGE("Image tokenization returned %d tokens", n_toks);
-        g_history.pop_back();
         call_callback_on_error("Tokenization failed");
         release_callback();
         return;
@@ -977,10 +1047,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
            discard, g_cfg.n_ctx);
     }
 
-    // Same fix as executeWithCallbackNative: build_chat_prompt() renders the
-    // full conversation from scratch every call, so the KV cache must be
-    // cleared before decoding or the conversation gets duplicated at wrong
-    // positions, corrupting context and producing empty/garbled output.
+    // Clear the KV cache before decoding the full prompt.
     llama_memory_clear(get_mem(), true);
 
     // Manually prepend BOS token on the very first decode (KV cache empty).

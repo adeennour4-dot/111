@@ -56,9 +56,6 @@ fun ZeroCopyTheme(content: @Composable () -> Unit) {
   MaterialTheme(colorScheme = colorScheme) { content() }
 }
 
-val ZcColors.current: ZcPalette
-  @Composable get() = if (ThemeState.isDark) ZcColors else ZcLightColors
-
 @Composable
 fun currentPalette(): ZcPalette = if (ThemeState.isDark) ZcColors else ZcLightColors
 

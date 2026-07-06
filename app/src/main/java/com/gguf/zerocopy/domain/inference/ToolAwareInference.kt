@@ -87,10 +87,21 @@ object ToolAwareInference {
         callback: TokenCallback,
         isAborted: () -> Boolean
     ) {
+        // Check if inference was aborted before starting
+        if (isAborted()) {
+            callback.onDone()
+            return
+        }
+
         val roundDone = InferenceDoneSignal()
 
         val tokenSink = object : TokenCallback {
             override fun onToken(token: String) {
+                // Check abort on each token — if aborted, stop forwarding tokens
+                if (isAborted()) {
+                    roundDone.signalDone()
+                    return
+                }
                 callback.onToken(token)
             }
             override fun onDone() {}
@@ -103,8 +114,16 @@ object ToolAwareInference {
         runInference(prompt, tokenSink, roundDone)
 
         val timedOut = !roundDone.await(5, TimeUnit.MINUTES)
-        if (timedOut) { callback.onError("Inference timed out"); return }
-        if (roundDone.error != null) { callback.onError(roundDone.error!!); return }
+        if (timedOut) { 
+            if (!isAborted()) callback.onError("Inference timed out")
+            else callback.onDone()
+            return 
+        }
+        if (roundDone.error != null) { 
+            if (!isAborted()) callback.onError(roundDone.error!!)
+            else callback.onDone()
+            return 
+        }
     }
 
     // ── Search execution ────────────────────────────────────────────────────

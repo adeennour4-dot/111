@@ -68,3 +68,14 @@ pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_shouldRe
         JNI_FALSE
     }
 }
+
+#[no_mangle]
+pub extern "system" fn Java_com_gguf_zerocopy_domain_inference_RustCore_recordUsage(
+    _env: JNIEnv, _class: JClass,
+    used_mb: jni::sys::jlong
+) {
+    let mut mem = MEMORY.lock().unwrap();
+    if let Some(ref mut m) = *mem {
+        m.record_usage(used_mb as u64);
+    }
+}
