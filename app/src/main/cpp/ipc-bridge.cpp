@@ -845,13 +845,14 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
     LOGI("Callback stored as global reference: %p", g_callback);
     g_abort.store(false);
 
-    // NOTE: The prompt from Kotlin is ALREADY fully formatted with the correct
-    // chat template (ChatML, Gemma, Llama3, etc.) via buildPromptWithInfo().
-    // We use it directly instead of calling build_chat_prompt() which would
-    // double-wrap the already-formatted prompt. The Kotlin side handles
-    // template detection and formatting.
-    std::string prompt(user_input);
+    // Copy user_input before releasing JNI reference, push to history,
+    // and build the chat-template-formatted prompt from the full history.
+    // This ensures the model receives proper template wrapping
+    // (e.g. <|im_start|>user\n...<|im_end|>\n<|im_start|>assistant\n).
+    std::string user_copy(user_input);
     env->ReleaseStringUTFChars(jprompt, user_input);
+    g_history.push_back({"user", user_copy});
+    std::string prompt = build_chat_prompt();
     LOGI("Prompt len=%zu", prompt.size());
 
     int n_max = (int)llama_model_n_ctx_train(g_model);
@@ -1015,11 +1016,15 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
     LOGI("Image callback stored as global reference: %p", g_callback);
     g_abort.store(false);
 
-    // Copy user_input BEFORE releasing the JNI reference
-    std::string prompt(user_input);
-    g_current_image_path = std::string(image_path);
+    // Copy user_input BEFORE releasing JNI references, push to history,
+    // and build the chat-template-formatted prompt from the full history.
+    std::string user_copy(user_input);
+    std::string image_copy(image_path);
     env->ReleaseStringUTFChars(jprompt, user_input);
     env->ReleaseStringUTFChars(jimagePath, image_path);
+    g_history.push_back({"user", user_copy});
+    g_current_image_path = image_copy;
+    std::string prompt = build_chat_prompt();
 
     LOGI("Image-prompt len=%zu image=%s", prompt.size(), g_current_image_path.c_str());
 

@@ -164,11 +164,19 @@ fun ModelTokenConfigDialog(
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Context window", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
                         // Editable number alongside the slider value
+                        // Track raw text so user can clear and re-type without
+                        // the field snapping back to the previous numeric value
+                        var ctxText by remember { mutableStateOf(ctxSlider.toString()) }
                         OutlinedTextField(
-                            value = ctxSlider.toString(),
+                            value = ctxText,
                             onValueChange = { v: String ->
+                                ctxText = v
                                 val n = v.filter { it.isDigit() || it == '-' }.toIntOrNull()
-                                if (n != null) ctxSlider = n.coerceIn(512, 32768)
+                                if (n != null) {
+                                    val clamped = n.coerceIn(512, 32768)
+                                    ctxSlider = clamped
+                                    ctxText = clamped.toString()
+                                }
                             },
                             modifier = Modifier.widthIn(min = 100.dp, max = 160.dp).padding(horizontal = 8.dp, vertical = 6.dp),
                             singleLine = true,
@@ -207,11 +215,17 @@ fun ModelTokenConfigDialog(
                 Column {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Max new tokens", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+                        var maxNewText by remember { mutableStateOf(maxNewSlider.toString()) }
                         OutlinedTextField(
-                            value = maxNewSlider.toString(),
-                            onValueChange = { v ->
+                            value = maxNewText,
+                            onValueChange = { v: String ->
+                                maxNewText = v
                                 val n = v.filter { it.isDigit() || it == '-' }.toIntOrNull()
-                                if (n != null) maxNewSlider = n.coerceIn(64, ctxSlider - 64)
+                                if (n != null) {
+                                    val clamped = n.coerceIn(64, ctxSlider - 64)
+                                    maxNewSlider = clamped
+                                    maxNewText = clamped.toString()
+                                }
                             },
                             modifier = Modifier.widthIn(min = 100.dp, max = 160.dp),
                             singleLine = true,
