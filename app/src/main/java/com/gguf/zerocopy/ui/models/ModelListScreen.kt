@@ -30,10 +30,11 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -72,6 +73,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.material3.SnackbarHost
@@ -271,11 +273,59 @@ fun ModelListScreen(
         }
       }
 
+      // ── Loading overlay with progress and cancel ──
       if (loading || isLoading || reloading) {
-        CircularProgressIndicator(
-          modifier = Modifier.align(Alignment.Center),
-          color = colors.Accent
-        )
+        Box(
+          modifier = Modifier
+            .fillMaxSize()
+            .background(colors.Bg.copy(alpha = 0.85f)),
+          contentAlignment = Alignment.Center
+        ) {
+          Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            LinearProgressIndicator(
+              modifier = Modifier
+                .fillMaxWidth(0.6f)
+                .height(4.dp),
+              color = colors.Accent,
+              trackColor = colors.Border
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+              loadingStep.ifEmpty { "Loading…" },
+              fontSize = 12.sp,
+              color = colors.Text2,
+              fontFamily = FontFamily.Monospace
+            )
+            Spacer(Modifier.height(16.dp))
+            TextButton(onClick = {
+              loadCancelRequested = true
+              loadingJob?.cancel()
+              loadingJob = null
+              isLoading = false
+              reloading = false
+              loadingStep = ""
+              // If model was partially loaded, unload it
+              val engine = app.engineManager.getActiveEngine()
+              if (engine?.loadedModelPath != null) {
+                try { engine.unloadModel() } catch (_: Exception) {}
+              }
+            }) {
+              Icon(
+                Icons.Filled.Close,
+                contentDescription = "Cancel loading",
+                modifier = Modifier.size(16.dp),
+                tint = colors.Red
+              )
+              Spacer(Modifier.width(4.dp))
+              Text(
+                "Cancel",
+                fontSize = 12.sp,
+                color = colors.Red,
+                fontFamily = FontFamily.Monospace
+              )
+            }
+          }
+        }
       }
 
       // ── Token config dialog ────────────────────────────────────────────
@@ -676,7 +726,8 @@ private fun EngineBadge(engine: EngineType) {
 
 private suspend fun loadModel(
   model: LocalModel,
-  onModelSelected: (String, String) -> Unit
+  onModelSelected: (String, String) -> Unit,
+  isCancelled: () -> Boolean = { false }
 ) {
   val app = ZeroCopyApp.instance
   val engine = app.engineManager.selectEngineForFormat(model.path)
@@ -716,6 +767,11 @@ private suspend fun loadModel(
   withContext(Dispatchers.IO) {
     engine.loadModel(model.path)
   }.onSuccess {
+    if (isCancelled()) {
+      // User cancelled during native load — unload the partial model
+      engine.unloadModel()
+      return
+    }
     app.modelRepository.markUsed(model.id)
     onModelSelected(model.path, model.name)
   }.onFailure { e ->
