@@ -69,6 +69,7 @@ import com.gguf.zerocopy.domain.inference.BenchmarkResult
 import com.gguf.zerocopy.domain.inference.EngineType
 import com.gguf.zerocopy.domain.inference.InferenceConfig
 import com.gguf.zerocopy.ui.theme.currentPalette
+import kotlin.math.roundToInt
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -658,6 +659,35 @@ private fun ModelCard(
             color = colors.Text3,
             fontFamily = FontFamily.Monospace
           )
+          // Estimated RAM needed (model file size × ~1.3x overhead)
+          if (model.sizeBytes > 0) {
+            val estRamMB = (model.sizeBytes.toFloat() * 1.3f / (1024f * 1024f)).roundToInt()
+            Spacer(Modifier.width(8.dp))
+            Text(
+              "~${estRamMB}MB RAM",
+              fontSize = 10.sp,
+              color = colors.Text3,
+              fontFamily = FontFamily.Monospace
+            )
+          }
+          // Vision-capable badge (mmproj found in global config)
+          if (model.format.equals("gguf", ignoreCase = true) &&
+              com.gguf.zerocopy.data.local.SettingsManager.mmprojPath.isNotEmpty()) {
+            Spacer(Modifier.width(6.dp))
+            Surface(
+              shape = RoundedCornerShape(3.dp),
+              color = colors.Amber.copy(alpha = 0.2f)
+            ) {
+              Text(
+                "VISION",
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                fontSize = 8.sp,
+                color = colors.Amber,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold
+              )
+            }
+          }
           if (model.lastUsed > 0) {
             Spacer(Modifier.width(8.dp))
             Text(
