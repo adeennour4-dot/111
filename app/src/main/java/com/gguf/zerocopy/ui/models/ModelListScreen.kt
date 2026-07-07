@@ -102,7 +102,54 @@ fun ModelListScreen(
   var tokenConfigModel by remember { mutableStateOf<LocalModel?>(null) }
   var reloading by remember { mutableStateOf(false) }
   var pendingImport by remember { mutableStateOf(false) }
+  var importWarning by remember { mutableStateOf<String?>(null) }
   val snackbarHostState = remember { SnackbarHostState() }
+
+  /** Validate an imported model and set importWarning if issues found. */
+  fun validateImportedModel(model: com.gguf.zerocopy.data.repository.LocalModel) {
+    val warnings = mutableListOf<String>()
+
+    // 1. Check for .sha256 checksum file alongside the model
+    val modelFile = java.io.File(model.path)
+    val checksumFile = java.io.File(modelFile.parentFile, modelFile.name + ".sha256")
+    if (checksumFile.exists()) {
+      try {
+        val expected = checksumFile.readText().trim().split(" ").firstOrNull() ?: ""
+        if (expected.length == 64) {
+          val actual = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(modelFile.readBytes())
+            .joinToString("") { "%02x".format(it) }
+          if (!actual.equals(expected, ignoreCase = true)) {
+            warnings.add("⚠ Checksum mismatch — file may be corrupted or tampered")
+          }
+        }
+      } catch (_: Exception) {}
+    }
+
+    // 2. Check for mmproj file for vision-capable GGUF models
+    if (model.format.equals("gguf", ignoreCase = true)) {
+      val mmprojCandidates = listOf(
+        java.io.File(modelFile.parentFile, modelFile.nameWithoutExtension + ".mmproj"),
+        java.io.File(modelFile.parentFile, "mmproj-model-f16.gguf"),
+        java.io.File(modelFile.parentFile, "mmproj-${modelFile.name}")
+      )
+      val mmprojFound = mmprojCandidates.any { it.exists() }
+      if (!mmprojFound) {
+        // Check if there's a global mmproj path set — if not, it might be a vision model
+        val globalMmproj = com.gguf.zerocopy.data.local.SettingsManager.mmprojPath
+        if (globalMmproj.isNotEmpty() && !java.io.File(globalMmproj).exists()) {
+          warnings.add("⚠ Configured mmproj file not found at: $globalMmproj")
+        }
+      }
+    }
+
+    // 3. Check file size sanity
+    if (model.sizeBytes > 0 && model.sizeBytes < 1_000_000) {
+      warnings.add("⚠ Model file is very small (< 1MB) — may be invalid or truncated")
+    }
+
+    importWarning = if (warnings.isNotEmpty()) warnings.joinToString("\n") else null
+  }
 
   val activeEngine = app.engineManager.getActiveEngine()
   val isModelLoaded = activeEngine?.isModelLoaded == true
@@ -119,6 +166,8 @@ fun ModelListScreen(
           app.modelRepository.importUri(uri, name)
             .onSuccess { model ->
               loading = false
+              // Validate imported model
+              validateImportedModel(model)
               // Show settings dialog before loading
               tokenConfigModel = model
               pendingImport = true
@@ -548,6 +597,34 @@ fun ModelListScreen(
           dismissButton = {
             TextButton(onClick = { engineSwitchWarningModel = null }) {
               Text("Cancel", color = colors.Text2)
+            }
+          }
+        )
+      }
+
+      // ── Import warning dialog ──────────────────────────────────────
+      importWarning?.let { warning ->
+        AlertDialog(
+          onDismissRequest = { importWarning = null },
+          containerColor = colors.Card,
+          title = { Text("Import Warnings", color = colors.Amber, fontSize = 16.sp) },
+          text = {
+            Column {
+              warning.split("\n").forEach { line ->
+                if (line.isNotBlank()) {
+                  Text(
+                    line,
+                    color = colors.Text2,
+                    fontSize = 13.sp
+                  )
+                  Spacer(Modifier.height(6.dp))
+                }
+              }
+            }
+          },
+          confirmButton = {
+            TextButton(onClick = { importWarning = null }) {
+              Text("OK", color = colors.Accent)
             }
           }
         )

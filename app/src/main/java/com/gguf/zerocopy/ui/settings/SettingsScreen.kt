@@ -686,6 +686,24 @@ fun SettingsScreen(onBack: () -> Unit) {
         fontFamily = FontFamily.Monospace
       )
 
+      Spacer(Modifier.height(8.dp))
+
+      OutlinedButton(
+        onClick = { sendLogs(context) },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent2)
+      ) {
+        Text("Send Logs (attach to issue)", fontSize = 12.sp)
+      }
+
+      Text(
+        "App Version: 1.0.2",
+        fontSize = 10.sp,
+        color = colors.Text3,
+        fontFamily = FontFamily.Monospace
+      )
+
       val deviceInfo = remember { app.deviceUtils.detect() }
       Text(
         "RAM: ${deviceInfo.totalRamMB / 1024} GB total",
@@ -741,6 +759,60 @@ fun SettingsScreen(onBack: () -> Unit) {
 
   if (showJobs) {
     JobsScreen(onBack = { showJobs = false })
+  }
+}
+
+/** Collect logs + model metadata and share via email/intent. */
+private fun sendLogs(context: android.content.Context) {
+  try {
+    val logsDir = java.io.File(context.cacheDir, "logs")
+    logsDir.mkdirs()
+    val logFile = java.io.File(logsDir, "zerocopy_logs_${System.currentTimeMillis()}.txt")
+    val sb = StringBuilder()
+    sb.appendLine("=== ZeroCopy Debug Logs ===")
+    sb.appendLine("Time: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())}")
+    sb.appendLine("Device: ${android.os.Build.MODEL} (${android.os.Build.MANUFACTURER})")
+    sb.appendLine("Android: ${android.os.Build.VERSION.SDK_INT}")
+    sb.appendLine("RAM: ${Runtime.getRuntime().totalMemory() / (1024*1024)} MB")
+    sb.appendLine()
+    sb.appendLine("--- Model Info ---")
+    try {
+      val app = com.gguf.zerocopy.ZeroCopyApp.instance
+      val engine = app.engineManager.getActiveEngine()
+      if (engine != null) {
+        sb.appendLine("Engine: ${engine::class.simpleName}")
+        sb.appendLine("Model loaded: ${engine.isModelLoaded}")
+        sb.appendLine("Model path: ${engine.loadedModelPath}")
+        sb.appendLine("Context: ${engine.config.nCtx}")
+      }
+    } catch (_: Exception) {}
+    sb.appendLine()
+    sb.appendLine("--- Logcat (last 200 lines) ---")
+    try {
+      val process = Runtime.getRuntime().exec("logcat -d -t 200")
+      val reader = java.io.BufferedReader(java.io.InputStreamReader(process.inputStream))
+      reader.use { r -> r.lines().forEach { sb.appendLine(it) } }
+    } catch (_: Exception) {
+      sb.appendLine("(logcat not available)")
+    }
+    logFile.writeText(sb.toString())
+    val uri = androidx.core.content.FileProvider.getUriForFile(
+      context, "${context.packageName}.fileprovider", logFile
+    )
+    context.startActivity(
+      Intent.createChooser(
+        Intent(Intent.ACTION_SEND).apply {
+          type = "text/plain"
+          putExtra(Intent.EXTRA_STREAM, uri)
+          putExtra(Intent.EXTRA_SUBJECT, "ZeroCopy Debug Logs")
+          putExtra(Intent.EXTRA_TEXT, "Attached: device info, model config, and logcat output")
+          addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        },
+        "Send Logs"
+      )
+    )
+  } catch (e: Exception) {
+    android.util.Log.e("SettingsScreen", "sendLogs failed", e)
   }
 }
 
