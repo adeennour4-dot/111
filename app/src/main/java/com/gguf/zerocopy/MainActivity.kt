@@ -125,10 +125,18 @@ fun AppRoot() {
   }
 
   if (showWelcome) {
-    WelcomeScreen(onDone = {
-      SettingsManager.welcomeDone = true
-      showWelcome = false
-    })
+    WelcomeScreen(
+      onImportModel = {
+        SettingsManager.welcomeDone = true
+        showWelcome = false
+        // Navigate to Models tab so user can import a model
+        selectedTab = 1
+      },
+      onContinue = {
+        SettingsManager.welcomeDone = true
+        showWelcome = false
+      }
+    )
     return
   }
 
