@@ -53,8 +53,8 @@ impl InferenceScheduler {
             .collect()
     }
 
-    pub fn optimize_threads(&self, model_size_mb: u64, gpu_layers: u32) -> ThreadConfig {
-        let available_ram = self.total_ram_mb.saturating_sub(512); // Reserve 512MB for system
+    pub fn optimize_threads(&self, _model_size_mb: u64, gpu_layers: u32) -> ThreadConfig {
+        let _available_ram = self.total_ram_mb.saturating_sub(512); // Reserve 512MB for system
         let big_count = self.big_cores.len().max(1);
 
         let prompt_threads = if gpu_layers > 0 {
