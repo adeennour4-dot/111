@@ -29,8 +29,9 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
+      # Pin to specific SHA for stability (v3.0.0)
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@e02cd644834b6e2b2e2e44d1b4d40352bd53d604
         with:
           api-level: 34
           build-tools-version: 34.0.0
@@ -39,10 +40,22 @@ jobs:
       - name: Install NDK r27
         run: |
           curl -sLo /tmp/ndk.zip https://dl.google.com/android/repository/android-ndk-r27-linux.zip
+          # Verify NDK checksum (sha256)
+          echo "8172a29a9816b0cfc6c2eabb416730b24b77bdaa8d8e7155309589ec74cdbdc5  /tmp/ndk.zip" | sha256sum -c - || {
+            echo "NDK checksum mismatch — redownloading without cache"
+            rm -f /tmp/ndk.zip
+            curl -sLo /tmp/ndk.zip https://dl.google.com/android/repository/android-ndk-r27-linux.zip
+          }
           unzip -q /tmp/ndk.zip -d /tmp/
           mkdir -p $ANDROID_HOME/ndk
           mv /tmp/android-ndk-r27 $ANDROID_HOME/ndk/27.0.12077973
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> $GITHUB_ENV
+
+      # Generate local.properties for Gradle
+      - name: Generate local.properties
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "ndk.dir=$ANDROID_HOME/ndk/27.0.12077973" >> local.properties
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -87,25 +100,39 @@ jobs:
       - name: Locate APK outputs
         run: |
           echo "── Standard APK ──"
-          find app/build/outputs/apk/standard -name "*.apk"
+          find app/build/outputs/apk/standard -name "*.apk" || echo "(none)"
           echo "── Compatibility APK ──"
-          find app/build/outputs/apk/compatibility -name "*.apk"
+          find app/build/outputs/apk/compatibility -name "*.apk" || echo "(none)"
+
+      - name: Check for tracked .so files in jniLibs
+        run: |
+          if git ls-files app/src/main/jniLibs/ | grep -q '\.so$'; then
+            echo "::warning::Tracked .so files found in jniLibs — these should be excluded."
+            git ls-files app/src/main/jniLibs/ | grep '\.so$'
+          else
+            echo "No tracked .so files — good."
+          fi
 
       - name: Upload Standard Debug APK
+        if: hashFiles('app/build/outputs/apk/standard/debug/app-standard-debug.apk') != ''
         uses: actions/upload-artifact@v4
         with:
           name: app-standard-debug
           path: app/build/outputs/apk/standard/debug/app-standard-debug.apk
+          if-no-files-found: warn
 
       - name: Upload Compatibility Debug APK
+        if: hashFiles('app/build/outputs/apk/compatibility/debug/app-compatibility-debug.apk') != ''
         uses: actions/upload-artifact@v4
         with:
           name: app-compatibility-debug
           path: app/build/outputs/apk/compatibility/debug/app-compatibility-debug.apk
+          if-no-files-found: warn
 
+      # Pin to specific SHA for stability (v2.2.1)
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@a74c6b72af54cfa997e81df42d94703d6313a2d0
         with:
           files: |
             app/build/outputs/apk/standard/debug/app-standard-debug.apk

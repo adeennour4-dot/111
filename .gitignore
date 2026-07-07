@@ -1,0 +1,26 @@
+# Android build outputs
+app/build/
+build/
+local.properties
+*.iml
+.idea/
+.gradle/
+*.apk
+*.aab
+
+# Native libraries — built by CI, not committed
+app/src/main/jniLibs/
+*.so
+
+# Rust build artifacts
+rust_core/target/
+rust_core/**/target/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+*.swp
+*.swo
+*~
