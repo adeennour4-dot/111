@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -101,6 +102,9 @@ fun ModelListScreen(
   var benchmarking by remember { mutableStateOf(false) }
   var tokenConfigModel by remember { mutableStateOf<LocalModel?>(null) }
   var reloading by remember { mutableStateOf(false) }
+  var loadingJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+  var loadCancelRequested by remember { mutableStateOf(false) }
+  var loadingStep by remember { mutableStateOf("") }
   var pendingImport by remember { mutableStateOf(false) }
   var importWarning by remember { mutableStateOf<String?>(null) }
   val snackbarHostState = remember { SnackbarHostState() }
