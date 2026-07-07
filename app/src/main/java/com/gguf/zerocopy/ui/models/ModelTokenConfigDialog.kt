@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -163,22 +164,35 @@ fun ModelTokenConfigDialog(
                 Column {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Context window", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
-                        // Editable number alongside the slider value
-                        // Track raw text so user can clear and re-type without
-                        // the field snapping back to the previous numeric value
+                        // Editable number alongside the slider value.
+                        // Track raw text so the user can clear and re-type without
+                        // the field snapping back to the previous value.
+                        // Sync with slider: update text when slider moves externally,
+                        // but only if the user isn't mid-edit (text is parseable).
                         var ctxText by remember { mutableStateOf(ctxSlider.toString()) }
+                        val ctxTextFieldFocused = remember { mutableStateOf(false) }
+                        // When the slider changes and the user isn't actively editing,
+                        // sync the text field to match.
+                        LaunchedEffect(ctxSlider) {
+                            if (!ctxTextFieldFocused.value) {
+                                ctxText = ctxSlider.toString()
+                            }
+                        }
                         OutlinedTextField(
                             value = ctxText,
                             onValueChange = { v: String ->
                                 ctxText = v
                                 val n = v.filter { it.isDigit() || it == '-' }.toIntOrNull()
-                                if (n != null) {
-                                    val clamped = n.coerceIn(512, 32768)
-                                    ctxSlider = clamped
-                                    ctxText = clamped.toString()
+                                // Only update slider when the typed value is a valid
+                                // number within range — don't clamp mid-typing.
+                                if (n != null && n >= 512 && n <= 32768) {
+                                    ctxSlider = n
                                 }
                             },
-                            modifier = Modifier.widthIn(min = 100.dp, max = 160.dp).padding(horizontal = 8.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .widthIn(min = 100.dp, max = 160.dp)
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                                .onFocusChanged { ctxTextFieldFocused.value = it.isFocused },
                             singleLine = true,
                             textStyle = LocalTextStyle.current.copy(
                                 fontSize = 12.sp, fontFamily = FontFamily.Monospace,
@@ -216,18 +230,25 @@ fun ModelTokenConfigDialog(
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Max new tokens", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
                         var maxNewText by remember { mutableStateOf(maxNewSlider.toString()) }
+                        val maxNewTextFieldFocused = remember { mutableStateOf(false) }
+                        LaunchedEffect(maxNewSlider) {
+                            if (!maxNewTextFieldFocused.value) {
+                                maxNewText = maxNewSlider.toString()
+                            }
+                        }
                         OutlinedTextField(
                             value = maxNewText,
                             onValueChange = { v: String ->
                                 maxNewText = v
                                 val n = v.filter { it.isDigit() || it == '-' }.toIntOrNull()
-                                if (n != null) {
-                                    val clamped = n.coerceIn(64, ctxSlider - 64)
+                                if (n != null && n >= 64) {
+                                    val clamped = n.coerceIn(64, (ctxSlider - 64).coerceAtLeast(64))
                                     maxNewSlider = clamped
-                                    maxNewText = clamped.toString()
                                 }
                             },
-                            modifier = Modifier.widthIn(min = 100.dp, max = 160.dp),
+                            modifier = Modifier
+                                .widthIn(min = 100.dp, max = 160.dp)
+                                .onFocusChanged { maxNewTextFieldFocused.value = it.isFocused },
                             singleLine = true,
                             textStyle = LocalTextStyle.current.copy(
                                 fontSize = 12.sp, fontFamily = FontFamily.Monospace,
