@@ -9,6 +9,7 @@ import com.gguf.zerocopy.data.repository.ChatRepository
 import com.gguf.zerocopy.data.repository.ModelRepository
 import com.gguf.zerocopy.domain.device.DeviceUtils
 import com.gguf.zerocopy.domain.inference.EngineManager
+import com.gguf.zerocopy.domain.inference.JobManager
 import com.gguf.zerocopy.domain.inference.RustCore
 import com.gguf.zerocopy.domain.inference.ToolManager
 import com.gguf.zerocopy.domain.rag.RagEngine
