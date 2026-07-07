@@ -72,6 +72,7 @@ import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.domain.server.ModelServerService
 import com.gguf.zerocopy.domain.inference.InferenceConfig
 import com.gguf.zerocopy.domain.inference.RepeatPenaltyConfig
+import com.gguf.zerocopy.ui.jobs.JobsScreen
 import com.gguf.zerocopy.ui.settings.BenchmarkDialog
 import kotlinx.coroutines.Dispatchers
 import com.gguf.zerocopy.ui.chat.components.getFileName
@@ -112,6 +113,7 @@ fun SettingsScreen(onBack: () -> Unit) {
   var serverAuthToken by remember { mutableStateOf(SettingsManager.serverAuthToken) }
   var serverWifiOnly by remember { mutableStateOf(SettingsManager.serverWifiOnly) }
   var showToken by remember { mutableStateOf(false) }
+  var showJobs by remember { mutableStateOf(false) }
   var topK by remember { mutableStateOf(SettingsManager.topK.toString()) }
   var flashAttn by remember { mutableStateOf(SettingsManager.flashAttention) }
 
@@ -409,6 +411,15 @@ fun SettingsScreen(onBack: () -> Unit) {
         colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent2)
       ) {
         Text("Apply Device Defaults", fontSize = 12.sp)
+      }
+
+      OutlinedButton(
+        onClick = { showJobs = true },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent2)
+      ) {
+        Text("Running Jobs (${app.jobManager.activeCount})", fontSize = 12.sp)
       }
 
       HorizontalDivider(color = colors.Border, thickness = 1.dp)
@@ -726,6 +737,10 @@ fun SettingsScreen(onBack: () -> Unit) {
       models = app.modelRepository.models.value,
       onDismiss = { showBenchmark = false }
     )
+  }
+
+  if (showJobs) {
+    JobsScreen(onBack = { showJobs = false })
   }
 }
 

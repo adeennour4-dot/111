@@ -166,9 +166,18 @@ fun ModelListScreen(
       return
     }
     isLoading = true
-    scope.launch {
+    loadCancelRequested = false
+    loadingStep = "Loading model…"
+    val jobId = app.jobManager.register(
+      label = "Load ${model.name}",
+      category = com.gguf.zerocopy.domain.inference.JobManager.JobCategory.MODEL_LOAD
+    )
+    loadingJob = scope.launch {
       loadModel(model, onModelSelected)
       isLoading = false
+      loadingJob = null
+      loadingStep = ""
+      app.jobManager.unregister(jobId)
     }
   }
 
@@ -185,10 +194,19 @@ fun ModelListScreen(
       }
     }
     isLoading = true
-    scope.launch {
+    loadCancelRequested = false
+    loadingStep = "Switching engine…"
+    val jobId = app.jobManager.register(
+      label = "Switch to ${model.name}",
+      category = com.gguf.zerocopy.domain.inference.JobManager.JobCategory.MODEL_LOAD
+    )
+    loadingJob = scope.launch {
       app.engineManager.unloadAll()
       loadModel(model, onModelSelected)
       isLoading = false
+      loadingJob = null
+      loadingStep = ""
+      app.jobManager.unregister(jobId)
     }
   }
 

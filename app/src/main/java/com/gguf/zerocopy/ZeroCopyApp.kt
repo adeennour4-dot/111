@@ -30,6 +30,8 @@ class ZeroCopyApp : Application() {
     private set
   var toolManager: ToolManager = ToolManager()
     private set
+  lateinit var jobManager: JobManager
+    private set
   lateinit var modelServer: ModelServer
     private set
   lateinit var ragEngine: RagEngine
@@ -48,6 +50,7 @@ class ZeroCopyApp : Application() {
     // breaking the persistent crash loop seen on Exynos 9825 (Note 10 Lite).
     installNativeCrashGuard()
 
+    jobManager = JobManager()
     deviceUtils = DeviceUtils(this)
     engineManager = EngineManager(this)
 
@@ -126,6 +129,11 @@ class ZeroCopyApp : Application() {
     engineManager.liteRt.config = config
     engineManager.liteRt.repeatPenalty = rp
     engineManager.liteRt.systemPrompt = prompt
+  }
+
+  override fun onTerminate() {
+    super.onTerminate()
+    RustCore.shutdown()
   }
 
   companion object {
