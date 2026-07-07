@@ -46,6 +46,18 @@ object RustCore {
     }
   }
 
+  /** Shutdown Rust core and free native resources. Safe to call multiple times. */
+  fun shutdown() {
+    if (available) {
+      try {
+        nativeShutdown()
+      } catch (e: Throwable) {
+        Log.w(TAG, "Rust shutdown: ${e.message}")
+      }
+    }
+    available = false
+  }
+
   fun optimizeThreads(modelSizeMB: Int, gpuLayers: Int): ThreadConfig {
     if (!available) return ThreadConfig()
     return try {
@@ -105,6 +117,7 @@ object RustCore {
   }
 
   private external fun nativeInit(totalRamMB: Int, cpuCores: Int)
+  private external fun nativeShutdown()
   private external fun nativeOptimizeThreadConfig(modelSizeMB: Int, gpuLayers: Int): String
   private external fun nativeGetMemoryAdvice(): String
   private external fun nativeShouldReduceContext(): Boolean
