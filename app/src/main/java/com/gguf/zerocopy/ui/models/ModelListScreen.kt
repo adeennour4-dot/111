@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -107,6 +108,8 @@ fun ModelListScreen(
   var loadingStep by remember { mutableStateOf("") }
   var pendingImport by remember { mutableStateOf(false) }
   var importWarning by remember { mutableStateOf<String?>(null) }
+  var loadError by remember { mutableStateOf<String?>(null) }
+  var loadErrorModel by remember { mutableStateOf<LocalModel?>(null) }
   val snackbarHostState = remember { SnackbarHostState() }
 
   /** Validate an imported model and set importWarning if issues found. */
@@ -226,11 +229,12 @@ fun ModelListScreen(
       category = com.gguf.zerocopy.domain.inference.JobManager.JobCategory.MODEL_LOAD
     )
     loadingJob = scope.launch {
-      loadModel(model, onModelSelected)
+      val err = loadModel(model, onModelSelected)
       isLoading = false
       loadingJob = null
       loadingStep = ""
       app.jobManager.unregister(jobId)
+      if (err != null) { loadError = err; loadErrorModel = model }
     }
   }
 
@@ -255,11 +259,12 @@ fun ModelListScreen(
     )
     loadingJob = scope.launch {
       app.engineManager.unloadAll()
-      loadModel(model, onModelSelected)
+      val err = loadModel(model, onModelSelected)
       isLoading = false
       loadingJob = null
       loadingStep = ""
       app.jobManager.unregister(jobId)
+      if (err != null) { loadError = err; loadErrorModel = model }
     }
   }
 
@@ -634,6 +639,73 @@ fun ModelListScreen(
         )
       }
 
+      // ── Model load error dialog with Retry with safe settings ────
+      loadError?.let { err ->
+        AlertDialog(
+          onDismissRequest = { loadError = null; loadErrorModel = null },
+          containerColor = colors.Card,
+          title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              Icon(Icons.Filled.Warning, null, tint = colors.Red, modifier = Modifier.size(20.dp))
+              Spacer(Modifier.width(8.dp))
+              Text("Model Load Failed", color = colors.Red, fontWeight = FontWeight.Bold)
+            }
+          },
+          text = {
+            Column {
+              Text(err, color = colors.Text2, fontSize = 13.sp)
+              Spacer(Modifier.height(12.dp))
+              Text(
+                "Possible causes:",
+                color = colors.Text3,
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace
+              )
+              Spacer(Modifier.height(4.dp))
+              Text(
+                "• Model file may be corrupted or truncated\n" +
+                "• Device may not have enough RAM (try a smaller model)\n" +
+                "• Context window may be too large for available memory",
+                color = colors.Text3,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace
+              )
+            }
+          },
+          confirmButton = {
+            TextButton(onClick = {
+              val m = loadErrorModel
+              loadError = null; loadErrorModel = null
+              if (m != null) {
+                // Apply safe settings: reduce context, threads, disable GPU
+                val safeCfg = SettingsManager.toConfig(m.path).copy(
+                  nCtx = 512,
+                  maxNewTokens = 256,
+                  nGpuLayers = 0,
+                  nThreads = 2,
+                  lowRamMode = true
+                )
+                SettingsManager.setModelTokenConfig(m.path, safeCfg)
+                isLoading = true
+                loadCancelRequested = false
+                loadingStep = "Retrying with safe settings…"
+                loadingJob = scope.launch {
+                  loadModel(m, onModelSelected)
+                  isLoading = false; loadingJob = null; loadingStep = ""
+                }
+              }
+            }) {
+              Text("Retry with Safe Settings", color = colors.Accent)
+            }
+          },
+          dismissButton = {
+            TextButton(onClick = { loadError = null; loadErrorModel = null }) {
+              Text("Dismiss", color = colors.Text2)
+            }
+          }
+        )
+      }
+
       // ── Benchmark dialog ────────────────────────────────────────────
       if (benchmarking) {
         AlertDialog(
@@ -853,11 +925,12 @@ private fun EngineBadge(engine: EngineType) {
   }
 }
 
+/** @return error message on failure, null on success */
 private suspend fun loadModel(
   model: LocalModel,
   onModelSelected: (String, String) -> Unit,
   isCancelled: () -> Boolean = { false }
-) {
+): String? {
   val app = ZeroCopyApp.instance
   val engine = app.engineManager.selectEngineForFormat(model.path)
 
@@ -905,7 +978,9 @@ private suspend fun loadModel(
     onModelSelected(model.path, model.name)
   }.onFailure { e ->
     Log.e("ModelList", "Failed to load model: ${e.message}")
+    return e.message ?: "Unknown error"
   }
+  return null
 }
 
 private fun getFileName(context: android.content.Context, uri: android.net.Uri): String {
