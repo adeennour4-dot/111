@@ -688,11 +688,11 @@ fun ModelListScreen(
               loadError = null; loadErrorModel = null
               if (m != null) {
                 // Apply safe settings: reduce context, threads, disable GPU
-                val safeCfg = SettingsManager.toConfig(m.path).copy(
-                  nCtx = 512,
-                  maxNewTokens = 256,
-                  nGpuLayers = 0,
-                  nThreads = 2,
+                val safeCfg = SettingsManager.ModelTokenConfig(
+                  ctx = 512,
+                  maxNew = 256,
+                  gpuLayers = 0,
+                  threads = 2,
                   lowRamMode = true
                 )
                 SettingsManager.setModelTokenConfig(m.path, safeCfg)
@@ -976,20 +976,29 @@ private suspend fun loadModel(
     "ram=${deviceInfo.totalRamMB/1024}GB modelSize=${String.format("%.1f", estimatedParamsB)}B" +
     if (perModelCfg != null) " (from per-model config)" else " (from device defaults)")
 
-  withContext(Dispatchers.IO) {
-    engine.loadModel(model.path)
-  }.onSuccess {
-    if (isCancelled()) {
-      // User cancelled during native load — unload the partial model
-      engine.unloadModel()
-      return
+  val loadResult = try {
+    withContext(Dispatchers.IO) {
+      engine.loadModel(model.path)
     }
-    app.modelRepository.markUsed(model.id)
-    onModelSelected(model.path, model.name)
-  }.onFailure { e ->
-    Log.e("ModelList", "Failed to load model: ${e.message}")
+  } catch (e: Exception) {
+    Log.e("ModelList", "Exception loading model: ${e.message}")
     return e.message ?: "Unknown error"
   }
+
+  // Unwrap the inner Result
+  val innerError = loadResult.exceptionOrNull()
+  if (innerError != null) {
+    Log.e("ModelList", "Failed to load model: ${innerError.message}")
+    return innerError.message ?: "Unknown error"
+  }
+
+  if (isCancelled()) {
+    engine.unloadModel()
+    return null
+  }
+
+  app.modelRepository.markUsed(model.id)
+  onModelSelected(model.path, model.name)
   return null
 }
 

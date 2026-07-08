@@ -26,6 +26,7 @@ class MnnEngine : InferenceEngine {
   override val hasVisionCapability: Boolean get() = false
 
   private val inferenceDone = AtomicBoolean(true)
+  private val inferenceAborted = AtomicBoolean(false)
   private val tokensGenerated = AtomicInteger(0)
   private val partialStream = StringBuilder()
   private val fullResponse = StringBuilder()
@@ -111,7 +112,8 @@ class MnnEngine : InferenceEngine {
         }
         mnnExecuteInference(p, innerCb)
       },
-      callback = callback
+      callback = callback,
+      isAborted = { inferenceAborted.get() }
     )
   }
 
@@ -120,6 +122,7 @@ class MnnEngine : InferenceEngine {
     withContext(Dispatchers.IO) {
       synchronized(partialStream) { partialStream.clear(); fullResponse.clear() }
       inferenceDone.set(false)
+      inferenceAborted.set(false)
       tokensGenerated.set(0)
 
       val tm = _toolManager
@@ -151,6 +154,7 @@ class MnnEngine : InferenceEngine {
 
   override fun abortInference() {
     inferenceDone.set(true)
+    inferenceAborted.set(true)
     try { mnnAbortInference() } catch (_: Exception) {}
   }
 
@@ -158,6 +162,7 @@ class MnnEngine : InferenceEngine {
     try { mnnResetContext() } catch (_: Exception) {}
     synchronized(partialStream) { partialStream.clear(); fullResponse.clear() }
     inferenceDone.set(true)
+    inferenceAborted.set(false)
     tokensGenerated.set(0)
     kvUsage = 0
   }

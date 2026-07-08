@@ -32,6 +32,7 @@ class LiteRtEngine : InferenceEngine {
   private var currentModelPath = ""
   private var preferredBackend: Backend = Backend.CPU()
   private val inferenceDone = AtomicBoolean(true)
+  private val inferenceAborted = AtomicBoolean(false)
   private val tokensGenerated = AtomicInteger(0)
   private val partialStream = StringBuilder()
   private val fullResponse = StringBuilder()
@@ -90,6 +91,7 @@ class LiteRtEngine : InferenceEngine {
         fullResponse.clear()
       }
       inferenceDone.set(false)
+      inferenceAborted.set(false)
       tokensGenerated.set(0)
 
       // Tool-aware agentic loop via shared utility
@@ -124,6 +126,11 @@ class LiteRtEngine : InferenceEngine {
               }
               val msgCallback = object : MessageCallback {
                 override fun onMessage(message: Message) {
+                  // Check abort on each message — if aborted, stop forwarding
+                  if (inferenceAborted.get()) {
+                    doneSignal.signalDone()
+                    return
+                  }
                   tokenSink.onToken(message.toString())
                 }
                 override fun onDone() {
@@ -140,7 +147,8 @@ class LiteRtEngine : InferenceEngine {
               doneSignal.signalError(e.message ?: "LiteRT-LM error")
             }
           },
-          callback = callback
+          callback = callback,
+          isAborted = { inferenceAborted.get() }
         )
         inferenceDone.set(true)
         return@withContext
@@ -203,6 +211,7 @@ class LiteRtEngine : InferenceEngine {
 
   override fun abortInference() {
     inferenceDone.set(true)
+    inferenceAborted.set(true)
     try { conversation?.cancelProcess() } catch (_: Exception) {}
   }
 
@@ -214,6 +223,7 @@ class LiteRtEngine : InferenceEngine {
       fullResponse.clear()
     }
     inferenceDone.set(true)
+    inferenceAborted.set(false)
     tokensGenerated.set(0)
   }
 

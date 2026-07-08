@@ -436,7 +436,7 @@ fun ChatScreen(
           val tpsVal  = if (elapsed > 0) streamedTokens / elapsed else 0f
           val raw = rawResponse.toString()
           mainHandler.post {
-            if (!inferenceActive) return@post
+            // Always save partial response, even if inference was aborted
             if (raw.isNotEmpty()) {
               app.chatRepository.addMessage(
                 currentChatId,
@@ -452,7 +452,6 @@ fun ChatScreen(
         override fun onError(error: String) {
           runningFlag.set(false)
           mainHandler.post {
-            if (!inferenceActive) return@post
             inferenceActive = false
             isInferring     = false
             streamedContent = ""
@@ -505,8 +504,8 @@ fun ChatScreen(
     inferenceActive = false
     isInferring = false
     engine?.abortInference()
-    // Keep streamedContent so the partial message remains visible.
-    // The streaming bubble will finalize when onDone fires from native.
+    // streamedContent is left intact until onDone() fires, then saved
+    // to the repository and cleared. This preserves the partial response.
   }
 
   fun copyToClipboard(text: String) {
