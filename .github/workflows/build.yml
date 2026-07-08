@@ -50,11 +50,11 @@ jobs:
           mv /tmp/android-ndk-r27 $ANDROID_HOME/ndk/27.0.12077973
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> $GITHUB_ENV
 
-      # Generate local.properties for Gradle
+      # Generate local.properties for Gradle (ndkVersion is set in build.gradle.kts —
+      # do NOT add ndk.dir here; it's deprecated and causes a warning in Cmake).
       - name: Generate local.properties
         run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "ndk.dir=$ANDROID_HOME/ndk/27.0.12077973" >> local.properties
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
