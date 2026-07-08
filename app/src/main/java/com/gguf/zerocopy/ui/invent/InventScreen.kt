@@ -81,6 +81,7 @@ fun InventScreen(
     model2Path: String, model2Name: String,
     researcherPath: String, researcherName: String,
     offlineMode: Boolean, sameModelMode: Boolean,
+    reasoningEnabled: Boolean = true,
     onBack: () -> Unit,
     onModelsClick: () -> Unit,
     onNewSession: (() -> Unit)? = null,
@@ -138,7 +139,8 @@ fun InventScreen(
     LaunchedEffect(Unit) {
         if (ui.sessionId.isEmpty()) {
             vm.setupSession(model1Path, model1Name, model2Path, model2Name,
-                researcherPath, researcherName, offlineMode, sameModelMode)
+                researcherPath, researcherName, offlineMode, sameModelMode,
+                reasoningEnabled = reasoningEnabled)
         }
     }
     LaunchedEffect(chats.size) {

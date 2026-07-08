@@ -25,7 +25,8 @@ import com.gguf.zerocopy.ui.theme.currentPalette
 @Composable
 fun InventSetupScreen(
     onStart: (m1Path: String, m1Name: String, m2Path: String, m2Name: String,
-              resPath: String, resName: String, offline: Boolean, sameModel: Boolean) -> Unit,
+              resPath: String, resName: String, offline: Boolean, sameModel: Boolean,
+              reasoningEnabled: Boolean) -> Unit,
     onBack: () -> Unit
 ) {
     val colors = currentPalette()
@@ -44,6 +45,7 @@ fun InventSetupScreen(
     var researcherPath by remember { mutableStateOf("") }
     var researcherName by remember { mutableStateOf("") }
     var offlineMode by remember { mutableStateOf(false) }
+    var reasoningEnabled by remember { mutableStateOf(true) }
     var showPicker by remember { mutableStateOf<String?>(null) } // "m1","m2","res"
     // 1 = one model all roles, 2 = researcher + combined, 3 = all separate
     var modelMode by remember { mutableStateOf(1) }
@@ -249,6 +251,43 @@ fun InventSetupScreen(
                 }
             }
 
+            // ── Reasoning toggle ───────────────────────────────────────────
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = colors.Card,
+                border = BorderStroke(1.dp, colors.Border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        if (reasoningEnabled) Icons.Filled.Lightbulb else Icons.Outlined.Lightbulb,
+                        null,
+                        tint = if (reasoningEnabled) colors.Amber else colors.Text2,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Think / Reason", fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                            color = colors.Text, fontFamily = FontFamily.Monospace)
+                        Text(
+                            if (reasoningEnabled) "Models use step-by-step reasoning with <think> tags."
+                            else "Models answer directly without explicit reasoning.",
+                            fontSize = 11.sp, color = colors.Text3, fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    Switch(
+                        checked = reasoningEnabled,
+                        onCheckedChange = { reasoningEnabled = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = colors.Amber,
+                            checkedTrackColor = colors.Amber.copy(alpha = 0.3f)
+                        )
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
+
             // ── Offline toggle ──────────────────────────────────────────────
             Surface(
                 shape = RoundedCornerShape(12.dp),
@@ -306,7 +345,8 @@ fun InventSetupScreen(
                             model1Path, model1Name,
                             coderPath, coderName,
                             actualResPath, actualResName,
-                            offlineMode, allSame
+                            offlineMode, allSame,
+                            reasoningEnabled
                         )
                     } else Modifier),
                 contentAlignment = Alignment.Center

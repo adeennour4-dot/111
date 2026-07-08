@@ -60,7 +60,13 @@ object ToolAwareInference {
             // Run search and prepend results to user prompt
             val searchResults = runSearch(userPrompt, toolManager)
             val augmentedPrompt = if (searchResults != null) {
-                "Search results:\n$searchResults\n\n---\n\nUser question:\n$userPrompt"
+                // Truncate search results to ~2000 chars to avoid context overflow
+                // on small models (1B-3B params). The full results aren't needed
+                // — the model only needs the key facts.
+                val trimmed = if (searchResults.length > 2000)
+                    searchResults.take(2000) + "\n[... truncated]"
+                else searchResults
+                "Search results:\n$trimmed\n\n---\n\nUser question:\n$userPrompt"
             } else {
                 // Search failed — tell model to answer from knowledge
                 "(Search was attempted but no usable results were found. Answer from your own knowledge.)\n\n$userPrompt"
@@ -124,6 +130,8 @@ object ToolAwareInference {
             else callback.onDone()
             return 
         }
+        // Successful completion — signal the outer callback
+        callback.onDone()
     }
 
     // ── Search execution ────────────────────────────────────────────────────

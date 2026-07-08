@@ -505,7 +505,8 @@ fun ChatScreen(
     inferenceActive = false
     isInferring = false
     engine?.abortInference()
-    streamedContent = ""
+    // Keep streamedContent so the partial message remains visible.
+    // The streaming bubble will finalize when onDone fires from native.
   }
 
   fun copyToClipboard(text: String) {

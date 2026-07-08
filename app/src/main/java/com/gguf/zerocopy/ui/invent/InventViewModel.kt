@@ -369,7 +369,8 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         model1Path: String, model1Name: String,
         model2Path: String, model2Name: String,
         researcherPath: String, researcherName: String,
-        offlineMode: Boolean, sameModelMode: Boolean
+        offlineMode: Boolean, sameModelMode: Boolean,
+        reasoningEnabled: Boolean = true
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             var m1p = model1Path; var m1n = model1Name
@@ -404,6 +405,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                         model1Name = saved.model1Name, model2Name = saved.model2Name,
                         researcherName = saved.researcherName,
                         offlineMode = saved.offlineMode, sameModelMode = saved.sameModelMode,
+                        reasoningEnabled = reasoningEnabled,
                         modelMode = when {
                             saved.sameModelMode && saved.researcherPath == saved.model1Path -> ModelMode.SINGLE
                             saved.sameModelMode -> ModelMode.DUAL
@@ -451,6 +453,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 phase = InventPhase.QUESTIONING, sessionId = sessionId,
                 model1Name = m1n, model2Name = if (sameModelMode) m1n else m2n,
                 researcherName = rn, offlineMode = offlineMode, sameModelMode = sameModelMode,
+                reasoningEnabled = reasoningEnabled,
                 modelMode = when { sameModelMode && rp == m1p -> ModelMode.SINGLE
                     sameModelMode -> ModelMode.DUAL; else -> ModelMode.TRIPLE }
             )

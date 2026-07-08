@@ -118,6 +118,7 @@ fun AppRoot() {
   var inventResName by rememberSaveable { mutableStateOf("") }
   var inventOffline by rememberSaveable { mutableStateOf(false) }
   var inventSameModel by rememberSaveable { mutableStateOf(false) }
+  var inventReasoningEnabled by rememberSaveable { mutableStateOf(true) }
 
   if (showSplash) {
     SplashScreen(onDone = { showSplash = false })
@@ -251,12 +252,13 @@ fun AppRoot() {
       ) {
         if (!inventStarted) {
           InventSetupScreen(
-            onStart = { m1p, m1n, m2p, m2n, rp, rn, offline, sameModel ->
+            onStart = { m1p, m1n, m2p, m2n, rp, rn, offline, sameModel, reasoning ->
               inventModel1Path = m1p; inventModel1Name = m1n
               inventModel2Path = m2p; inventModel2Name = m2n
               inventResPath = rp; inventResName = rn
               inventOffline = offline
               inventSameModel = sameModel
+              inventReasoningEnabled = reasoning
               inventStarted = true
             },
             onBack = { selectedTab = 0 }
@@ -268,6 +270,7 @@ fun AppRoot() {
               researcherPath = inventResPath, researcherName = inventResName,
               offlineMode = inventOffline,
               sameModelMode = inventSameModel,
+              reasoningEnabled = inventReasoningEnabled,
               onNewSession = {
                 inventStarted = false
                 inventModel1Path = ""; inventModel1Name = ""
