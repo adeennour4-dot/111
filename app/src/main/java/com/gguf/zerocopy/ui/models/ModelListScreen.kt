@@ -350,6 +350,13 @@ fun ModelListScreen(
         }
       }
 
+      // ── Accessibility announcement for loading state ──
+      if (loading || isLoading || reloading) {
+        com.gguf.zerocopy.ui.common.AccessibilityAnnouncement(
+          if (loadingStep.isNotEmpty()) loadingStep else "Loading model"
+        )
+      }
+
       // ── Loading overlay with progress and cancel ──
       if (loading || isLoading || reloading) {
         Box(
@@ -431,8 +438,9 @@ fun ModelListScreen(
               reloading = true
               scope.launch {
                 if (loadedModelPath == model.path) app.engineManager.unloadAll()
-                loadModel(model, onModelSelected)
+                val err = loadModel(model, onModelSelected)
                 reloading = false
+                if (err != null) { loadError = err; loadErrorModel = model }
               }
             }
           },
@@ -442,7 +450,8 @@ fun ModelListScreen(
               // Load with defaults if user skipped config
               pendingImport = false
               scope.launch {
-                loadModel(model, onModelSelected)
+                val err = loadModel(model, onModelSelected)
+                if (err != null) { loadError = err; loadErrorModel = model }
               }
             }
           },
@@ -501,8 +510,9 @@ fun ModelListScreen(
               reloading = true
               scope.launch {
                 app.engineManager.unloadAll()
-                loadModel(model, onModelSelected)
+                val err = loadModel(model, onModelSelected)
                 reloading = false
+                if (err != null) { loadError = err; loadErrorModel = model }
               }
             },
             leadingIcon = {

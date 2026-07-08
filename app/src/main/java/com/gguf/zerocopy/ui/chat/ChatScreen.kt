@@ -611,6 +611,11 @@ fun ChatScreen(
     }
   }
 
+  // Accessibility announcement for inference state
+  if (isInferring) {
+    com.gguf.zerocopy.ui.common.AccessibilityAnnouncement("Generating response")
+  }
+
   // Scroll to the latest message when inference finishes (streaming item removed)
   LaunchedEffect(isInferring) {
     if (!isInferring && messages.isNotEmpty()) {
