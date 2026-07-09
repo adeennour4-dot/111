@@ -470,10 +470,12 @@ fun ChatScreen(
           }
           activeEngine.restoreHistory(historyPairs)
           val prompt = buildConversationPrompt(finalPrompt, reasoningEnabled, ragContext.isNotEmpty())
+          // Pass original user text as searchQuery so ToolAwareInference uses
+          // the clean query (without reasoning/RAG instructions) for web search.
           if (savedPaths.isNotEmpty() && activeEngine.hasVisionCapability) {
             activeEngine.executeInferenceWithImage(prompt, savedPaths.first(), callback)
           } else {
-            activeEngine.executeInference(prompt, callback)
+            activeEngine.executeInference(prompt, callback, searchQuery = text)
           }
         }
       } catch (e: Exception) {

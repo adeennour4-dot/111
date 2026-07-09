@@ -50,15 +50,24 @@ object ToolAwareInference {
         setSystemPrompt: (String) -> Unit,
         runInference: (prompt: String, tokenSink: TokenCallback, doneSignal: InferenceDoneSignal) -> Unit,
         callback: TokenCallback,
-        isAborted: () -> Boolean = { false }
+        isAborted: () -> Boolean = { false },
+        /**
+         * Optional override for the search query. When non-null, this text is
+         * used as the web search query instead of the full [userPrompt].
+         * This is important when [userPrompt] contains meta-instructions
+         * (reasoning hints, RAG context) that would pollute the search.
+         */
+        searchQuery: String? = null
     ) {
-        // Auto-detect search intent from keywords
-        val lower = userPrompt.lowercase()
+        // Auto-detect search intent from keywords.
+        // Use searchQuery if provided (clean user text), otherwise userPrompt.
+        val searchableText = searchQuery ?: userPrompt
+        val lower = searchableText.lowercase()
         val needsSearch = SEARCH_TRIGGERS.any { lower.contains(it) }
 
         if (needsSearch) {
-            // Run search and prepend results to user prompt
-            val searchResults = runSearch(userPrompt, toolManager)
+            // Run search using the clean query (without reasoning/RAG instructions)
+            val searchResults = runSearch(searchableText, toolManager)
             val augmentedPrompt = if (searchResults != null) {
                 // Truncate search results to ~2000 chars to avoid context overflow
                 // on small models (1B-3B params). The full results aren't needed
@@ -66,7 +75,9 @@ object ToolAwareInference {
                 val trimmed = if (searchResults.length > 2000)
                     searchResults.take(2000) + "\n[... truncated]"
                 else searchResults
-                "Search results:\n$trimmed\n\n---\n\nUser question:\n$userPrompt"
+                // userPrompt may contain reasoning/RAG instructions; preserve them
+                // AFTER the search results so the model sees both context and instructions.
+                "Search results:\n$trimmed\n\n---\n\n$userPrompt"
             } else {
                 // Search failed — tell model to answer from knowledge
                 "(Search was attempted but no usable results were found. Answer from your own knowledge.)\n\n$userPrompt"

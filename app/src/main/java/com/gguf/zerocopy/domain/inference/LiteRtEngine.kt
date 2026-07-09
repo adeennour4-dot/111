@@ -84,7 +84,7 @@ class LiteRtEngine : InferenceEngine {
     executeInference("[Image: $imagePath]\n$prompt", callback)
   }
 
-  override suspend fun executeInference(prompt: String, callback: TokenCallback) {
+  override suspend fun executeInference(prompt: String, callback: TokenCallback, searchQuery: String? = null) {
     withContext(Dispatchers.IO) {
       synchronized(partialStream) {
         partialStream.clear()
@@ -148,7 +148,8 @@ class LiteRtEngine : InferenceEngine {
             }
           },
           callback = callback,
-          isAborted = { inferenceAborted.get() }
+          isAborted = { inferenceAborted.get() },
+          searchQuery = searchQuery
         )
         inferenceDone.set(true)
         return@withContext

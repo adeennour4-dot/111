@@ -86,7 +86,7 @@ class LlamaCppEngine : InferenceEngine {
   }
 
   // ── Tool-aware agentic loop — delegates to shared ToolAwareInference ─────
-  private fun runWithTools(prompt: String, tm: ToolManager, callback: TokenCallback) {
+  private fun runWithTools(prompt: String, tm: ToolManager, callback: TokenCallback, searchQuery: String? = null) {
     ToolAwareInference.execute(
       userPrompt = prompt,
       originalSystemPrompt = systemPrompt,
@@ -108,7 +108,8 @@ class LlamaCppEngine : InferenceEngine {
         }
       },
       callback = callback,
-      isAborted = { inferenceAborted.get() }
+      isAborted = { inferenceAborted.get() },
+      searchQuery = searchQuery
     )
   }
 
@@ -122,7 +123,7 @@ class LlamaCppEngine : InferenceEngine {
 
   // ── executeInference ──────────────────────────────────────────────────────
 
-  override suspend fun executeInference(prompt: String, callback: TokenCallback) {
+  override suspend fun executeInference(prompt: String, callback: TokenCallback, searchQuery: String? = null) {
     if (!nativeLibLoaded) { callback.onError("llama.cpp native library not available"); callback.onDone(); return }
     if (!isModelLoaded) { callback.onError("No model is loaded — load a GGUF file first"); callback.onDone(); return }
     // Reset the abort flag so a previously-aborted inference doesn't
@@ -131,11 +132,12 @@ class LlamaCppEngine : InferenceEngine {
     withContext(Dispatchers.IO) {
       synchronized(lock) { partialStream.clear(); fullResponse.clear() }
       inferenceDone.set(false)
+      inferenceAborted.set(false)
       tokensGenerated.set(0)
 
       val tm = _toolManager
       if (tm != null) {
-        runWithTools(prompt, tm, callback)
+        runWithTools(prompt, tm, callback, searchQuery)
         inferenceDone.set(true)
         return@withContext
       }

@@ -96,7 +96,7 @@ class MnnEngine : InferenceEngine {
   }
 
   // ── Tool-aware agentic loop — delegates to shared ToolAwareInference ─────
-  private fun runWithTools(prompt: String, tm: ToolManager, callback: TokenCallback) {
+  private fun runWithTools(prompt: String, tm: ToolManager, callback: TokenCallback, searchQuery: String? = null) {
     ToolAwareInference.execute(
       userPrompt = prompt,
       originalSystemPrompt = systemPrompt,
@@ -113,11 +113,12 @@ class MnnEngine : InferenceEngine {
         mnnExecuteInference(p, innerCb)
       },
       callback = callback,
-      isAborted = { inferenceAborted.get() }
+      isAborted = { inferenceAborted.get() },
+      searchQuery = searchQuery
     )
   }
 
-  override suspend fun executeInference(prompt: String, callback: TokenCallback) {
+  override suspend fun executeInference(prompt: String, callback: TokenCallback, searchQuery: String? = null) {
     if (!nativeLibLoaded) { callback.onError("MNN native library not available"); callback.onDone(); return }
     withContext(Dispatchers.IO) {
       synchronized(partialStream) { partialStream.clear(); fullResponse.clear() }
@@ -127,7 +128,7 @@ class MnnEngine : InferenceEngine {
 
       val tm = _toolManager
       if (tm != null) {
-        runWithTools(prompt, tm, callback)
+        runWithTools(prompt, tm, callback, searchQuery)
         inferenceDone.set(true)
         return@withContext
       }

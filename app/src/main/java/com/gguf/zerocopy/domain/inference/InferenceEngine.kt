@@ -88,7 +88,7 @@ interface InferenceEngine {
 
   fun unloadModel()
 
-  suspend   fun executeInference(prompt: String, callback: TokenCallback)
+  suspend   fun executeInference(prompt: String, callback: TokenCallback, searchQuery: String? = null)
 
   suspend fun executeInferenceWithImage(prompt: String, imagePath: String, callback: TokenCallback)
 
