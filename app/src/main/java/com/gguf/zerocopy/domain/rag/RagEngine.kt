@@ -54,11 +54,22 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
 
     val fileCount: Int get() = synchronized(lock) { sourceNames.size }
 
+    /** Maximum file size in bytes (60 MB). */
+    companion object {
+        private const val MAX_FILE_SIZE = 60L * 1024 * 1024
+    }
+
     fun ingest(uri: Uri, context: Context): IngestResult {
         // Enforce max file limit
         synchronized(lock) {
             if (sourceNames.size >= _maxFiles)
                 return IngestResult.Failed("Max $_maxFiles documents reached")
+        }
+        // Enforce file size limit
+        val size = getFileSize(uri, context)
+        if (size != null && size > MAX_FILE_SIZE) {
+            val mb = size / (1024 * 1024)
+            return IngestResult.Failed("File too large (${mb}MB). Maximum is ${MAX_FILE_SIZE / (1024 * 1024)}MB")
         }
         val mime = context.contentResolver.getType(uri) ?: ""
         val name = getFileName(uri, context)
@@ -68,6 +79,17 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
             mime.startsWith("text/")   -> ingestText(uri, name, context)
             else                       -> IngestResult.Unsupported
         }
+    }
+
+    private fun getFileSize(uri: Uri, context: Context): Long? {
+        return try {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                    if (idx >= 0 && !cursor.isNull(idx)) cursor.getLong(idx) else null
+                } else null
+            }
+        } catch (_: Exception) { null }
     }
 
     private fun ingestPdf(uri: Uri, name: String): IngestResult {
