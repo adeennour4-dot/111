@@ -123,7 +123,7 @@ class LlamaCppEngine : InferenceEngine {
 
   // ── executeInference ──────────────────────────────────────────────────────
 
-  override suspend fun executeInference(prompt: String, callback: TokenCallback, searchQuery: String? = null) {
+  override suspend fun executeInference(prompt: String, callback: TokenCallback, searchQuery: String?) {
     if (!nativeLibLoaded) { callback.onError("llama.cpp native library not available"); callback.onDone(); return }
     if (!isModelLoaded) { callback.onError("No model is loaded — load a GGUF file first"); callback.onDone(); return }
     // Reset the abort flag so a previously-aborted inference doesn't

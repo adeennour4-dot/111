@@ -69,7 +69,7 @@ private class UnavailableLiteRtEngine : InferenceEngine {
   override fun unloadModel() {}
   override fun resetContext() {}
 
-  override suspend fun executeInference(prompt: String, callback: TokenCallback) {
+  override suspend fun executeInference(prompt: String, callback: TokenCallback, searchQuery: String?) {
     callback.onError("LiteRT-LM is not available on this device")
     callback.onDone()
   }

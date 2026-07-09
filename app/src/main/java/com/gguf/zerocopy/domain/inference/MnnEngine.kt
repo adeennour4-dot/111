@@ -118,7 +118,7 @@ class MnnEngine : InferenceEngine {
     )
   }
 
-  override suspend fun executeInference(prompt: String, callback: TokenCallback, searchQuery: String? = null) {
+  override suspend fun executeInference(prompt: String, callback: TokenCallback, searchQuery: String?) {
     if (!nativeLibLoaded) { callback.onError("MNN native library not available"); callback.onDone(); return }
     withContext(Dispatchers.IO) {
       synchronized(partialStream) { partialStream.clear(); fullResponse.clear() }

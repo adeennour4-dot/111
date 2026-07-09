@@ -84,7 +84,7 @@ class LiteRtEngine : InferenceEngine {
     executeInference("[Image: $imagePath]\n$prompt", callback)
   }
 
-  override suspend fun executeInference(prompt: String, callback: TokenCallback, searchQuery: String? = null) {
+  override suspend fun executeInference(prompt: String, callback: TokenCallback, searchQuery: String?) {
     withContext(Dispatchers.IO) {
       synchronized(partialStream) {
         partialStream.clear()
