@@ -127,6 +127,15 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             .firstOrNull()?.first ?: return
         val saved = InventStorage.loadSession(ctx, existing) ?: return
         val savedZcp = InventStorage.loadZcp(ctx, existing) ?: return
+        // Validate model files still exist on disk before restoring
+        val modelFilesExist = listOf(saved.model1Path, saved.model2Path, saved.researcherPath)
+            .filter { it.isNotEmpty() }
+            .all { java.io.File(it).exists() }
+        if (!modelFilesExist) {
+            android.util.Log.w("InventVM", "Skipping restore: model files no longer exist")
+            InventStorage.deleteSession(ctx, existing)
+            return
+        }
         sessionId = existing; sessionState = saved; zcp = savedZcp
         _ui.value = _ui.value.copy(
             phase = saved.phase, messages = saved.messages, sessionId = existing,
@@ -576,6 +585,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onDonePressed() {
         if (_ui.value.isGenerating) return
+        _cancelGeneration = false
         _ui.value = _ui.value.copy(isGenerating = true)
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -604,7 +614,6 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
                 // ── Step 3: Research phase ──
                 updatePhase(InventPhase.SEARCHING)
-                withContext(Dispatchers.IO) { engineManager.unloadAll() }
                 setSwap("Loading ${state.researcherName}…")
                 if (!loadOrKeepModel(state.researcherPath)) {
                     setSwap(""); _ui.value = _ui.value.copy(error = "Researcher load failed"); return@launch
@@ -628,7 +637,6 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 addMessage("system", "✓ search.txt saved", InventPhase.SEARCHING)
 
                 // ── Step 4: Reload planner ──
-                withContext(Dispatchers.IO) { engineManager.unloadAll() }
                 setSwap("Loading ${state.model1Name} for architecture…")
                 if (!loadOrKeepModel(state.model1Path)) {
                     setSwap(""); _ui.value = _ui.value.copy(error = "Planner reload failed"); return@launch
@@ -752,6 +760,12 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         for (idx in startIdx until filesToGenerate.size) {
             val fileNode = filesToGenerate[idx]
             if (_ui.value.phase != InventPhase.GENERATING) break
+            if (_cancelGeneration) {
+                _cancelGeneration = false
+                addMessage("system", "⏸ Generation cancelled by user", InventPhase.QUESTIONING)
+                updatePhase(InventPhase.QUESTIONING)
+                return
+            }
             if (skipExisting && zcp.generatedFiles.contains(fileNode.path)) continue
 
             val fileSpec = zcp.fileSpecs[fileNode.path] ?: FileSpec(path = fileNode.path, description = fileNode.description)
@@ -1237,9 +1251,12 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         if (engine != null && engine.isModelLoaded && engine.loadedModelPath == path) {
             return true
         }
+        // If engine has a different model loaded, unload it first to free RAM
+        if (engine != null && engine.isModelLoaded) {
+            engineManager.unloadAll()
+        }
         return withContext(Dispatchers.IO) {
             try {
-                engineManager.unloadAll()
                 engineManager.selectEngineForFormat(path)
                 engineManager.getActiveEngine()?.loadModel(path)?.isSuccess == true
             } catch (e: Exception) { false }
@@ -1295,6 +1312,9 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Cancellation flag for mid-generation interrupt. */
+    private var _cancelGeneration = false
+
     private var lastCompactionNotified: Long = 0
 
     private fun checkCompactionAndNotify(historySize: Int, compactedSize: Int, phase: InventPhase) {
@@ -1314,7 +1334,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         expectedModelPath: String? = null,
         onStream: ((String) -> Unit)? = null
     ): String = withContext(Dispatchers.IO) {
-        _ui.value = _ui.value.copy(isGenerating = true)
+        _ui.value = _ui.value.copy(isGenerating = true, thinkingContent = "")
         val sb = StringBuilder()
 
         if (expectedModelPath != null && !ensureEngineReady(expectedModelPath)) {
@@ -1348,8 +1368,9 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             override fun onDone() {
-                val current = _ui.value.totalTokensUsed
-                _ui.value = _ui.value.copy(totalTokensUsed = current + streamedTokens)
+                // Use local accumulator to avoid racing with finally block's _ui.value read
+                val tokens = streamedTokens
+                _ui.value = _ui.value.copy(totalTokensUsed = _ui.value.totalTokensUsed + tokens)
             }
             override fun onError(error: String) { sb.append("[ERROR: $error]") }
             override fun onKvUsage(percent: Int) {}
@@ -1461,8 +1482,8 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
         appendLine("}")
     }
 
-    /** Token estimate: ~1 token per 4 chars for code/text (better than /3.5 for code). */
-    private fun estimateTokens(text: String): Int = (text.length / 4).coerceAtLeast(1) + 1
+    /** Token estimate: ~1 token per 3 chars for code-heavy content, /4 for plain text. */
+    private fun estimateTokens(text: String): Int = (text.length / 3).coerceAtLeast(1) + 1
 
     private fun getInventConfigForActiveModel(): SettingsManager.ModelTokenConfig? {
         val activePath = engineManager.getActiveEngine()?.loadedModelPath ?: return null
@@ -1500,6 +1521,29 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
             name.contains("command") -> "command"
             else -> "chatml"
         }
+    }
+
+    /**
+     * Use JNI chat template when available (NativeBridge.formatWithChatTemplateNative).
+     * Falls back to manual template formatting if JNI is not available or the model
+     * is not loaded (e.g. MNN engine).
+     */
+    private fun formatViaJni(messages: List<Pair<String, String>>): String? {
+        // Only works with the llama.cpp engine which has NativeBridge
+        if (!com.gguf.zerocopy.domain.inference.NativeBridge.nativeLibLoaded) return null
+        val activePath = engineManager.getActiveEngine()?.loadedModelPath ?: return null
+        if (!activePath.endsWith(".gguf", true)) return null
+        return try {
+            val arr = org.json.JSONArray()
+            messages.forEach { (role, content) ->
+                arr.put(org.json.JSONObject().apply {
+                    put("role", role)
+                    put("content", content)
+                })
+            }
+            val formatted = com.gguf.zerocopy.domain.inference.NativeBridge.formatWithChatTemplateNative(arr.toString())
+            if (formatted.isNotEmpty()) formatted else null
+        } catch (_: Exception) { null }
     }
 
     private fun formatRole(template: String, role: String): Pair<String, String> = when (template) {
@@ -1540,12 +1584,12 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
             h to f
         }
         "deepseek" -> Pair( when (role) {
-            "system" -> "<｜begin▁of▁sentence｜>"
-            "user" -> "<｜User｜>"
-            "assistant" -> "<｜Assistant｜>"
-            else -> "<｜User｜>"
+            "system" -> "<｜begin▁of▁sentence｜>\n"
+            "user" -> "<｜User｜>\n"
+            "assistant" -> "<｜Assistant｜>\n"
+            else -> "<｜User｜>\n"
         }, when (role) {
-            "assistant" -> "<｜User｜>"
+            "assistant" -> "<｜Assistant｜>"  // Assistant turn ended when next message starts
             else -> ""
         })
         else -> { // ChatML / default
@@ -1568,6 +1612,22 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
         val availableCtx = modelCfg?.ctx?.coerceAtLeast(512) ?: SettingsManager.nCtx.coerceAtLeast(1024)
         val maxNew = modelCfg?.maxNew?.coerceAtLeast(64) ?: SettingsManager.maxTokens.coerceAtLeast(64)
         val budget = (availableCtx - maxNew - 256).coerceAtLeast(512)
+
+        // Try JNI template first (correct for GGUF models)
+        val jniResult = if (activePath.endsWith(".gguf", true)) {
+            val allMsgs = mutableListOf<Pair<String, String>>()
+            allMsgs.add("system" to system)
+            allMsgs.addAll(history)
+            allMsgs.add("user" to user)
+            formatViaJni(allMsgs)
+        } else null
+
+        if (jniResult != null) {
+            // JNI returned a properly formatted prompt — no compaction needed (JNI handles it)
+            return jniResult to history.size
+        }
+
+        // Fallback: manual template formatting (MNN engine or JNI unavailable)
         val template = detectTemplate(activePath)
 
         var compactedHistory = history
@@ -1585,26 +1645,22 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
                     mutable.removeAt(0)
                 } else break
             }
-            // Removed: the info message consumed tokens, making compaction counterproductive.
-            // The oldest messages are simply dropped silently.
-            if (mutable.size < history.size) {
-                // Messages were compacted — no notification needed
-            }
             compactedHistory = mutable
         }
 
         val prompt = buildString {
             if (template == "deepseek") {
+                // Fixed DeepSeek formatting: proper newlines + turn markers
                 val (sysH, _) = formatRole(template, "system")
-                append(sysH); appendLine(system)
+                append(sysH); appendLine(system); appendLine()
                 compactedHistory.forEach { (role, content) ->
                     val mappedRole = if (role == "user") "user" else if (role == "system") "system" else "assistant"
                     val (h, f) = formatRole(template, mappedRole)
-                    append(h); appendLine(content.take(16_000)); if (f.isNotEmpty()) append(f)
+                    append(h); appendLine(); appendLine(content.take(16_000)); if (f.isNotEmpty()) appendLine(f); appendLine()
                 }
                 val (uH, uF) = formatRole(template, "user")
-                append(uH); appendLine(user.take(16_000)); if (uF.isNotEmpty()) append(uF)
-                append(formatRole(template, "assistant").first)
+                append(uH); appendLine(); appendLine(user.take(16_000)); if (uF.isNotEmpty()) { appendLine(uF); appendLine() }
+                append(formatRole(template, "assistant").first); appendLine()
             } else {
                 val (sysH, sysF) = formatRole(template, "system")
                 append(sysH); appendLine(system); if (sysF.isNotEmpty()) append(sysF)
@@ -1781,6 +1837,12 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
 
     // ── Helpers ────────────────────────────────────────────────────────────
 
+    fun cancelGeneration() {
+        _cancelGeneration = true
+        _ui.value = _ui.value.copy(isGenerating = false)
+        updatePhase(InventPhase.QUESTIONING)
+    }
+
     private fun addMessage(role: String, content: String, phase: InventPhase, thinkingContent: String = "") {
         // Strip turn-ending tokens the model may have generated — prevents
         // double endings in the next prompt's template-formatted history.
@@ -1814,8 +1876,11 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
 
     override fun onCleared() {
         super.onCleared()
-        kotlinx.coroutines.runBlocking {
-            withTimeout(2000L) { withContext(Dispatchers.IO) { engineManager.unloadAll() } }
+        // Unload engines on background thread — NEVER block the main thread
+        viewModelScope.launch(Dispatchers.IO) {
+            withTimeout(5000L) {
+                engineManager.unloadAll()
+            }
         }
     }
 }

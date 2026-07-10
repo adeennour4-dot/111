@@ -364,6 +364,7 @@ fun InventScreen(
                             inputText = ""
                         }
                     },
+                    onStop = { vm.cancelGeneration() },
                     phase = ui.phase,
                     totalTokens = ui.totalTokensUsed,
                     isGenerating = ui.isGenerating,
@@ -678,6 +679,7 @@ private fun DoneStats(lines: Int, bytes: Long, debugCount: Int, colors: ZcPalett
 private fun InputArea(
     inputText: String, onTextChange: (String) -> Unit,
     onFilePick: () -> Unit, onSend: () -> Unit,
+    onStop: () -> Unit = {},
     phase: InventPhase, totalTokens: Int,
     isGenerating: Boolean = false,
     colors: ZcPalette
@@ -728,16 +730,27 @@ private fun InputArea(
                 )
                 Spacer(Modifier.width(6.dp))
                 val canSend = inputText.isNotBlank() && !isGenerating
-                Box(
-                    modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp))
-                        .let { m ->
-                            if (canSend) m.background(Brush.linearGradient(listOf(Cy, Cy.copy(0.6f))))
-                            else m.background(colors.Border)
-                        }
-                        .clickable { if (canSend) onSend() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = if (canSend) Color.Black else colors.Text3, modifier = Modifier.size(15.dp))
+                if (isGenerating) {
+                    Box(
+                        modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp))
+                            .background(Rd.copy(alpha = 0.2f))
+                            .clickable { onStop() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Filled.Close, "Stop", tint = Rd, modifier = Modifier.size(15.dp))
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp))
+                            .let { m ->
+                                if (canSend) m.background(Brush.linearGradient(listOf(Cy, Cy.copy(0.6f))))
+                                else m.background(colors.Border)
+                            }
+                            .clickable { if (canSend) onSend() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = if (canSend) Color.Black else colors.Text3, modifier = Modifier.size(15.dp))
+                    }
                 }
             }
         }
