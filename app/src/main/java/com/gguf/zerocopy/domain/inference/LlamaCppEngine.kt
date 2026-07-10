@@ -74,7 +74,7 @@ class LlamaCppEngine : InferenceEngine {
   }
 
   override fun unloadModel() {
-    NativeBridge.resetContextNative()
+    NativeBridge.unloadModelNative()
     isModelLoaded = false; modelInfo = null; currentModelPath = ""
     lastRestoredHistoryJson = "[]"
     _toolManager = null  // clear tool manager so it doesn't leak into Invent

@@ -198,6 +198,18 @@ static void finish_mnn_inference(const std::string& response_text, int tokens_ge
 JNIEXPORT void JNICALL
 Java_com_gguf_zerocopy_domain_inference_MnnEngine_mnnExecuteInference(
     JNIEnv* env, jobject, jstring jprompt, jobject callback) {
+    if (!g_llm || !g_model_loaded) {
+        LOGE("MNN engine not ready — g_llm is null");
+        if (callback) {
+            jclass cls = env->GetObjectClass(callback);
+            jmethodID onErr = env->GetMethodID(cls, "onError", "(Ljava/lang/String;)V");
+            if (onErr) { jstring err = env->NewStringUTF("MNN engine not ready — load a model first"); env->CallVoidMethod(callback, onErr, err); env->DeleteLocalRef(err); }
+            env->DeleteLocalRef(cls);
+            jmethodID onDone = env->GetMethodID(cls, "onDone", "()V");
+            if (onDone) env->CallVoidMethod(callback, onDone);
+        }
+        return;
+    }
     const char* prompt_str = env->GetStringUTFChars(jprompt, nullptr);
     if (!prompt_str) return;
 
@@ -297,6 +309,21 @@ Java_com_gguf_zerocopy_domain_inference_MnnEngine_mnnResetContext(JNIEnv*, jobje
     g_inference_done = true;
     if (g_llm) g_llm->reset();
     LOGI("Context reset");
+}
+
+JNIEXPORT void JNICALL
+Java_com_gguf_zerocopy_domain_inference_MnnEngine_mnnUnloadModel(JNIEnv*, jobject) {
+    LOGI("Unloading MNN native model");
+    std::lock_guard<std::mutex> lock(g_mutex);
+    delete g_llm;
+    g_llm = nullptr;
+    g_model_loaded = false;
+    g_history.clear();
+    g_partial_buffer.clear();
+    g_full_response.clear();
+    g_tokens_generated = 0;
+    g_inference_done = true;
+    LOGI("MNN native model unloaded");
 }
 
 JNIEXPORT jstring JNICALL

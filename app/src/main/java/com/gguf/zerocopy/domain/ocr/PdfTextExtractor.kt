@@ -293,14 +293,9 @@ class PdfTextExtractor(private val context: Context) {
 
     /**
      * Lightweight pixel-scan OCR: detects text rows by dark-pixel density.
-     * Uses the bitmap pixels directly without allocating a separate IntArray
-     * when possible (getPixel() per-column is slower but avoids the 8MB array).
-     * For typical page widths we use a row buffer instead of the full pixel array.
-     *
-     * NOTE: This method only detects text REGIONS — it does NOT read actual characters.
-     * Actual OCR (e.g. ML Kit) should replace this for production use.
-     * For now, this throws an UnsupportedOperationException when text regions are found.
-     * The PDF path (extractTextNativeStreaming + extractTextViaRender) does work correctly.
+     * Returns a description of detected text regions rather than actual characters.
+     * The PDF path (extractTextNativeStreaming + extractTextViaRender) does full text extraction.
+     * Full character OCR (e.g. ML Kit) should replace this for production use.
      */
     private fun extractTextFromBitmap(bitmap: Bitmap): String {
         val width = bitmap.width
@@ -330,12 +325,12 @@ class PdfTextExtractor(private val context: Context) {
             }
         }
 
-        return if (lineRanges.isEmpty()) ""
-        else throw UnsupportedOperationException(
-            "Image OCR is not yet implemented. " +
-            "This app detected $lineRanges text regions in the image but cannot read the actual characters. " +
-            "For document Q&A with images, use a PDF with embedded text instead."
-        )
+        if (lineRanges.isEmpty()) return ""
+        val regionCount = lineRanges.size
+        val textHeight = lineRanges.sumOf { it.last - it.first + 1 }
+        val coveragePercent = (textHeight * 100) / height.coerceAtLeast(1)
+        return "[Image contains $regionCount text region(s) covering ~${coveragePercent}% of the image height. " +
+                "Character-by-character OCR is not available; use a PDF with embedded text for full extraction.]"
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

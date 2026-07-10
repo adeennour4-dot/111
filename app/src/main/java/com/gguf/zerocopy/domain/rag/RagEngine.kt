@@ -83,7 +83,7 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
 
     private fun getFileSize(uri: Uri, context: Context): Long? {
         return try {
-            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)?.use { cursor ->
                 if (cursor.moveToFirst()) {
                     val idx = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
                     if (idx >= 0 && !cursor.isNull(idx)) cursor.getLong(idx) else null

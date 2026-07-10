@@ -172,7 +172,8 @@ class ModelServer(val port: Int = 8080) {
   private fun checkAuth(headers: Map<String, String>): Boolean {
     if (!com.gguf.zerocopy.data.local.SettingsManager.serverAuthEnabled) return true
     val expected = com.gguf.zerocopy.data.local.SettingsManager.serverAuthToken
-    if (expected.isBlank()) return true
+    // When auth is enabled, an empty/blank token is INVALID — user must set a non-empty token
+    if (expected.isBlank()) return false
     val auth = headers["authorization"] ?: return false
     if (!auth.startsWith("Bearer ")) return false
     val token = auth.substring(7)
@@ -197,6 +198,8 @@ class ModelServer(val port: Int = 8080) {
     val ip = client.inetAddress?.hostAddress ?: "unknown"
     val startTime = System.currentTimeMillis()
     activeClients[ip] = startTime
+    auditIp.set(ip)
+    auditStart.set(startTime)
 
     // Enforce wifi-only setting: drop non-loopback connections when on cellular/none
     val wifiOnly = com.gguf.zerocopy.data.local.SettingsManager.serverWifiOnly
@@ -219,6 +222,8 @@ class ModelServer(val port: Int = 8080) {
         val method = parts[0]
         val rawPath = parts[1]
         val path = URLDecoder.decode(rawPath.split("?").first(), "UTF-8")
+        auditMethod.set(method)
+        auditPath.set(path)
         val headers = mutableMapOf<String, String>()
         var line = reader.readLine()
         while (line != null && line.isNotEmpty()) {
@@ -274,11 +279,16 @@ when {
   path.startsWith("/v1/") -> respond(out, 404, """{"error":"not_found","message":"Endpoint not found","type":"invalid_request_error"}""")
   else -> respond(out, 404, """{"error":"not_found","message":"Not found"}""")
 }
-        emitAudit(ip, method, path, 200, startTime)
+        // emitAudit is now called inside respond() with the actual status code
       }
     } catch (e: Exception) {
       Log.w(tag, "Client error from $ip: ${e.message}")
       emitAudit(ip, "ERR", "error", 500, startTime)
+    } finally {
+      auditIp.remove()
+      auditMethod.remove()
+      auditPath.remove()
+      auditStart.remove()
     }
   }
 
@@ -835,6 +845,12 @@ async function send(){
     return "\"$escaped\""
   }
 
+  // Track the current client IP/method/path for emitAudit — set at start of handleClient
+  private val auditIp = ThreadLocal<String>()
+  private val auditMethod = ThreadLocal<String>()
+  private val auditPath = ThreadLocal<String>()
+  private val auditStart = ThreadLocal<Long>()
+
   private fun respond(out: OutputStream, code: Int, body: String, contentType: String = "application/json") {
     val status = when (code) {
       200 -> "OK"; 204 -> "No Content"; 400 -> "Bad Request"; 401 -> "Unauthorized"
@@ -851,6 +867,11 @@ async function send(){
       "\r\n" +
       body
     try { out.write(response.toByteArray()); out.flush() } catch (_: Exception) {}
+    // Emit audit with the ACTUAL status code, not hardcoded 200
+    val ip = auditIp.get()
+    if (ip != null) {
+      emitAudit(ip, auditMethod.get() ?: "", auditPath.get() ?: "", code, auditStart.get() ?: System.currentTimeMillis())
+    }
   }
 
   private class TokenBucket(val capacity: Int, val refillPerSec: Int) {

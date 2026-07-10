@@ -467,6 +467,7 @@ fun ChatScreen(
           mainHandler.post {
             inferenceActive = false
             isInferring     = false
+            reasoningPhaseActive = false
             streamedContent = ""
             scope.launch { snackbarHostState.showSnackbar("Inference error: $error") }
           }
@@ -930,6 +931,7 @@ fun ChatScreen(
                 isStreaming = streamedContent.isNotEmpty(),
                 thinkingContent = thinking ?: reasoningLive,
                 showThinking = showStreamingThinking || reasoningPhaseActive,
+                reasoningBadge = reasoningEnabled,
                 onToggleThinking = { showStreamingThinking = !showStreamingThinking }
               )
             }

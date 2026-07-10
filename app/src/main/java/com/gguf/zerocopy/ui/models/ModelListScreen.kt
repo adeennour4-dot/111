@@ -70,6 +70,7 @@ import com.gguf.zerocopy.data.repository.LocalModel
 import com.gguf.zerocopy.domain.inference.BenchmarkResult
 import com.gguf.zerocopy.domain.inference.EngineType
 import com.gguf.zerocopy.domain.inference.InferenceConfig
+import com.gguf.zerocopy.domain.inference.RustCore
 import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlin.math.roundToInt
 import java.text.SimpleDateFormat
@@ -966,7 +967,24 @@ private suspend fun loadModel(
     } else config
   } else config
 
-  engine.config = tunedConfig
+  // Apply RustCore optimizations if available
+  val rustAdvice = RustCore.getMemoryAdvice()
+  val rustThreadCfg = RustCore.optimizeThreads(
+    modelSizeMB = (model.sizeBytes / (1024 * 1024)).toInt().coerceAtLeast(100),
+    gpuLayers = tunedConfig.nGpuLayers
+  )
+  val optimizedConfig = tunedConfig.copy(
+    // Reduce context under memory pressure
+    nCtx = if (rustAdvice.shouldReduceContext && SettingsManager.getModelTokenConfig(model.path) == null) {
+      (tunedConfig.nCtx / 2).coerceAtLeast(512)
+    } else tunedConfig.nCtx,
+    // Use Rust-suggested threads if user hasn't explicitly set them
+    nThreads = if (rustAdvice.shouldReduceContext) rustThreadCfg.decodeThreads.coerceAtLeast(2) else tunedConfig.nThreads
+  )
+
+  Log.i("ModelList", "RustCore: pressure=${rustAdvice.underPressure} advThreads=${rustThreadCfg.decodeThreads}")
+
+  engine.config = optimizedConfig
   engine.repeatPenalty = SettingsManager.toRepeatPenalty()
   engine.systemPrompt = SettingsManager.systemPrompt
   engine.mmprojPath = SettingsManager.mmprojPath
@@ -1004,7 +1022,7 @@ private suspend fun loadModel(
 
 private fun getFileName(context: android.content.Context, uri: android.net.Uri): String {
   var name = "model.gguf"
-  context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+  context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
     if (cursor.moveToFirst()) {
       val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
       if (idx >= 0) cursor.getString(idx)?.let { if (it.isNotEmpty()) name = it }

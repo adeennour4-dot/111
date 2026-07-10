@@ -75,6 +75,7 @@ fun ChatBubble(
   isStreaming: Boolean = false,
   thinkingContent: String? = null,
   showThinking: Boolean = false,
+  reasoningBadge: Boolean = false,
   onToggleThinking: () -> Unit = {},
   onCopy: () -> Unit = {},
   onDelete: () -> Unit = {},
@@ -230,6 +231,22 @@ fun ChatBubble(
           horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
           verticalAlignment = Alignment.CenterVertically
         ) {
+          if (reasoningBadge) {
+            Surface(
+              shape = RoundedCornerShape(4.dp),
+              color = colors.Purple.copy(alpha = 0.15f),
+              modifier = Modifier.padding(end = 4.dp)
+            ) {
+              Text(
+                text = "\uD83E\uDDD0 Thinking",
+                fontSize = 10.sp,
+                color = colors.Purple,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+              )
+            }
+          }
           Text(
             text = timeStr,
             fontSize = 10.sp,

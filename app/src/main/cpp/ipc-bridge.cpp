@@ -386,6 +386,19 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_resetContextNative(
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_gguf_zerocopy_domain_inference_NativeBridge_unloadModelNative(
+        JNIEnv*, jobject) {
+    LOGI("Unloading native model");
+    g_history.clear();
+    g_current_image_path.clear();
+    g_abort.store(false);
+    if (g_sampler) { llama_sampler_free(g_sampler); g_sampler = nullptr; }
+    if (g_ctx)     { llama_free(g_ctx);              g_ctx     = nullptr; }
+    if (g_model)   { llama_model_free(g_model);      g_model   = nullptr; }
+    LOGI("Native model unloaded");
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_abortInferenceNative(
         JNIEnv*, jobject) {
     g_abort.store(true);
@@ -620,7 +633,6 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_benchmarkNative(
     const char* test_str = "The quick brown fox jumps over the lazy dog. ";
     std::vector<llama_token> pp_toks(ppTokens);
     int n = llama_tokenize(llama_model_get_vocab(g_model), test_str, strlen(test_str), pp_toks.data(), ppTokens, false, true);
-    if (n <= 0) n = 1;
     if (n <= 0) n = 1;
     pp_toks.resize(n);
     while ((int)pp_toks.size() < ppTokens) {

@@ -60,6 +60,7 @@ class MnnEngine : InferenceEngine {
   private external fun mnnGetKvCacheUsage(): Int
   private external fun mnnGetTokensGenerated(): Int
   private external fun mnnIsInferenceDone(): Boolean
+  private external fun mnnUnloadModel()
 
   override suspend fun loadModel(path: String): Result<Unit> = withContext(Dispatchers.IO) {
     if (!nativeLibLoaded) return@withContext Result.failure(Exception("MNN native library not available"))
@@ -82,7 +83,7 @@ class MnnEngine : InferenceEngine {
   }
 
   override fun unloadModel() {
-    try { mnnResetContext() } catch (_: Exception) {}
+    try { mnnUnloadModel() } catch (_: Exception) {}
     isModelLoaded = false
     modelInfo = null
     currentModelPath = ""
@@ -120,6 +121,7 @@ class MnnEngine : InferenceEngine {
 
   override suspend fun executeInference(prompt: String, callback: TokenCallback, searchQuery: String?) {
     if (!nativeLibLoaded) { callback.onError("MNN native library not available"); callback.onDone(); return }
+    if (!isModelLoaded) { callback.onError("No MNN model is loaded — load a .mnn model first"); callback.onDone(); return }
     withContext(Dispatchers.IO) {
       synchronized(partialStream) { partialStream.clear(); fullResponse.clear() }
       inferenceDone.set(false)
