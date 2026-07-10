@@ -200,6 +200,7 @@ fun ChatScreen(
 
   var deleteMsgIndex by remember { mutableIntStateOf(-1) }
   var showStreamingThinking by remember { mutableStateOf(false) }
+  var reasoningPhaseActive by remember { mutableStateOf(false) }
 
   val suggestions = remember {
     listOf(
@@ -212,6 +213,9 @@ fun ChatScreen(
   }
 
   val thinkRegex = remember { Regex("<think>([\\s\\S]*?)</think>") }
+
+  // Duration of the initial reasoning phase (live stream shown in thinking section)
+  private val reasoningPhaseDurationMs = 3000L
 
   fun extractThinking(content: String): String? =
     thinkRegex.find(content)?.groupValues?.getOrNull(1)
@@ -284,7 +288,13 @@ fun ChatScreen(
       prompt = "Use the document excerpts above to answer the user's question. If the excerpts don't contain the answer, say so.\n\n$prompt"
     }
     if (useReasoning) {
-      prompt = "Use <think> tags for step-by-step reasoning before answering.\n\n$prompt"
+      // Universal reasoning prompt that works with ALL models, not just
+      // those fine-tuned for <think> tags (DeepSeek, etc.).
+      // The <think> tag format is still used by some models, so we also
+      // include it as guidance in case the model supports it.
+      prompt = "Let's work through this step by step to be thorough. " +
+               "You may wrap your reasoning in <think></think> tags if you wish, " +
+               "but it's not required.\n\n$prompt"
     }
     return prompt
   }
@@ -311,6 +321,8 @@ fun ChatScreen(
     streamedContent = ""
     streamedTokens = 0
     streamedTps = 0f
+    reasoningPhaseActive = reasoningEnabled
+    if (reasoningEnabled) showStreamingThinking = true
 
     val tokenBuffer = AtomicReference("")
     val startTime   = System.currentTimeMillis()
@@ -446,6 +458,7 @@ fun ChatScreen(
             inferenceActive  = false
             isInferring      = false
             kvUsagePercent   = 0
+            reasoningPhaseActive = false
             streamedContent  = ""
           }
         }
@@ -616,6 +629,16 @@ fun ChatScreen(
   // Accessibility announcement for inference state
   if (isInferring) {
     com.gguf.zerocopy.ui.common.AccessibilityAnnouncement("Generating response")
+  }
+
+  // Auto-end reasoning phase after a timeout (shows model's initial output as
+  // thinking, then reveals as answer moving forward).
+  LaunchedEffect(reasoningPhaseActive) {
+    if (reasoningPhaseActive) {
+      delay(reasoningPhaseDurationMs)
+      reasoningPhaseActive = false
+      showStreamingThinking = false
+    }
   }
 
   // Scroll to the latest message when inference finishes (streaming item removed)
@@ -891,6 +914,12 @@ fun ChatScreen(
             item(key = "streaming") {
               val thinking = extractThinking(streamedContent)
               val display = removeThinking(streamedContent)
+              // When reasoning is enabled and in the initial thinking phase,
+              // show the live stream in the thinking section too — works with
+              // ALL models, not just those that output <think> tags.
+              val reasoningLive = if (reasoningEnabled && reasoningPhaseActive) {
+                streamedContent
+              } else null
               ChatBubble(
                 content = display,
                 role = MessageRole.ASSISTANT,
@@ -899,8 +928,8 @@ fun ChatScreen(
                 tokens = streamedTokens,
                 isLoading = streamedContent.isEmpty(),
                 isStreaming = streamedContent.isNotEmpty(),
-                thinkingContent = thinking,
-                showThinking = showStreamingThinking,
+                thinkingContent = thinking ?: reasoningLive,
+                showThinking = showStreamingThinking || reasoningPhaseActive,
                 onToggleThinking = { showStreamingThinking = !showStreamingThinking }
               )
             }
