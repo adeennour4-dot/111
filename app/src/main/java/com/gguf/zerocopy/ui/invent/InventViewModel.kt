@@ -16,10 +16,13 @@ import com.gguf.zerocopy.domain.inference.TokenCallback
 import com.gguf.zerocopy.domain.inference.ToolCall
 import com.gguf.zerocopy.domain.inference.ToolManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import java.io.File
@@ -92,27 +95,77 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     private val _ui = MutableStateFlow(InventUiState())
     val ui: StateFlow<InventUiState> = _ui
 
-    /** Single source of truth: session state with embedded ZCP data saved atomically. */
+    /**
+     * State holders with debounced auto-persist.
+     * Setters automatically schedule a coalesced save (300ms debounce).
+     * For atomic multi-holder updates, use withTransaction().
+     */
     private var sessionState: InventSessionState? = null
         set(value) {
             field = value
-            value?.let { persistSessionState(it) }
+            if (value != null && sessionId.isNotEmpty()) scheduleSave()
         }
     private var zcp: ZcpProtocol = ZcpProtocol()
         set(value) {
             field = value
-            sessionState?.let { persistZcp(value) }
+            if (sessionState != null && sessionId.isNotEmpty()) scheduleSave()
         }
     private var sessionId: String = ""
     /** Saved original paths for model mode switching. */
     private var savedOriginalPaths = mutableMapOf<String, String>()
 
+    /** Debounced persist — coalesces multiple rapid updates into one save. */
+    private var pendingSave = false
+    private var saveJob: kotlinx.coroutines.Job? = null
+
+    private fun scheduleSave() {
+        if (pendingSave) return
+        pendingSave = true
+        saveJob?.cancel()
+        saveJob = viewModelScope.launch(Dispatchers.IO) {
+            kotlinx.coroutines.delay(300L)
+            pendingSave = false
+            val s = sessionState ?: return@launch
+            val sid = sessionId.ifEmpty { return@launch }
+            val z = zcp
+            InventStorage.saveSession(ctx, s)
+            InventStorage.saveZcp(ctx, sid, z)
+        }
+    }
+
+    /**
+     * Atomically update UI state AND session state in one step,
+     * ensuring the setter-based auto-save captures the final state.
+     * Use this for operations that change both _ui and sessionState/zcp.
+     */
+    private fun withTransaction(
+        uiTransform: (InventUiState) -> InventUiState = { it },
+        sessionTransform: (InventSessionState?) -> InventSessionState? = { it },
+        zcpTransform: (ZcpProtocol) -> ZcpProtocol = { it }
+    ) {
+        _ui.value = uiTransform(_ui.value)
+        val newSession = sessionTransform(sessionState)
+        if (newSession !== sessionState) sessionState = newSession
+        val newZcp = zcpTransform(zcp)
+        if (newZcp !== zcp) zcp = newZcp
+    }
+
+    /** Force an immediate save (for navigation away / export). */
+    private fun flushSave() {
+        saveJob?.cancel()
+        pendingSave = false
+        val s = sessionState ?: return
+        val sid = sessionId.ifEmpty { return }
+        val z = zcp
+        kotlinx.coroutines.runBlocking {
+            withContext(Dispatchers.IO) {
+                InventStorage.saveSession(ctx, s)
+                InventStorage.saveZcp(ctx, sid, z)
+            }
+        }
+    }
+
     init {
-        // Restore the most advanced in-progress session on ViewModel creation.
-        // This ensures session state survives tab switches (where the ViewModel
-        // may be recreated) and app restarts (where the saved instance state
-        // restores inventStarted but the ViewModel starts fresh).
-        // Runs synchronously because file I/O on small JSON is negligible.
         restoreLastSession()
     }
 
@@ -136,61 +189,46 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             InventStorage.deleteSession(ctx, existing)
             return
         }
-        sessionId = existing; sessionState = saved; zcp = savedZcp
-        _ui.value = _ui.value.copy(
-            phase = saved.phase, messages = saved.messages, sessionId = existing,
-            model1Name = saved.model1Name, model2Name = saved.model2Name,
-            researcherName = saved.researcherName,
-            offlineMode = saved.offlineMode, sameModelMode = saved.sameModelMode,
-            modelMode = when {
-                saved.sameModelMode && saved.researcherPath == saved.model1Path -> ModelMode.SINGLE
-                saved.sameModelMode -> ModelMode.DUAL
-                else -> ModelMode.TRIPLE
+        withTransaction(
+            uiTransform = {
+                it.copy(
+                    phase = saved.phase, messages = saved.messages, sessionId = existing,
+                    model1Name = saved.model1Name, model2Name = saved.model2Name,
+                    researcherName = saved.researcherName,
+                    offlineMode = saved.offlineMode, sameModelMode = saved.sameModelMode,
+                    modelMode = when {
+                        saved.sameModelMode && saved.researcherPath == saved.model1Path -> ModelMode.SINGLE
+                        saved.sameModelMode -> ModelMode.DUAL
+                        else -> ModelMode.TRIPLE
+                    },
+                    searchRound = saved.searchRound, mergeCount = saved.mergeCount,
+                    currentFileIndex = saved.currentFileIndex, totalFiles = saved.totalFiles,
+                    debugMode = saved.phase == InventPhase.DEBUGGING,
+                    zipReady = saved.phase == InventPhase.DONE || saved.phase == InventPhase.DEBUGGING
+                )
             },
-            searchRound = saved.searchRound, mergeCount = saved.mergeCount,
-            currentFileIndex = saved.currentFileIndex, totalFiles = saved.totalFiles,
-            debugMode = saved.phase == InventPhase.DEBUGGING,
-            zipReady = saved.phase == InventPhase.DONE || saved.phase == InventPhase.DEBUGGING
+            sessionTransform = { saved },
+            zcpTransform = { savedZcp }
         )
+        sessionId = existing
     }
 
-    // ── Atomic persistence ─────────────────────────────────────────────────
-
-    private fun persistSessionState(state: InventSessionState) {
-        viewModelScope.launch(Dispatchers.IO) {
-            InventStorage.saveSession(ctx, state)
-        }
-    }
-
-    private fun persistZcp(z: ZcpProtocol) {
-        viewModelScope.launch(Dispatchers.IO) {
-            InventStorage.saveZcp(ctx, sessionId, z)
-        }
-    }
-
-    /** Save both session state and ZCP atomically. */
-    private fun saveAllState() {
-        val s = sessionState ?: return
-        val sid = sessionId
-        val z = zcp
-        viewModelScope.launch(Dispatchers.IO) {
-            InventStorage.saveSession(ctx, s)
-            InventStorage.saveZcp(ctx, sid, z)
-        }
-    }
+    // ── Atomic persistence ── All state mutations either go through
+    // withTransaction() for multi-holder updates, or trigger auto-save via
+    // sessionState/zcp setters for single-holder updates.
 
     fun setShowDeleteConfirm(v: Boolean) { _ui.value = _ui.value.copy(showDeleteConfirm = v) }
 
     fun toggleSameModelMode() {
         val state = sessionState ?: return
         val newMode = !state.sameModelMode
-        val newState = if (newMode) {
-            state.copy(sameModelMode = true, model2Path = state.model1Path, model2Name = state.model1Name)
-        } else {
-            state.copy(sameModelMode = false)
-        }
-        sessionState = newState
-        _ui.value = _ui.value.copy(sameModelMode = newMode, model2Name = newState.model2Name)
+        withTransaction(
+            uiTransform = { it.copy(sameModelMode = newMode, model2Name = if (newMode) it.model1Name else state.model2Name) },
+            sessionTransform = {
+                if (newMode) it?.copy(sameModelMode = true, model2Path = it.model1Path, model2Name = it.model1Name)
+                else it?.copy(sameModelMode = false)
+            }
+        )
     }
 
     fun setModelMode(mode: ModelMode) {
@@ -204,7 +242,6 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             savedOriginalPaths["researcher"] = state.researcherPath
             savedOriginalPaths["researcherName"] = state.researcherName
         }
-        _ui.value = _ui.value.copy(modelMode = mode)
 
         val plannerP = savedOriginalPaths["planner"]?.takeIf { it.isNotEmpty() } ?: state.model1Path
         val plannerN = savedOriginalPaths["plannerName"]?.takeIf { it.isNotEmpty() } ?: state.model1Name
@@ -213,7 +250,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         val resP = savedOriginalPaths["researcher"]?.takeIf { it.isNotEmpty() } ?: state.researcherPath
         val resN = savedOriginalPaths["researcherName"]?.takeIf { it.isNotEmpty() } ?: state.researcherName
 
-        val newState = when (mode) {
+        val newSessionState = when (mode) {
             ModelMode.SINGLE -> state.copy(
                 sameModelMode = true,
                 researcherPath = plannerP, researcherName = plannerN,
@@ -230,12 +267,17 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 researcherPath = resP, researcherName = resN
             )
         }
-        sessionState = newState
-        _ui.value = _ui.value.copy(
-            researcherName = newState.researcherName,
-            model1Name = newState.model1Name,
-            model2Name = newState.model2Name,
-            sameModelMode = newState.sameModelMode
+        withTransaction(
+            uiTransform = {
+                it.copy(
+                    modelMode = mode,
+                    researcherName = newSessionState.researcherName,
+                    model1Name = newSessionState.model1Name,
+                    model2Name = newSessionState.model2Name,
+                    sameModelMode = newSessionState.sameModelMode
+                )
+            },
+            sessionTransform = { newSessionState }
         )
     }
 
@@ -255,29 +297,31 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (path.isNotEmpty()) {
                 val ok = loadOrKeepModel(path)
-                val cur = _ui.value
-                _ui.value = _ui.value.copy(
-                    plannerLoaded = cur.plannerLoaded || ((useForAll || tab == 0) && ok),
-                    researcherLoaded = cur.researcherLoaded || ((useForAll || tab == 1) && ok),
-                    coderLoaded = cur.coderLoaded || ((useForAll || tab == 2) && ok),
-                    model1Name = if (ok && (useForAll || tab == 0) && name.isNotEmpty()) name else cur.model1Name,
-                    model2Name = if (ok && (useForAll || tab == 2) && name.isNotEmpty()) name else cur.model2Name,
-                    researcherName = if (ok && (useForAll || tab == 1) && name.isNotEmpty()) name else cur.researcherName
-                )
                 if (ok) {
-                    val newState = sessionState?.let { s ->
-                        if (useForAll) s.copy(
-                            model1Path = path, model1Name = name,
-                            researcherPath = path, researcherName = name,
-                            model2Path = path, model2Name = name
-                        ) else when (tab) {
-                            0 -> { val s2 = s.copy(model1Path = path, model1Name = name); if (s.sameModelMode) s2.copy(model2Path = path, model2Name = name) else s2 }
-                            1 -> s.copy(researcherPath = path, researcherName = name)
-                            2 -> { val s2 = s.copy(model2Path = path, model2Name = name); if (s.sameModelMode) s2.copy(model1Path = path, model1Name = name) else s2 }
-                            else -> s
+                    withTransaction(
+                        uiTransform = { cur ->
+                            cur.copy(
+                                plannerLoaded = cur.plannerLoaded || ((useForAll || tab == 0) && ok),
+                                researcherLoaded = cur.researcherLoaded || ((useForAll || tab == 1) && ok),
+                                coderLoaded = cur.coderLoaded || ((useForAll || tab == 2) && ok),
+                                model1Name = if (ok && (useForAll || tab == 0) && name.isNotEmpty()) name else cur.model1Name,
+                                model2Name = if (ok && (useForAll || tab == 2) && name.isNotEmpty()) name else cur.model2Name,
+                                researcherName = if (ok && (useForAll || tab == 1) && name.isNotEmpty()) name else cur.researcherName
+                            )
+                        },
+                        sessionTransform = { s ->
+                            if (useForAll) s?.copy(
+                                model1Path = path, model1Name = name,
+                                researcherPath = path, researcherName = name,
+                                model2Path = path, model2Name = name
+                            ) else when (tab) {
+                                0 -> { val s2 = s?.copy(model1Path = path, model1Name = name); if (s?.sameModelMode == true) s2?.copy(model2Path = path, model2Name = name) else s2 }
+                                1 -> s?.copy(researcherPath = path, researcherName = name)
+                                2 -> { val s2 = s?.copy(model2Path = path, model2Name = name); if (s?.sameModelMode == true) s2?.copy(model1Path = path, model1Name = name) else s2 }
+                                else -> s
+                            }
                         }
-                    }
-                    sessionState = newState
+                    )
                 }
             }
         }
@@ -316,26 +360,30 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             if (saved != null && savedZcp != null) {
                 engineManager.unloadAll()
                 sessionId = targetId
-                sessionState = saved
-                zcp = savedZcp
-                _ui.value = _ui.value.copy(
-                    phase = saved.phase,
-                    messages = saved.messages,
-                    sessionId = targetId,
-                    model1Name = saved.model1Name, model2Name = saved.model2Name,
-                    researcherName = saved.researcherName,
-                    offlineMode = saved.offlineMode, sameModelMode = saved.sameModelMode,
-                    modelMode = when {
-                        saved.sameModelMode && saved.researcherPath == saved.model1Path -> ModelMode.SINGLE
-                        saved.sameModelMode -> ModelMode.DUAL
-                        else -> ModelMode.TRIPLE
+                withTransaction(
+                    uiTransform = {
+                        it.copy(
+                            phase = saved.phase,
+                            messages = saved.messages,
+                            sessionId = targetId,
+                            model1Name = saved.model1Name, model2Name = saved.model2Name,
+                            researcherName = saved.researcherName,
+                            offlineMode = saved.offlineMode, sameModelMode = saved.sameModelMode,
+                            modelMode = when {
+                                saved.sameModelMode && saved.researcherPath == saved.model1Path -> ModelMode.SINGLE
+                                saved.sameModelMode -> ModelMode.DUAL
+                                else -> ModelMode.TRIPLE
+                            },
+                            fileTree = savedZcp.fileTree,
+                            searchRound = saved.searchRound, mergeCount = saved.mergeCount,
+                            currentFileIndex = saved.currentFileIndex, totalFiles = saved.totalFiles,
+                            debugMode = saved.phase == InventPhase.DEBUGGING,
+                            showSessionList = false,
+                            zipReady = saved.phase == InventPhase.DONE || saved.phase == InventPhase.DEBUGGING
+                        )
                     },
-                    fileTree = savedZcp.fileTree,
-                    searchRound = saved.searchRound, mergeCount = saved.mergeCount,
-                    currentFileIndex = saved.currentFileIndex, totalFiles = saved.totalFiles,
-                    debugMode = saved.phase == InventPhase.DEBUGGING,
-                    showSessionList = false,
-                    zipReady = saved.phase == InventPhase.DONE || saved.phase == InventPhase.DEBUGGING
+                    sessionTransform = { saved },
+                    zcpTransform = { savedZcp }
                 )
                 computeStats()
             }
@@ -408,23 +456,29 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 val saved = InventStorage.loadSession(ctx, existing)
                 val savedZcp = InventStorage.loadZcp(ctx, existing)
                 if (saved != null && savedZcp != null) {
-                    sessionId = existing; sessionState = saved; zcp = savedZcp
-                    _ui.value = _ui.value.copy(
-                        phase = saved.phase, messages = saved.messages, sessionId = existing,
-                        model1Name = saved.model1Name, model2Name = saved.model2Name,
-                        researcherName = saved.researcherName,
-                        offlineMode = saved.offlineMode, sameModelMode = saved.sameModelMode,
-                        reasoningEnabled = reasoningEnabled,
-                        modelMode = when {
-                            saved.sameModelMode && saved.researcherPath == saved.model1Path -> ModelMode.SINGLE
-                            saved.sameModelMode -> ModelMode.DUAL
-                            else -> ModelMode.TRIPLE
+                    sessionId = existing
+                    withTransaction(
+                        uiTransform = {
+                            it.copy(
+                                phase = saved.phase, messages = saved.messages, sessionId = existing,
+                                model1Name = saved.model1Name, model2Name = saved.model2Name,
+                                researcherName = saved.researcherName,
+                                offlineMode = saved.offlineMode, sameModelMode = saved.sameModelMode,
+                                reasoningEnabled = reasoningEnabled,
+                                modelMode = when {
+                                    saved.sameModelMode && saved.researcherPath == saved.model1Path -> ModelMode.SINGLE
+                                    saved.sameModelMode -> ModelMode.DUAL
+                                    else -> ModelMode.TRIPLE
+                                },
+                                fileTree = savedZcp.fileTree,
+                                searchRound = saved.searchRound, mergeCount = saved.mergeCount,
+                                currentFileIndex = saved.currentFileIndex, totalFiles = saved.totalFiles,
+                                debugMode = saved.phase == InventPhase.DEBUGGING,
+                                zipReady = saved.phase == InventPhase.DONE || saved.phase == InventPhase.DEBUGGING
+                            )
                         },
-                        fileTree = savedZcp.fileTree,
-                        searchRound = saved.searchRound, mergeCount = saved.mergeCount,
-                        currentFileIndex = saved.currentFileIndex, totalFiles = saved.totalFiles,
-                        debugMode = saved.phase == InventPhase.DEBUGGING,
-                        zipReady = saved.phase == InventPhase.DONE || saved.phase == InventPhase.DEBUGGING
+                        sessionTransform = { saved },
+                        zcpTransform = { savedZcp }
                     )
                     computeStats()
                     if (saved.phase == InventPhase.GENERATING) resumeGeneration()
@@ -445,10 +499,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             engineManager.mnn.config = tunedConfig
             engineManager.liteRt.config = tunedConfig
 
-            sessionId = UUID.randomUUID().toString().take(8)
-            zcp = ZcpProtocol(model2ContextSize = m2Ctx, offlineMode = offlineMode)
-            sessionState = InventSessionState(
-                sessionId = sessionId, phase = InventPhase.QUESTIONING,
+            val newSessionId = UUID.randomUUID().toString().take(8)
+            sessionId = newSessionId
+            val newSession = InventSessionState(
+                sessionId = newSessionId, phase = InventPhase.QUESTIONING,
                 model1Path = m1p, model1Name = m1n,
                 model2Path = if (sameModelMode) m1p else m2p,
                 model2Name = if (sameModelMode) m1n else m2n,
@@ -456,15 +510,20 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 model1ContextSize = m1Ctx, model2ContextSize = m2Ctx,
                 offlineMode = offlineMode, sameModelMode = sameModelMode
             )
-            saveAllState()
-
-            _ui.value = _ui.value.copy(
-                phase = InventPhase.QUESTIONING, sessionId = sessionId,
-                model1Name = m1n, model2Name = if (sameModelMode) m1n else m2n,
-                researcherName = rn, offlineMode = offlineMode, sameModelMode = sameModelMode,
-                reasoningEnabled = reasoningEnabled,
-                modelMode = when { sameModelMode && rp == m1p -> ModelMode.SINGLE
-                    sameModelMode -> ModelMode.DUAL; else -> ModelMode.TRIPLE }
+            val newZcp = ZcpProtocol(model2ContextSize = m2Ctx, offlineMode = offlineMode)
+            withTransaction(
+                uiTransform = {
+                    it.copy(
+                        phase = InventPhase.QUESTIONING, sessionId = newSessionId,
+                        model1Name = m1n, model2Name = if (sameModelMode) m1n else m2n,
+                        researcherName = rn, offlineMode = offlineMode, sameModelMode = sameModelMode,
+                        reasoningEnabled = reasoningEnabled,
+                        modelMode = when { sameModelMode && rp == m1p -> ModelMode.SINGLE
+                            sameModelMode -> ModelMode.DUAL; else -> ModelMode.TRIPLE }
+                    )
+                },
+                sessionTransform = { newSession },
+                zcpTransform = { newZcp }
             )
             startModel1Questioning()
         }
@@ -739,9 +798,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         if (filesToGenerate.isEmpty()) { finishGeneration(); return }
 
         val startIdx = startFrom.coerceAtLeast(0)
-        _ui.value = _ui.value.copy(totalFiles = filesToGenerate.size, currentFileIndex = startIdx)
-        sessionState = sessionState?.copy(totalFiles = filesToGenerate.size, currentFileIndex = startIdx)
-        saveAllState()
+        withTransaction(
+            uiTransform = { it.copy(totalFiles = filesToGenerate.size, currentFileIndex = startIdx) },
+            sessionTransform = { it?.copy(totalFiles = filesToGenerate.size, currentFileIndex = startIdx) }
+        )
 
         val isSame = state.sameModelMode || state.model1Path == state.model2Path
         val targetPath = if (!isSame) state.model2Path else state.model1Path
@@ -770,9 +830,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
             val fileSpec = zcp.fileSpecs[fileNode.path] ?: FileSpec(path = fileNode.path, description = fileNode.description)
 
-            _ui.value = _ui.value.copy(currentFileIndex = idx + 1, currentFileName = fileNode.path)
-            sessionState = sessionState?.copy(currentFileIndex = idx + 1)
-            saveAllState()
+            withTransaction(
+                uiTransform = { it.copy(currentFileIndex = idx + 1, currentFileName = fileNode.path) },
+                sessionTransform = { it?.copy(currentFileIndex = idx + 1) }
+            )
 
             val preSearchResults = checkAndRunPreSearch(fileSpec)
             val code = generateCodeWithPreSearch(fileSpec, projectDir, preSearchResults)
@@ -781,8 +842,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             InventStorage.writeGeneratedFile(projectDir, fileNode.path, code)
-            zcp = zcp.copy(generatedFiles = zcp.generatedFiles + fileNode.path)
-            saveAllState()
+            withTransaction(zcpTransform = { it.copy(generatedFiles = it.generatedFiles + fileNode.path) })
             addMessage("system", "✓ Generated ${fileNode.path} (${code.count { it == '\n' } + 1} lines)", InventPhase.GENERATING)
         }
 
@@ -1168,10 +1228,11 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
         InventStorage.writeGeneratedFile(projectDir, filePath, cleanCode)
         if (!zcp.generatedFiles.contains(filePath)) zcp = zcp.copy(generatedFiles = zcp.generatedFiles + filePath)
-        zcp = zcp.copy(debugSessions = zcp.debugSessions + DebugSession(
-            filePath = filePath, problem = userText, originalCode = originalCode, fixedCode = cleanCode
-        ))
-        saveAllState()
+        withTransaction(zcpTransform = {
+            it.copy(debugSessions = it.debugSessions + DebugSession(
+                filePath = filePath, problem = userText, originalCode = originalCode, fixedCode = cleanCode
+            ))
+        })
 
         withContext(Dispatchers.IO) { engineManager.unloadAll() }
         clearToolManagerOnEngines()
@@ -1190,7 +1251,9 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             engineManager.unloadAll()
             _ui.value = InventUiState()
-            sessionState = null; zcp = ZcpProtocol(); sessionId = ""
+            sessionState = null
+            zcp = ZcpProtocol()
+            sessionId = ""
             savedOriginalPaths.clear()
             onDone()
         }
@@ -1199,48 +1262,51 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     fun restartConversation() {
         // Keep session, models, and mode — just clear messages and reset phase
         viewModelScope.launch(Dispatchers.IO) {
-            // 1. Save the current conversation under the old session ID
-            saveAllState()
+            // 1. Flush current state to disk before creating new session
+            flushSave()
             // 2. Assign a new session ID so the old one is preserved in history
             val newId = UUID.randomUUID().toString().take(8)
             sessionId = newId
-            val s = _ui.value
-            // 3. Reset UI state with new session ID (explicitly clear isGenerating)
-            _ui.value = s.copy(
-                sessionId = newId,
-                phase = InventPhase.QUESTIONING,
-                messages = emptyList(),
-                fileTree = emptyList(),
-                currentFileIndex = 0, totalFiles = 0, currentFileName = "",
-                searchRound = 0, mergeCount = 0,
-                totalLines = 0, totalGeneratedBytes = 0L, debugSessionCount = 0,
-                showSureButtons = false, error = "", swapInfo = "",
-                zipReady = false, debugMode = false,
-                isGenerating = false
+            val offline = _ui.value.offlineMode
+            val models = sessionState
+            // 3. Reset all state atomically via withTransaction
+            withTransaction(
+                uiTransform = {
+                    it.copy(
+                        sessionId = newId,
+                        phase = InventPhase.QUESTIONING,
+                        messages = emptyList(),
+                        fileTree = emptyList(),
+                        currentFileIndex = 0, totalFiles = 0, currentFileName = "",
+                        searchRound = 0, mergeCount = 0,
+                        totalLines = 0, totalGeneratedBytes = 0L, debugSessionCount = 0,
+                        showSureButtons = false, error = "", swapInfo = "",
+                        zipReady = false, debugMode = false,
+                        isGenerating = false
+                    )
+                },
+                sessionTransform = {
+                    models?.copy(
+                        sessionId = newId,
+                        phase = InventPhase.QUESTIONING,
+                        messages = emptyList(),
+                        searchRound = 0, mergeCount = 0,
+                        currentFileIndex = 0, totalFiles = 0
+                    )
+                },
+                zcpTransform = { ZcpProtocol(offlineMode = offline) }
             )
-            // 4. Reset ZCP protocol and session state
-            zcp = ZcpProtocol(offlineMode = s.offlineMode)
-            sessionState = sessionState?.let { st ->
-                st.copy(
-                    sessionId = newId,
-                    phase = InventPhase.QUESTIONING,
-                    messages = emptyList(),
-                    searchRound = 0, mergeCount = 0,
-                    currentFileIndex = 0, totalFiles = 0
-                )
-            }
-            // 5. Save the fresh empty state
-            saveAllState()
         }
     }
 
-    fun saveCurrentSession() { saveAllState() }
+    fun saveCurrentSession() { flushSave() }
 
     fun onDeleteConfirmed() {
         viewModelScope.launch(Dispatchers.IO) {
             InventStorage.deleteSession(ctx, sessionId)
             engineManager.unloadAll()
             _ui.value = InventUiState()
+            sessionState = null; zcp = ZcpProtocol(); sessionId = ""
         }
     }
 
@@ -1775,53 +1841,56 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
 
     private fun parseSearchResults(extracted: String, intents: List<SearchIntent>): List<SearchResult> =
         intents.mapIndexed { i, intent ->
-            val content = Regex("SLOT_${i + 1}:\\s*(.+)", RegexOption.IGNORE_CASE)
-                .find(extracted)?.groupValues?.get(1)?.trim() ?: ""
+            // Flexible format: SLOT_1:, 1., or bullet point with the topic name
+            val content = Regex(
+                """(?:SLOT_${i + 1}:|^${i + 1}\.\s*|•\s*+)\\s*(.+)$""",
+                setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE)
+            ).find(extracted)?.groupValues?.get(1)?.trim() ?: ""
             SearchResult(intent, content, intent.category, true)
         }
 
     // ── Search ─────────────────────────────────────────────────────────────
 
-    /** Actual web search using ToolManager — not domain homepages. */
+    /** Actual web search using ToolManager — parallel async execution. */
     private suspend fun fetchSearchContent(promptArg: String = ""): Map<String, String> = withContext(Dispatchers.IO) {
         val result = mutableMapOf<String, String>()
+        val queries = mutableListOf<Pair<String, String>>()  // (key, query)
+
         if (promptArg.isNotBlank()) {
-            // Use the research prompt directly — extract topic lines and search each
             val topics = promptArg.lines().map { it.trim() }.filter {
                 it.isNotBlank() && it.length > 10 && !it.startsWith("§")
             }.ifEmpty { listOf(promptArg.take(200)) }
-            topics.forEach { topic ->
-                val query = topic.take(200)
-                val key = "research_${result.size}"
-                val args = JSONObject().apply { put("query", query); put("num_results", 3) }
-                val call = ToolCall("search_${System.currentTimeMillis()}", "web_search", args)
-                try {
-                    val res = toolManager.executeTool(call)
-                    val text = res.result.trim()
-                    result[key] = if (text.isNotBlank() && !text.startsWith("Error", true) &&
-                        !text.startsWith("No results", true) && !text.startsWith("Web search failed", true)
-                    ) text.take(3000) else "[No search results for: $query]"
-                } catch (e: Exception) { result[key] = "[Search failed: ${e.message}]" }
+            topics.forEachIndexed { i, topic ->
+                queries.add("research_$i" to topic.take(200))
             }
         } else {
-            // Fall back to zcp.searchIntents (old path)
             zcp.searchIntents.forEach { intent ->
                 val key = intent.category
                 if (!result.containsKey(key)) {
                     val query = intent.question.ifEmpty { "${intent.topic} ${intent.platform}" }
-                    if (query.isNotBlank()) {
-                        val args = JSONObject().apply { put("query", query); put("num_results", 3) }
-                        val call = ToolCall("search_${System.currentTimeMillis()}", "web_search", args)
-                        try {
-                            val res = toolManager.executeTool(call)
-                            val text = res.result.trim()
-                            result[key] = if (text.isNotBlank() && !text.startsWith("Error", true) &&
-                                !text.startsWith("No results", true) && !text.startsWith("Web search failed", true)
-                            ) text.take(3000) else "[No search results for: $query]"
-                        } catch (e: Exception) { result[key] = "[Search failed: ${e.message}]" }
-                    } else result[key] = "[No query available]"
+                    if (query.isNotBlank()) queries.add(key to query)
                 }
             }
+        }
+
+        // Execute all searches in parallel using async
+        if (queries.isNotEmpty()) {
+            val deferred = queries.map { (key, query) ->
+                kotlinx.coroutines.async {
+                    val args = JSONObject().apply { put("query", query); put("num_results", 3) }
+                    val call = ToolCall("search_${System.currentTimeMillis()}", "web_search", args)
+                    try {
+                        val res = toolManager.executeTool(call)
+                        val text = res.result.trim()
+                        key to if (text.isNotBlank() && !text.startsWith("Error", true) &&
+                            !text.startsWith("No results", true) && !text.startsWith("Web search failed", true)
+                        ) text.take(3000) else "[No search results for: $query]"
+                    } catch (e: Exception) { key to "[Search failed: ${e.message}]" }
+                }
+            }
+            deferred.forEach { (key, value) -> result[key] = value }
+            // Actually await all and collect results
+            deferred.awaitAll().forEach { (k, v) -> result[k] = v }
         }
         result
     }
@@ -1852,24 +1921,33 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
             .removeSuffix("<|end|>")
             .removeSuffix("<end_of_turn>")
             .removeSuffix("<｜User｜>").trimEnd()
-        val updated = _ui.value.messages + InventMessage(role, cleaned, phase, thinkingContent)
-        val started = _ui.value.chatStarted || role == "model1" || role == "model2" || role == "researcher"
-        // Track conversation depth (user + model chars) for Done button threshold (~1000 tokens ≈ 4000 chars)
+        val started = role == "model1" || role == "model2" || role == "researcher"
         val added = if (role == "user" || role == "model1" || role == "model2" || role == "researcher") content.length else 0
-        _ui.value = _ui.value.copy(messages = updated, chatStarted = started, conversationDepth = _ui.value.conversationDepth + added)
-        sessionState = sessionState?.copy(messages = updated)
+        withTransaction(
+            uiTransform = { state ->
+                val updated = state.messages + InventMessage(role, cleaned, phase, thinkingContent)
+                state.copy(messages = updated, chatStarted = state.chatStarted || started,
+                    conversationDepth = state.conversationDepth + added)
+            },
+            sessionTransform = { sess ->
+                val updated = (sess?.messages ?: emptyList()) + InventMessage(role, cleaned, phase, thinkingContent)
+                sess?.copy(messages = updated)
+            }
+        )
     }
 
     private fun updatePhase(phase: InventPhase) {
-        _ui.value = _ui.value.copy(phase = phase)
-        sessionState = sessionState?.copy(phase = phase)
-        saveAllState()
+        withTransaction(
+            uiTransform = { it.copy(phase = phase) },
+            sessionTransform = { it?.copy(phase = phase) }
+        )
     }
 
     private fun updateSearchRound(round: Int) {
-        _ui.value = _ui.value.copy(searchRound = round)
-        sessionState = sessionState?.copy(searchRound = round)
-        saveAllState()
+        withTransaction(
+            uiTransform = { it.copy(searchRound = round) },
+            sessionTransform = { it?.copy(searchRound = round) }
+        )
     }
 
     private fun setSwap(info: String) { _ui.value = _ui.value.copy(swapInfo = info) }
