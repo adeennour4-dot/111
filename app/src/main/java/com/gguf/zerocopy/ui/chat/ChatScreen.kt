@@ -215,7 +215,7 @@ fun ChatScreen(
   val thinkRegex = remember { Regex("<think>([\\s\\S]*?)</think>") }
 
   // Duration of the initial reasoning phase (live stream shown in thinking section)
-  private val reasoningPhaseDurationMs = 3000L
+  val reasoningPhaseDurationMs = 3000L
 
   fun extractThinking(content: String): String? =
     thinkRegex.find(content)?.groupValues?.getOrNull(1)

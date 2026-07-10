@@ -27,6 +27,8 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
         // Hard cap: prevents unbounded RAM from very large documents.
         // 2000 chunks × ~400 chars = ~800 KB of text in RAM.
         private const val MAX_TOTAL_CHUNKS  = 2_000
+        /** Maximum file size in bytes (60 MB). */
+        private const val MAX_FILE_SIZE = 60L * 1024 * 1024
     }
 
     data class Chunk(
@@ -53,11 +55,6 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
     }
 
     val fileCount: Int get() = synchronized(lock) { sourceNames.size }
-
-    /** Maximum file size in bytes (60 MB). */
-    companion object {
-        private const val MAX_FILE_SIZE = 60L * 1024 * 1024
-    }
 
     fun ingest(uri: Uri, context: Context): IngestResult {
         // Enforce max file limit
