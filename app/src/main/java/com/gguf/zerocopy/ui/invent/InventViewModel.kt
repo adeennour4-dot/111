@@ -18,6 +18,7 @@ import com.gguf.zerocopy.domain.inference.ToolManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -1875,22 +1876,23 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
 
         // Execute all searches in parallel using async
         if (queries.isNotEmpty()) {
-            val deferred = queries.map { (key, query) ->
-                kotlinx.coroutines.async {
-                    val args = JSONObject().apply { put("query", query); put("num_results", 3) }
-                    val call = ToolCall("search_${System.currentTimeMillis()}", "web_search", args)
-                    try {
-                        val res = toolManager.executeTool(call)
-                        val text = res.result.trim()
-                        key to if (text.isNotBlank() && !text.startsWith("Error", true) &&
-                            !text.startsWith("No results", true) && !text.startsWith("Web search failed", true)
-                        ) text.take(3000) else "[No search results for: $query]"
-                    } catch (e: Exception) { key to "[Search failed: ${e.message}]" }
+            // async is an extension on CoroutineScope (we are inside withContext)
+            coroutineScope {
+                val deferred: List<kotlinx.coroutines.Deferred<Pair<String, String>>> = queries.map { (key, query) ->
+                    async {
+                        val args = JSONObject().apply { put("query", query); put("num_results", 3) }
+                        val call = ToolCall("search_${System.currentTimeMillis()}", "web_search", args)
+                        try {
+                            val res = toolManager.executeTool(call)
+                            val text = res.result.trim()
+                            key to if (text.isNotBlank() && !text.startsWith("Error", true) &&
+                                !text.startsWith("No results", true) && !text.startsWith("Web search failed", true)
+                            ) text.take(3000) else "[No search results for: $query]"
+                        } catch (e: Exception) { key to "[Search failed: ${e.message}]" }
+                    }
                 }
+                deferred.awaitAll().forEach { (k, v) -> result[k] = v }
             }
-            deferred.forEach { (key, value) -> result[key] = value }
-            // Actually await all and collect results
-            deferred.awaitAll().forEach { (k, v) -> result[k] = v }
         }
         result
     }
