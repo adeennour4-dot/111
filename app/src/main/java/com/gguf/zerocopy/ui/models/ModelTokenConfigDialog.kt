@@ -40,22 +40,8 @@ fun ModelTokenConfigDialog(
 ) {
     val colors = currentPalette()
 
-    // ── List of enabled overrides ──
-    var enableCtx by remember { mutableStateOf(true) }
-    var enableMaxNew by remember { mutableStateOf(true) }
+    // ── GPU layers enable (GGUF-specific) ──
     var enableGpu by remember { mutableStateOf(isGguf) }
-    var enableTemp by remember { mutableStateOf(initial.temperature != null) }
-    var enableTopP by remember { mutableStateOf(initial.topP != null) }
-    var enableMinP by remember { mutableStateOf(initial.minP != null) }
-    var enableTopK by remember { mutableStateOf(initial.topK != null) }
-    var enableRepPen by remember { mutableStateOf(initial.repeatPenalty != null) }
-    var enableFreqPen by remember { mutableStateOf(initial.freqPenalty != null) }
-    var enablePresPen by remember { mutableStateOf(initial.presPenalty != null) }
-    var enableSeed by remember { mutableStateOf(initial.seed != null) }
-    var enableFlash by remember { mutableStateOf(initial.flashAttention != null) }
-    var enableLowRam by remember { mutableStateOf(initial.lowRamMode != null) }
-    var enableThreads by remember { mutableStateOf(initial.threads != null) }
-    var enableBatch by remember { mutableStateOf(initial.nBatch != null) }
 
     // ── Slider / text values ──
     var ctxSlider by remember { mutableIntStateOf(initial.ctx.coerceIn(512, 32768)) }
@@ -107,18 +93,19 @@ fun ModelTokenConfigDialog(
             ctx = ctxSlider,
             maxNew = maxNewSlider,
             gpuLayers = if (enableGpu) gpuSlider else 0,
-            temperature = if (enableTemp) tempText.toFloatOrNull()?.coerceIn(0f, 2f) else null,
-            topP = if (enableTopP) topPText.toFloatOrNull()?.coerceIn(0f, 1f) else null,
-            minP = if (enableMinP) minPText.toFloatOrNull()?.coerceIn(0f, 1f) else null,
-            topK = if (enableTopK) topKText.toIntOrNull()?.coerceIn(1, 200) else null,
-            repeatPenalty = if (enableRepPen) repPenText.toFloatOrNull()?.coerceIn(1f, 3f) else null,
-            freqPenalty = if (enableFreqPen) freqPenText.toFloatOrNull()?.coerceIn(0f, 2f) else null,
-            presPenalty = if (enablePresPen) presPenText.toFloatOrNull()?.coerceIn(0f, 2f) else null,
-            seed = if (enableSeed) seedText.toIntOrNull() else null,
-            flashAttention = if (enableFlash) flashSwitch else null,
-            lowRamMode = if (enableLowRam) lowRamSwitch else null,
-            threads = if (enableThreads) threadsText.toIntOrNull()?.coerceIn(1, 16) else null,
-            nBatch = if (enableBatch) batchText.toIntOrNull()?.coerceIn(512, 8192) else null
+            // Empty/non-parseable = null = use global default
+            temperature = tempText.toFloatOrNull()?.coerceIn(0f, 2f),
+            topP = topPText.toFloatOrNull()?.coerceIn(0f, 1f),
+            minP = minPText.toFloatOrNull()?.coerceIn(0f, 1f),
+            topK = topKText.toIntOrNull()?.coerceIn(1, 200),
+            repeatPenalty = repPenText.toFloatOrNull()?.coerceIn(1f, 3f),
+            freqPenalty = freqPenText.toFloatOrNull()?.coerceIn(0f, 2f),
+            presPenalty = presPenText.toFloatOrNull()?.coerceIn(0f, 2f),
+            seed = seedText.toIntOrNull(),
+            flashAttention = flashSwitch,
+            lowRamMode = lowRamSwitch,
+            threads = threadsText.toIntOrNull()?.coerceIn(1, 16),
+            nBatch = batchText.toIntOrNull()?.coerceIn(512, 8192)
         )
     }
 
@@ -303,28 +290,28 @@ fun ModelTokenConfigDialog(
 
                 // ── Sampling ──
                 SectionHeader("Sampling", colors)
-                SamplingField("Temperature", "0-2", tempText, { tempText = it }, enableTemp, { enableTemp = it }, colors)
-                SamplingField("Top-P", "0-1", topPText, { topPText = it }, enableTopP, { enableTopP = it }, colors)
-                SamplingField("Min-P", "0-1", minPText, { minPText = it }, enableMinP, { enableMinP = it }, colors)
-                SamplingField("Top-K", "1-200, 0=off", topKText, { topKText = it }, enableTopK, { enableTopK = it }, colors)
+                SamplingField("Temperature", "0-2", tempText, { tempText = it }, colors)
+                SamplingField("Top-P", "0-1", topPText, { topPText = it }, colors)
+                SamplingField("Min-P", "0-1", minPText, { minPText = it }, colors)
+                SamplingField("Top-K", "1-200, 0=off", topKText, { topKText = it }, colors)
 
                 // ── Penalties ──
                 SectionHeader("Penalties", colors)
-                SamplingField("Repeat", "1.0=off, >1 reduces repeats", repPenText, { repPenText = it }, enableRepPen, { enableRepPen = it }, colors)
-                SamplingField("Freq", "0=off, penalizes freq tokens", freqPenText, { freqPenText = it }, enableFreqPen, { enableFreqPen = it }, colors)
-                SamplingField("Presence", "0=off, penalizes seen tokens", presPenText, { presPenText = it }, enablePresPen, { enablePresPen = it }, colors)
+                SamplingField("Repeat", "1.0=off, >1 reduces repeats", repPenText, { repPenText = it }, colors)
+                SamplingField("Freq", "0=off, penalizes freq tokens", freqPenText, { freqPenText = it }, colors)
+                SamplingField("Presence", "0=off, penalizes seen tokens", presPenText, { presPenText = it }, colors)
 
                 // ── Advanced ──
                 SectionHeader("Advanced", colors)
-                SamplingField("Seed", "-1=random", seedText, { seedText = it }, enableSeed, { enableSeed = it }, colors)
+                SamplingField("Seed", "-1=random", seedText, { seedText = it }, colors)
 
-                SwitchField("Flash Attention", flashSwitch, { flashSwitch = it }, enableFlash, { enableFlash = it }, colors,
+                SingleSwitch("Flash Attention", flashSwitch, { flashSwitch = it }, colors,
                     hint = "llama.cpp only — auto-disabled on ARMv8.2-a")
-                SwitchField("Low RAM mode", lowRamSwitch, { lowRamSwitch = it }, enableLowRam, { enableLowRam = it }, colors,
+                SingleSwitch("Low RAM mode", lowRamSwitch, { lowRamSwitch = it }, colors,
                     hint = "caps n_ctx to 2048, llama.cpp only")
 
-                SamplingField("Threads", "1-16", threadsText, { threadsText = it }, enableThreads, { enableThreads = it }, colors)
-                SamplingField("Batch", "512-8192", batchText, { batchText = it }, enableBatch, { enableBatch = it }, colors)
+                SamplingField("Threads", "1-16", threadsText, { threadsText = it }, colors)
+                SamplingField("Batch", "512-8192", batchText, { batchText = it }, colors)
 
                 // ── RAM estimate ──
                 Surface(
@@ -351,23 +338,19 @@ fun ModelTokenConfigDialog(
                     OutlinedButton(
                         onClick = {
                             ctxSlider = 1024; maxNewSlider = 1024; gpuSlider = 0
-                            enableCtx = true; enableMaxNew = true; enableGpu = isGguf
-                            enableTemp = false; enableTopP = false; enableMinP = false
-                            enableTopK = false; enableRepPen = false; enableFreqPen = false
-                            enablePresPen = false; enableSeed = false; enableFlash = false
-                            enableLowRam = false; enableThreads = false; enableBatch = false
-                            tempText = SettingsManager.temperature.toString()
-                            topPText = SettingsManager.topP.toString()
-                            minPText = SettingsManager.minP.toString()
-                            topKText = SettingsManager.topK.toString()
-                            repPenText = SettingsManager.repeatPenalty.toString()
-                            freqPenText = SettingsManager.freqPenalty.toString()
-                            presPenText = SettingsManager.presPenalty.toString()
-                            seedText = "-1"
+                            enableGpu = isGguf
+                            tempText = ""
+                            topPText = ""
+                            minPText = ""
+                            topKText = ""
+                            repPenText = ""
+                            freqPenText = ""
+                            presPenText = ""
+                            seedText = ""
                             flashSwitch = SettingsManager.flashAttention
                             lowRamSwitch = SettingsManager.lowRamMode
-                            threadsText = SettingsManager.threads.toString()
-                            batchText = SettingsManager.nBatch.toString()
+                            threadsText = ""
+                            batchText = ""
                         },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp),
@@ -453,74 +436,46 @@ private fun SamplingField(
     hint: String,
     value: String,
     onValue: (String) -> Unit,
-    enabled: Boolean,
-    onEnabled: (Boolean) -> Unit,
     colors: ZcPalette
 ) {
     Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Switch(
-                checked = enabled,
-                onCheckedChange = onEnabled,
-                colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg,
-                    uncheckedTrackColor = colors.Border, uncheckedThumbColor = colors.Text3),
-                modifier = Modifier.height(24.dp)
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(label, fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
-        }
-        if (enabled) {
-            OutlinedTextField(
-                value = value,
-                onValueChange = onValue,
-                modifier = Modifier.fillMaxWidth().padding(start = 26.dp).height(44.dp),
-                singleLine = true,
-                textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
-                placeholder = { Text(hint, fontSize = 10.sp, color = colors.Text3) },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
-                    cursorColor = colors.Accent
-                ),
-                shape = RoundedCornerShape(8.dp)
-            )
-        }
+        Text(label, fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValue,
+            modifier = Modifier.fillMaxWidth().height(44.dp),
+            singleLine = true,
+            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
+            placeholder = { Text(hint, fontSize = 10.sp, color = colors.Text3) },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
+                cursorColor = colors.Accent
+            ),
+            shape = RoundedCornerShape(8.dp)
+        )
     }
 }
 
 @Composable
-private fun SwitchField(
+private fun SingleSwitch(
     label: String,
     checked: Boolean,
     onCheck: (Boolean) -> Unit,
-    enabled: Boolean,
-    onEnabled: (Boolean) -> Unit,
     colors: ZcPalette,
     hint: String = ""
 ) {
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Switch(
-                checked = enabled,
-                onCheckedChange = onEnabled,
-                colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg,
-                    uncheckedTrackColor = colors.Border, uncheckedThumbColor = colors.Text3),
-                modifier = Modifier.height(24.dp)
-            )
-            Spacer(Modifier.width(8.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheck,
+            colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg,
+                uncheckedTrackColor = colors.Border, uncheckedThumbColor = colors.Text3)
+        )
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
             Text(label, fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
-        }
-        if (enabled) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 26.dp)) {
-                Switch(
-                    checked = checked,
-                    onCheckedChange = onCheck,
-                    colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg,
-                        uncheckedTrackColor = colors.Border, uncheckedThumbColor = colors.Text3)
-                )
-                if (hint.isNotEmpty()) {
-                    Spacer(Modifier.width(8.dp))
-                    Text(hint, fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-                }
+            if (hint.isNotEmpty()) {
+                Text(hint, fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
             }
         }
     }
