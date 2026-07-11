@@ -151,17 +151,15 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Force an immediate save (for navigation away / export). */
-    private fun flushSave() {
+    private suspend fun flushSave() {
         saveJob?.cancel()
         pendingSave = false
         val s = sessionState ?: return
         val sid = sessionId.ifEmpty { return }
         val z = zcp
-        kotlinx.coroutines.runBlocking {
-            withContext(Dispatchers.IO) {
-                InventStorage.saveSession(ctx, s)
-                InventStorage.saveZcp(ctx, sid, z)
-            }
+        withContext(Dispatchers.IO) {
+            InventStorage.saveSession(ctx, s)
+            InventStorage.saveZcp(ctx, sid, z)
         }
     }
 
@@ -337,24 +335,32 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     // ── Session Management ─────────────────────────────────────────────────
 
     fun refreshSessionList() {
-        val list = InventStorage.listSessions(ctx).mapNotNull { sid ->
-            val saved = InventStorage.loadSession(ctx, sid)
-            val z = InventStorage.loadZcp(ctx, sid)
-            if (saved != null) {
-                SessionInfo(
-                    id = sid,
-                    projectName = z?.projectName?.ifEmpty { saved.model1Name } ?: saved.model1Name,
-                    phase = saved.phase,
-                    fileCount = z?.fileTree?.count { !it.isDir } ?: 0,
-                    lastActivity = saved.messages.lastOrNull()?.content?.take(40) ?: ""
-                )
-            } else null
+        viewModelScope.launch(Dispatchers.IO) {
+            // Flush current session before listing so the snapshot is saved
+            flushSave()
+            val list = InventStorage.listSessions(ctx).mapNotNull { sid ->
+                val saved = InventStorage.loadSession(ctx, sid)
+                val z = InventStorage.loadZcp(ctx, sid)
+                if (saved != null) {
+                    SessionInfo(
+                        id = sid,
+                        projectName = z?.projectName?.ifEmpty { saved.model1Name } ?: saved.model1Name,
+                        phase = saved.phase,
+                        fileCount = z?.fileTree?.count { !it.isDir } ?: 0,
+                        lastActivity = saved.messages.lastOrNull()?.content?.take(40) ?: ""
+                    )
+                } else null
+            }
+            withContext(Dispatchers.Main) {
+                _ui.value = _ui.value.copy(sessions = list)
+            }
         }
-        _ui.value = _ui.value.copy(sessions = list)
     }
 
     fun switchToSession(targetId: String) {
         viewModelScope.launch(Dispatchers.IO) {
+            // Save current session before switching
+            flushSave()
             val saved = InventStorage.loadSession(ctx, targetId)
             val savedZcp = InventStorage.loadZcp(ctx, targetId)
             if (saved != null && savedZcp != null) {
@@ -1249,12 +1255,16 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
     fun startNewSession(onDone: () -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
+            // Save current session before discarding it
+            flushSave()
             engineManager.unloadAll()
-            _ui.value = InventUiState()
-            sessionState = null
-            zcp = ZcpProtocol()
-            sessionId = ""
-            savedOriginalPaths.clear()
+            withContext(Dispatchers.Main) {
+                _ui.value = InventUiState()
+                sessionState = null
+                zcp = ZcpProtocol()
+                sessionId = ""
+                savedOriginalPaths.clear()
+            }
             onDone()
         }
     }

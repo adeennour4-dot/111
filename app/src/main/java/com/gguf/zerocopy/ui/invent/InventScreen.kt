@@ -215,7 +215,10 @@ fun InventScreen(
                             color = thinkColor
                         )
                     }
-                    HeaderBtn(Icons.Outlined.History, "Sessions", colors.Text2, onClick = { showSessions = true })
+                    HeaderBtn(Icons.Outlined.History, "Sessions", colors.Text2, onClick = {
+                        vm.refreshSessionList()
+                        showSessions = true
+                    })
                     HeaderBtn(Icons.Filled.Settings, "Settings", colors.Text2, onClick = { showSettings = true })
                     HeaderBtn(Icons.Filled.Refresh, "Restart", Color.White, onClick = {
                         vm.restartConversation()
