@@ -17,8 +17,10 @@ import java.net.Socket
 import java.net.URLDecoder
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
@@ -28,12 +30,13 @@ class ModelServer(val port: Int = 8080) {
   private var executor: ExecutorService? = null
   private val running = AtomicBoolean(false)
   private val serverBound = AtomicBoolean(false)
+  private var stopLatch = CountDownLatch(1)  // replaced each start(), ensures runServer() fully exits before stop() returns
   private var serverStartTime = 0L
   private var autoModelPath: String = ""
   private var autoModelName: String = ""
   private val rateLimiter = TokenBucket(capacity = 60, refillPerSec = 2)
   private val authFailTracker = ConcurrentHashMap<String, AuthFailEntry>()
-  private val clientExecutor = Executors.newCachedThreadPool()
+  private var serverClientExecutor = Executors.newCachedThreadPool()
   private val activeClients = ConcurrentHashMap<String, Long>() // ip -> connect time ms
 
   @Volatile
@@ -49,9 +52,15 @@ class ModelServer(val port: Int = 8080) {
 
   fun start() {
     if (running.get()) return
+    // Create fresh latch for this start/stop cycle (CountDownLatch is one-shot)
+    stopLatch = CountDownLatch(1)
     running.set(true)
     serverStartTime = System.currentTimeMillis()
     executor = Executors.newFixedThreadPool(4)
+    // Recreate client executor if it was shut down by a previous stop()
+    if (serverClientExecutor.isShutdown || serverClientExecutor.isTerminated) {
+      serverClientExecutor = Executors.newCachedThreadPool()
+    }
     executor?.submit { runServer() }
     executor?.submit {
       val app = ZeroCopyApp.instance
@@ -106,9 +115,13 @@ class ModelServer(val port: Int = 8080) {
     serverBound.set(false)
     try { serverSocket?.close() } catch (_: Exception) {}
     try { executor?.shutdownNow() } catch (_: Exception) {}
-    try { clientExecutor?.shutdownNow() } catch (_: Exception) {}
+    try { serverClientExecutor.shutdownNow() } catch (_: Exception) {}
     executor = null
     serverSocket = null
+    // Block until runServer() fully exits and the OS releases the port
+    // This allows immediate restart without bind failure
+    // If the server was never started, latch is at 1 and timeout is harmless
+    stopLatch.await(3, TimeUnit.SECONDS)
     Log.i(tag, "Server stopped")
   }
 
@@ -123,15 +136,26 @@ class ModelServer(val port: Int = 8080) {
 
   private fun runServer() {
     try {
-      serverSocket = ServerSocket()
-      serverSocket?.reuseAddress = true
-      serverSocket?.bind(InetSocketAddress(port))
+      // Retry binding up to 5 times with backoff — handles short TIME_WAIT on stop-start restart
+      var retries = 5
+      while (retries > 0) {
+        try {
+          serverSocket = ServerSocket()
+          serverSocket?.reuseAddress = true
+          serverSocket?.bind(InetSocketAddress(port))
+          break
+        } catch (e: java.net.BindException) {
+          retries--
+          if (retries == 0) throw e
+          Thread.sleep(200)
+        }
+      }
       serverBound.set(true)
       Log.i(tag, "Server listening on 0.0.0.0:$port")
       while (running.get()) {
         try {
           val client = serverSocket?.accept() ?: break
-          clientExecutor?.submit { handleClient(client) }
+          serverClientExecutor.submit { handleClient(client) }
         } catch (_: Exception) {
           if (!running.get()) break
           Thread.sleep(100)
@@ -141,6 +165,9 @@ class ModelServer(val port: Int = 8080) {
       Log.e(tag, "Server error: ${e.message}")
       running.set(false)
       serverBound.set(false)
+    } finally {
+      // Signal stop() that the port has been released
+      stopLatch.countDown()
     }
   }
 
