@@ -19,6 +19,18 @@ object ToolAwareInference {
 
     private const val TAG = "ToolAwareInference"
 
+    /**
+     * The universal reasoning preamble appended by ChatScreen when reasoning is enabled.
+     * Small models (like Ministrali 1B) can't handle BOTH search results AND this preamble
+     * within their limited context — the preamble is stripped when search results are present.
+     */
+    private val REASONING_PREAMBLE = Regex(
+        "^Let's work through this step by step to be thorough\." +
+        " You may wrap your reasoning in <think></think> tags if you wish," +
+        " but it's not required\.\n\n",
+        RegexOption.IGNORE_CASE
+    )
+
     /** Keywords that signal a search / real-time-info query. */
     private val SEARCH_TRIGGERS = listOf(
         "search", "find", "look up", "google",
@@ -75,9 +87,12 @@ object ToolAwareInference {
                 val trimmed = if (searchResults.length > 2000)
                     searchResults.take(2000) + "\n[... truncated]"
                 else searchResults
-                // userPrompt may contain reasoning/RAG instructions; preserve them
-                // AFTER the search results so the model sees both context and instructions.
-                "Search results:\n$trimmed\n\n---\n\n$userPrompt"
+                // Strip the reasoning preamble when search results are present.
+                // Small models can't handle BOTH search results AND chain-of-thought
+                // within their limited context window — the search results already
+                // provide the answer, so reasoning is redundant and wastes context.
+                val cleanedPrompt = userPrompt.replaceFirst(REASONING_PREAMBLE, "")
+                "Search results:\n$trimmed\n\n---\n\n$cleanedPrompt"
             } else {
                 // Search failed — tell model to answer from knowledge
                 "(Search was attempted but no usable results were found. Answer from your own knowledge.)\n\n$userPrompt"
