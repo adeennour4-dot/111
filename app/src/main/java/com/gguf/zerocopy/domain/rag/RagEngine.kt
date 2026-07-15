@@ -21,9 +21,6 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
     companion object {
         private const val CHUNK_SIZE        = 400
         private const val CHUNK_OVERLAP     = 80
-        private const val MAX_CHUNKS_INJECT = 5
-        private const val MAX_INJECT_CHARS  = 3_000
-        private const val MIN_SCORE         = 0.05f
         // Hard cap: prevents unbounded RAM from very large documents.
         // 2000 chunks × ~400 chars = ~800 KB of text in RAM.
         private const val MAX_TOTAL_CHUNKS  = 2_000
@@ -45,6 +42,23 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
 
     val hasDocuments: Boolean       get() = synchronized(lock) { chunks.isNotEmpty() }
     val documentNames: List<String> get() = synchronized(lock) { sourceNames.toList() }
+
+    /** Get stats about the current RAG index. */
+    fun getStats(): RagStats = synchronized(lock) {
+        RagStats(
+            documentCount = sourceNames.size,
+            chunkCount = chunks.size,
+            totalChars = chunks.sumOf { it.text.length },
+            sources = sourceNames.toList()
+        )
+    }
+
+    data class RagStats(
+        val documentCount: Int,
+        val chunkCount: Int,
+        val totalChars: Int,
+        val sources: List<String>
+    )
 
     fun clear() {
         synchronized(lock) {
@@ -215,7 +229,18 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
         return out
     }
 
-    fun retrieve(query: String): String {
+    /**
+     * Retrieve relevant chunks for [query].
+     * @param maxChunks Max chunks to inject into context (from SettingsManager.ragMaxChunks)
+     * @param maxChars Max total chars of context to inject
+     * @param minScore Minimum BM25 score to consider relevant
+     */
+    fun retrieve(
+        query: String,
+        maxChunks: Int = 5,
+        maxChars: Int = 3000,
+        minScore: Float = 0.05f
+    ): String {
         val (snapshot, termSets) = synchronized(lock) {
             chunks.toList() to chunkTerms.toList()
         }
@@ -236,9 +261,9 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
                 chunk to bm25Score(queryTerms, terms, termSets, avgDocLen)
             }
             val relevant = scored
-                .filter  { (_, s) -> s >= MIN_SCORE }
+                .filter  { (_, s) -> s >= minScore }
                 .sortedByDescending { (_, s) -> s }
-                .take(MAX_CHUNKS_INJECT)
+                .take(maxChunks.coerceAtMost(chunks.size))
             if (relevant.isEmpty()) snapshot.take(2).map { it to 1f } else relevant
         }
         return buildContextBlock(selected)
@@ -283,7 +308,7 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
                 if (chunk.pageHint.isNotEmpty()) append(" · ${chunk.pageHint}")
             }
             val entry = "[$label]\n${chunk.text}"
-            if (totalChars + entry.length > MAX_INJECT_CHARS) return@forEachIndexed
+            if (totalChars + entry.length > maxChars) return@forEachIndexed
             sb.appendLine(entry)
             if (idx < scored.size - 1) sb.appendLine("---")
             totalChars += entry.length

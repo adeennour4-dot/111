@@ -70,6 +70,49 @@ object GgufMetaReader {
         }
     }
 
+    /**
+     * Read the expert count from an MoE GGUF model (e.g., Mixtral, Qwen2.5-MoE).
+     * @return The number of experts, or null if not an MoE model / file unreadable.
+     */
+    fun readExpertCount(path: String): Int? {
+        return try {
+            RandomAccessFile(File(path), "r").use { raf ->
+                val buf4 = ByteArray(4)
+                val buf8 = ByteArray(8)
+
+                raf.read(buf4)
+                val magic = ByteBuffer.wrap(buf4).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFFFFFFL
+                if (magic != GGUF_MAGIC) return null
+
+                raf.read(buf4) // version
+                raf.read(buf8) // tensor count
+                raf.read(buf8) // KV count
+                val kvCount = ByteBuffer.wrap(buf8).order(ByteOrder.LITTLE_ENDIAN).long
+                if (kvCount <= 0 || kvCount > 50000) return null
+
+                for (i in 0 until kvCount) {
+                    val keyLen = readU64(raf)
+                    if (keyLen <= 0 || keyLen > 512) break
+                    val keyBytes = ByteArray(keyLen.toInt())
+                    raf.read(keyBytes)
+                    val key = String(keyBytes)
+
+                    val valueType = readU32(raf)
+                    val value = readValue(raf, valueType, version)
+
+                    if (key == "llm.expert_count" && value != null) {
+                        val count = (value as? Long)?.toInt()
+                        if (count != null && count > 0) return count
+                    }
+                }
+                null
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("GgufMetaReader", "File $path: failed to read expert count", e)
+            null
+        }
+    }
+
     private fun readValue(raf: RandomAccessFile, type: Int, version: Int): Any? {
         return when (type) {
             0 -> { val b = ByteArray(1); raf.read(b); b[0].toInt() and 0xFF } // UINT8 — mask to unsigned

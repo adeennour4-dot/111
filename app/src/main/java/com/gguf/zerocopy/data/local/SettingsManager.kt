@@ -362,6 +362,29 @@ object SettingsManager {
     get() = prefs?.getString("last_model_name", "") ?: ""
     set(v) { prefs?.edit()?.putString("last_model_name", v)?.apply() }
 
+  // ── Chat template selection ──────────────────────────────────────────
+  var chatTemplate: String
+    get() = prefs?.getString("chat_template", "auto") ?: "auto"
+    set(v) { prefs?.edit()?.putString("chat_template", v)?.apply() }
+
+  // ── MoE (Mixture of Experts) ─────────────────────────────────────────
+  var moeExpertsPerToken: Int
+    get() = prefs?.getInt("moe_experts_per_token", 2) ?: 2
+    set(v) { prefs?.edit()?.putInt("moe_experts_per_token", v.coerceIn(1, 8))?.apply() }
+
+  // ── RAG settings ─────────────────────────────────────────────────────
+  var ragMaxChunks: Int
+    get() = prefs?.getInt("rag_max_chunks", 5) ?: 5
+    set(v) { prefs?.edit()?.putInt("rag_max_chunks", v.coerceIn(1, 20))?.apply() }
+
+  var ragMaxChars: Int
+    get() = prefs?.getInt("rag_max_chars", 3000) ?: 3000
+    set(v) { prefs?.edit()?.putInt("rag_max_chars", v.coerceIn(500, 10000))?.apply() }
+
+  var ragMinScore: Float
+    get() = prefs?.getFloat("rag_min_score", 0.05f) ?: 0.05f
+    set(v) { prefs?.edit()?.putFloat("rag_min_score", v.coerceIn(0.01f, 1f))?.apply() }
+
   var welcomeDone: Boolean
     get() = prefs?.getBoolean("welcome_done", false) ?: false
     set(v) { prefs?.edit()?.putBoolean("welcome_done", v)?.apply() }
@@ -403,7 +426,8 @@ object SettingsManager {
     get() = prefs?.getString("invent_researcher_name", "") ?: ""
     set(v) { prefs?.edit()?.putString("invent_researcher_name", v)?.apply() }
 
-  /** Build InferenceConfig, applying per-model overrides if available. */
+  /** Build InferenceConfig, applying per-model overrides if available.
+   *  Uses SettingsManager defaults for fields not covered by per-model config. */
   fun toConfig(modelPath: String? = null): InferenceConfig {
     val pm = if (modelPath != null) getModelTokenConfig(modelPath) else null
     return InferenceConfig(
@@ -420,6 +444,7 @@ object SettingsManager {
       seed = pm?.seed ?: -1,
       lowRamMode = pm?.lowRamMode ?: lowRamMode,
       flashAttention = pm?.flashAttention ?: flashAttention,
+      expertsPerToken = moeExpertsPerToken,
       mmprojPath = mmprojPath
     )
   }
@@ -451,6 +476,7 @@ object SettingsManager {
     threads = config.nThreads
     lowRamMode = config.lowRamMode
     flashAttention = config.flashAttention
+    moeExpertsPerToken = config.expertsPerToken
     mmprojPath = config.mmprojPath
     repeatPenalty = rp.repeatPenalty
     freqPenalty = rp.freqPenalty

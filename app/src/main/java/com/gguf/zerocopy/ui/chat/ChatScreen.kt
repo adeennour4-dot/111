@@ -407,7 +407,12 @@ fun ChatScreen(
       if (ragEngine.hasDocuments && ragEnabled) {
         withContext(Dispatchers.IO) {
           try {
-            ragContext = ragEngine.retrieve(text)
+            ragContext = ragEngine.retrieve(
+              text,
+              maxChunks = com.gguf.zerocopy.data.local.SettingsManager.ragMaxChunks,
+              maxChars = com.gguf.zerocopy.data.local.SettingsManager.ragMaxChars,
+              minScore = com.gguf.zerocopy.data.local.SettingsManager.ragMinScore
+            )
           } catch (_: OutOfMemoryError) {
             ragContext = ""
           }

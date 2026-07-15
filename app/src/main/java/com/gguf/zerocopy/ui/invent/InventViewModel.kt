@@ -436,6 +436,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         reasoningEnabled: Boolean = true
     ) {
         viewModelScope.launch(Dispatchers.IO) {
+            val selectedTemplate = com.gguf.zerocopy.data.local.SettingsManager.chatTemplate
             var m1p = model1Path; var m1n = model1Name
             var m2p = model2Path; var m2n = model2Name
             var rp = researcherPath; var rn = researcherName
@@ -514,7 +515,8 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 model2Name = if (sameModelMode) m1n else m2n,
                 researcherPath = rp, researcherName = rn,
                 model1ContextSize = m1Ctx, model2ContextSize = m2Ctx,
-                offlineMode = offlineMode, sameModelMode = sameModelMode
+                offlineMode = offlineMode, sameModelMode = sameModelMode,
+                chatTemplate = selectedTemplate
             )
             val newZcp = ZcpProtocol(model2ContextSize = m2Ctx, offlineMode = offlineMode)
             withTransaction(
@@ -1586,6 +1588,13 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
     // ── Template-aware prompt builder ──────────────────────────────────────
 
     private fun detectTemplate(modelPath: String): String {
+        // Use the user-selected template from SettingsManager if not "auto"
+        val userTemplate = com.gguf.zerocopy.data.local.SettingsManager.chatTemplate
+        if (userTemplate != "auto") return userTemplate
+        // Also check per-session template
+        val sessionTemplate = sessionState?.chatTemplate
+        if (sessionTemplate != null && sessionTemplate != "auto") return sessionTemplate
+        // Auto-detect from model name
         val name = modelPath.substringAfterLast('/').substringAfterLast('\\').lowercase()
         return when {
             name.contains("gemma") -> "gemma"

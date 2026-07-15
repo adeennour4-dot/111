@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,6 +34,8 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Surface
@@ -254,6 +257,13 @@ fun SettingsScreen(onBack: () -> Unit) {
       SettingField("Freq Penalty", "0=off, penalizes frequent tokens", freqPen, { freqPen = it })
       SettingField("Presence Penalty", "0=off, penalizes seen tokens", presPen, { presPen = it })
 
+      // ── Chat Template ──
+      ChatTemplateSelector(
+        current = SettingsManager.chatTemplate,
+        onChange = { SettingsManager.chatTemplate = it },
+        colors = colors
+      )
+
       HorizontalDivider(color = colors.Border, thickness = 1.dp)
 
       Text(
@@ -314,6 +324,11 @@ fun SettingsScreen(onBack: () -> Unit) {
           colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
         )
       }
+
+      SettingField("MoE Experts Per Token", "1-8 (2=default, higher=more diverse)",
+        SettingsManager.moeExpertsPerToken.toString(),
+        { v -> SettingsManager.moeExpertsPerToken = v.toIntOrNull()?.coerceIn(1, 8) ?: 2 }
+      )
 
       HorizontalDivider(color = colors.Border, thickness = 1.dp)
 
@@ -466,19 +481,23 @@ fun SettingsScreen(onBack: () -> Unit) {
       }
 
       val ragEngine = app.ragEngine
-      if (ragEngine.hasDocuments) {
+      // RAG stats
+      val ragStats = if (ragEngine.hasDocuments) ragEngine.getStats() else null
+      if (ragStats != null) {
         Spacer(Modifier.height(6.dp))
-        Surface(
-          shape = RoundedCornerShape(8.dp),
-          color = colors.CardLight
-        ) {
+        Surface(shape = RoundedCornerShape(8.dp), color = colors.CardLight) {
           Column(modifier = Modifier.padding(10.dp)) {
-            Text("Loaded documents (${ragEngine.documentNames.size})", fontSize = 11.sp, color = colors.Text2)
-            ragEngine.documentNames.forEach { name ->
+            Text("📊  RAG Index", fontSize = 11.sp, color = colors.Accent, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.height(4.dp))
+            RagStatRow("Documents", "${ragStats.documentCount}", colors)
+            RagStatRow("Chunks", "${ragStats.chunkCount}", colors)
+            RagStatRow("Total chars", "${ragStats.totalChars}", colors)
+            Spacer(Modifier.height(4.dp))
+            ragStats.sources.forEach { name ->
               Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Description, null, tint = colors.Purple, modifier = Modifier.size(14.dp))
+                Icon(Icons.Filled.Description, null, tint = colors.Purple, modifier = Modifier.size(12.dp))
                 Spacer(Modifier.width(4.dp))
-                Text(name, fontSize = 10.sp, color = colors.Text3, maxLines = 1, modifier = Modifier.weight(1f))
+                Text(name, fontSize = 9.sp, color = colors.Text3, maxLines = 1, modifier = Modifier.weight(1f))
               }
             }
             Spacer(Modifier.height(4.dp))
@@ -488,8 +507,67 @@ fun SettingsScreen(onBack: () -> Unit) {
           }
         }
       } else {
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
         Text("No documents loaded — attach files in chat to build context", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+      }
+
+      // RAG config options
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Max chunks to inject", fontSize = 11.sp, color = colors.Text2, modifier = Modifier.weight(1f))
+        var maxChunksText by remember { mutableStateOf(SettingsManager.ragMaxChunks.toString()) }
+        OutlinedTextField(
+          value = maxChunksText,
+          onValueChange = { v ->
+            maxChunksText = v
+            SettingsManager.ragMaxChunks = v.toIntOrNull()?.coerceIn(1, 20) ?: 5
+          },
+          modifier = Modifier.width(80.dp).height(38.dp),
+          singleLine = true,
+          textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
+          colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
+            cursorColor = colors.Accent
+          ),
+          shape = RoundedCornerShape(6.dp)
+        )
+      }
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Max chars per query", fontSize = 11.sp, color = colors.Text2, modifier = Modifier.weight(1f))
+        var maxCharsText by remember { mutableStateOf(SettingsManager.ragMaxChars.toString()) }
+        OutlinedTextField(
+          value = maxCharsText,
+          onValueChange = { v ->
+            maxCharsText = v
+            SettingsManager.ragMaxChars = v.toIntOrNull()?.coerceIn(500, 10000) ?: 3000
+          },
+          modifier = Modifier.width(80.dp).height(38.dp),
+          singleLine = true,
+          textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
+          colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
+            cursorColor = colors.Accent
+          ),
+          shape = RoundedCornerShape(6.dp)
+        )
+      }
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Min relevance score", fontSize = 11.sp, color = colors.Text2, modifier = Modifier.weight(1f))
+        var minScoreText by remember { mutableStateOf(SettingsManager.ragMinScore.toString()) }
+        OutlinedTextField(
+          value = minScoreText,
+          onValueChange = { v ->
+            minScoreText = v
+            SettingsManager.ragMinScore = v.toFloatOrNull()?.coerceIn(0.01f, 1f) ?: 0.05f
+          },
+          modifier = Modifier.width(80.dp).height(38.dp),
+          singleLine = true,
+          textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
+          colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
+            cursorColor = colors.Accent
+          ),
+          shape = RoundedCornerShape(6.dp)
+        )
       }
 
       HorizontalDivider(color = colors.Border, thickness = 1.dp)
@@ -838,5 +916,76 @@ fun SettingField(label: String, hint: String, value: String, onChange: (String) 
       ),
       textStyle = LocalTextStyle.current.copy(fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
     )
+  }
+}
+
+/** Dropdown to select the chat template format. */
+@Composable
+private fun ChatTemplateSelector(
+  current: String,
+  onChange: (String) -> Unit,
+  colors: ZcPalette
+) {
+  val options = listOf(
+    "auto" to "Auto-detect (recommended)",
+    "chatml" to "ChatML (<|im_start|>)",
+    "gemma" to "Gemma (<start_of_turn>)",
+    "llama3" to "Llama 3 (<|begin_of_text|>)",
+    "deepseek" to "DeepSeek (｜｜)",
+    "qwen" to "Qwen (<|im_start|>)",
+    "phi" to "Phi-3/4 (<|system|>)",
+    "mistral" to "Mistral / Mixtral",
+    "command" to "Command-R"
+  )
+  val expanded = remember { mutableStateOf(false) }
+  val selectedLabel = options.find { it.first == current }?.second ?: options.first().second
+
+  Column {
+    Text("Chat Template", fontSize = 11.sp, color = colors.Text2)
+    Box {
+      OutlinedButton(
+        onClick = { expanded.value = true },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent)
+      ) {
+        Text(selectedLabel, fontSize = 12.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+        Text("▼", fontSize = 10.sp, color = colors.Text3)
+      }
+      DropdownMenu(
+        expanded = expanded.value,
+        onDismissRequest = { expanded.value = false },
+        containerColor = colors.Card
+      ) {
+        options.forEach { (value, label) ->
+          DropdownMenuItem(
+            text = {
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                if (value == current) {
+                  Text("✓ ", fontSize = 12.sp, color = colors.Accent, fontFamily = FontFamily.Monospace)
+                } else {
+                  Spacer(Modifier.width(16.dp))
+                }
+                Text(label, fontSize = 12.sp, color = if (value == current) colors.Accent else colors.Text,
+                  fontFamily = FontFamily.Monospace)
+              }
+            },
+            onClick = {
+              onChange(value)
+              expanded.value = false
+            }
+          )
+        }
+      }
+    }
+  }
+}
+
+/** Single row in the RAG stats table. */
+@Composable
+private fun RagStatRow(label: String, value: String, colors: ZcPalette) {
+  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+    Text(label, fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+    Text(value, fontSize = 9.sp, color = colors.Text2, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
   }
 }

@@ -16,6 +16,7 @@ data class InferenceConfig(
   val lowRamMode: Boolean = true,
   val flashAttention: Boolean = true,
   val topK: Int = 40,
+  val expertsPerToken: Int = 2,
   val mmprojPath: String = ""
 )
 

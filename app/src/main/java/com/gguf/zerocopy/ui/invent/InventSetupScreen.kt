@@ -288,6 +288,74 @@ fun InventSetupScreen(
 
             Spacer(Modifier.height(4.dp))
 
+            // ── Chat template ─────────────────────────────────────────────
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = colors.Card,
+                border = BorderStroke(1.dp, colors.Border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Text("Chat Template", fontSize = 12.sp,
+                        color = colors.Text2, fontFamily = FontFamily.Monospace)
+                    Spacer(Modifier.height(4.dp))
+                    val chatTemplateOptions = listOf(
+                        "auto" to "Auto-detect", "chatml" to "ChatML",
+                        "gemma" to "Gemma", "llama3" to "Llama 3",
+                        "deepseek" to "DeepSeek", "qwen" to "Qwen",
+                        "phi" to "Phi-3/4", "mistral" to "Mistral",
+                        "command" to "Command-R"
+                    )
+                    var chatTemplate by remember { mutableStateOf(
+                        com.gguf.zerocopy.data.local.SettingsManager.chatTemplate
+                    ) }
+                    var templateExpanded by remember { mutableStateOf(false) }
+                    val selectedTemplate = chatTemplateOptions.find { it.first == chatTemplate }?.second ?: "Auto-detect"
+                    Box {
+                        OutlinedButton(
+                            onClick = { templateExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent)
+                        ) {
+                            Text(selectedTemplate, fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+                            Text("▾", fontSize = 10.sp, color = colors.Text3)
+                        }
+                        DropdownMenu(
+                            expanded = templateExpanded,
+                            onDismissRequest = { templateExpanded = false },
+                            containerColor = colors.Card
+                        ) {
+                            chatTemplateOptions.forEach { (value, label) ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (value == chatTemplate) {
+                                                Text("✓ ", fontSize = 11.sp, color = colors.Accent,
+                                                    fontFamily = FontFamily.Monospace)
+                                            } else {
+                                                Spacer(Modifier.width(14.dp))
+                                            }
+                                            Text(label, fontSize = 11.sp,
+                                                color = if (value == chatTemplate) colors.Accent else colors.Text,
+                                                fontFamily = FontFamily.Monospace)
+                                        }
+                                    },
+                                    onClick = {
+                                        chatTemplate = value
+                                        com.gguf.zerocopy.data.local.SettingsManager.chatTemplate = value
+                                        templateExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
+
             // ── Offline toggle ──────────────────────────────────────────────
             Surface(
                 shape = RoundedCornerShape(12.dp),

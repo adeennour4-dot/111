@@ -106,6 +106,7 @@ data class InventSessionState(
     val mergeCount: Int = 0,
     val offlineMode: Boolean = false,
     val sameModelMode: Boolean = false,
+    val chatTemplate: String = "auto",
     val messages: List<InventMessage> = emptyList(),
     val currentFileIndex: Int = 0,
     val totalFiles: Int = 0
@@ -223,6 +224,7 @@ object InventStorage {
             put("sameModelMode", state.sameModelMode)
             put("currentFileIndex", state.currentFileIndex)
             put("totalFiles", state.totalFiles)
+            put("chatTemplate", state.chatTemplate)
             val msgs = JSONArray()
             state.messages.forEach { m ->
                 msgs.put(JSONObject().apply {
@@ -269,7 +271,8 @@ object InventStorage {
                 sameModelMode = obj.optBoolean("sameModelMode", false),
                 messages = msgList,
                 currentFileIndex = obj.optInt("currentFileIndex", 0),
-                totalFiles = obj.optInt("totalFiles", 0)
+                totalFiles = obj.optInt("totalFiles", 0),
+                chatTemplate = obj.optString("chatTemplate", "auto")
             )
         } catch (e: Exception) { null }
     }

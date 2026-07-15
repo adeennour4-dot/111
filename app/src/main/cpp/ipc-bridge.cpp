@@ -62,6 +62,7 @@ struct EngineConfig {
     uint32_t seed           = LLAMA_DEFAULT_SEED;
     bool     low_ram_mode   = true;
     bool     flash_attn     = true;
+    int      experts_per_token = 2;
     std::string system_prompt =
         "You are a helpful, concise assistant running on-device. "
         "Respond clearly and directly.";
@@ -361,6 +362,13 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_setEngineConfigNative(
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_gguf_zerocopy_domain_inference_NativeBridge_setMoEConfigNative(
+        JNIEnv*, jobject, jint expertsPerToken) {
+    g_cfg.experts_per_token = (expertsPerToken > 0) ? expertsPerToken : 2;
+    LOGI("MoE: experts_per_token=%d", g_cfg.experts_per_token);
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_setRepeatPenaltyNative(
         JNIEnv*, jobject,
         jfloat repeatPenalty, jfloat freqPenalty, jfloat presPenalty) {
@@ -608,6 +616,10 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_getModelInfoNative(
         j << "\"n_layer\":" << atoi(buf) << ",";
     if (llama_model_meta_val_str(g_model, "llm.context_length", buf, sizeof(buf)) >= 0)
         j << "\"ctx_train\":" << atoi(buf) << ",";
+    if (llama_model_meta_val_str(g_model, "llm.expert_count", buf, sizeof(buf)) >= 0)
+        j << "\"n_experts\":" << atoi(buf) << ",";
+    if (llama_model_meta_val_str(g_model, "llm.experts_per_token", buf, sizeof(buf)) >= 0)
+        j << "\"n_experts_per_token\":" << atoi(buf) << ",";
     if (llama_model_meta_val_str(g_model, "general.file_type", buf, sizeof(buf)) >= 0) {
         const char* quant = "";
         int ft = atoi(buf);

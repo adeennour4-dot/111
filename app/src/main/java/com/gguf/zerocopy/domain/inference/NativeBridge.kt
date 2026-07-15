@@ -55,6 +55,9 @@ object NativeBridge {
     flashAttention: Boolean
   )
 
+  /** Set MoE (Mixture of Experts) parameters separately — backward compatible. */
+  external fun setMoEConfigNative(expertsPerToken: Int)
+
   external fun setSystemPromptNative(prompt: String)
 
   external fun setRepeatPenaltyNative(repeatPenalty: Float, freqPenalty: Float, presPenalty: Float)
