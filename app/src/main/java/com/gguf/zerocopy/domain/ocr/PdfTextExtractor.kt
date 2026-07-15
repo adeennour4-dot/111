@@ -7,7 +7,6 @@ import android.graphics.ImageDecoder
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
-import android.os.LocaleList
 import android.os.ParcelFileDescriptor
 import java.io.File
 import java.io.FileOutputStream
@@ -293,39 +292,20 @@ class PdfTextExtractor(private val context: Context) {
     } catch (_: Exception) { null }
 
     /**
-     * Attempts to extract actual text characters from a bitmap image.
+     * Detects text regions in a bitmap image.
      *
-     * This implementation uses Android's built-in TextClassifier API for short
-     * text regions and returns empty string when the classifier is unavailable
-     * or the image contains no recognized text.
+     * Android's built-in APIs don't include bitmap OCR — that requires ML Kit
+     * or Tesseract (both need additional dependencies). This function uses a
+     * lightweight pixel-density scan to identify where text regions exist.
      *
-     * For proper OCR, add ML Kit or Google Play Services. The PDF code path
-     * (extractTextNativeStreaming + extractTextViaRender) extracts real text
-     * from the PDF stream, so this only affects standalone images.
+     * The PDF code path (extractTextNativeStreaming + extractTextViaRender)
+     * extracts real text from the PDF stream, so this only affects standalone
+     * images attached in chat.
      */
     private fun extractTextFromBitmap(bitmap: Bitmap): String {
-        // Android's text classifier can extract short text snippets from images
-        // when Google Play Services is available. Fall back gracefully.
-        try {
-            if (Build.VERSION.SDK_INT >= 28) {
-                val textClassifier = context.getSystemService(Context.TEXT_CLASSIFIER_SERVICE)
-                        as? android.view.textclassifier.TextClassifier
-                if (textClassifier != null && textClassifier != android.view.textclassifier.TextClassifier.NO_OP) {
-                    // Use system text recognition if available
-                    val request = android.view.textclassifier.TextLinks.Request.Builder(bitmap)
-                        .setDefaultLocales(android.os.LocaleList.getDefault())
-                        .build()
-                    val result = textClassifier.generateTextLinks(request)
-                    val text = result?.text ?: ""
-                    if (text.isNotBlank()) return text
-                }
-            }
-        } catch (_: Exception) {
-            // TextClassifier unavailable — fall through
-        }
-
-        // Fallback: lightweight pixel-scan detects text rows by dark-pixel density.
-        // Returns region descriptions rather than actual characters — not real OCR.
+        // Lightweight pixel-scan detects text rows by dark-pixel density.
+        // This is NOT real OCR — it identifies text regions without reading them.
+        // For actual character extraction, integrate ML Kit Text Recognition.
         val width = bitmap.width
         val height = bitmap.height
         val gapThreshold = (height / 30).coerceAtLeast(3)
