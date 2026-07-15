@@ -566,12 +566,7 @@ fun ModelListScreen(
               DetailRow("Format", model.format.uppercase())
               DetailRow("Engine", model.engine.id)
               DetailRow("Size", model.sizeFormatted)
-              if (model.format.equals("gguf", ignoreCase = true)) {
-                val expertCount = com.gguf.zerocopy.domain.invent.GgufMetaReader.readExpertCount(model.path)
-                if (expertCount != null && expertCount > 1) {
-                  DetailRow("Experts", "${expertCount} (MoE)")
-                }
-              }
+
               DetailRow(
                 "Added",
                 SimpleDateFormat("MMM d, yyyy HH:mm", Locale.getDefault()).format(Date(model.addedAt))
@@ -968,10 +963,6 @@ private suspend fun loadModel(
 
   val tunedConfig = if (model.format == "gguf") {
     val nativeCtx = com.gguf.zerocopy.domain.invent.GgufMetaReader.readContextLength(model.path) ?: -1
-    val expertCount = com.gguf.zerocopy.domain.invent.GgufMetaReader.readExpertCount(model.path)
-    if (expertCount != null && expertCount > 1) {
-      Log.i("ModelList", "MoE model: ${expertCount} experts")
-    }
     if (nativeCtx > 0 && (config.nCtx <= 0 || config.nCtx > nativeCtx)) {
       config.copy(nCtx = nativeCtx)
     } else config

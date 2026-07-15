@@ -367,11 +367,6 @@ object SettingsManager {
     get() = prefs?.getString("chat_template", "auto") ?: "auto"
     set(v) { prefs?.edit()?.putString("chat_template", v)?.apply() }
 
-  // ── MoE (Mixture of Experts) ─────────────────────────────────────────
-  var moeExpertsPerToken: Int
-    get() = prefs?.getInt("moe_experts_per_token", 2) ?: 2
-    set(v) { prefs?.edit()?.putInt("moe_experts_per_token", v.coerceIn(1, 8))?.apply() }
-
   // ── RAG settings ─────────────────────────────────────────────────────
   var ragMaxChunks: Int
     get() = prefs?.getInt("rag_max_chunks", 5) ?: 5
@@ -444,7 +439,6 @@ object SettingsManager {
       seed = pm?.seed ?: -1,
       lowRamMode = pm?.lowRamMode ?: lowRamMode,
       flashAttention = pm?.flashAttention ?: flashAttention,
-      expertsPerToken = moeExpertsPerToken,
       mmprojPath = mmprojPath
     )
   }
@@ -476,7 +470,6 @@ object SettingsManager {
     threads = config.nThreads
     lowRamMode = config.lowRamMode
     flashAttention = config.flashAttention
-    moeExpertsPerToken = config.expertsPerToken
     mmprojPath = config.mmprojPath
     repeatPenalty = rp.repeatPenalty
     freqPenalty = rp.freqPenalty

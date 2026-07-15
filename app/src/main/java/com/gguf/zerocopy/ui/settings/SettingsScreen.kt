@@ -132,7 +132,6 @@ fun SettingsScreen(onBack: () -> Unit) {
   var showToken by remember { mutableStateOf(false) }
   var showJobs by remember { mutableStateOf(false) }
   var flashAttn by remember { mutableStateOf(SettingsManager.flashAttention) }
-  var moeExpertCount by remember { mutableStateOf(SettingsManager.moeExpertsPerToken.toString()) }
   var chatTemplate by remember { mutableStateOf(SettingsManager.chatTemplate) }
   var ragMaxChunksText by remember { mutableStateOf(SettingsManager.ragMaxChunks.toString()) }
   var ragMaxCharsText by remember { mutableStateOf(SettingsManager.ragMaxChars.toString()) }
@@ -183,7 +182,6 @@ fun SettingsScreen(onBack: () -> Unit) {
     SettingsManager.serverAuthToken = serverAuthToken
     SettingsManager.serverWifiOnly = serverWifiOnly
     SettingsManager.flashAttention = flashAttn
-    SettingsManager.moeExpertsPerToken = moeExpertCount.toIntOrNull()?.coerceIn(1, 8) ?: 2
     SettingsManager.chatTemplate = chatTemplate
     SettingsManager.ragMaxChunks = ragMaxChunksText.toIntOrNull()?.coerceIn(1, 20) ?: 5
     SettingsManager.ragMaxChars = ragMaxCharsText.toIntOrNull()?.coerceIn(500, 10000) ?: 3000
@@ -298,7 +296,6 @@ fun SettingsScreen(onBack: () -> Unit) {
           Spacer(Modifier.height(4.dp))
           ToggleRow("Low RAM Mode", "Reduce memory usage", lowRam, { lowRam = it }, colors)
           ToggleRow("Flash Attention", "ARMv8.2+ (SD 888+)", flashAttn, { flashAttn = it }, colors)
-          InlineField("MoE Experts/Tok", "1–8", moeExpertCount, { moeExpertCount = it }, focusManager)
         }
       }
 
@@ -635,7 +632,7 @@ private fun InlineField(
         focusedTextColor = colors.Accent, unfocusedTextColor = colors.Text,
         cursorColor = colors.Accent
       ),
-      textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+      textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold, color = colors.Accent)
     )
   }
 }

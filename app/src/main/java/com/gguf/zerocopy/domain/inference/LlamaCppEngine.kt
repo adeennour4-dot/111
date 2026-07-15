@@ -58,7 +58,6 @@ class LlamaCppEngine : InferenceEngine {
         config.topP, config.minP, config.topK, config.nGpuLayers, config.nThreads,
         config.seed, config.lowRamMode, config.flashAttention
       )
-      NativeBridge.setMoEConfigNative(config.expertsPerToken)
       NativeBridge.setRepeatPenaltyNative(repeatPenalty.repeatPenalty, repeatPenalty.freqPenalty, repeatPenalty.presPenalty)
       if (systemPrompt.isNotEmpty()) NativeBridge.setSystemPromptNative(systemPrompt)
       val ok = NativeBridge.loadGgufModelNative(path)
