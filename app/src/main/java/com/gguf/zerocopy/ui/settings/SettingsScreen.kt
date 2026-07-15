@@ -7,7 +7,7 @@ import java.io.File
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
@@ -17,11 +17,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -63,8 +63,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -92,13 +94,16 @@ fun SettingsScreen(onBack: () -> Unit) {
   val scope = rememberCoroutineScope()
   val snackbarHostState = remember { SnackbarHostState() }
   val colors = currentPalette()
+  val focusManager = LocalFocusManager.current
 
+  // ── State ────────────────────────────────────────────────────────────────
   var nCtx by remember { mutableStateOf(SettingsManager.nCtx.toString()) }
   var maxTok by remember { mutableStateOf(SettingsManager.maxTokens.toString()) }
   var batch by remember { mutableStateOf(SettingsManager.nBatch.toString()) }
   var temp by remember { mutableStateOf(SettingsManager.temperature.toString()) }
   var topP by remember { mutableStateOf(SettingsManager.topP.toString()) }
   var minP by remember { mutableStateOf(SettingsManager.minP.toString()) }
+  var topK by remember { mutableStateOf(SettingsManager.topK.toString()) }
   var gpu by remember { mutableStateOf(SettingsManager.gpuLayers.toString()) }
   var threads by remember { mutableStateOf(SettingsManager.threads.toString()) }
   var repPen by remember { mutableStateOf(SettingsManager.repeatPenalty.toString()) }
@@ -118,8 +123,12 @@ fun SettingsScreen(onBack: () -> Unit) {
   var serverWifiOnly by remember { mutableStateOf(SettingsManager.serverWifiOnly) }
   var showToken by remember { mutableStateOf(false) }
   var showJobs by remember { mutableStateOf(false) }
-  var topK by remember { mutableStateOf(SettingsManager.topK.toString()) }
   var flashAttn by remember { mutableStateOf(SettingsManager.flashAttention) }
+  var moeExpertCount by remember { mutableStateOf(SettingsManager.moeExpertsPerToken.toString()) }
+  var chatTemplate by remember { mutableStateOf(SettingsManager.chatTemplate) }
+  var ragMaxChunksText by remember { mutableStateOf(SettingsManager.ragMaxChunks.toString()) }
+  var ragMaxCharsText by remember { mutableStateOf(SettingsManager.ragMaxChars.toString()) }
+  var ragMinScoreText by remember { mutableStateOf(SettingsManager.ragMinScore.toString()) }
 
   val mmprojPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
     if (result.resultCode == Activity.RESULT_OK) {
@@ -165,24 +174,22 @@ fun SettingsScreen(onBack: () -> Unit) {
     SettingsManager.serverAuthEnabled = serverAuthEnabled
     SettingsManager.serverAuthToken = serverAuthToken
     SettingsManager.serverWifiOnly = serverWifiOnly
-    SettingsManager.topK = topK.toIntOrNull()?.coerceIn(1, 200) ?: 40
     SettingsManager.flashAttention = flashAttn
+    SettingsManager.moeExpertsPerToken = moeExpertCount.toIntOrNull()?.coerceIn(1, 8) ?: 2
+    SettingsManager.chatTemplate = chatTemplate
+    SettingsManager.ragMaxChunks = ragMaxChunksText.toIntOrNull()?.coerceIn(1, 20) ?: 5
+    SettingsManager.ragMaxChars = ragMaxCharsText.toIntOrNull()?.coerceIn(500, 10000) ?: 3000
+    SettingsManager.ragMinScore = ragMinScoreText.toFloatOrNull()?.coerceIn(0.01f, 1f) ?: 0.05f
 
     val active = engineManager.getActiveEngine()
     active?.let {
-      // Use per-model config merged with global defaults if available
       val modelPath = it.loadedModelPath
-      if (modelPath != null) {
-        it.config = SettingsManager.toConfig(modelPath)
-      } else {
-        it.config = cfg
-      }
+      it.config = if (modelPath != null) SettingsManager.toConfig(modelPath) else cfg
       it.repeatPenalty = rp
       it.systemPrompt = sysPrompt
     }
   }
 
-  /** Same as saveSettings() but also reloads the model to apply context/batch/GPU changes. */
   fun saveAndReload() {
     saveSettings()
     val active = engineManager.getActiveEngine()
@@ -191,7 +198,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       scope.launch(Dispatchers.IO) {
         engineManager.unloadAll()
         val eng = engineManager.selectEngineForFormat(path)
-        val cfg = InferenceConfig(
+        eng.config = InferenceConfig(
           nCtx = SettingsManager.nCtx,
           nBatch = SettingsManager.nBatch.coerceIn(512, 8192),
           maxNewTokens = SettingsManager.maxTokens,
@@ -205,7 +212,6 @@ fun SettingsScreen(onBack: () -> Unit) {
           flashAttention = SettingsManager.flashAttention,
           mmprojPath = SettingsManager.mmprojPath
         )
-        eng.config = cfg
         eng.repeatPenalty = SettingsManager.toRepeatPenalty()
         eng.systemPrompt = SettingsManager.systemPrompt
         eng.loadModel(path)
@@ -237,258 +243,175 @@ fun SettingsScreen(onBack: () -> Unit) {
     Column(
       modifier = Modifier
         .padding(pad)
-        .padding(horizontal = 20.dp, vertical = 8.dp)
+        .padding(horizontal = 16.dp, vertical = 8.dp)
         .verticalScroll(rememberScrollState()),
-      verticalArrangement = Arrangement.spacedBy(12.dp)
+      verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-      Text(
-        "Sampling",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        letterSpacing = 2.sp
-      )
+      // ═══════════════════════════════════════════════════════════════════════
+      // INFERENCE
+      // ═══════════════════════════════════════════════════════════════════════
+      SectionHeader("Inference", colors)
 
-      SettingField("Temperature", "0-2 (lower = more focused)", temp, { temp = it })
-      SettingField("Top-P", "0-1 (nucleus sampling)", topP, { topP = it })
-      SettingField("Min-P", "0-1 (filter unlikely tokens)", minP, { minP = it })
-      SettingField("Top-K", "1-200 candidates, 0=disabled", topK, { topK = it })
-      SettingField("Repeat Penalty", "1.0=off, >1 reduces repeats", repPen, { repPen = it })
-      SettingField("Freq Penalty", "0=off, penalizes frequent tokens", freqPen, { freqPen = it })
-      SettingField("Presence Penalty", "0=off, penalizes seen tokens", presPen, { presPen = it })
-
-      // ── Chat Template ──
-      ChatTemplateSelector(
-        current = SettingsManager.chatTemplate,
-        onChange = { SettingsManager.chatTemplate = it },
-        colors = colors
-      )
-
-      HorizontalDivider(color = colors.Border, thickness = 1.dp)
-
-      Text(
-        "Generation",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        letterSpacing = 2.sp
-      )
-
-      // Per-model token config (set via gear icon in Model list)
-      Surface(
-        Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        color = colors.Accent.copy(alpha = 0.05f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, colors.Accent.copy(0.2f))
-      ) {
-        Column(Modifier.padding(12.dp)) {
+      // ── Sampling ──
+      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+        border = BorderStroke(1.dp, colors.Border)) {
+        Column(Modifier.padding(14.dp)) {
           Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.Settings, null, tint = colors.Accent,
-              modifier = Modifier.size(14.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Per-Model Token Config", fontSize = 12.sp, color = colors.Accent,
-              fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+            Icon(Icons.Filled.Settings, null, tint = colors.Accent, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Sampling", fontWeight = FontWeight.SemiBold, fontSize = 12.sp,
+              color = colors.Accent, fontFamily = FontFamily.Monospace)
           }
+          Spacer(Modifier.height(8.dp))
+          InlineField("Temperature", "0–2", temp, { temp = it }, focusManager)
+          InlineField("Top-P", "0–1", topP, { topP = it }, focusManager)
+          InlineField("Min-P", "0–1", minP, { minP = it }, focusManager)
+          InlineField("Top-K", "1–200", topK, { topK = it }, focusManager)
+          InlineField("Repeat Penalty", "≥1.0", repPen, { repPen = it }, focusManager)
+          InlineField("Freq Penalty", "0–2", freqPen, { freqPen = it }, focusManager)
+          InlineField("Presence Penalty", "0–2", presPen, { presPen = it }, focusManager)
+        }
+      }
+
+      // ── Generation ──
+      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+        border = BorderStroke(1.dp, colors.Border)) {
+        Column(Modifier.padding(14.dp)) {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Refresh, null, tint = colors.Accent2, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Generation", fontWeight = FontWeight.SemiBold, fontSize = 12.sp,
+              color = colors.Accent2, fontFamily = FontFamily.Monospace)
+          }
+          Spacer(Modifier.height(8.dp))
+          InlineField("Batch Size", "512–8192", batch, { batch = it }, focusManager)
+          InlineField("GPU Layers", "99=GPU, 0=CPU", gpu, { gpu = it }, focusManager)
+          InlineField("Threads", "0=auto, 1–16", threads, { threads = it }, focusManager)
           Spacer(Modifier.height(4.dp))
-          Text("Context window & max tokens are now set per model.",
-            fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-          Text("Go to Models → tap gear icon ⚙ on any model to configure.",
-            fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-          Text("Default: 1024 context / 1024 max tokens.",
-            fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+          ToggleRow("Low RAM Mode", "Reduce memory usage", lowRam, { lowRam = it }, colors)
+          ToggleRow("Flash Attention", "ARMv8.2+ (SD 888+)", flashAttn, { flashAttn = it }, colors)
+          InlineField("MoE Experts/Tok", "1–8", moeExpertCount, { moeExpertCount = it }, focusManager)
         }
       }
 
-      SettingField("Batch Size", "512-8192", batch, { batch = it })
-      SettingField("GPU Layers", "99=GPU, 0=CPU", gpu, { gpu = it })
-      SettingField("Threads", "0=auto, 1-16", threads, { threads = it })
-
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Low RAM Mode", fontSize = 13.sp, color = colors.Text2, modifier = Modifier.weight(1f))
-        Switch(
-          checked = lowRam,
-          onCheckedChange = { lowRam = it },
-          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
-        )
-      }
-
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-          Text("Flash Attention", fontSize = 13.sp, color = colors.Text2)
-          Text("Faster inference on ARMv8.2+ CPUs (Snapdragon 888+)", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+      // ── Per-Model Config hint ──
+      Surface(shape = RoundedCornerShape(10.dp), color = colors.CardLight) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+          Icon(Icons.Filled.Settings, null, tint = colors.Accent, modifier = Modifier.size(14.dp))
+          Spacer(Modifier.width(8.dp))
+          Text("Context & max tokens: set per model via Models → ⚙",
+            fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
         }
-        Switch(
-          checked = flashAttn,
-          onCheckedChange = { flashAttn = it },
-          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
-        )
       }
 
-      SettingField("MoE Experts Per Token", "1-8 (2=default, higher=more diverse)",
-        SettingsManager.moeExpertsPerToken.toString(),
-        { v -> SettingsManager.moeExpertsPerToken = v.toIntOrNull()?.coerceIn(1, 8) ?: 2 }
-      )
+      // ── Chat template ──
+      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+        border = BorderStroke(1.dp, colors.Border)) {
+        Column(Modifier.padding(14.dp)) {
+          Text("Chat Template", fontWeight = FontWeight.SemiBold, fontSize = 12.sp,
+            color = colors.Accent, fontFamily = FontFamily.Monospace)
+          Spacer(Modifier.height(6.dp))
+          ChatTemplateSelector(current = chatTemplate, onChange = { chatTemplate = it }, colors = colors)
+        }
+      }
 
-      HorizontalDivider(color = colors.Border, thickness = 1.dp)
+      // ═══════════════════════════════════════════════════════════════════════
+      // SYSTEM
+      // ═══════════════════════════════════════════════════════════════════════
+      SectionHeader("System", colors)
 
-      Text(
-        "System",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        letterSpacing = 2.sp
-      )
+      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+        border = BorderStroke(1.dp, colors.Border)) {
+        Column(Modifier.padding(14.dp)) {
+          Text("System Prompt", fontSize = 11.sp, color = colors.Text2)
+          Spacer(Modifier.height(4.dp))
+          OutlinedTextField(
+            value = sysPrompt, onValueChange = { sysPrompt = it },
+            modifier = Modifier.fillMaxWidth(),
+            maxLines = 4,
+            shape = RoundedCornerShape(8.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
+              focusedTextColor = colors.Text, unfocusedTextColor = colors.Text,
+              cursorColor = colors.Accent
+            ),
+            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+          )
+        }
+      }
 
-      OutlinedTextField(
-        value = sysPrompt,
-        onValueChange = { sysPrompt = it },
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text("System Prompt", fontSize = 12.sp) },
-        maxLines = 4,
-        shape = RoundedCornerShape(8.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-          focusedBorderColor = colors.Accent,
-          unfocusedBorderColor = colors.Border,
-          focusedTextColor = colors.Text,
-          unfocusedTextColor = colors.Text,
-          cursorColor = colors.Accent
-        ),
-        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-      )
-
-      Text(
-        "Context/GPU changes need model reload.",
-        fontSize = 10.sp,
-        color = colors.Amber,
-        fontFamily = FontFamily.Monospace
-      )
-
-      OutlinedButton(
-        onClick = {
-          val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "*/*"
+      // ── System actions ──
+      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+        border = BorderStroke(1.dp, colors.Border)) {
+        Column(Modifier.padding(14.dp)) {
+          ActionButton("Load Vision mmproj", colors.Purple, colors) {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+              addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
+            }
+            mmprojPicker.launch(intent)
           }
-          mmprojPicker.launch(intent)
-        },
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Purple)
-      ) {
-        Icon(Icons.Filled.Visibility, null, modifier = Modifier.size(16.dp), tint = colors.Purple)
-        Spacer(Modifier.width(6.dp))
-        Text(
-          if (mmprojPath.isEmpty()) "Load Vision mmproj" else "mmproj: ${mmprojPath.substringAfterLast('/')}",
-          fontSize = 11.sp,
-          maxLines = 1
-        )
-      }
-
-      OutlinedButton(
-        onClick = { showResetConfirm = true },
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Amber)
-      ) {
-        Text("Reset Context", fontSize = 12.sp)
-      }
-
-      OutlinedButton(
-        onClick = { engineManager.unloadAll() },
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Red)
-      ) {
-        Text("Unload All Models", fontSize = 12.sp)
-      }
-
-      OutlinedButton(
-        onClick = {
-          val info = app.deviceUtils.detect()
-          SettingsManager.applyDeviceDefaults(info)
-          nCtx = SettingsManager.nCtx.toString()
-          maxTok = SettingsManager.maxTokens.toString()
-          batch = SettingsManager.nBatch.toString()
-          gpu = SettingsManager.gpuLayers.toString()
-          threads = SettingsManager.threads.toString()
-          // Also sync to active engine immediately so changes take effect without manual save
-          val active = engineManager.getActiveEngine()
-          active?.let {
-            it.config = SettingsManager.toConfig(it.loadedModelPath)
-            it.repeatPenalty = SettingsManager.toRepeatPenalty()
+          if (mmprojPath.isNotEmpty()) {
+            Text("  " + mmprojPath.substringAfterLast('/'), fontSize = 10.sp,
+              color = colors.Accent2, fontFamily = FontFamily.Monospace,
+              modifier = Modifier.padding(start = 4.dp, top = 2.dp))
           }
-          scope.launch { snackbarHostState.showSnackbar("Device defaults applied and synced") }
-        },
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent2)
-      ) {
-        Text("Apply Device Defaults", fontSize = 12.sp)
-      }
-
-      OutlinedButton(
-        onClick = { showJobs = true },
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent2)
-      ) {
-        Text("Running Jobs (${app.jobManager.activeCount})", fontSize = 12.sp)
-      }
-
-      HorizontalDivider(color = colors.Border, thickness = 1.dp)
-
-      Text(
-        "Reasoning",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        letterSpacing = 2.sp
-      )
-
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Enable reasoning", fontSize = 13.sp, color = colors.Text2, modifier = Modifier.weight(1f))
-        Switch(
-          checked = reasoningEnabled,
-          onCheckedChange = { reasoningEnabled = it },
-          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
-        )
-      }
-
-      HorizontalDivider(color = colors.Border, thickness = 1.dp)
-
-      Text(
-        "RAG & Documents",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        letterSpacing = 2.sp
-      )
-
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-          Text("Retrieval-Augmented Generation", fontSize = 13.sp, color = colors.Text2)
-          Text("Inject document context into prompts", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+          Spacer(Modifier.height(6.dp))
+          ActionButton("Reset Context", colors.Amber, colors) { showResetConfirm = true }
+          ActionButton("Unload All Models", colors.Red, colors) { engineManager.unloadAll() }
+          ActionButton("Apply Device Defaults", colors.Accent2, colors) {
+            val info = app.deviceUtils.detect()
+            SettingsManager.applyDeviceDefaults(info)
+            nCtx = SettingsManager.nCtx.toString()
+            maxTok = SettingsManager.maxTokens.toString()
+            batch = SettingsManager.nBatch.toString()
+            gpu = SettingsManager.gpuLayers.toString()
+            threads = SettingsManager.threads.toString()
+            val active = engineManager.getActiveEngine()
+            active?.let {
+              it.config = SettingsManager.toConfig(it.loadedModelPath)
+              it.repeatPenalty = SettingsManager.toRepeatPenalty()
+            }
+            scope.launch { snackbarHostState.showSnackbar("Device defaults applied") }
+          }
+          ActionButton("Running Jobs (${app.jobManager.activeCount})", colors.Accent2, colors) {
+            showJobs = true
+          }
         }
-        Switch(
-          checked = ragEnabled,
-          onCheckedChange = { ragEnabled = it },
-          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
-        )
       }
 
-      val ragEngine = app.ragEngine
-      // RAG stats
-      val ragStats = if (ragEngine.hasDocuments) ragEngine.getStats() else null
-      if (ragStats != null) {
-        Spacer(Modifier.height(6.dp))
-        Surface(shape = RoundedCornerShape(8.dp), color = colors.CardLight) {
-          Column(modifier = Modifier.padding(10.dp)) {
-            Text("📊  RAG Index", fontSize = 11.sp, color = colors.Accent, fontFamily = FontFamily.Monospace)
+      // ═══════════════════════════════════════════════════════════════════════
+      // REASONING
+      // ═══════════════════════════════════════════════════════════════════════
+      SectionHeader("Reasoning", colors)
+
+      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+        border = BorderStroke(1.dp, colors.Border)) {
+        Column(Modifier.padding(14.dp)) {
+          ToggleRow("Chain-of-Thought", "Let's work step-by-step before answering",
+            reasoningEnabled, { reasoningEnabled = it }, colors)
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // RAG & DOCUMENTS
+      // ═══════════════════════════════════════════════════════════════════════
+      SectionHeader("RAG & Documents", colors)
+
+      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+        border = BorderStroke(1.dp, colors.Border)) {
+        Column(Modifier.padding(14.dp)) {
+          ToggleRow("Retrieval-Augmented Gen", "Inject document context into prompts",
+            ragEnabled, { ragEnabled = it }, colors)
+
+          val ragEngine = app.ragEngine
+          val ragStats = if (ragEngine.hasDocuments) ragEngine.getStats() else null
+
+          if (ragStats != null) {
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
+            Spacer(Modifier.height(6.dp))
+            Text("Index Stats", fontSize = 10.sp, color = colors.Accent,
+              fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(4.dp))
             RagStatRow("Documents", "${ragStats.documentCount}", colors)
             RagStatRow("Chunks", "${ragStats.chunkCount}", colors)
@@ -496,367 +419,375 @@ fun SettingsScreen(onBack: () -> Unit) {
             Spacer(Modifier.height(4.dp))
             ragStats.sources.forEach { name ->
               Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Description, null, tint = colors.Purple, modifier = Modifier.size(12.dp))
+                Icon(Icons.Filled.Description, null, tint = colors.Purple, modifier = Modifier.size(11.dp))
                 Spacer(Modifier.width(4.dp))
-                Text(name, fontSize = 9.sp, color = colors.Text3, maxLines = 1, modifier = Modifier.weight(1f))
+                Text(name, fontSize = 9.sp, color = colors.Text3, maxLines = 1,
+                  modifier = Modifier.weight(1f))
               }
             }
-            Spacer(Modifier.height(4.dp))
-            TextButton(onClick = { ragEngine.clear() }) {
+            TextButton(onClick = { ragEngine.clear() },
+              modifier = Modifier.height(32.dp)) {
               Text("Clear all documents", fontSize = 10.sp, color = colors.Red)
             }
+          } else {
+            Spacer(Modifier.height(4.dp))
+            Text("No docs loaded — attach files in chat to build context",
+              fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+          }
+
+          Spacer(Modifier.height(8.dp))
+          HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
+          Spacer(Modifier.height(6.dp))
+          Text("Settings", fontSize = 10.sp, color = colors.Accent,
+            fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+          Spacer(Modifier.height(4.dp))
+          InlineField("Max chunks", "1–20", ragMaxChunksText, { ragMaxChunksText = it }, focusManager)
+          InlineField("Max chars/query", "500–10000", ragMaxCharsText, { ragMaxCharsText = it }, focusManager)
+          InlineField("Min score", "0.01–1.0", ragMinScoreText, { ragMinScoreText = it }, focusManager)
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // APPEARANCE
+      // ═══════════════════════════════════════════════════════════════════════
+      SectionHeader("Appearance", colors)
+
+      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+        border = BorderStroke(1.dp, colors.Border)) {
+        Column(Modifier.padding(14.dp)) {
+          ToggleRow("Dark Theme", null, isDark, {
+            isDark = it; SettingsManager.isDarkTheme = it
+          }, colors)
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // SERVER
+      // ═══════════════════════════════════════════════════════════════════════
+      SectionHeader("Server", colors)
+
+      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+        border = BorderStroke(1.dp, colors.Border)) {
+        Column(Modifier.padding(14.dp)) {
+          ToggleRow("Model Server", "Anyone on WiFi can access the web UI",
+            app.modelServer.isRunning, {
+              if (it) {
+                val engine = app.engineManager.getActiveEngine()
+                if (engine?.loadedModelPath != null) {
+                  val path = engine.loadedModelPath ?: ""
+                  SettingsManager.lastModelPath = path
+                  SettingsManager.lastModelName = path.substringAfterLast('/')
+                }
+                app.modelServer.setAutoModel(SettingsManager.lastModelPath, SettingsManager.lastModelName)
+                context.startService(Intent(context, ModelServerService::class.java))
+                SettingsManager.serverEnabled = true
+              } else {
+                context.stopService(Intent(context, ModelServerService::class.java))
+                SettingsManager.serverEnabled = false
+              }
+            }, colors)
+
+          if (app.modelServer.isRunning) {
+            Text(app.modelServer.getServerUrl(), fontSize = 10.sp,
+              color = colors.Accent2, fontFamily = FontFamily.Monospace)
+          }
+
+          Spacer(Modifier.height(6.dp))
+          InlineField("Port", "1024–65535", serverPort, { serverPort = it }, focusManager)
+          ToggleRow("Auth enabled", null, serverAuthEnabled, { serverAuthEnabled = it }, colors)
+
+          if (serverAuthEnabled) {
+            Spacer(Modifier.height(4.dp))
+            OutlinedTextField(
+              value = serverAuthToken, onValueChange = { serverAuthToken = it },
+              modifier = Modifier.fillMaxWidth().height(44.dp),
+              label = { Text("Auth Token", fontSize = 11.sp) },
+              singleLine = true,
+              visualTransformation = if (showToken) VisualTransformation.None
+                else PasswordVisualTransformation(),
+              trailingIcon = {
+                IconButton(onClick = { showToken = !showToken }) {
+                  Icon(if (showToken) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                    if (showToken) "Hide" else "Show", tint = colors.Text3)
+                }
+              },
+              shape = RoundedCornerShape(8.dp),
+              colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
+                focusedTextColor = colors.Text, unfocusedTextColor = colors.Text,
+                cursorColor = colors.Accent
+              ),
+              textStyle = LocalTextStyle.current.copy(fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+            )
+          }
+          ToggleRow("WiFi only", null, serverWifiOnly, { serverWifiOnly = it }, colors)
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // BENCHMARK & SAVE
+      // ═══════════════════════════════════════════════════════════════════════
+      Surface(shape = RoundedCornerShape(12.dp), color = colors.CardLight) {
+        Column(Modifier.padding(14.dp)) {
+          ActionButton("Run Benchmark", colors.Accent2, colors) { showBenchmark = true }
+          Spacer(Modifier.height(8.dp))
+          Button(
+            onClick = {
+              saveAndReload()
+              scope.launch { snackbarHostState.showSnackbar("Settings saved & model reloaded") }
+            },
+            modifier = Modifier.fillMaxWidth().height(46.dp),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = colors.Accent)
+          ) {
+            Icon(Icons.Filled.Save, null, tint = colors.Bg, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Save Settings", color = colors.Bg, fontWeight = FontWeight.Bold, fontSize = 14.sp)
           }
         }
-      } else {
-        Spacer(Modifier.height(4.dp))
-        Text("No documents loaded — attach files in chat to build context", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
       }
 
-      // RAG config options
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Max chunks to inject", fontSize = 11.sp, color = colors.Text2, modifier = Modifier.weight(1f))
-        var maxChunksText by remember { mutableStateOf(SettingsManager.ragMaxChunks.toString()) }
-        OutlinedTextField(
-          value = maxChunksText,
-          onValueChange = { v ->
-            maxChunksText = v
-            SettingsManager.ragMaxChunks = v.toIntOrNull()?.coerceIn(1, 20) ?: 5
-          },
-          modifier = Modifier.width(80.dp).height(38.dp),
-          singleLine = true,
-          textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
-          colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
-            cursorColor = colors.Accent
-          ),
-          shape = RoundedCornerShape(6.dp)
-        )
-      }
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Max chars per query", fontSize = 11.sp, color = colors.Text2, modifier = Modifier.weight(1f))
-        var maxCharsText by remember { mutableStateOf(SettingsManager.ragMaxChars.toString()) }
-        OutlinedTextField(
-          value = maxCharsText,
-          onValueChange = { v ->
-            maxCharsText = v
-            SettingsManager.ragMaxChars = v.toIntOrNull()?.coerceIn(500, 10000) ?: 3000
-          },
-          modifier = Modifier.width(80.dp).height(38.dp),
-          singleLine = true,
-          textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
-          colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
-            cursorColor = colors.Accent
-          ),
-          shape = RoundedCornerShape(6.dp)
-        )
-      }
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Min relevance score", fontSize = 11.sp, color = colors.Text2, modifier = Modifier.weight(1f))
-        var minScoreText by remember { mutableStateOf(SettingsManager.ragMinScore.toString()) }
-        OutlinedTextField(
-          value = minScoreText,
-          onValueChange = { v ->
-            minScoreText = v
-            SettingsManager.ragMinScore = v.toFloatOrNull()?.coerceIn(0.01f, 1f) ?: 0.05f
-          },
-          modifier = Modifier.width(80.dp).height(38.dp),
-          singleLine = true,
-          textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
-          colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
-            cursorColor = colors.Accent
-          ),
-          shape = RoundedCornerShape(6.dp)
-        )
-      }
+      // ═══════════════════════════════════════════════════════════════════════
+      // ABOUT
+      // ═══════════════════════════════════════════════════════════════════════
+      SectionHeader("About", colors)
 
-      HorizontalDivider(color = colors.Border, thickness = 1.dp)
-
-      Text(
-        "Appearance",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        letterSpacing = 2.sp
-      )
-
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Dark Theme", fontSize = 13.sp, color = colors.Text2, modifier = Modifier.weight(1f))
-        Switch(
-          checked = isDark,
-          onCheckedChange = {
-            isDark = it
-            SettingsManager.isDarkTheme = it
-          },
-          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
-        )
-      }
-
-      HorizontalDivider(color = colors.Border, thickness = 1.dp)
-
-      Text(
-        "Server",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        letterSpacing = 2.sp
-      )
-
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Model Server", fontSize = 13.sp, color = colors.Text2, modifier = Modifier.weight(1f))
-        Switch(
-          checked = app.modelServer.isRunning,
-          onCheckedChange = {
-            if (it) {
-              val engine = app.engineManager.getActiveEngine()
-              if (engine?.loadedModelPath != null) {
-                val path = engine.loadedModelPath ?: ""
-                val name = path.substringAfterLast('/')
-                SettingsManager.lastModelPath = path
-                SettingsManager.lastModelName = name
-              }
-              app.modelServer.setAutoModel(SettingsManager.lastModelPath, SettingsManager.lastModelName)
-              context.startService(Intent(context, ModelServerService::class.java))
-              SettingsManager.serverEnabled = true
-            } else {
-              context.stopService(Intent(context, ModelServerService::class.java))
-              SettingsManager.serverEnabled = false
-            }
-          },
-          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent2, checkedThumbColor = colors.Bg)
-        )
-      }
-
-      if (app.modelServer.isRunning) {
-        Text(
-          "Server: ${app.modelServer.getServerUrl()}",
-          fontSize = 10.sp,
-          color = colors.Accent2,
-          fontFamily = FontFamily.Monospace
-        )
-        Text(
-          "Anyone on your WiFi can access the web UI",
-          fontSize = 10.sp,
-          color = colors.Text3,
-          fontFamily = FontFamily.Monospace
-        )
-      }
-
-      SettingField("Port", "1024-65535", serverPort, { serverPort = it })
-
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Auth enabled", fontSize = 13.sp, color = colors.Text2, modifier = Modifier.weight(1f))
-        Switch(
-          checked = serverAuthEnabled,
-          onCheckedChange = { serverAuthEnabled = it },
-          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
-        )
-      }
-
-      if (serverAuthEnabled) {
-        OutlinedTextField(
-          value = serverAuthToken,
-          onValueChange = { serverAuthToken = it },
-          modifier = Modifier.fillMaxWidth().height(46.dp),
-          label = { Text("Auth Token", fontSize = 12.sp) },
-          singleLine = true,
-          visualTransformation = if (showToken) VisualTransformation.None
-            else PasswordVisualTransformation(),
-          trailingIcon = {
-            IconButton(onClick = { showToken = !showToken }) {
-              Icon(
-                if (showToken) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                if (showToken) "Hide token" else "Show token",
-                tint = colors.Text3
-              )
-            }
-          },
-          shape = RoundedCornerShape(8.dp),
-          colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = colors.Accent,
-            unfocusedBorderColor = colors.Border,
-            focusedTextColor = colors.Text,
-            unfocusedTextColor = colors.Text,
-            cursorColor = colors.Accent
-          ),
-          textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
-        )
-      }
-
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("WiFi only", fontSize = 13.sp, color = colors.Text2, modifier = Modifier.weight(1f))
-        Switch(
-          checked = serverWifiOnly,
-          onCheckedChange = { serverWifiOnly = it },
-          colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
-        )
-      }
-
-      HorizontalDivider(color = colors.Border, thickness = 1.dp)
-
-      // ── Benchmark button ──
-      OutlinedButton(
-        onClick = { showBenchmark = true },
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent2)
-      ) {
-        Icon(Icons.Filled.Refresh, null, tint = colors.Accent2, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(8.dp))
-        Text("Run Benchmark", color = colors.Accent2, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-      }
-
-      Button(
-        onClick = {
-          saveAndReload()
-          scope.launch { snackbarHostState.showSnackbar("Settings saved — model reloaded") }
-        },
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = colors.Accent)
-      ) {
-        Icon(Icons.Filled.Save, null, tint = colors.Bg, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(8.dp))
-        Text("Save Settings", color = colors.Bg, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-      }
-
-      HorizontalDivider(color = colors.Border, thickness = 1.dp)
-
-      Text(
-        "About",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        letterSpacing = 2.sp
-      )
-
-      Text(
-        "Developer: adeennour4-dot",
-        fontSize = 11.sp,
-        color = colors.Text3,
-        fontFamily = FontFamily.Monospace
-      )
-
-      Text(
-        "GitHub: github.com/adeennour4-dot/111",
-        fontSize = 11.sp,
-        color = colors.Accent,
-        fontFamily = FontFamily.Monospace,
-        modifier = Modifier.clickable {
-          try {
-            context.startActivity(
-              android.content.Intent(
-                android.content.Intent.ACTION_VIEW,
-                android.net.Uri.parse("https://github.com/adeennour4-dot/111")
-              )
-            )
-          } catch (_: Exception) {}
+      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+        border = BorderStroke(1.dp, colors.Border)) {
+        Column(Modifier.padding(14.dp)) {
+          Text("adeennour4-dot", fontSize = 12.sp, color = colors.Text2,
+            fontFamily = FontFamily.Monospace)
+          Text("github.com/adeennour4-dot/111", fontSize = 11.sp, color = colors.Accent,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.clickable {
+              try { context.startActivity(Intent(Intent.ACTION_VIEW,
+                android.net.Uri.parse("https://github.com/adeennour4-dot/111"))) }
+              catch (_: Exception) {}
+            })
+          Spacer(Modifier.height(6.dp))
+          Text("v1.0.2", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+          Text("${Build.MODEL} · ${Build.VERSION.RELEASE}", fontSize = 10.sp,
+            color = colors.Text3, fontFamily = FontFamily.Monospace)
+          val deviceInfo = remember { app.deviceUtils.detect() }
+          Text("RAM: ${deviceInfo.totalRamMB / 1024} GB", fontSize = 10.sp,
+            color = colors.Text3, fontFamily = FontFamily.Monospace)
+          Spacer(Modifier.height(6.dp))
+          ActionButton("Send Logs", colors.Accent2, colors) { sendLogs(context) }
         }
-      )
-
-      Text(
-        "App Version: 1.0.2",
-        fontSize = 10.sp,
-        color = colors.Text3,
-        fontFamily = FontFamily.Monospace
-      )
-
-      Spacer(Modifier.height(8.dp))
-
-      OutlinedButton(
-        onClick = { sendLogs(context) },
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent2)
-      ) {
-        Text("Send Logs (attach to issue)", fontSize = 12.sp)
       }
-
-      Text(
-        "App Version: 1.0.2",
-        fontSize = 10.sp,
-        color = colors.Text3,
-        fontFamily = FontFamily.Monospace
-      )
-
-      val deviceInfo = remember { app.deviceUtils.detect() }
-      Text(
-        "RAM: ${deviceInfo.totalRamMB / 1024} GB total",
-        fontSize = 10.sp,
-        color = colors.Text3,
-        fontFamily = FontFamily.Monospace
-      )
-      Text(
-        "Device: ${Build.MODEL}",
-        fontSize = 10.sp,
-        color = colors.Text3,
-        fontFamily = FontFamily.Monospace
-      )
 
       Spacer(Modifier.height(32.dp))
     }
   }
 
-  if (showResetConfirm) {
-    AlertDialog(
-      onDismissRequest = { showResetConfirm = false },
-      containerColor = colors.Card,
-      title = { Text("Reset Context?", color = colors.Text) },
-      text = {
-        Text(
-          "This will clear the model's context window and conversation history. The model will remain loaded.",
-          color = colors.Text2
-        )
-      },
-      confirmButton = {
-        TextButton(onClick = {
-          val active = engineManager.getActiveEngine()
-          if (active != null) active.resetContext()
-          showResetConfirm = false
-          scope.launch { snackbarHostState.showSnackbar("Context reset") }
-        }) { Text("Reset", color = colors.Red) }
-      },
-      dismissButton = {
-        TextButton(onClick = { showResetConfirm = false }) {
-          Text("Cancel", color = colors.Text2)
-        }
-      }
-    )
-  }
-
+  // ── Dialogs ─────────────────────────────────────────────────────────────
+  if (showResetConfirm) { ResetDialog(colors, engineManager, snackbarHostState, scope) { showResetConfirm = false } }
   if (showBenchmark) {
-    BenchmarkDialog(
-      engineManager = engineManager,
-      models = app.modelRepository.models.value,
-      onDismiss = { showBenchmark = false }
+    BenchmarkDialog(engineManager, app.modelRepository.models.value, onDismiss = { showBenchmark = false })
+  }
+  if (showJobs) { JobsScreen(onBack = { showJobs = false }) }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPOSABLE HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun SectionHeader(title: String, colors: ZcPalette) {
+  Text(title.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold,
+    color = colors.Accent.copy(alpha = 0.7f), fontFamily = FontFamily.Monospace,
+    letterSpacing = 2.sp, modifier = Modifier.padding(top = 4.dp))
+}
+
+@Composable
+private fun InlineField(
+  label: String, hint: String, value: String,
+  onChange: (String) -> Unit, focusManager: androidx.compose.ui.focus.FocusManager
+) {
+  val colors = currentPalette()
+  Row(
+    modifier = Modifier.fillMaxWidth().height(36.dp),
+    verticalAlignment = Alignment.CenterVertically
+  ) {
+    Column(Modifier.weight(1f)) {
+      Text(label, fontSize = 12.sp, color = colors.Text2)
+      Text(hint, fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+    }
+    Spacer(Modifier.width(8.dp))
+    OutlinedTextField(
+      value = value, onValueChange = onChange,
+      modifier = Modifier.width(72.dp).height(34.dp),
+      singleLine = true,
+      keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+      keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+      shape = RoundedCornerShape(6.dp),
+      colors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
+        focusedTextColor = colors.Accent, unfocusedTextColor = colors.Text,
+        cursorColor = colors.Accent
+      ),
+      textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
     )
   }
+}
 
-  if (showJobs) {
-    JobsScreen(onBack = { showJobs = false })
+@Composable
+private fun ToggleRow(
+  label: String, subtitle: String?, checked: Boolean,
+  onCheckedChange: (Boolean) -> Unit, colors: ZcPalette
+) {
+  Row(
+    modifier = Modifier.fillMaxWidth().height(40.dp),
+    verticalAlignment = Alignment.CenterVertically
+  ) {
+    Column(Modifier.weight(1f)) {
+      Text(label, fontSize = 13.sp, color = colors.Text2)
+      if (subtitle != null) {
+        Text(subtitle, fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+      }
+    }
+    Switch(
+      checked = checked, onCheckedChange = onCheckedChange,
+      colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg)
+    )
+  }
+}
+
+@Composable
+private fun ActionButton(text: String, color: androidx.compose.ui.graphics.Color, colors: ZcPalette,
+  onClick: () -> Unit) {
+  OutlinedButton(
+    onClick = onClick,
+    modifier = Modifier.fillMaxWidth().height(38.dp),
+    shape = RoundedCornerShape(8.dp),
+    border = BorderStroke(1.dp, color.copy(alpha = 0.4f)),
+    colors = ButtonDefaults.outlinedButtonColors(contentColor = color)
+  ) {
+    Text(text, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+  }
+  Spacer(Modifier.height(4.dp))
+}
+
+@Composable
+private fun ResetDialog(
+  colors: ZcPalette,
+  engineManager: com.gguf.zerocopy.domain.inference.EngineManager,
+  snackbarHostState: SnackbarHostState,
+  scope: kotlinx.coroutines.CoroutineScope,
+  onDismiss: () -> Unit
+) {
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    containerColor = colors.Card,
+    title = { Text("Reset Context?", color = colors.Text) },
+    text = { Text("Clear the context window and conversation history. Model stays loaded.",
+      color = colors.Text2) },
+    confirmButton = {
+      TextButton(onClick = {
+        engineManager.getActiveEngine()?.resetContext()
+        onDismiss()
+        scope.launch { snackbarHostState.showSnackbar("Context reset") }
+      }) { Text("Reset", color = colors.Red) }
+    },
+    dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = colors.Text2) } }
+  )
+}
+
+@Composable
+fun SettingField(label: String, hint: String, value: String, onChange: (String) -> Unit) {
+  val colors = currentPalette()
+  Column {
+    Text(label, fontSize = 11.sp, color = colors.Text2)
+    Text(hint, fontSize = 9.sp, color = colors.Text3)
+    OutlinedTextField(
+      value = value, onValueChange = onChange,
+      modifier = Modifier.fillMaxWidth().height(42.dp),
+      singleLine = true,
+      keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+      shape = RoundedCornerShape(8.dp),
+      colors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
+        focusedTextColor = colors.Accent, unfocusedTextColor = colors.Accent.copy(alpha = 0.7f),
+        cursorColor = colors.Accent
+      ),
+      textStyle = LocalTextStyle.current.copy(fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+    )
+  }
+}
+
+@Composable
+private fun ChatTemplateSelector(
+  current: String, onChange: (String) -> Unit, colors: ZcPalette
+) {
+  val options = listOf(
+    "auto" to "Auto-detect", "chatml" to "ChatML",
+    "gemma" to "Gemma", "llama3" to "Llama 3",
+    "deepseek" to "DeepSeek", "qwen" to "Qwen",
+    "phi" to "Phi-3/4", "mistral" to "Mistral",
+    "command" to "Command-R"
+  )
+  val expanded = remember { mutableStateOf(false) }
+  val selectedLabel = options.find { it.first == current }?.second ?: "Auto-detect"
+
+  Box {
+    OutlinedButton(
+      onClick = { expanded.value = true },
+      modifier = Modifier.fillMaxWidth(),
+      shape = RoundedCornerShape(8.dp),
+      colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent)
+    ) {
+      Text(selectedLabel, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+        modifier = Modifier.weight(1f))
+      Text("▾", fontSize = 11.sp, color = colors.Text3)
+    }
+    DropdownMenu(
+      expanded = expanded.value, onDismissRequest = { expanded.value = false },
+      containerColor = colors.Card
+    ) {
+      options.forEach { (value, label) ->
+        DropdownMenuItem(
+          text = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              if (value == current) {
+                Text("✓ ", fontSize = 12.sp, color = colors.Accent, fontFamily = FontFamily.Monospace)
+              } else Spacer(Modifier.width(14.dp))
+              Text(label, fontSize = 12.sp,
+                color = if (value == current) colors.Accent else colors.Text,
+                fontFamily = FontFamily.Monospace)
+            }
+          },
+          onClick = { onChange(value); expanded.value = false }
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun RagStatRow(label: String, value: String, colors: ZcPalette) {
+  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+    Text(label, fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+    Text(value, fontSize = 9.sp, color = colors.Text2, fontFamily = FontFamily.Monospace,
+      fontWeight = FontWeight.SemiBold)
   }
 }
 
 /** Collect logs + model metadata and share via email/intent. */
 private fun sendLogs(context: android.content.Context) {
   try {
-    val logsDir = java.io.File(context.cacheDir, "logs")
-    logsDir.mkdirs()
-    val logFile = java.io.File(logsDir, "zerocopy_logs_${System.currentTimeMillis()}.txt")
+    val logsDir = File(context.cacheDir, "logs").also { it.mkdirs() }
+    val logFile = File(logsDir, "zerocopy_logs_${System.currentTimeMillis()}.txt")
     val sb = StringBuilder()
     sb.appendLine("=== ZeroCopy Debug Logs ===")
     sb.appendLine("Time: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())}")
-    sb.appendLine("Device: ${android.os.Build.MODEL} (${android.os.Build.MANUFACTURER})")
-    sb.appendLine("Android: ${android.os.Build.VERSION.SDK_INT}")
+    sb.appendLine("Device: ${Build.MODEL} (${Build.MANUFACTURER})")
+    sb.appendLine("Android: ${Build.VERSION.SDK_INT}")
     sb.appendLine("RAM: ${Runtime.getRuntime().totalMemory() / (1024*1024)} MB")
     sb.appendLine()
     sb.appendLine("--- Model Info ---")
     try {
-      val app = com.gguf.zerocopy.ZeroCopyApp.instance
+      val app = ZeroCopyApp.instance
       val engine = app.engineManager.getActiveEngine()
       if (engine != null) {
         sb.appendLine("Engine: ${engine::class.simpleName}")
@@ -871,13 +802,10 @@ private fun sendLogs(context: android.content.Context) {
       val process = Runtime.getRuntime().exec("logcat -d -t 200")
       val reader = java.io.BufferedReader(java.io.InputStreamReader(process.inputStream))
       reader.use { r -> r.lines().forEach { sb.appendLine(it) } }
-    } catch (_: Exception) {
-      sb.appendLine("(logcat not available)")
-    }
+    } catch (_: Exception) { sb.appendLine("(logcat not available)") }
     logFile.writeText(sb.toString())
-    val uri = androidx.core.content.FileProvider.getUriForFile(
-      context, "${context.packageName}.fileprovider", logFile
-    )
+    val uri = androidx.core.content.FileProvider.getUriForFile(context,
+      "${context.packageName}.fileprovider", logFile)
     context.startActivity(
       Intent.createChooser(
         Intent(Intent.ACTION_SEND).apply {
@@ -886,107 +814,10 @@ private fun sendLogs(context: android.content.Context) {
           putExtra(Intent.EXTRA_SUBJECT, "ZeroCopy Debug Logs")
           putExtra(Intent.EXTRA_TEXT, "Attached: device info, model config, and logcat output")
           addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        },
-        "Send Logs"
+        }, "Send Logs"
       )
     )
   } catch (e: Exception) {
     android.util.Log.e("SettingsScreen", "sendLogs failed", e)
-  }
-}
-
-@Composable
-fun SettingField(label: String, hint: String, value: String, onChange: (String) -> Unit) {
-  val colors = currentPalette()
-  Column {
-    Text(label, fontSize = 11.sp, color = colors.Text2)
-    Text(hint, fontSize = 9.sp, color = colors.Text3)
-    OutlinedTextField(
-      value = value,
-      onValueChange = onChange,
-      modifier = Modifier.fillMaxWidth().height(46.dp),
-      singleLine = true,
-      keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-      shape = RoundedCornerShape(8.dp),
-      colors = OutlinedTextFieldDefaults.colors(
-        focusedBorderColor = colors.Accent,
-        unfocusedBorderColor = colors.Border,
-        focusedTextColor = colors.Accent,
-        unfocusedTextColor = colors.Accent.copy(alpha = 0.7f),
-        cursorColor = colors.Accent
-      ),
-      textStyle = LocalTextStyle.current.copy(fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
-    )
-  }
-}
-
-/** Dropdown to select the chat template format. */
-@Composable
-private fun ChatTemplateSelector(
-  current: String,
-  onChange: (String) -> Unit,
-  colors: ZcPalette
-) {
-  val options = listOf(
-    "auto" to "Auto-detect (recommended)",
-    "chatml" to "ChatML (<|im_start|>)",
-    "gemma" to "Gemma (<start_of_turn>)",
-    "llama3" to "Llama 3 (<|begin_of_text|>)",
-    "deepseek" to "DeepSeek (｜｜)",
-    "qwen" to "Qwen (<|im_start|>)",
-    "phi" to "Phi-3/4 (<|system|>)",
-    "mistral" to "Mistral / Mixtral",
-    "command" to "Command-R"
-  )
-  val expanded = remember { mutableStateOf(false) }
-  val selectedLabel = options.find { it.first == current }?.second ?: options.first().second
-
-  Column {
-    Text("Chat Template", fontSize = 11.sp, color = colors.Text2)
-    Box {
-      OutlinedButton(
-        onClick = { expanded.value = true },
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent)
-      ) {
-        Text(selectedLabel, fontSize = 12.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
-        Text("▼", fontSize = 10.sp, color = colors.Text3)
-      }
-      DropdownMenu(
-        expanded = expanded.value,
-        onDismissRequest = { expanded.value = false },
-        containerColor = colors.Card
-      ) {
-        options.forEach { (value, label) ->
-          DropdownMenuItem(
-            text = {
-              Row(verticalAlignment = Alignment.CenterVertically) {
-                if (value == current) {
-                  Text("✓ ", fontSize = 12.sp, color = colors.Accent, fontFamily = FontFamily.Monospace)
-                } else {
-                  Spacer(Modifier.width(16.dp))
-                }
-                Text(label, fontSize = 12.sp, color = if (value == current) colors.Accent else colors.Text,
-                  fontFamily = FontFamily.Monospace)
-              }
-            },
-            onClick = {
-              onChange(value)
-              expanded.value = false
-            }
-          )
-        }
-      }
-    }
-  }
-}
-
-/** Single row in the RAG stats table. */
-@Composable
-private fun RagStatRow(label: String, value: String, colors: ZcPalette) {
-  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-    Text(label, fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-    Text(value, fontSize = 9.sp, color = colors.Text2, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
   }
 }
