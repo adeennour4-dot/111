@@ -79,6 +79,7 @@ import com.gguf.zerocopy.ui.jobs.JobsScreen
 import com.gguf.zerocopy.ui.settings.BenchmarkDialog
 import kotlinx.coroutines.Dispatchers
 import com.gguf.zerocopy.ui.chat.components.getFileName
+import com.gguf.zerocopy.ui.theme.ZcPalette
 import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlinx.coroutines.launch
 

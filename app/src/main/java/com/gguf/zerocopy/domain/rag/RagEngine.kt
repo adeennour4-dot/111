@@ -266,7 +266,7 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
                 .take(maxChunks.coerceAtMost(chunks.size))
             if (relevant.isEmpty()) snapshot.take(2).map { it to 1f } else relevant
         }
-        return buildContextBlock(selected)
+        return buildContextBlock(selected, maxChars = maxChars)
     }
 
     /**
@@ -298,7 +298,7 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
             .split(Regex("\\s+"))
             .filter { it.length > 1 && it !in STOP_WORDS }
 
-    private fun buildContextBlock(scored: List<Pair<Chunk, Float>>): String {
+    private fun buildContextBlock(scored: List<Pair<Chunk, Float>>, maxChars: Int = 3000): String {
         val sb = StringBuilder()
         sb.appendLine("[Relevant document excerpts]")
         var totalChars = 0

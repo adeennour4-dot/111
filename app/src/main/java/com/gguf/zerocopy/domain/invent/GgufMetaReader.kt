@@ -85,6 +85,7 @@ object GgufMetaReader {
                 if (magic != GGUF_MAGIC) return null
 
                 raf.read(buf4) // version
+                val version = ByteBuffer.wrap(buf4).order(ByteOrder.LITTLE_ENDIAN).int
                 raf.read(buf8) // tensor count
                 raf.read(buf8) // KV count
                 val kvCount = ByteBuffer.wrap(buf8).order(ByteOrder.LITTLE_ENDIAN).long

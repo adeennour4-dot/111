@@ -25,9 +25,9 @@ object ToolAwareInference {
      * within their limited context — the preamble is stripped when search results are present.
      */
     private val REASONING_PREAMBLE = Regex(
-        "^Let's work through this step by step to be thorough\." +
+        "^Let's work through this step by step to be thorough\\." +
         " You may wrap your reasoning in <think></think> tags if you wish," +
-        " but it's not required\.\n\n",
+        " but it's not required\\.\\n\\n",
         RegexOption.IGNORE_CASE
     )
 

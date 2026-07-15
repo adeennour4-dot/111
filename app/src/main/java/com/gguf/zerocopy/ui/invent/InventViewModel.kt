@@ -1311,7 +1311,9 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun saveCurrentSession() { flushSave() }
+    fun saveCurrentSession() {
+        viewModelScope.launch(Dispatchers.IO) { flushSave() }
+    }
 
     fun onDeleteConfirmed() {
         viewModelScope.launch(Dispatchers.IO) {
