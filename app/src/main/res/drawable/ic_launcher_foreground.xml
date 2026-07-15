@@ -6,23 +6,19 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!--
-    ZeroCopy App Icon — v3 mirrored
-    - Dark background (ic_launcher_background.xml)
-    - Bigger center cross → purple→teal gradient
-    - Mirrored corners: top-left / bottom-right: purple circles
-      top-right / bottom-left: teal squares — all same size (14px)
-    -->
+    <!-- ZeroCopy App Icon — Original style, bigger cross, cleaner nodes -->
 
-    <!-- ═══ Center cross: outer glow (1.12x scale) ═══ -->
-    <group android:pivotX="54" android:pivotY="54" android:scaleX="1.12" android:scaleY="1.12">
-        <path android:pathData="M40,44 L68,44 Q76,44 76,54 Q76,64 68,64 L40,64 Q32,64 32,54 Q32,44 40,44 Z">
+    <!-- ─── Center: + sign — purple→teal gradient, outer + inner glow ─── -->
+
+    <!-- Outer glow (15%, 1.10x) -->
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="1.10" android:scaleY="1.10">
+        <path android:pathData="M42,48 L66,48 Q70,48 70,54 Q70,60 66,60 L42,60 Q38,60 38,54 Q38,48 42,48 Z">
             <aapt:attr name="android:fillColor">
                 <gradient android:startX="0" android:startY="108" android:endX="108" android:endY="0"
                     android:type="linear" android:startColor="#187C5CFF" android:endColor="#1800E5A0"/>
             </aapt:attr>
         </path>
-        <path android:pathData="M44,40 L44,68 Q44,76 54,76 Q64,76 64,68 L64,40 Q64,32 54,32 Q44,32 44,40 Z">
+        <path android:pathData="M48,42 L48,66 Q48,70 54,70 Q60,70 60,66 L60,42 Q60,38 54,38 Q48,38 48,42 Z">
             <aapt:attr name="android:fillColor">
                 <gradient android:startX="0" android:startY="108" android:endX="108" android:endY="0"
                     android:type="linear" android:startColor="#187C5CFF" android:endColor="#1800E5A0"/>
@@ -30,67 +26,50 @@
         </path>
     </group>
 
-    <!-- ═══ Center cross: main shape (bigger: bar width 20, length 44) ═══ -->
-    <!-- Horizontal bar: x=32→76, y=44→64, center (54,54), r=8 -->
-    <path android:pathData="M40,44 L68,44 Q76,44 76,54 Q76,64 68,64 L40,64 Q32,64 32,54 Q32,44 40,44 Z">
+    <!-- Inner glow (25%, 1.04x) -->
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="1.04" android:scaleY="1.04">
+        <path android:pathData="M42,48 L66,48 Q70,48 70,54 Q70,60 66,60 L42,60 Q38,60 38,54 Q38,48 42,48 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient android:startX="0" android:startY="108" android:endX="108" android:endY="0"
+                    android:type="linear" android:startColor="#407C5CFF" android:endColor="#4000E5A0"/>
+            </aapt:attr>
+        </path>
+        <path android:pathData="M48,42 L48,66 Q48,70 54,70 Q60,70 60,66 L60,42 Q60,38 54,38 Q48,38 48,42 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient android:startX="0" android:startY="108" android:endX="108" android:endY="0"
+                    android:type="linear" android:startColor="#407C5CFF" android:endColor="#4000E5A0"/>
+            </aapt:attr>
+        </path>
+    </group>
+
+    <!-- Main plus (solid gradient) — bar width 12, length 30 -->
+    <path android:pathData="M42,48 L66,48 Q70,48 70,54 Q70,60 66,60 L42,60 Q38,60 38,54 Q38,48 42,48 Z">
         <aapt:attr name="android:fillColor">
             <gradient android:startX="0" android:startY="108" android:endX="108" android:endY="0"
                 android:type="linear" android:startColor="#FF7C5CFF" android:endColor="#FF00E5A0"/>
         </aapt:attr>
     </path>
-    <!-- Vertical bar: x=44→64, y=32→76, center (54,54), r=8 -->
-    <path android:pathData="M44,40 L44,68 Q44,76 54,76 Q64,76 64,68 L64,40 Q64,32 54,32 Q44,32 44,40 Z">
+    <path android:pathData="M48,42 L48,66 Q48,70 54,70 Q60,70 60,66 L60,42 Q60,38 54,38 Q48,38 48,42 Z">
         <aapt:attr name="android:fillColor">
             <gradient android:startX="0" android:startY="108" android:endX="108" android:endY="0"
                 android:type="linear" android:startColor="#FF7C5CFF" android:endColor="#FF00E5A0"/>
         </aapt:attr>
     </path>
 
-    <!-- ═══ Cross highlight (subtle sheen) ═══ -->
-    <path android:pathData="M42,46 L66,46 Q72,46 72,54 Q72,62 66,62 L42,62 Q36,62 36,54 Q36,46 42,46 Z"
-        android:fillColor="#15FFFFFF"/>
-    <path android:pathData="M46,42 L46,66 Q46,72 54,72 Q62,72 62,66 L62,42 Q62,36 54,36 Q46,36 46,42 Z"
-        android:fillColor="#15FFFFFF"/>
-
-    <!-- ═══ Center: small diamond (neural core) ═══ -->
-    <path android:pathData="M54,43 L61,54 L54,65 L47,54 Z" android:fillColor="#20FFFFFF"/>
-
-    <!-- ═══ Mirrored corner nodes ═══ -->
-    <!-- All 14px diameter (7px radius circles, 14×14 squares with r=4 corners) -->
-    <!-- Glow rings: 20px diameter (10px radius) -->
-    <!-- Mirrored: purple circles at top-left / bottom-right,
-        teal squares at top-right / bottom-left -->
-
-    <!-- ── Top-left: Purple circle ── -->
-    <path android:fillColor="#227C5CFF"
-        android:pathData="M25,29 m-10,0 a10,10 0,1 1,20 0 a10,10 0,1 1,-20 0"/>
-    <path android:fillColor="#7C5CFF"
-        android:pathData="M25,29 m-7,0 a7,7 0,1 1,14 0 a7,7 0,1 1,-14 0"/>
-    <path android:pathData="M36,38 Q30,32 25,29" android:strokeWidth="1.5" android:strokeColor="#30FFFFFF"
-        android:fillColor="#00000000" android:strokeLineCap="round"/>
-
-    <!-- ── Bottom-right: Purple circle (mirror of top-left) ── -->
-    <path android:fillColor="#227C5CFF"
-        android:pathData="M83,79 m-10,0 a10,10 0,1 1,20 0 a10,10 0,1 1,-20 0"/>
-    <path android:fillColor="#7C5CFF"
-        android:pathData="M83,79 m-7,0 a7,7 0,1 1,14 0 a7,7 0,1 1,-14 0"/>
-    <path android:pathData="M72,70 Q78,76 83,79" android:strokeWidth="1.5" android:strokeColor="#30FFFFFF"
-        android:fillColor="#00000000" android:strokeLineCap="round"/>
-
-    <!-- ── Top-right: Teal square (14×14, r=4, center 83,29) ── -->
-    <path android:fillColor="#2200E5A0"
-        android:pathData="M83,29 m-10,0 a10,10 0,1 1,20 0 a10,10 0,1 1,-20 0"/>
+    <!-- ─── Top-right: Teal rounded cube + larger circle behind ─── -->
+    <!-- Outer circle (r=9, 35% teal) -->
+    <path android:fillColor="#3300E5A0"
+        android:pathData="M76,32 m-9,0 a9,9 0,1 1,18 0 a9,9 0,1 1,-18 0"/>
+    <!-- Rounded cube (12×12, r=3) -->
     <path android:fillColor="#00E5A0"
-        android:pathData="M80,22 L86,22 Q90,22 90,26 L90,32 Q90,36 86,36 L80,36 Q76,36 76,32 L76,26 Q76,22 80,22 Z"/>
-    <path android:pathData="M68,38 Q76,32 83,29" android:strokeWidth="1.5" android:strokeColor="#30FFFFFF"
-        android:fillColor="#00000000" android:strokeLineCap="round"/>
+        android:pathData="M72,28 A3,3 0,0,1 75,25 L79,25 A3,3 0,0,1 82,28 L82,36 A3,3 0,0,1 79,39 L75,39 A3,3 0,0,1 72,36 Z"/>
 
-    <!-- ── Bottom-left: Teal square (mirror of top-right) ── -->
-    <path android:fillColor="#2200E5A0"
-        android:pathData="M25,79 m-10,0 a10,10 0,1 1,20 0 a10,10 0,1 1,-20 0"/>
-    <path android:fillColor="#00E5A0"
-        android:pathData="M22,72 L28,72 Q32,72 32,76 L32,82 Q32,86 28,86 L22,86 Q18,86 18,82 L18,76 Q18,72 22,72 Z"/>
-    <path android:pathData="M40,70 Q32,76 25,79" android:strokeWidth="1.5" android:strokeColor="#30FFFFFF"
-        android:fillColor="#00000000" android:strokeLineCap="round"/>
+    <!-- ─── Bottom-left: Purple circle + larger rounded cube behind ─── -->
+    <!-- Outer cube (16×16, r=4, 35% purple) -->
+    <path android:fillColor="#337C5CFF"
+        android:pathData="M26,70 A4,4 0,0,1 30,66 L38,66 A4,4 0,0,1 42,70 L42,82 A4,4 0,0,1 38,86 L30,86 A4,4 0,0,1 26,82 Z"/>
+    <!-- Purple circle (r=6) -->
+    <path android:fillColor="#7C5CFF"
+        android:pathData="M34,76 m-6,0 a6,6 0,1 1,12 0 a6,6 0,1 1,-12 0"/>
 
 </vector>

@@ -614,7 +614,7 @@ private fun InlineField(
 ) {
   val colors = currentPalette()
   Row(
-    modifier = Modifier.fillMaxWidth().height(36.dp),
+    modifier = Modifier.fillMaxWidth().heightIn(min = 32.dp),
     verticalAlignment = Alignment.CenterVertically
   ) {
     Column(Modifier.weight(1f)) {
@@ -624,7 +624,7 @@ private fun InlineField(
     Spacer(Modifier.width(8.dp))
     OutlinedTextField(
       value = value, onValueChange = onChange,
-      modifier = Modifier.width(72.dp).height(34.dp),
+      modifier = Modifier.width(80.dp).height(36.dp),
       singleLine = true,
       keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
       keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
@@ -645,7 +645,7 @@ private fun ToggleRow(
   onCheckedChange: (Boolean) -> Unit, colors: ZcPalette
 ) {
   Row(
-    modifier = Modifier.fillMaxWidth().height(40.dp),
+    modifier = Modifier.fillMaxWidth().heightIn(min = 36.dp),
     verticalAlignment = Alignment.CenterVertically
   ) {
     Column(Modifier.weight(1f)) {
