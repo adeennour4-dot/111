@@ -6,94 +6,86 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- ─── Center: + sign with purple→teal gradient (bottom-left→top-right) + glow ─── -->
+    <!--
+    ZeroCopy App Icon — v2 symmetric
+    - Dark background (ic_launcher_background.xml)
+    - Center: Perfectly centered cross → purple→teal gradient
+    - Four symmetrical corner nodes → data flow in all directions
+    -->
 
-    <!-- Outer glow (15% gradient, scale 1.12) -->
+    <!-- ═══ Center cross: outer glow ═══ -->
     <group android:pivotX="54" android:pivotY="54" android:scaleX="1.12" android:scaleY="1.12">
-        <path android:pathData="M43,50 L65,50 Q69,50 69,54 Q69,58 65,58 L43,58 Q39,58 39,54 Q39,50 43,50 Z">
+        <path android:pathData="M44,46 L64,46 Q72,46 72,54 Q72,62 64,62 L44,62 Q36,62 36,54 Q36,46 44,46 Z">
             <aapt:attr name="android:fillColor">
-                <gradient
-                    android:startX="0" android:startY="108"
-                    android:endX="108" android:endY="0"
-                    android:type="linear"
-                    android:startColor="#267C5CFF"
-                    android:endColor="#2600E5A0"/>
+                <gradient android:startX="0" android:startY="108" android:endX="108" android:endY="0"
+                    android:type="linear" android:startColor="#187C5CFF" android:endColor="#1800E5A0"/>
             </aapt:attr>
         </path>
-        <path android:pathData="M50,43 L50,65 Q50,69 54,69 Q58,69 58,65 L58,43 Q58,39 54,39 Q50,39 50,43 Z">
+        <path android:pathData="M46,44 L46,64 Q46,72 54,72 Q62,72 62,64 L62,44 Q62,36 54,36 Q46,36 46,44 Z">
             <aapt:attr name="android:fillColor">
-                <gradient
-                    android:startX="0" android:startY="108"
-                    android:endX="108" android:endY="0"
-                    android:type="linear"
-                    android:startColor="#267C5CFF"
-                    android:endColor="#2600E5A0"/>
+                <gradient android:startX="0" android:startY="108" android:endX="108" android:endY="0"
+                    android:type="linear" android:startColor="#187C5CFF" android:endColor="#1800E5A0"/>
             </aapt:attr>
         </path>
     </group>
-    <!-- Inner glow (30% gradient, scale 1.05) -->
-    <group android:pivotX="54" android:pivotY="54" android:scaleX="1.05" android:scaleY="1.05">
-        <path android:pathData="M43,50 L65,50 Q69,50 69,54 Q69,58 65,58 L43,58 Q39,58 39,54 Q39,50 43,50 Z">
-            <aapt:attr name="android:fillColor">
-                <gradient
-                    android:startX="0" android:startY="108"
-                    android:endX="108" android:endY="0"
-                    android:type="linear"
-                    android:startColor="#4D7C5CFF"
-                    android:endColor="#4D00E5A0"/>
-            </aapt:attr>
-        </path>
-        <path android:pathData="M50,43 L50,65 Q50,69 54,69 Q58,69 58,65 L58,43 Q58,39 54,39 Q50,39 50,43 Z">
-            <aapt:attr name="android:fillColor">
-                <gradient
-                    android:startX="0" android:startY="108"
-                    android:endX="108" android:endY="0"
-                    android:type="linear"
-                    android:startColor="#4D7C5CFF"
-                    android:endColor="#4D00E5A0"/>
-            </aapt:attr>
-        </path>
-    </group>
-    <!-- Main plus (purple→teal gradient bottom-left to top-right) -->
-    <path android:pathData="M43,50 L65,50 Q69,50 69,54 Q69,58 65,58 L43,58 Q39,58 39,54 Q39,50 43,50 Z">
+
+    <!-- ═══ Center cross: main shape (rounded corners) ═══ -->
+    <!-- Horizontal bar: 36→72 × 46→62, rounded r=8, center 54,54 -->
+    <path android:pathData="M44,46 L64,46 Q72,46 72,54 Q72,62 64,62 L44,62 Q36,62 36,54 Q36,46 44,46 Z">
         <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="0" android:startY="108"
-                android:endX="108" android:endY="0"
-                android:type="linear"
-                android:startColor="#FF7C5CFF"
-                android:endColor="#FF00E5A0"/>
+            <gradient android:startX="0" android:startY="108" android:endX="108" android:endY="0"
+                android:type="linear" android:startColor="#FF7C5CFF" android:endColor="#FF00E5A0"/>
         </aapt:attr>
     </path>
-    <path android:pathData="M50,43 L50,65 Q50,69 54,69 Q58,69 58,65 L58,43 Q58,39 54,39 Q50,39 50,43 Z">
+    <!-- Vertical bar: 46→62 × 36→72, rounded r=8, center 54,54 -->
+    <path android:pathData="M46,44 L46,64 Q46,72 54,72 Q62,72 62,64 L62,44 Q62,36 54,36 Q46,36 46,44 Z">
         <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="0" android:startY="108"
-                android:endX="108" android:endY="0"
-                android:type="linear"
-                android:startColor="#FF7C5CFF"
-                android:endColor="#FF00E5A0"/>
+            <gradient android:startX="0" android:startY="108" android:endX="108" android:endY="0"
+                android:type="linear" android:startColor="#FF7C5CFF" android:endColor="#FF00E5A0"/>
         </aapt:attr>
     </path>
 
-    <!-- ─── Top-right: Teal rounded cube + bigger circle at 40% opacity ─── -->
-    <!-- Centered at (74, 34) — pulled toward the center + sign -->
+    <!-- ═══ Cross highlight (subtle sheen, top-left quadrant) ═══ -->
+    <path android:pathData="M46,48 L62,48 Q68,48 68,54 Q68,60 62,60 L46,60 Q40,60 40,54 Q40,48 46,48 Z"
+        android:fillColor="#15FFFFFF"/>
+    <path android:pathData="M48,46 L48,62 Q48,68 54,68 Q60,68 60,62 L60,46 Q60,40 54,40 Q48,40 48,46 Z"
+        android:fillColor="#15FFFFFF"/>
 
-    <!-- Bigger circle (40% bigger than cube → radius 10, 40% opacity) -->
-    <path android:fillColor="#6600E5A0"
-        android:pathData="M74,34 m-10,0 a10,10 0,1 1,20 0 a10,10 0,1 1,-20 0"/>
-    <!-- Rounded-edge cube (14×14, corner radius 3, solid teal) -->
+    <!-- ═══ Center: small diamond (neural core) ═══ -->
+    <path android:pathData="M54,45 L60,54 L54,63 L48,54 Z" android:fillColor="#20FFFFFF"/>
+
+    <!-- ═══ Four symmetrical corner nodes ═══ -->
+
+    <!-- Top-right: Teal node -->
+    <path android:pathData="M70,48 Q78,34 85,30" android:strokeWidth="1.5" android:strokeColor="#30FFFFFF"
+        android:fillColor="#00000000" android:strokeLineCap="round"/>
+    <path android:fillColor="#2200E5A0"
+        android:pathData="M85,30 m-9,0 a9,9 0,1 1,18 0 a9,9 0,1 1,-18 0"/>
     <path android:fillColor="#00E5A0"
-        android:pathData="M67,30 A3,3 0,0,1 70,27 L78,27 A3,3 0,0,1 81,30 L81,38 A3,3 0,0,1 78,41 L70,41 A3,3 0,0,1 67,38 Z"/>
+        android:pathData="M85,30 m-4,0 a4,4 0,1 1,8 0 a4,4 0,1 1,-8 0"/>
 
-    <!-- ─── Bottom-left: Purple circle + 40% bigger rounded cube at 40% opacity ─── -->
-    <!-- Centered at (34, 76) — pulled toward the center + sign -->
+    <!-- Bottom-left: Teal node (symmetric to top-right across center) -->
+    <path android:pathData="M38,60 Q30,74 23,78" android:strokeWidth="1.5" android:strokeColor="#30FFFFFF"
+        android:fillColor="#00000000" android:strokeLineCap="round"/>
+    <path android:fillColor="#2200E5A0"
+        android:pathData="M23,78 m-9,0 a9,9 0,1 1,18 0 a9,9 0,1 1,-18 0"/>
+    <path android:fillColor="#00E5A0"
+        android:pathData="M23,78 m-4,0 a4,4 0,1 1,8 0 a4,4 0,1 1,-8 0"/>
 
-    <!-- 40% bigger rounded cube (20×20, corner radius 4, 40% opacity) -->
-    <path android:fillColor="#667C5CFF"
-        android:pathData="M24,70 A4,4 0,0,1 28,66 L40,66 A4,4 0,0,1 44,70 L44,82 A4,4 0,0,1 40,86 L28,86 A4,4 0,0,1 24,82 Z"/>
-    <!-- Purple circle (radius 7, solid) -->
+    <!-- Top-left: Purple node -->
+    <path android:pathData="M38,48 Q30,34 23,30" android:strokeWidth="1.5" android:strokeColor="#30FFFFFF"
+        android:fillColor="#00000000" android:strokeLineCap="round"/>
+    <path android:fillColor="#227C5CFF"
+        android:pathData="M23,30 m-9,0 a9,9 0,1 1,18 0 a9,9 0,1 1,-18 0"/>
     <path android:fillColor="#7C5CFF"
-        android:pathData="M34,76 m-7,0 a7,7 0,1 1,14 0 a7,7 0,1 1,-14 0"/>
+        android:pathData="M23,30 m-4,0 a4,4 0,1 1,8 0 a4,4 0,1 1,-8 0"/>
+
+    <!-- Bottom-right: Purple node (symmetric to top-left across center) -->
+    <path android:pathData="M70,60 Q78,74 85,78" android:strokeWidth="1.5" android:strokeColor="#30FFFFFF"
+        android:fillColor="#00000000" android:strokeLineCap="round"/>
+    <path android:fillColor="#227C5CFF"
+        android:pathData="M85,78 m-9,0 a9,9 0,1 1,18 0 a9,9 0,1 1,-18 0"/>
+    <path android:fillColor="#7C5CFF"
+        android:pathData="M85,78 m-4,0 a4,4 0,1 1,8 0 a4,4 0,1 1,-8 0"/>
 
 </vector>
