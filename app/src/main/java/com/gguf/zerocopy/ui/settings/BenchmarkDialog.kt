@@ -104,7 +104,10 @@ fun BenchmarkDialog(
                                     val engine = engineManager.selectEngineForFormat(model.path)
                                     val loadResult = engine.loadModel(model.path)
                                     if (loadResult.isSuccess) {
-                                        val benchResult = engine.benchmark(128, 128)
+                                        // Use dynamic prefill tokens: 10% of context, min 128, max 1024
+                                        val modelCtx = engine.config.nCtx.coerceAtLeast(512)
+                                        val ppTokens = (modelCtx / 10).coerceIn(128, 1024)
+                                        val benchResult = engine.benchmark(ppTokens, ppTokens)
                                         result = benchResult
                                         engine.unloadModel()
                                     } else {
@@ -136,7 +139,7 @@ fun BenchmarkDialog(
                             strokeWidth = 2.dp
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text("Benchmarking (128 PP + 128 TG)…", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                        Text("Benchmarking…", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
                     } else {
                         Text("Run Benchmark", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                     }

@@ -38,6 +38,7 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
     private val sourceNames = mutableListOf<String>()
     // Pre-tokenized term sets for BM25 — built once on ingest, avoids retokenizing on every retrieve()
     private val chunkTerms  = mutableListOf<List<String>>()
+    private val docCharCounts = mutableListOf<Int>()  // actual unique char count per document (not chunk sum)
     private val lock        = Any()
 
     val hasDocuments: Boolean       get() = synchronized(lock) { chunks.isNotEmpty() }
@@ -48,7 +49,7 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
         RagStats(
             documentCount = sourceNames.size,
             chunkCount = chunks.size,
-            totalChars = chunks.sumOf { it.text.length },
+            totalChars = docCharCounts.sum(),
             sources = sourceNames.toList()
         )
     }
@@ -135,7 +136,7 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
                 var line = r.readLine()
                 while (line != null) {
                     buf.append(line).append('\n')
-                    charsRead += line.length
+                    charsRead += line.length + 1 // +1 for the \n we appended
                     // Flush into chunks when buffer is full to avoid holding entire file
                     if (buf.length >= CHUNK_SIZE * 3) {
                         chunks.addAll(chunkText(buf.toString(), name, ""))
@@ -147,7 +148,7 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
             }
 
             if (chunks.isEmpty()) return IngestResult.Failed("File produced no text chunks")
-            addPreparedChunks(chunks, name)
+            addPreparedChunks(chunks, name, originalCharCount = charsRead.toInt())
             IngestResult.Success(chunks.size, name)
         } catch (e: Exception) {
             IngestResult.Failed(e.message ?: "Text read error")
@@ -162,6 +163,7 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
         val pageRegex = Regex("--- Page (\\d+) ---")
         val matches   = pageRegex.findAll(text).toList()
         val result    = mutableListOf<Chunk>()
+        val actualLen = text.length
 
         if (matches.isEmpty()) {
             result.addAll(chunkText(text, source, ""))
@@ -177,11 +179,11 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
             }
         }
 
-        addPreparedChunks(result, source)
+        addPreparedChunks(result, source, originalCharCount = actualLen)
         return result.size
     }
 
-    private fun addPreparedChunks(newChunks: List<Chunk>, source: String) {
+    private fun addPreparedChunks(newChunks: List<Chunk>, source: String, originalCharCount: Int = 0) {
         synchronized(lock) {
             val available = MAX_TOTAL_CHUNKS - chunks.size
             if (available <= 0) return
@@ -189,7 +191,10 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
             chunks.addAll(toAdd)
             // Pre-tokenize at ingest time so retrieve() is O(1) per chunk
             chunkTerms.addAll(toAdd.map { tokenize(it.text) })
-            if (!sourceNames.contains(source)) sourceNames.add(source)
+            if (!sourceNames.contains(source)) {
+                sourceNames.add(source)
+                docCharCounts.add(originalCharCount)
+            }
         }
     }
 

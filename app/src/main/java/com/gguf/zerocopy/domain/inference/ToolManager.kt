@@ -7,6 +7,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.Future
 import org.json.JSONArray
 import org.json.JSONObject
@@ -16,7 +18,13 @@ data class ToolCall(val id: String, val name: String, val arguments: JSONObject)
 data class ToolResult(val callId: String, val name: String, val result: String)
 
 class ToolManager {
-  private val threadPool = Executors.newCachedThreadPool()
+  // Bounded thread pool: max 4 threads so concurrent web searches
+  // don't exhaust phone RAM with simultaneous HTTP connections.
+  private val threadPool = ThreadPoolExecutor(
+    1, 4, 60L, java.util.concurrent.TimeUnit.SECONDS,
+    LinkedBlockingQueue(8),
+    ThreadPoolExecutor.CallerRunsPolicy()
+  )
   private data class ToolEntry(val definition: ToolDefinition, val executor: (JSONObject) -> String)
   private val tools = mutableMapOf<String, ToolEntry>()
 

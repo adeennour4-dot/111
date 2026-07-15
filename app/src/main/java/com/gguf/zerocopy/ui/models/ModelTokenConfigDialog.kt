@@ -337,20 +337,22 @@ fun ModelTokenConfigDialog(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
                         onClick = {
-                            ctxSlider = 1024; maxNewSlider = 1024; gpuSlider = 0
+                            ctxSlider = SettingsManager.nCtx.coerceIn(512, 32768)
+                            maxNewSlider = SettingsManager.maxTokens.coerceIn(64, 32768)
+                            gpuSlider = SettingsManager.gpuLayers.coerceIn(0, 999)
                             enableGpu = isGguf
-                            tempText = ""
-                            topPText = ""
-                            minPText = ""
-                            topKText = ""
-                            repPenText = ""
-                            freqPenText = ""
-                            presPenText = ""
+                            tempText = SettingsManager.temperature.toString()
+                            topPText = SettingsManager.topP.toString()
+                            minPText = SettingsManager.minP.toString()
+                            topKText = SettingsManager.topK.toString()
+                            repPenText = SettingsManager.repeatPenalty.toString()
+                            freqPenText = SettingsManager.freqPenalty.toString()
+                            presPenText = SettingsManager.presPenalty.toString()
                             seedText = ""
                             flashSwitch = SettingsManager.flashAttention
                             lowRamSwitch = SettingsManager.lowRamMode
-                            threadsText = ""
-                            batchText = ""
+                            threadsText = SettingsManager.threads.toString()
+                            batchText = SettingsManager.nBatch.toString()
                         },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp),

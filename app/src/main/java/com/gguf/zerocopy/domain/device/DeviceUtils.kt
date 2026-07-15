@@ -62,14 +62,21 @@ data class DeviceInfo(
       maxNewTokens = suggestedMaxNewTokens,
       nGpuLayers = suggestedGpuLayers,
       nThreads = suggestedThreads,
-      lowRamMode = true
+      // Only enable low RAM mode on devices with ≤ 8 GB total RAM
+      lowRamMode = totalRamMB <= 8000
     )
   }
 
   fun suggestEngine(): EngineType = when {
+    // Snapdragon → llama.cpp with GPU layers (Vulkan on 8xx series)
     isSnapdragon -> EngineType.LLAMA_CPP
+    // MediaTek → MNN (optimized for MediaTek's NeuroPilot / Edge AI)
     isMediaTek -> EngineType.MNN
+    // Exynos → llama.cpp (MNN Mali backend is limited, llama.cpp works on CPU)
     isExynos -> EngineType.LLAMA_CPP
+    // Tensor → llama.cpp (Google's TPU not exposed, CPU inference)
+    isTensor -> EngineType.LLAMA_CPP
+    // Fallback: llama.cpp on any other ARM CPU
     else -> EngineType.LLAMA_CPP
   }
 
@@ -216,5 +223,30 @@ class DeviceUtils(private val context: Context) {
     }
   }
 
-  private fun hasOpenCLDevice(): Boolean = false
+  /**
+   * Detect OpenCL support by checking for the libOpenCL.so system library
+   * and /dev/mali0 (Mali GPU) or /sys/class/opencl presence.
+   */
+  private fun hasOpenCLDevice(): Boolean {
+    return try {
+      // Check for the shared library
+      System.loadLibrary("OpenCL")
+      // Also verify /dev/mali0 exists for Mali GPUs (common on Exynos/MediaTek)
+      if (File("/dev/mali0").exists()) return true
+      // Check sysfs for OpenCL presence
+      if (File("/sys/class/opencl").exists()) return true
+      // On Snapdragon, check for Adreno OpenCL
+      if (File("/system/vendor/lib/libOpenCL.so").exists() ||
+          File("/vendor/lib/libOpenCL.so").exists()) return true
+      false
+    } catch (_: UnsatisfiedLinkError) {
+      // Try alternate detection: check known OpenCL library paths
+      try {
+        System.loadLibrary("libOpenCL")
+        true
+      } catch (_: UnsatisfiedLinkError) {
+        false
+      }
+    }
+  }
 }

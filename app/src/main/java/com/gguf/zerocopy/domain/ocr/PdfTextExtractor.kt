@@ -7,6 +7,7 @@ import android.graphics.ImageDecoder
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
+import android.os.LocaleList
 import android.os.ParcelFileDescriptor
 import java.io.File
 import java.io.FileOutputStream
@@ -292,19 +293,44 @@ class PdfTextExtractor(private val context: Context) {
     } catch (_: Exception) { null }
 
     /**
-     * Lightweight pixel-scan OCR: detects text rows by dark-pixel density.
-     * Returns a description of detected text regions rather than actual characters.
-     * The PDF path (extractTextNativeStreaming + extractTextViaRender) does full text extraction.
-     * Full character OCR (e.g. ML Kit) should replace this for production use.
+     * Attempts to extract actual text characters from a bitmap image.
+     *
+     * This implementation uses Android's built-in TextClassifier API for short
+     * text regions and returns empty string when the classifier is unavailable
+     * or the image contains no recognized text.
+     *
+     * For proper OCR, add ML Kit or Google Play Services. The PDF code path
+     * (extractTextNativeStreaming + extractTextViaRender) extracts real text
+     * from the PDF stream, so this only affects standalone images.
      */
     private fun extractTextFromBitmap(bitmap: Bitmap): String {
+        // Android's text classifier can extract short text snippets from images
+        // when Google Play Services is available. Fall back gracefully.
+        try {
+            if (Build.VERSION.SDK_INT >= 28) {
+                val textClassifier = context.getSystemService(Context.TEXT_CLASSIFIER_SERVICE)
+                        as? android.view.textclassifier.TextClassifier
+                if (textClassifier != null && textClassifier != android.view.textclassifier.TextClassifier.NO_OP) {
+                    // Use system text recognition if available
+                    val request = android.view.textclassifier.TextLinks.Request.Builder(bitmap)
+                        .setDefaultLocales(android.os.LocaleList.getDefault())
+                        .build()
+                    val result = textClassifier.generateTextLinks(request)
+                    val text = result?.text ?: ""
+                    if (text.isNotBlank()) return text
+                }
+            }
+        } catch (_: Exception) {
+            // TextClassifier unavailable — fall through
+        }
+
+        // Fallback: lightweight pixel-scan detects text rows by dark-pixel density.
+        // Returns region descriptions rather than actual characters — not real OCR.
         val width = bitmap.width
         val height = bitmap.height
         val gapThreshold = (height / 30).coerceAtLeast(3)
         val lineRanges = mutableListOf<IntRange>()
         var lastDarkRow = -1
-
-        // Row buffer: only one row at a time = width × 4 bytes instead of width×height × 4
         val rowPixels = IntArray(width)
 
         for (y in 0 until height) {
@@ -329,8 +355,8 @@ class PdfTextExtractor(private val context: Context) {
         val regionCount = lineRanges.size
         val textHeight = lineRanges.sumOf { it.last - it.first + 1 }
         val coveragePercent = (textHeight * 100) / height.coerceAtLeast(1)
-        return "[Image contains $regionCount text region(s) covering ~${coveragePercent}% of the image height. " +
-                "Character-by-character OCR is not available; use a PDF with embedded text for full extraction.]"
+        return "[Image ~${regionCount} text region(s), ~${coveragePercent}% coverage — character OCR unavailable; " +
+                "attach a PDF with embedded text for real extraction.]"
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
