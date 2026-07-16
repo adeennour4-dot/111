@@ -85,8 +85,10 @@ object ToolAwareInference {
                 override fun onToken(token: String) {
                     if (isAborted()) { roundDone.signalDone(); return }
                     roundOutput.append(token)
-                    // Forward tokens to the outer callback only on the final round
-                    if (totalRounds == 0) callback.onToken(token)
+                    // Buffer all tokens during the tool-calling loop.
+                    // Final output is forwarded as one chunk after the loop
+                    // completes, so the UI never sees intermediate tool-call
+                    // markup or partial results.
                 }
                 override fun onDone() {}
                 override fun onError(error: String) { roundDone.signalError(error) }
