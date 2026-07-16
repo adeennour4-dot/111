@@ -662,7 +662,7 @@ private fun InlineField(
         if (clean != v) return@OutlinedTextField
         onChange(v)
       },
-      modifier = Modifier.width(80.dp).height(36.dp),
+      modifier = Modifier.width(80.dp).heightIn(min = 36.dp),
       singleLine = true,
       keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
       keyboardActions = KeyboardActions(
@@ -671,10 +671,10 @@ private fun InlineField(
       shape = RoundedCornerShape(6.dp),
       colors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
-        focusedTextColor = colors.Accent, unfocusedTextColor = colors.Text,
+        focusedTextColor = colors.Text, unfocusedTextColor = colors.Text,
         cursorColor = colors.Accent
       ),
-      textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold, color = colors.Accent)
+      textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace)
     )
   }
 }

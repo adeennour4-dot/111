@@ -454,12 +454,13 @@ private fun SamplingField(
                 if (clean != v) return@OutlinedTextField
                 onValue(v)
             },
-            modifier = Modifier.fillMaxWidth().height(44.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
             singleLine = true,
             textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
             placeholder = { Text(hint, fontSize = 10.sp, color = colors.Text3) },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
+                focusedTextColor = colors.Text, unfocusedTextColor = colors.Text,
                 cursorColor = colors.Accent
             ),
             shape = RoundedCornerShape(8.dp)
