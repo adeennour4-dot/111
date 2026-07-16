@@ -68,8 +68,8 @@
     <!-- Outer cube (20×20, r=4, 35% purple) -->
     <path android:fillColor="#337C5CFF"
         android:pathData="M24,70 A4,4 0,0,1 28,66 L40,66 A4,4 0,0,1 44,70 L44,82 A4,4 0,0,1 40,86 L28,86 A4,4 0,0,1 24,82 Z"/>
-    <!-- Purple circle (r=6) -->
+    <!-- Purple circle (r=7 — same diameter as cyan square) -->
     <path android:fillColor="#7C5CFF"
-        android:pathData="M34,76 m-6,0 a6,6 0,1 1,12 0 a6,6 0,1 1,-12 0"/>
+        android:pathData="M34,76 m-7,0 a7,7 0,1 1,14 0 a7,7 0,1 1,-14 0"/>
 
 </vector>
