@@ -662,7 +662,7 @@ private fun InlineField(
         if (clean != v) return@OutlinedTextField
         onChange(v)
       },
-      modifier = Modifier.width(80.dp).heightIn(min = 36.dp),
+      modifier = Modifier.width(90.dp),
       singleLine = true,
       keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
       keyboardActions = KeyboardActions(
@@ -674,7 +674,7 @@ private fun InlineField(
         focusedTextColor = colors.Text, unfocusedTextColor = colors.Text,
         cursorColor = colors.Accent
       ),
-      textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+      textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = colors.Text)
     )
   }
 }
