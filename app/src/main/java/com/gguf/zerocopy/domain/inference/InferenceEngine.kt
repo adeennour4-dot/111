@@ -42,6 +42,26 @@ data class ModelInfo(
   val hasSTTCapability: Boolean get() = true
 
   val hasTTSCapability: Boolean get() = true
+
+  val hasToolCallingCapability: Boolean
+    get() {
+      // Tool calling requires a model that can emit structured JSON/tool-call
+      // syntax.  Small/base models (<3B params) almost never support this.
+      // Heuristic: models with >=3B params and recent architecture.
+      val nParams = modelInfo?.nParams ?: return false
+      if (nParams < 3_000_000_000) return false
+      val path = loadedModelPath?.lowercase() ?: return false
+      // Known tool-calling capable families
+      if (path.contains("command-r") || path.contains("c4ai")) return true
+      if (path.contains("llama-3") || path.contains("llama3")) return true
+      if (path.contains("qwen-2") || path.contains("qwen2")) return true
+      if (path.contains("mistral") || path.contains("mixtral")) return true
+      if (path.contains("phi-4") || path.contains("phi4")) return true
+      if (path.contains("gemma-2") || path.contains("gemma2")) return true
+      if (path.contains("deepseek") || path.contains("hermes")) return true
+      // Default: assume capable if >=5B params, conservative for <5B
+      return nParams >= 5_000_000_000
+    }
 }
 
 interface TokenCallback {

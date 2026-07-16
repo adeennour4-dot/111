@@ -127,6 +127,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.litertlm.android)
+    implementation(libs.mlkit.text.recognition)
 
     debugImplementation(libs.compose.ui.tooling)
 

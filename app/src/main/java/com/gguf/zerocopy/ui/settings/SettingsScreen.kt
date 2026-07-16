@@ -136,6 +136,19 @@ fun SettingsScreen(onBack: () -> Unit) {
   var ragMaxChunksText by remember { mutableStateOf(SettingsManager.ragMaxChunks.toString()) }
   var ragMaxCharsText by remember { mutableStateOf(SettingsManager.ragMaxChars.toString()) }
   var ragMinScoreText by remember { mutableStateOf(SettingsManager.ragMinScore.toString()) }
+  // ── Memory pressure (polled from RustCore) ──
+  var memUnderPressure by remember { mutableStateOf(false) }
+  var memPressurePct by remember { mutableStateOf(0.0) }
+  var memAvailableMb by remember { mutableStateOf(0L) }
+  LaunchedEffect(Unit) {
+    while (isActive) {
+      val advice = com.gguf.zerocopy.domain.inference.RustCore.getMemoryAdvice()
+      memUnderPressure = advice.underPressure
+      memPressurePct = advice.pressurePercent
+      memAvailableMb = advice.availableMb
+      kotlinx.coroutines.delay(10_000)
+    }
+  }
 
   val mmprojPicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
     if (result.resultCode == Activity.RESULT_OK) {
@@ -296,6 +309,17 @@ fun SettingsScreen(onBack: () -> Unit) {
           Spacer(Modifier.height(4.dp))
           ToggleRow("Low RAM Mode", "Reduce memory usage", lowRam, { lowRam = it }, colors)
           ToggleRow("Flash Attention", "ARMv8.2+ (SD 888+)", flashAttn, { flashAttn = it }, colors)
+          // ── Memory pressure indicator ──
+          if (memUnderPressure || memPressurePct > 50.0) {
+            Spacer(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+              Icon(Icons.Filled.Warning, null, tint = colors.Amber, modifier = Modifier.size(12.dp))
+              Spacer(Modifier.width(4.dp))
+              Text("Memory pressure ${"%.0f".format(memPressurePct)}%" +
+                if (memAvailableMb > 0) " (${memAvailableMb}MB free)" else "",
+                fontSize = 9.sp, color = colors.Amber, fontFamily = FontFamily.Monospace)
+            }
+          }
         }
       }
 

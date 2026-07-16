@@ -225,8 +225,6 @@ class ModelServer(val port: Int = 8080) {
     val ip = client.inetAddress?.hostAddress ?: "unknown"
     val startTime = System.currentTimeMillis()
     activeClients[ip] = startTime
-    auditIp.set(ip)
-    auditStart.set(startTime)
 
     // Enforce wifi-only setting: drop non-loopback connections when on cellular/none
     val wifiOnly = com.gguf.zerocopy.data.local.SettingsManager.serverWifiOnly
@@ -249,8 +247,6 @@ class ModelServer(val port: Int = 8080) {
         val method = parts[0]
         val rawPath = parts[1]
         val path = URLDecoder.decode(rawPath.split("?").first(), "UTF-8")
-        auditMethod.set(method)
-        auditPath.set(path)
         val headers = mutableMapOf<String, String>()
         var line = reader.readLine()
         while (line != null && line.isNotEmpty()) {
@@ -274,48 +270,30 @@ class ModelServer(val port: Int = 8080) {
 
         val out = socket.getOutputStream()
 
-        if (method == "OPTIONS") {
-          respond(out, 204, "")
-          return
+        val status = when {
+          method == "OPTIONS" -> { respond(out, 204, ""); 204 }
+          isBanned(ip) -> { respond(out, 429, """{"error":"rate_limit_exceeded","message":"Too many requests"}"""); 429 }
+          path.startsWith("/v1/") && !checkAuth(headers) -> {
+            recordAuthFail(ip)
+            respond(out, 401, """{"error":"authentication_error","message":"Invalid API key. Use Authorization: Bearer <token>","type":"invalid_request_error"}""")
+            401
+          }
+          path.startsWith("/v1/") && !checkRateLimit(ip) -> {
+            respond(out, 429, """{"error":"rate_limit_exceeded","message":"Rate limit exceeded. Try again later.","type":"rate_limit_error"}""")
+            429
+          }
+          path == "/" || path == "" -> handleIndex(out)
+          path == "/health" -> handleHealth(out)
+          path == "/v1/models" -> handleModels(out)
+          path == "/v1/chat/completions" && method == "POST" -> handleChatCompletions(out, body, ip)
+          path.startsWith("/v1/") -> { respond(out, 404, """{"error":"not_found","message":"Endpoint not found","type":"invalid_request_error"}"""); 404 }
+          else -> { respond(out, 404, """{"error":"not_found","message":"Not found"}"""); 404 }
         }
-
-        if (isBanned(ip)) {
-          respond(out, 429, """{"error":"rate_limit_exceeded","message":"Too many requests"}""")
-          emitAudit(ip, method, path, 429, startTime)
-          return
-        }
-
-        if (path.startsWith("/v1/") && !checkAuth(headers)) {
-          recordAuthFail(ip)
-          respond(out, 401, """{"error":"authentication_error","message":"Invalid API key. Use Authorization: Bearer <token>","type":"invalid_request_error"}""")
-          emitAudit(ip, method, path, 401, startTime)
-          return
-        }
-
-        if (path.startsWith("/v1/") && !checkRateLimit(ip)) {
-          respond(out, 429, """{"error":"rate_limit_exceeded","message":"Rate limit exceeded. Try again later.","type":"rate_limit_error"}""")
-          emitAudit(ip, method, path, 429, startTime)
-          return
-        }
-
-when {
-  path == "/" || path == "" -> handleIndex(out)
-  path == "/health" -> handleHealth(out)
-  path == "/v1/models" -> handleModels(out)
-  path == "/v1/chat/completions" && method == "POST" -> handleChatCompletions(out, body, ip)
-  path.startsWith("/v1/") -> respond(out, 404, """{"error":"not_found","message":"Endpoint not found","type":"invalid_request_error"}""")
-  else -> respond(out, 404, """{"error":"not_found","message":"Not found"}""")
-}
-        // emitAudit is now called inside respond() with the actual status code
+        emitAudit(ip, method, path, status, startTime)
       }
     } catch (e: Exception) {
       Log.w(tag, "Client error from $ip: ${e.message}")
       emitAudit(ip, "ERR", "error", 500, startTime)
-    } finally {
-      auditIp.remove()
-      auditMethod.remove()
-      auditPath.remove()
-      auditStart.remove()
     }
   }
 
@@ -326,7 +304,7 @@ when {
     }
   }
 
-  private fun handleIndex(out: OutputStream) {
+  private fun handleIndex(out: OutputStream): Int {
     val app = ZeroCopyApp.instance
     val engine = app.engineManager.getActiveEngine()
     val loaded = engine?.isModelLoaded == true
@@ -649,32 +627,33 @@ async function send(){
 </script>
 </body>
 </html>"""
-    respond(out, 200, html, "text/html; charset=utf-8")
+    respond(out, 200, html, "text/html; charset=utf-8"); return 200
   }
 
-  private fun handleHealth(out: OutputStream) {
+  private fun handleHealth(out: OutputStream): Int {
     val app = ZeroCopyApp.instance
     val engine = app.engineManager.getActiveEngine()
     respond(out, 200, """{"status":"ok","model_loaded":${engine?.isModelLoaded == true},"version":"1.3"}""")
+    return 200
   }
 
-  private fun handleModels(out: OutputStream) {
+  private fun handleModels(out: OutputStream): Int {
     val app = ZeroCopyApp.instance
     val models = app.modelRepository.models.value
     val engine = app.engineManager.getActiveEngine()
     val jsonModels = models.joinToString(",") { m ->
       """{"id":"${m.id}","object":"model","name":"${m.name}","format":"${m.format}","engine":"${m.engine.id}","size":"${m.sizeFormatted}","loaded":${engine?.loadedModelPath == m.path}}"""
     }
-    respond(out, 200, """{"object":"list","data":[$jsonModels]}""")
+    respond(out, 200, """{"object":"list","data":[$jsonModels]}"""); return 200
   }
 
-  private fun handleChatCompletions(out: OutputStream, body: String, ip: String) {
+  private fun handleChatCompletions(out: OutputStream, body: String, ip: String): Int {
     try {
       val app = ZeroCopyApp.instance
       val engine = app.engineManager.getActiveEngine()
       if (engine?.isModelLoaded != true) {
         respond(out, 503, """{"error":"model_unavailable","message":"No model loaded","type":"server_error"}""")
-        return
+        return 503
       }
       val json = org.json.JSONObject(body)
       val messages = json.optJSONArray("messages")
@@ -685,7 +664,7 @@ async function send(){
       }
       if (prompt.isNullOrBlank()) {
         respond(out, 400, """{"error":"invalid_request","message":"messages or prompt is required","type":"invalid_request_error"}""")
-        return
+        return 400
       }
       val stream = json.optBoolean("stream", false)
 
@@ -694,11 +673,14 @@ async function send(){
 
       if (stream) {
         streamResponse(out, inferenceId, modelName, engine, prompt, ip)
+        return 200
       } else {
         syncResponse(out, inferenceId, modelName, engine, prompt)
+        return 200
       }
     } catch (e: Exception) {
       respond(out, 500, """{"error":"server_error","message":"${e.message?.replace("\"","'") ?: "Internal error"}","type":"internal_error"}""")
+      return 500
     }
   }
 
@@ -872,12 +854,6 @@ async function send(){
     return "\"$escaped\""
   }
 
-  // Track the current client IP/method/path for emitAudit — set at start of handleClient
-  private val auditIp = ThreadLocal<String>()
-  private val auditMethod = ThreadLocal<String>()
-  private val auditPath = ThreadLocal<String>()
-  private val auditStart = ThreadLocal<Long>()
-
   private fun respond(out: OutputStream, code: Int, body: String, contentType: String = "application/json") {
     val status = when (code) {
       200 -> "OK"; 204 -> "No Content"; 400 -> "Bad Request"; 401 -> "Unauthorized"
@@ -894,11 +870,6 @@ async function send(){
       "\r\n" +
       body
     try { out.write(response.toByteArray()); out.flush() } catch (_: Exception) {}
-    // Emit audit with the ACTUAL status code, not hardcoded 200
-    val ip = auditIp.get()
-    if (ip != null) {
-      emitAudit(ip, auditMethod.get() ?: "", auditPath.get() ?: "", code, auditStart.get() ?: System.currentTimeMillis())
-    }
   }
 
   private class TokenBucket(val capacity: Int, val refillPerSec: Int) {

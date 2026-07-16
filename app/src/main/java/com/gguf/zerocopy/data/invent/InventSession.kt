@@ -333,22 +333,39 @@ object InventStorage {
             .take(2)
     }
 
+    /**
+     * Resolve [filePath] relative to [projectDir], throwing [SecurityException]
+     * if the result escapes the project directory (path traversal prevention).
+     * Also rejects null bytes and absolute paths in [filePath].
+     */
+    private fun resolveSafe(projectDir: File, filePath: String): File {
+        require(filePath.indexOf('\u0000') < 0) { "Null byte in file path" }
+        require(!File(filePath).isAbsolute) { "Absolute path not allowed: $filePath" }
+        val canonicalRoot = projectDir.canonicalFile
+        val target = File(projectDir, filePath).canonicalFile
+        val rootPath = if (canonicalRoot.path.endsWith(File.separator)) canonicalRoot.path else canonicalRoot.path + File.separator
+        if (!target.path.startsWith(rootPath) && target != canonicalRoot) {
+            throw SecurityException("Path traversal attempt: $filePath")
+        }
+        return target
+    }
+
     // ── Project directory helpers ─────────────────────────────────────────────
 
     fun getProjectDir(ctx: Context, sessionId: String, projectName: String): File {
-        val dir = File(ctx.filesDir, "invent_projects/${projectName.ifEmpty { sessionId }}")
+        val dir = resolveSafe(ctx.filesDir, "invent_projects/${projectName.ifEmpty { sessionId }}")
         dir.mkdirs()
         return dir
     }
 
     fun writeGeneratedFile(projectDir: File, filePath: String, content: String) {
-        val f = File(projectDir, filePath)
+        val f = resolveSafe(projectDir, filePath)
         f.parentFile?.mkdirs()
         f.writeText(content)
     }
 
     fun readGeneratedFile(projectDir: File, filePath: String): String? {
-        val f = File(projectDir, filePath)
+        val f = resolveSafe(projectDir, filePath)
         return if (f.exists()) f.readText() else null
     }
 

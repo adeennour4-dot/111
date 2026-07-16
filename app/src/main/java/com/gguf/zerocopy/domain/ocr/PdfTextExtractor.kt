@@ -8,9 +8,13 @@ import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
+import java.util.concurrent.TimeUnit
 
 /**
  * Extracts text from PDFs and images on-device.
@@ -292,51 +296,21 @@ class PdfTextExtractor(private val context: Context) {
     } catch (_: Exception) { null }
 
     /**
-     * Detects text regions in a bitmap image.
-     *
-     * Android's built-in APIs don't include bitmap OCR — that requires ML Kit
-     * or Tesseract (both need additional dependencies). This function uses a
-     * lightweight pixel-density scan to identify where text regions exist.
-     *
-     * The PDF code path (extractTextNativeStreaming + extractTextViaRender)
-     * extracts real text from the PDF stream, so this only affects standalone
-     * images attached in chat.
+     * Extracts text from a bitmap using ML Kit on-device text recognition.
+     * Returns an empty string on timeout or failure.
      */
     private fun extractTextFromBitmap(bitmap: Bitmap): String {
-        // Lightweight pixel-scan detects text rows by dark-pixel density.
-        // This is NOT real OCR — it identifies text regions without reading them.
-        // For actual character extraction, integrate ML Kit Text Recognition.
-        val width = bitmap.width
-        val height = bitmap.height
-        val gapThreshold = (height / 30).coerceAtLeast(3)
-        val lineRanges = mutableListOf<IntRange>()
-        var lastDarkRow = -1
-        val rowPixels = IntArray(width)
-
-        for (y in 0 until height) {
-            bitmap.getPixels(rowPixels, 0, width, 0, y, width, 1)
-            var darkCount = 0
-            for (x in 0 until width) {
-                val p = rowPixels[x]
-                if (((p shr 16 and 0xFF) + (p shr 8 and 0xFF) + (p and 0xFF)) / 3 < 180) darkCount++
-            }
-            val isTextRow = darkCount > width * 0.02
-            if (isTextRow) {
-                if (lastDarkRow < 0 || y - lastDarkRow > gapThreshold) {
-                    lineRanges.add(y..y)
-                } else {
-                    lineRanges[lineRanges.lastIndex] = lineRanges.last().first..y
-                }
-                lastDarkRow = y
-            }
+        return try {
+            val image = InputImage.fromBitmap(bitmap, 0)
+            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            val result = com.google.android.gms.tasks.Tasks.await(
+                recognizer.process(image), 30, TimeUnit.SECONDS
+            )
+            result.text.trim()
+        } catch (e: Exception) {
+            android.util.Log.w("PdfTextExtractor", "OCR failed: ${e.message}")
+            ""
         }
-
-        if (lineRanges.isEmpty()) return ""
-        val regionCount = lineRanges.size
-        val textHeight = lineRanges.sumOf { it.last - it.first + 1 }
-        val coveragePercent = (textHeight * 100) / height.coerceAtLeast(1)
-        return "[Image ~${regionCount} text region(s), ~${coveragePercent}% coverage — character OCR unavailable; " +
-                "attach a PDF with embedded text for real extraction.]"
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

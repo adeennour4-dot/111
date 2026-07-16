@@ -149,7 +149,8 @@ class LiteRtEngine : InferenceEngine {
           },
           callback = callback,
           isAborted = { inferenceAborted.get() },
-          searchQuery = searchQuery
+          searchQuery = searchQuery,
+          supportsToolCalling = hasToolCallingCapability
         )
         inferenceDone.set(true)
         return@withContext

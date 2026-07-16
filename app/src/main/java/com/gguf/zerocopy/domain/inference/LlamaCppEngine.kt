@@ -109,7 +109,8 @@ class LlamaCppEngine : InferenceEngine {
       },
       callback = callback,
       isAborted = { inferenceAborted.get() },
-      searchQuery = searchQuery
+      searchQuery = searchQuery,
+      supportsToolCalling = hasToolCallingCapability
     )
   }
 
