@@ -611,6 +611,7 @@ private fun InlineField(
   onChange: (String) -> Unit, focusManager: androidx.compose.ui.focus.FocusManager
 ) {
   val colors = currentPalette()
+
   Row(
     modifier = Modifier.fillMaxWidth().heightIn(min = 32.dp),
     verticalAlignment = Alignment.CenterVertically
@@ -621,11 +622,24 @@ private fun InlineField(
     }
     Spacer(Modifier.width(8.dp))
     OutlinedTextField(
-      value = value, onValueChange = onChange,
+      value = value, onValueChange = { v ->
+        // Only accept valid decimal input: optional leading "-", digits, and
+        // at most one ".".  Reject bare separators so the field never shows
+        // just "." or "-" without digits.
+        if (v.isEmpty()) return@OutlinedTextField
+        if (v == "." || v == "-" || v == "-.") return@OutlinedTextField
+        if (v.count { it == '.' } > 1) return@OutlinedTextField
+        // Reject non-digit chars (allow digits, '.', and leading '-')
+        val clean = v.filterIndexed { i, c -> c.isDigit() || c == '.' || (c == '-' && i == 0) }
+        if (clean != v) return@OutlinedTextField
+        onChange(v)
+      },
       modifier = Modifier.width(80.dp).height(36.dp),
       singleLine = true,
       keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
-      keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+      keyboardActions = KeyboardActions(
+        onDone = { focusManager.clearFocus() }
+      ),
       shape = RoundedCornerShape(6.dp),
       colors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
@@ -636,6 +650,8 @@ private fun InlineField(
     )
   }
 }
+
+
 
 @Composable
 private fun ToggleRow(

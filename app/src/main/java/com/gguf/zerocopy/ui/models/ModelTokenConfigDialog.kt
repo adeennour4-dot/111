@@ -444,7 +444,16 @@ private fun SamplingField(
         Text(label, fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
         OutlinedTextField(
             value = value,
-            onValueChange = onValue,
+            onValueChange = { v ->
+                // Reject bare "." / "-" / "-." and non-numeric input
+                // so the field never shows just a decimal separator.
+                if (v.isEmpty()) return@OutlinedTextField
+                if (v == "." || v == "-" || v == "-.") return@OutlinedTextField
+                if (v.count { it == '.' } > 1) return@OutlinedTextField
+                val clean = v.filterIndexed { i, c -> c.isDigit() || c == '.' || (c == '-' && i == 0) }
+                if (clean != v) return@OutlinedTextField
+                onValue(v)
+            },
             modifier = Modifier.fillMaxWidth().height(44.dp),
             singleLine = true,
             textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
