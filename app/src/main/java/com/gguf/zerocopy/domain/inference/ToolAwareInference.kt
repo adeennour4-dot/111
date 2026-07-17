@@ -140,9 +140,11 @@ object ToolAwareInference {
         }
 
         // ── Forward final output ──
-        // If there was a tool-calling loop, the tokens were NOT forwarded in
-        // earlier rounds.  Now push the complete final text.
-        if (totalRounds > 0) {
+        // When totalRounds == 0 the model answered directly (no tool call), so
+        // the buffered tokens must be forwarded.  When totalRounds > 0 a tool
+        // was called and only the final round's complete text is pushed.
+        // In either case, never silently drop the model's output.
+        if (finalText.isNotEmpty()) {
             callback.onToken(finalText)
         }
         callback.onDone()

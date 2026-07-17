@@ -422,11 +422,15 @@ fun ModelListScreen(
         val isGguf = model.format.equals("gguf", ignoreCase = true)
         val fileSizeMB = if (model.sizeBytes > 0) model.sizeBytes / (1024f * 1024f) else 100f
         val isFreshImport = pendingImport
+        val modelCtxLen = if (isGguf) {
+          com.gguf.zerocopy.domain.invent.GgufMetaReader.readContextLength(model.path) ?: 32768
+        } else 32768
         ModelTokenConfigDialog(
           modelName = model.name,
           modelFileSizeMB = fileSizeMB,
           totalRamMB = deviceInfo.totalRamMB.toInt(),
           isGguf = isGguf,
+          modelContextLength = modelCtxLen,
           initial = curCfg ?: SettingsManager.ModelTokenConfig(
             ctx = 1024, maxNew = 1024, gpuLayers = 0
           ),

@@ -36,15 +36,20 @@ fun ModelTokenConfigDialog(
     ),
     onSave: (SettingsManager.ModelTokenConfig) -> Unit,
     onDismiss: () -> Unit,
-    onRemove: (() -> Unit)? = null
+    onRemove: (() -> Unit)? = null,
+    /** Maximum context the loaded model supports (from GGUF metadata).
+     *  Slider is capped to this value instead of 32768. */
+    modelContextLength: Int = 32768
 ) {
     val colors = currentPalette()
 
     // ── GPU layers enable (GGUF-specific) ──
     var enableGpu by remember { mutableStateOf(isGguf) }
 
+    val ctxMax = modelContextLength.coerceIn(512, 32768)
+
     // ── Slider / text values ──
-    var ctxSlider by remember { mutableIntStateOf(initial.ctx.coerceIn(512, 32768)) }
+    var ctxSlider by remember { mutableIntStateOf(initial.ctx.coerceIn(512, ctxMax)) }
     var maxNewSlider by remember { mutableIntStateOf(initial.maxNew.coerceIn(64, 32768)) }
     var gpuSlider by remember { mutableIntStateOf(initial.gpuLayers.coerceIn(0, 99)) }
     var tempText by remember { mutableStateOf((initial.temperature ?: SettingsManager.temperature).toString()) }
@@ -82,7 +87,7 @@ fun ModelTokenConfigDialog(
             (maxAllowed / (modelFileSizeMB * 0.000046f)).roundToInt() else 32768
         if (ctxSlider + maxNewSlider > maxTotalTokens) {
             val ratio = ctxSlider.toFloat() / (ctxSlider + maxNewSlider).toFloat()
-            ctxSlider = ((maxTotalTokens * ratio).roundToInt()).coerceIn(512, 32768)
+            ctxSlider = ((maxTotalTokens * ratio).roundToInt()).coerceIn(512, ctxMax)
             maxNewSlider = (maxTotalTokens - ctxSlider).coerceIn(64, 32768)
         }
     }
@@ -151,6 +156,7 @@ fun ModelTokenConfigDialog(
                 Column {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Context window", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+                        Text("max ${ctxMax}", fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
                         // Editable number alongside the slider value.
                         // Track raw text so the user can clear and re-type without
                         // the field snapping back to the previous value.
@@ -172,7 +178,7 @@ fun ModelTokenConfigDialog(
                                 val n = v.filter { it.isDigit() || it == '-' }.toIntOrNull()
                                 // Only update slider when the typed value is a valid
                                 // number within range — don't clamp mid-typing.
-                                if (n != null && n >= 512 && n <= 32768) {
+                                if (n != null && n >= 512 && n <= ctxMax) {
                                     ctxSlider = n
                                 }
                             },
@@ -195,8 +201,8 @@ fun ModelTokenConfigDialog(
                     }
                     Slider(
                         value = ctxSlider.toFloat(),
-                        onValueChange = { v -> ctxSlider = v.roundToInt().coerceIn(512, 32768) },
-                        valueRange = 512f..32768f,
+                        onValueChange = { v -> ctxSlider = v.roundToInt().coerceIn(512, ctxMax) },
+                        valueRange = 512f..ctxMax.toFloat(),
                         colors = SliderDefaults.colors(thumbColor = colors.Accent, activeTrackColor = colors.Accent, inactiveTrackColor = colors.Border),
                         modifier = Modifier.fillMaxWidth()
                     )

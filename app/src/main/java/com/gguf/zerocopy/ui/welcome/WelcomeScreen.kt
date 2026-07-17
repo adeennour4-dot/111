@@ -2,8 +2,7 @@ package com.gguf.zerocopy.ui.welcome
 
 import android.Manifest
 import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -91,12 +90,6 @@ fun WelcomeScreen(
         delay(300)
         actionsAlpha.animateTo(1f, tween(500, easing = FastOutSlowInEasing))
     }
-
-    // ── RECORD_AUDIO permission ──
-    var micPermissionRequested by remember { mutableStateOf(false) }
-    val micPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { _ -> micPermissionRequested = true }
 
     // ── RAM check ──
     val deviceInfo = remember {
@@ -221,19 +214,12 @@ fun WelcomeScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Import model button
+                    // Browse models button — navigates to the Models tab where
+                    // the user can import a model.  The actual file-picker lives
+                    // in ModelListScreen; duplicating it here would be complex and
+                    // fragile, so this button honestly says what it does.
                     Button(
-                        onClick = {
-                            // Show RECORD_AUDIO rationale before the system prompt
-                            if (ContextCompat.checkSelfPermission(
-                                    context, Manifest.permission.RECORD_AUDIO
-                                ) != PackageManager.PERMISSION_GRANTED && !micPermissionRequested
-                            ) {
-                                micPermissionRequested = true
-                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                            }
-                            onImportModel()
-                        },
+                        onClick = { onImportModel() },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(52.dp),
@@ -247,7 +233,7 @@ fun WelcomeScreen(
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            "Import a Model",
+                            "Browse Models",
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
