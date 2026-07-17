@@ -5,13 +5,23 @@ import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-// Reads context_length from GGUF file header without loading the model
+// Reads metadata from GGUF file header without loading the model
 object GgufMetaReader {
 
     private const val GGUF_MAGIC = 0x46554747L // "GGUF"
 
     /**
      * Read context_length from GGUF metadata.
+     *
+     * GGUF keys are prefixed with the architecture name derived from
+     * `general.architecture` — e.g. a Llama model stores
+     * `"llama.context_length"`, a Qwen2 model stores
+     * `"qwen2.context_length"`, a Mamba model stores
+     * `"mamba.context_length"`, etc.  There is no generic `"llm.*"` key.
+     *
+     * This function first reads `general.architecture`, then builds the
+     * correct lookup key dynamically.
+     *
      * @return The context length, or null if not found / file unreadable / not a valid GGUF.
      *         Callers should use a sensible default (e.g., 2048) when null is returned.
      */
@@ -44,7 +54,10 @@ object GgufMetaReader {
                     return null
                 }
 
-                // Scan KV pairs for context_length
+                // ── Single pass: capture architecture and context_length ──
+                var architecture: String? = null
+                var contextLengthValue: Long? = null
+
                 for (i in 0 until kvCount) {
                     val keyLen = readU64(raf)
                     if (keyLen <= 0 || keyLen > 512) break
@@ -55,13 +68,34 @@ object GgufMetaReader {
                     val valueType = readU32(raf)
                     val value = readValue(raf, valueType, version)
 
-                    if (key == "llm.context_length" && value != null) {
-                        val ctx = (value as? Long)?.toInt()
-                        if (ctx != null && ctx > 0) return ctx
-                        android.util.Log.w("GgufMetaReader", "File $path: context_length=$ctx (ignored)")
+                    when {
+                        key == "general.architecture" && value is String -> {
+                            architecture = value
+                        }
+                        key.endsWith(".context_length") && value is Long -> {
+                            contextLengthValue = value
+                            // If architecture is already known, we can verify
+                            // the prefix match and return immediately.
+                            if (architecture != null &&
+                                key == "$architecture.context_length"
+                            ) {
+                                return value.toInt()
+                            }
+                        }
                     }
                 }
-                android.util.Log.d("GgufMetaReader", "File $path: no context_length found in ${kvCount}kv pairs")
+
+                // After the loop: if we found both arch and a context length
+                // (regardless of prefix ordering), use it.  There is exactly
+                // one .context_length key per file, so any match is correct.
+                if (architecture != null && contextLengthValue != null) {
+                    return contextLengthValue.toInt()
+                }
+
+                android.util.Log.d(
+                    "GgufMetaReader",
+                    "File $path: arch=$architecture ctx=$contextLengthValue (found nothing)"
+                )
                 null
             }
         } catch (e: Exception) {

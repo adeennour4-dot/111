@@ -596,19 +596,27 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_getModelInfoNative(
         JNIEnv* env, jobject) {
     if (!g_model) return env->NewStringUTF("{}");
-    char buf[256];
+    char arch[128] = "unknown";
+    char key[256];
+    char val[256];
     std::ostringstream j;
     j << "{";
-    if (llama_model_meta_val_str(g_model, "general.architecture", buf, sizeof(buf)) >= 0)
-        j << "\"arch\":\"" << buf << "\",";
-    else j << "\"arch\":\"unknown\",";
+    if (llama_model_meta_val_str(g_model, "general.architecture", arch, sizeof(arch)) >= 0) {
+        j << "\"arch\":\"" << arch << "\",";
+    } else {
+        j << "\"arch\":\"unknown\",";
+    }
     j << "\"n_params\":" << llama_model_n_params(g_model) << ",";
     j << "\"n_embd\":" << llama_model_n_embd(g_model) << ",";
-    if (llama_model_meta_val_str(g_model, "llm.block_count", buf, sizeof(buf)) >= 0)
-        j << "\"n_layer\":" << atoi(buf) << ",";
-    if (llama_model_meta_val_str(g_model, "llm.context_length", buf, sizeof(buf)) >= 0)
-        j << "\"ctx_train\":" << atoi(buf) << ",";
-    if (llama_model_meta_val_str(g_model, "general.file_type", buf, sizeof(buf)) >= 0) {
+    // GGUF metadata keys are prefixed with the architecture name, never
+    // a generic "llm.*" namespace.  Construct the correct key dynamically.
+    snprintf(key, sizeof(key), "%s.block_count", arch);
+    if (llama_model_meta_val_str(g_model, key, val, sizeof(val)) >= 0)
+        j << "\"n_layer\":" << atoi(val) << ",";
+    // Use llama.cpp's built-in resolver which handles per-architecture
+    // key lookup internally.
+    j << "\"ctx_train\":" << llama_model_n_ctx_train(g_model) << ",";
+    if (llama_model_meta_val_str(g_model, "general.file_type", val, sizeof(val)) >= 0) {
         const char* quant = "";
         int ft = atoi(buf);
         switch (ft) {
@@ -679,16 +687,35 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_exportChatHistoryNative(
     return env->NewStringUTF(out.str().c_str());
 }
 
+// ── Architecture helpers ────────────────────────────────────────────────
+
+/** Return true if the loaded model uses an attention-based architecture
+ *  (standard transformer with a real KV cache).  SSM/recurrent models like
+ *  Mamba carry a fixed-size state and have no meaningful KV-cache usage. */
+static bool is_attention_arch() {
+    if (!g_model) return true;  // conservative default
+    char arch[64] = {0};
+    if (llama_model_meta_val_str(g_model, "general.architecture", arch, sizeof(arch)) < 0)
+        return true;
+    // Known non-attention architectures in llama.cpp (b9581-ish)
+    return strcmp(arch, "mamba")    != 0
+        && strcmp(arch, "mamba2")   != 0;
+}
+
+/** Compute KV-cache usage as a percentage of n_ctx, or -1 for
+ *  non-attention architectures (Mamba etc.) where the concept doesn't apply. */
+static int kv_cache_usage_pct() {
+    if (!g_ctx) return 0;
+    if (!is_attention_arch()) return -1;
+    llama_pos max_pos = llama_memory_seq_pos_max(get_mem(), 0);
+    int used = (max_pos >= 0) ? (int)(max_pos + 1) : 0;
+    return (g_cfg.n_ctx > 0) ? (int)((used * 100LL) / g_cfg.n_ctx) : 0;
+}
+
 extern "C" JNIEXPORT jint JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_getKvCacheUsageNative(
         JNIEnv*, jobject) {
-    if (!g_ctx) return 0;
-    // Note: This returns an approximation based on max position.
-    // Actual KV cache usage may be lower due to gaps in the sequence.
-    llama_pos max_pos = llama_memory_seq_pos_max(get_mem(), 0);
-    int used = (max_pos >= 0) ? (int)(max_pos + 1) : 0;
-    int total = g_cfg.n_ctx;
-    return (total > 0) ? ((used * 100) / total) : 0;
+    return kv_cache_usage_pct();
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -936,11 +963,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
         return;
     }
 
-    {
-        llama_pos max_pos = llama_memory_seq_pos_max(get_mem(), 0);
-        int used = (max_pos >= 0) ? (int)(max_pos + 1) : 0;
-        call_callback_on_kv_cache((g_cfg.n_ctx > 0) ? (int)((used * 100LL) / g_cfg.n_ctx) : 0);
-    }
+    call_callback_on_kv_cache(kv_cache_usage_pct());
 
     pin_to_big_cores();
     std::string response;
@@ -985,9 +1008,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
         if (llama_decode(g_ctx, nb) != 0) break;
 
         if ((i & 0xF) == 0) {
-            llama_pos max_pos = llama_memory_seq_pos_max(get_mem(), 0);
-            int used = (max_pos >= 0) ? (int)(max_pos + 1) : 0;
-            call_callback_on_kv_cache((g_cfg.n_ctx > 0) ? (int)((used * 100LL) / g_cfg.n_ctx) : 0);
+            call_callback_on_kv_cache(kv_cache_usage_pct());
         }
     }
 
@@ -1234,11 +1255,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
         }
     }
 
-    {
-        llama_pos max_pos = llama_memory_seq_pos_max(get_mem(), 0);
-        int used = (max_pos >= 0) ? (int)(max_pos + 1) : 0;
-        call_callback_on_kv_cache((g_cfg.n_ctx > 0) ? (int)((used * 100LL) / g_cfg.n_ctx) : 0);
-    }
+    call_callback_on_kv_cache(kv_cache_usage_pct());
 
     g_current_image_path = "";
     pin_to_big_cores();
@@ -1284,9 +1301,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
         if (llama_decode(g_ctx, nb) != 0) break;
 
         if ((i & 0xF) == 0) {
-            llama_pos max_pos = llama_memory_seq_pos_max(get_mem(), 0);
-            int used = (max_pos >= 0) ? (int)(max_pos + 1) : 0;
-            call_callback_on_kv_cache((g_cfg.n_ctx > 0) ? (int)((used * 100LL) / g_cfg.n_ctx) : 0);
+            call_callback_on_kv_cache(kv_cache_usage_pct());
         }
     }
 
