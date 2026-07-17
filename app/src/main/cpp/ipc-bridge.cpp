@@ -618,14 +618,14 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_getModelInfoNative(
     j << "\"ctx_train\":" << llama_model_n_ctx_train(g_model) << ",";
     if (llama_model_meta_val_str(g_model, "general.file_type", val, sizeof(val)) >= 0) {
         const char* quant = "";
-        int ft = atoi(buf);
+        int ft = atoi(val);
         switch (ft) {
             case 1: quant = "Q4_0"; break; case 2: quant = "Q4_1"; break;
             case 3: quant = "Q5_0"; break; case 4: quant = "Q5_1"; break;
             case 6: quant = "Q4_K_M"; break; case 7: quant = "Q5_K_M"; break;
             case 8: quant = "Q6_K"; break; case 9: quant = "Q8_0"; break;
             case 10: quant = "F16"; break; case 11: quant = "F32"; break;
-            default: quant = buf; break;
+            default: quant = val; break;
         }
         j << "\"quantization\":\"" << quant << "\",";
     }
