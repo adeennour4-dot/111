@@ -123,13 +123,8 @@ class ToolManager {
             val args = obj.optJSONObject("arguments")
               ?: obj.optJSONObject("parameters")
               ?: obj.optJSONObject("args")
-              ?: inferArgsFromText(text, toolName)
             ToolCall("call_${System.currentTimeMillis()}", toolName, args)
           } catch (_: Exception) { null }
-        }
-        if (toolName == "web_search") {
-          val args = inferArgsFromText(text, toolName)
-          if (args.length() > 0) return ToolCall("call_${System.currentTimeMillis()}", toolName, args)
         }
       }
     }
@@ -175,23 +170,6 @@ class ToolManager {
       }
     }
     return null
-  }
-
-  private fun inferArgsFromText(text: String, toolName: String): JSONObject {
-    val args = JSONObject()
-    if (toolName == "web_search") {
-      val patterns = listOf(
-        Regex("""search(?:\s+for)?\s+"([^"]+)"""", RegexOption.IGNORE_CASE),
-        Regex("""search(?:\s+for)?\s+'([^']+)'""", RegexOption.IGNORE_CASE),
-        Regex("""(?:look(?:ing)?\s+up|find|search(?:\s+for)?)\s+([^.!?\n]{5,80})""", RegexOption.IGNORE_CASE)
-      )
-      for (p in patterns) {
-        val m = p.find(text) ?: continue
-        val q = m.groupValues[1].trim()
-        if (q.isNotEmpty()) { args.put("query", q); break }
-      }
-    }
-    return args
   }
 
   fun executeTool(call: ToolCall): ToolResult {
