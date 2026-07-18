@@ -3,6 +3,8 @@ package com.gguf.zerocopy.ui.invent
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -88,6 +90,7 @@ fun FilePanel(
             .width(280.dp)
             .fillMaxHeight(),
         color = colors.Bg,
+        shadowElevation = 2.dp,
         border = androidx.compose.foundation.BorderStroke(1.dp, colors.Border.copy(alpha = 0.3f))
     ) {
         Column(Modifier.fillMaxSize()) {
@@ -125,7 +128,16 @@ fun FilePanel(
             }
             HorizontalDivider(color = colors.Border.copy(alpha = 0.3f))
 
-            if (selectedNode != null && !selectedNode!!.isDir) {
+            // Animated swap between file tree and code viewer
+            AnimatedContent(
+                targetState = selectedNode?.let { if (!it.isDir) it.path else null },
+                transitionSpec = {
+                    fadeIn(tween(200)) + slideInVertically { it / 4 } togetherWith
+                    fadeOut(tween(150)) + slideOutVertically { -it / 4 }
+                },
+                label = "fileViewer"
+            ) { filePath ->
+                if (filePath != null) {
                 // ── Code viewer (file content) ──
                 Column(Modifier.weight(1f)) {
                     Row(
@@ -219,7 +231,7 @@ fun FilePanel(
                     contentPadding = PaddingValues(4.dp),
                     verticalArrangement = Arrangement.spacedBy(1.dp)
                 ) {
-                    items(visibleItems) { node ->
+                    items(visibleItems, key = { it.path }) { node ->
                         val isSelected = selectedNode?.path == node.path
                         Surface(
                             modifier = Modifier
@@ -275,6 +287,7 @@ fun FilePanel(
                         }
                     }
                 }
+            }
             }
         }
     }

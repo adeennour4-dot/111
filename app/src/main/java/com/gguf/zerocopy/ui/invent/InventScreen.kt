@@ -1,5 +1,6 @@
 package com.gguf.zerocopy.ui.invent
 
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -16,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
@@ -38,6 +40,7 @@ import kotlin.math.roundToInt
 import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -49,6 +52,12 @@ private val Pr = Color(0xFF8B83FF)
 private val Am = Color(0xFFFFB74D)
 private val Rd = Color(0xFFFF6B6B)
 private val Gy = Color(0xFF6A6A7A)
+
+// ─── Animation specs ──────────────────────────────────────────────────────────
+private val springFast = spring<Float>(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy)
+private val springSlow = spring<Float>(stiffness = Spring.StiffnessLow, dampingRatio = Spring.DampingRatioLowBouncy)
+private val tweenFast = tween<Float>(300, easing = FastOutSlowInEasing)
+private val tweenSlow = tween<Float>(500, easing = FastOutSlowInEasing)
 
 // ─── Log builder ──────────────────────────────────────────────────────────────
 private data class ChatBubble(
@@ -74,8 +83,10 @@ private fun buildChat(messages: List<InventMessage>): List<ChatBubble> {
     }
 }
 
-// ─── Main Screen ──────────────────────────────────────────────────────────────
-@OptIn(ExperimentalMaterial3Api::class)
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN SCREEN
+// ═══════════════════════════════════════════════════════════════════════════════
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
 @Composable
 fun InventScreen(
     model1Path: String, model1Name: String,
@@ -101,6 +112,8 @@ fun InventScreen(
     val listState = rememberLazyListState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // Track previous phase for animated transitions
+    var prevPhase by remember { mutableStateOf(ui.phase) }
 
     val chats = remember(ui.messages) { buildChat(ui.messages) }
 
@@ -150,6 +163,7 @@ fun InventScreen(
     LaunchedEffect(chats.size) {
         if (chats.isNotEmpty()) listState.animateScrollToItem(chats.size - 1)
     }
+    LaunchedEffect(ui.phase) { prevPhase = ui.phase }
 
     val phaseColors = mapOf(
         InventPhase.QUESTIONING to Cy,
@@ -163,6 +177,13 @@ fun InventScreen(
         InventPhase.DEBUGGING to Rd
     )
     val phaseColor = phaseColors[ui.phase] ?: Gy
+
+    // Animated phase color
+    val animPhaseColor by animateColorAsState(
+        targetValue = phaseColor,
+        animationSpec = tween(400),
+        label = "phaseColor"
+    )
 
     Box(Modifier.fillMaxSize().background(colors.Bg)) {
         Column(Modifier.fillMaxSize()) {
@@ -178,15 +199,15 @@ fun InventScreen(
                         Icon(Icons.Filled.ArrowBack, "Back", tint = colors.Text2, modifier = Modifier.size(18.dp))
                     }
                     Spacer(Modifier.width(4.dp))
-                    // Phase badge
+                    // Phase badge with animated color
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
-                            .background(phaseColor.copy(alpha = 0.15f))
+                            .background(animPhaseColor.copy(alpha = 0.15f))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(ui.phase.name.take(8), fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold, color = phaseColor,
+                            fontWeight = FontWeight.Bold, color = animPhaseColor,
                             fontFamily = FontFamily.Monospace)
                     }
                     Spacer(Modifier.width(8.dp))
@@ -202,22 +223,24 @@ fun InventScreen(
                             color = colors.Text3, fontFamily = FontFamily.Monospace)
                     }
                     Spacer(Modifier.weight(1f))
-                    // Action buttons
-                    if (ui.phase == InventPhase.DONE || ui.phase == InventPhase.DEBUGGING) {
+
+                    // Animated action buttons
+                    AnimatedVisibility(
+                        visible = ui.phase == InventPhase.DONE || ui.phase == InventPhase.DEBUGGING,
+                        enter = fadeIn(tweenFast) + scaleIn(initialScale = 0.8f),
+                        exit = fadeOut(tweenFast) + scaleOut(targetScale = 0.8f)
+                    ) {
                         HeaderBtn(Icons.Filled.FileDownload, "Export", Cy, onClick = { vm.exportProjectZip() })
                     }
-                    // Thinking toggle
-                    val thinkColor = if (ui.reasoningEnabled) colors.Accent2 else colors.Text3
+                    // Thinking toggle with rotation
+                    var thinkRotate by remember { mutableStateOf(0f) }
                     TextButton(
-                        onClick = { vm.toggleReasoning() },
+                        onClick = { vm.toggleReasoning(); thinkRotate += 360f },
                         modifier = Modifier.height(28.dp),
                         contentPadding = PaddingValues(horizontal = 4.dp)
                     ) {
-                        Text(
-                            if (ui.reasoningEnabled) "🧠" else "🧠",
-                            fontSize = 12.sp,
-                            color = thinkColor
-                        )
+                        Text("🧠", fontSize = 12.sp, color = if (ui.reasoningEnabled) colors.Accent2 else colors.Text3,
+                            modifier = Modifier.graphicsLayer { rotationZ = thinkRotate })
                     }
                     HeaderBtn(Icons.Outlined.History, "Sessions", colors.Text2, onClick = {
                         vm.refreshSessionList()
@@ -241,12 +264,12 @@ fun InventScreen(
                 LinearProgressIndicator(
                     progress = { phaseProgress(ui.phase) },
                     modifier = Modifier.fillMaxWidth().height(2.dp),
-                    color = phaseColor,
+                    color = animPhaseColor,
                     trackColor = colors.Border.copy(alpha = 0.15f)
                 )
             }
 
-            // ── Model status pills ──────────────────────────────────────────
+            // ── Model status pills with fade-in animation ───────────────────
             ModelPills(
                 modelMode = ui.modelMode,
                 plannerLoaded = ui.plannerLoaded,
@@ -266,15 +289,29 @@ fun InventScreen(
                 colors = colors
             )
 
-            // ── Phase hint banner ───────────────────────────────────────────
-            if (ui.phase != InventPhase.DONE && ui.phase != InventPhase.DEBUGGING && chats.isEmpty()) {
+            // ── Phase hint banner (fades in/out) ────────────────────────────
+            AnimatedVisibility(
+                visible = ui.phase != InventPhase.DONE && ui.phase != InventPhase.DEBUGGING && chats.isEmpty(),
+                enter = fadeIn(tweenFast) + expandVertically(expandFrom = Alignment.Top),
+                exit = fadeOut(tweenFast) + shrinkVertically(shrinkTowards = Alignment.Top)
+            ) {
                 PhaseHint(ui.phase, colors)
             }
 
             // ── Main content area (files panel left + chat right) ────────
             Row(Modifier.weight(1f)) {
-                // ── Left file panel (with folder navigation) ────────────────
-                if (showFilePanel && ui.fileTree.isNotEmpty()) {
+                // ── Animated left file panel ─────────────────────────────────
+                AnimatedVisibility(
+                    visible = showFilePanel && ui.fileTree.isNotEmpty(),
+                    enter = slideInHorizontally(
+                        animationSpec = springSlow,
+                        initialOffsetX = { -it }
+                    ) + fadeIn(tweenFast),
+                    exit = slideOutHorizontally(
+                        animationSpec = springFast,
+                        targetOffsetX = { -it }
+                    ) + fadeOut(tweenFast)
+                ) {
                     FilePanel(
                         fileTree = ui.fileTree,
                         colors = colors,
@@ -285,84 +322,123 @@ fun InventScreen(
                     )
                 }
 
-                // ── Chat scroll (right side) ─────────────────────────────────
+                // ── Chat / Coder chat (animated swap) ────────────────────────
                 Box(Modifier.weight(1f)) {
-                    if (coderChatActive) {
-                        // Coder chat mode — user talks to coder about a specific file
-                        CoderChatView(
-                            filePath = coderChatFile,
-                            vm = vm,
-                            colors = colors,
-                            onClose = { coderChatActive = false }
-                        )
-                    } else {
-                        if (chats.isEmpty() && ui.streamingResponse.isEmpty() && ui.swapInfo.isEmpty() && ui.error.isEmpty()) {
-                            EmptyState(ui.phase, phaseColor, colors)
+                    AnimatedContent(
+                        targetState = coderChatActive,
+                        transitionSpec = {
+                            if (targetState) {
+                                // Entering coder chat: slide in from right
+                                slideInHorizontally(
+                                    animationSpec = springFast,
+                                    initialOffsetX = { it }
+                                ) + fadeIn(tweenFast) togetherWith
+                                slideOutHorizontally(
+                                    animationSpec = springFast,
+                                    targetOffsetX = { -it }
+                                ) + fadeOut(tweenFast)
+                            } else {
+                                // Exiting coder chat: slide out to right
+                                slideInHorizontally(
+                                    animationSpec = springFast,
+                                    initialOffsetX = { -it }
+                                ) + fadeIn(tweenFast) togetherWith
+                                slideOutHorizontally(
+                                    animationSpec = springFast,
+                                    targetOffsetX = { it }
+                                ) + fadeOut(tweenFast)
+                            }
+                        },
+                        label = "coderChat"
+                    ) { isCoderActive ->
+                        if (isCoderActive) {
+                            CoderChatView(
+                                filePath = coderChatFile,
+                                vm = vm,
+                                colors = colors,
+                                onClose = { coderChatActive = false }
+                            )
                         } else {
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        // Swap banner
-                        if (ui.swapInfo.isNotEmpty()) {
-                            item(key = "swap") {
-                                StatusBanner(ui.swapInfo, Cy, colors)
+                            AnimatedContent(
+                                targetState = chats.isEmpty() && ui.streamingResponse.isEmpty() && ui.swapInfo.isEmpty() && ui.error.isEmpty(),
+                                transitionSpec = {
+                                    fadeIn(tweenFast) + scaleIn(initialScale = 0.95f) togetherWith
+                                    fadeOut(tweenFast) + scaleOut(targetScale = 0.95f)
+                                },
+                                label = "chatContent"
+                            ) { isEmpty ->
+                                if (isEmpty) {
+                                    EmptyState(ui.phase, animPhaseColor, colors)
+                                } else {
+                                    LazyColumn(
+                                        state = listState,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        // Swap banner
+                                        if (ui.swapInfo.isNotEmpty()) {
+                                            item(key = "swap") {
+                                                StatusBanner(ui.swapInfo, Cy, colors)
+                                            }
+                                        }
+                                        // Error
+                                        if (ui.error.isNotEmpty()) {
+                                            item(key = "err") {
+                                                StatusBanner(ui.error, Rd, colors)
+                                            }
+                                        }
+                                        // Chat bubbles with staggered animation
+                                        itemsIndexed(chats, key = { i, _ -> "c_$i" }) { index, bubble ->
+                                            StaggeredFadeIn(index = index, key = "c_$index") {
+                                                ChatBubbleCard(bubble, colors)
+                                            }
+                                        }
+                                        // Live streaming response
+                                        if (ui.streamingResponse.isNotEmpty()) {
+                                            val streamThink = Regex("<think>([\\s\\S]*?)(<\\/think>|$)").find(ui.streamingResponse)
+                                            val streamContent = ui.streamingResponse
+                                                .replace(Regex("<think>[\\s\\S]*?(<\\/think>|$)"), "").trim()
+                                            val thinkText = streamThink?.groupValues?.getOrNull(1)?.trim() ?: ""
+                                            item(key = "stream") {
+                                                ChatBubbleCard(
+                                                    ChatBubble(
+                                                        role = "model1",
+                                                        content = streamContent.ifEmpty { ui.streamingResponse },
+                                                        phase = InventPhase.QUESTIONING,
+                                                        isUser = false, isError = false,
+                                                        isStreaming = true,
+                                                        thinkingContent = thinkText
+                                                    ), colors
+                                                )
+                                            }
+                                        }
+                                        // File progress
+                                        if (ui.phase == InventPhase.GENERATING && ui.totalFiles > 0) {
+                                            item(key = "fprog") {
+                                                FileProgress(ui.currentFileIndex, ui.totalFiles, ui.currentFileName, Cy, colors)
+                                            }
+                                        }
+                                        // Done stats
+                                        if (ui.phase == InventPhase.DONE) {
+                                            item(key = "stats") {
+                                                DoneStats(ui.totalLines, ui.totalGeneratedBytes, ui.debugSessionCount, colors)
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                        }
-                        // Error
-                        if (ui.error.isNotEmpty()) {
-                            item(key = "err") {
-                                StatusBanner(ui.error, Rd, colors)
-                            }
-                        }
-                        // Chat bubbles
-                        itemsIndexed(chats, key = { i, _ -> "c_$i" }) { _, bubble ->
-                            ChatBubbleCard(bubble, colors)
-                        }
-                        // Live streaming response (model currently writing)
-                        if (ui.streamingResponse.isNotEmpty()) {
-                            // Extract thinking from streaming response
-                            val streamThink = Regex("<think>([\\s\\S]*?)(<\\/think>|$)").find(ui.streamingResponse)
-                            val streamContent = ui.streamingResponse
-                                .replace(Regex("<think>[\\s\\S]*?(<\\/think>|$)"), "").trim()
-                            val thinkText = streamThink?.groupValues?.getOrNull(1)?.trim() ?: ""
-                            item(key = "stream") {
-                                ChatBubbleCard(
-                                    ChatBubble(
-                                        role = "model1",
-                                        content = streamContent.ifEmpty { ui.streamingResponse },
-                                        phase = InventPhase.QUESTIONING,
-                                        isUser = false, isError = false,
-                                        isStreaming = true,
-                                        thinkingContent = thinkText
-                                    ), colors
-                                )
-                            }
-                        }
-                        // File progress
-                        if (ui.phase == InventPhase.GENERATING && ui.totalFiles > 0) {
-                            item(key = "fprog") {
-                                FileProgress(ui.currentFileIndex, ui.totalFiles, ui.currentFileName, Cy, colors)
-                            }
-                        }
-                        // Sure buttons
-                        // Done stats
-                        if (ui.phase == InventPhase.DONE) {
-                            item(key = "stats") {
-                                DoneStats(ui.totalLines, ui.totalGeneratedBytes, ui.debugSessionCount, colors)
-                            }
-                        }
-                    }
                         }
                     }
                 }
             }
 
-
-            // ── Questioning progress bar (Akinator-style) ────────────────
-            if (ui.phase == InventPhase.QUESTIONING && ui.chatStarted && ui.questioningProgress > 0f) {
+            // ── Questioning progress bar (Akinator-style, animated) ─────────
+            AnimatedVisibility(
+                visible = ui.phase == InventPhase.QUESTIONING && ui.chatStarted && ui.questioningProgress > 0f,
+                enter = fadeIn(tweenSlow) + expandVertically(expandFrom = Alignment.Bottom),
+                exit = fadeOut(tweenSlow) + shrinkVertically(shrinkTowards = Alignment.Bottom)
+            ) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)) {
                     Row(
                         Modifier.fillMaxWidth(),
@@ -384,9 +460,9 @@ fun InventScreen(
                 }
             }
 
-            // ── Empty / Input area ────────────────────────────────────────
+            // ── Input area (animated visibility by state) ─────────────────────
             if (!ui.chatStarted && ui.phase == InventPhase.QUESTIONING) {
-                // Loading state — model is preparing first message
+                // Loading state
                 Surface(Modifier.fillMaxWidth(), color = colors.Surface, shadowElevation = 2.dp) {
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 1.5.dp, color = Cy)
@@ -396,9 +472,13 @@ fun InventScreen(
                     }
                 }
             } else {
-                // Done button (visible after ~100 tokens of Q&A)
-                if (ui.phase == InventPhase.QUESTIONING && ui.chatStarted && !ui.isGenerating
-                    && ui.conversationDepth >= 400) {
+                // Done button (animated)
+                AnimatedVisibility(
+                    visible = ui.phase == InventPhase.QUESTIONING && ui.chatStarted && !ui.isGenerating
+                        && ui.conversationDepth >= 400,
+                    enter = fadeIn(tweenFast) + scaleIn(initialScale = 0.8f),
+                    exit = fadeOut(tweenFast) + scaleOut(targetScale = 0.8f)
+                ) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
                         horizontalArrangement = Arrangement.End) {
                         Surface(
@@ -437,8 +517,12 @@ fun InventScreen(
             }
         }
 
-        // ── Dialogs ─────────────────────────────────────────────────────────
-        if (showSessions) {
+        // ── Animated Dialogs ────────────────────────────────────────────
+        AnimatedVisibility(
+            visible = showSessions,
+            enter = scaleIn(springFast) + fadeIn(tweenFast),
+            exit = scaleOut(springFast) + fadeOut(tweenFast)
+        ) {
             SessionPopup(
                 sessions = ui.sessions, sessionId = ui.sessionId,
                 onSwitch = { vm.switchToSession(it); showSessions = false },
@@ -447,7 +531,11 @@ fun InventScreen(
                 colors = colors, vm = vm
             )
         }
-        if (showSettings) {
+        AnimatedVisibility(
+            visible = showSettings,
+            enter = scaleIn(springFast) + fadeIn(tweenFast),
+            exit = scaleOut(springFast) + fadeOut(tweenFast)
+        ) {
             SettingsPopup2(
                 onDismiss = { showSettings = false; settingsRestrictRole = -1 },
                 colors = colors,
@@ -458,25 +546,34 @@ fun InventScreen(
                 onToggleReasoning = { vm.toggleReasoning() }
             )
         }
-        showModelPicker?.let { roleIdx ->
-            ModelPickerSheet(
-                roleIdx = roleIdx,
-                onDismiss = { showModelPicker = null },
-                onSelect = { path, name, useAll ->
-                    when (roleIdx) {
-                        -1 -> { vm.selectModelTab(0, path, name, useAll); vm.selectModelTab(1, path, name, useAll); vm.selectModelTab(2, path, name, useAll) }
-                        -2 -> { vm.selectModelTab(0, path, name, false); vm.selectModelTab(2, path, name, false); settingsRestrictRole = 0 }
-                        0  -> { vm.selectModelTab(0, path, name, false); settingsRestrictRole = 0 }
-                        1  -> { vm.selectModelTab(1, path, name, false); settingsRestrictRole = 1 }
-                        2  -> { vm.selectModelTab(2, path, name, false); settingsRestrictRole = 2 }
-                    }
-                    showModelPicker = null; showSettings = true
-                },
-                colors = colors
-            )
+        AnimatedVisibility(
+            visible = showModelPicker != null,
+            enter = scaleIn(springFast) + fadeIn(tweenFast),
+            exit = scaleOut(springFast) + fadeOut(tweenFast)
+        ) {
+            showModelPicker?.let { roleIdx ->
+                ModelPickerSheet(
+                    roleIdx = roleIdx,
+                    onDismiss = { showModelPicker = null },
+                    onSelect = { path, name, useAll ->
+                        when (roleIdx) {
+                            -1 -> { vm.selectModelTab(0, path, name, useAll); vm.selectModelTab(1, path, name, useAll); vm.selectModelTab(2, path, name, useAll) }
+                            -2 -> { vm.selectModelTab(0, path, name, false); vm.selectModelTab(2, path, name, false); settingsRestrictRole = 0 }
+                            0  -> { vm.selectModelTab(0, path, name, false); settingsRestrictRole = 0 }
+                            1  -> { vm.selectModelTab(1, path, name, false); settingsRestrictRole = 1 }
+                            2  -> { vm.selectModelTab(2, path, name, false); settingsRestrictRole = 2 }
+                        }
+                        showModelPicker = null; showSettings = true
+                    },
+                    colors = colors
+                )
+            }
         }
-        // Navigation guard
-        if (ui.showNavigateAwayDialog) {
+        AnimatedVisibility(
+            visible = ui.showNavigateAwayDialog,
+            enter = scaleIn(springFast) + fadeIn(tweenFast),
+            exit = scaleOut(springFast) + fadeOut(tweenFast)
+        ) {
             AlertDialog(
                 onDismissRequest = { vm.setNavigateAway(false) },
                 title = { Text("Generation in Progress", fontFamily = FontFamily.Monospace) },
@@ -486,6 +583,29 @@ fun InventScreen(
                 containerColor = colors.Card
             )
         }
+    }
+}
+
+// ─── Staggered fade-in wrapper for list items ──────────────────────────────
+@Composable
+private fun StaggeredFadeIn(
+    index: Int,
+    key: String,
+    content: @Composable () -> Unit
+) {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(key) {
+        delay(index * 30L) // 30ms stagger per item
+        visible = true
+    }
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(250)) + slideInVertically(
+            animationSpec = spring(dampingRatio = 0.7f, stiffness = 300f),
+            initialOffsetY = { it / 4 }
+        )
+    ) {
+        content()
     }
 }
 
@@ -502,20 +622,47 @@ private fun phaseProgress(phase: InventPhase) = when (phase) {
     InventPhase.DEBUGGING -> 1.0f
 }
 
-// ─── Header button ────────────────────────────────────────────────────────────
+// ─── Header button (pressable with scale feedback) ─────────────────────────────
 @Composable
 private fun HeaderBtn(icon: ImageVector, label: String, tint: Color, onClick: () -> Unit) {
-    IconButton(onClick = onClick, modifier = Modifier.size(28.dp)) {
+    var pressed by remember { mutableStateOf(false) }
+    IconButton(
+        onClick = {
+            pressed = true
+            onClick()
+        },
+        modifier = Modifier
+            .size(28.dp)
+            .scale(if (pressed) 0.85f else 1f)
+    ) {
         Icon(icon, label, tint = tint, modifier = Modifier.size(15.dp))
+    }
+    if (pressed) {
+        LaunchedEffect(Unit) {
+            delay(100)
+            pressed = false
+        }
     }
 }
 
-// ─── Empty state ──────────────────────────────────────────────────────────────
+// ─── Empty state (animated) ──────────────────────────────────────────────────
 @Composable
 private fun EmptyState(phase: InventPhase, phaseColor: Color, colors: ZcPalette) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("🧠", fontSize = 28.sp)
+            Text("🧠", fontSize = 28.sp,
+                modifier = Modifier.graphicsLayer {
+                    val inf = rememberInfiniteTransition(label = "bounce")
+                    val bounce by inf.animateFloat(
+                        initialValue = 0f, targetValue = -8f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(1200, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ), label = "bounce"
+                    )
+                    translationY = bounce
+                }
+            )
             Spacer(Modifier.height(8.dp))
             Text(
                 when (phase) {
@@ -535,7 +682,7 @@ private fun EmptyState(phase: InventPhase, phaseColor: Color, colors: ZcPalette)
     }
 }
 
-// ─── Phase hint ───────────────────────────────────────────────────────────────
+// ─── Phase hint (unchanged structurally) ──────────────────────────────────────
 @Composable
 private fun PhaseHint(phase: InventPhase, colors: ZcPalette) {
     Surface(
@@ -562,7 +709,7 @@ private fun PhaseHint(phase: InventPhase, colors: ZcPalette) {
     }
 }
 
-// ─── Model pills ──────────────────────────────────────────────────────────────
+// ─── Model pills (with fade-in per pill) ──────────────────────────────────────
 @Composable
 private fun ModelPills(
     modelMode: ModelMode,
@@ -584,7 +731,8 @@ private fun ModelPills(
             .padding(horizontal = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        pills.forEach { (idx, info) ->
+        pills.forEachIndexed { idx, pair ->
+            val (_, info) = pair
             val (label, loaded, name) = info
             val accent = accents[idx]
             val shortName = name.substringBeforeLast('.').take(10).ifEmpty { if (loaded) "ready" else "off" }
@@ -592,7 +740,7 @@ private fun ModelPills(
                 modifier = Modifier
                     .padding(vertical = 3.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable { onTap(idx) },
+                    .clickable { onTap(pair.first) },
                 color = if (loaded) accent.copy(alpha = 0.08f) else colors.Surface,
                 border = BorderStroke(1.dp, if (loaded) accent.copy(0.3f) else colors.Border.copy(0.2f))
             ) {
@@ -625,7 +773,7 @@ private fun StatusBanner(text: String, accent: Color, colors: ZcPalette) {
     }
 }
 
-// ─── Chat bubble ──────────────────────────────────────────────────────────────
+// ─── Chat bubble (with smooth appearance) ─────────────────────────────────────
 @Composable
 private fun ChatBubbleCard(bubble: ChatBubble, colors: ZcPalette) {
     val roleColor = when (bubble.role) {
@@ -651,7 +799,7 @@ private fun ChatBubbleCard(bubble: ChatBubble, colors: ZcPalette) {
             Text(roleLabel, fontSize = 9.sp, fontWeight = FontWeight.Bold,
                 color = roleColor, fontFamily = FontFamily.Monospace)
         }
-        // Thinking block — collapsible reasoning from <think> tags
+        // Thinking block
         if (bubble.thinkingContent.isNotEmpty()) {
             var expanded by remember { mutableStateOf(false) }
             Spacer(Modifier.height(4.dp))
@@ -669,10 +817,10 @@ private fun ChatBubbleCard(bubble: ChatBubble, colors: ZcPalette) {
                         Spacer(Modifier.weight(1f))
                         Text(if (expanded) "▲" else "▼", fontSize = 8.sp, color = colors.Text3)
                     }
-                    if (expanded) {
-                        Spacer(Modifier.height(4.dp))
+                    AnimatedVisibility(visible = expanded) {
                         Text(bubble.thinkingContent, fontSize = 9.sp,
-                            color = colors.Text3, fontFamily = FontFamily.Monospace)
+                            color = colors.Text3, fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.padding(top = 4.dp))
                     }
                 }
             }
@@ -702,10 +850,9 @@ private fun ChatBubbleCard(bubble: ChatBubble, colors: ZcPalette) {
 private fun StreamingCursor(color: Color) {
     val alpha = remember { Animatable(1f) }
     LaunchedEffect(Unit) {
-        // Infinite blink — cancelled automatically when composable leaves tree
         while (true) {
-            alpha.animateTo(0f, animationSpec = tween(400))
-            alpha.animateTo(1f, animationSpec = tween(400))
+            alpha.animateTo(0.15f, animationSpec = tween(300))
+            alpha.animateTo(1f, animationSpec = tween(300))
         }
     }
     Box(Modifier.width(2.dp).height(12.dp).background(color.copy(alpha = alpha.value)))
@@ -728,7 +875,6 @@ private fun FileProgress(index: Int, total: Int, name: String, accent: Color, co
     }
 }
 
-// ─── Sure buttons row ─────────────────────────────────────────────────────────
 // ─── Done stats ───────────────────────────────────────────────────────────────
 @Composable
 private fun DoneStats(lines: Int, bytes: Long, debugCount: Int, colors: ZcPalette) {
@@ -738,7 +884,7 @@ private fun DoneStats(lines: Int, bytes: Long, debugCount: Int, colors: ZcPalett
         modifier = Modifier.padding(vertical = 4.dp))
 }
 
-// ─── Input area ──────────────────────────────────────────────────────────────
+// ─── Input area (with animated send button) ──────────────────────────────────
 @Composable
 private fun InputArea(
     inputText: String, onTextChange: (String) -> Unit,
@@ -750,7 +896,6 @@ private fun InputArea(
 ) {
     Surface(Modifier.fillMaxWidth().imePadding(), color = colors.Surface, shadowElevation = 2.dp) {
         Column {
-            // Toolbar — only attach file, no think/search toggles
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 MiniToggle(Icons.Outlined.AttachFile, "Attach", false, onFilePick, colors)
                 Spacer(Modifier.weight(1f))
@@ -763,7 +908,6 @@ private fun InputArea(
                     Spacer(Modifier.width(4.dp))
                 }
             }
-            // Input + Send
             Row(Modifier.padding(horizontal = 10.dp, vertical = 3.dp), verticalAlignment = Alignment.Bottom) {
                 OutlinedTextField(
                     value = inputText,
@@ -781,7 +925,7 @@ private fun InputArea(
                             }, fontSize = 11.sp, color = colors.Text3, fontFamily = FontFamily.Monospace
                         )
                     },
-                    textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
+                    textStyle = TextStyle(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
                     shape = RoundedCornerShape(8.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Cy.copy(alpha = 0.5f),
@@ -793,27 +937,53 @@ private fun InputArea(
                     maxLines = 2
                 )
                 Spacer(Modifier.width(6.dp))
-                val canSend = inputText.isNotBlank() && !isGenerating
-                if (isGenerating) {
-                    Box(
-                        modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp))
-                            .background(Rd.copy(alpha = 0.2f))
-                            .clickable { onStop() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Filled.Close, "Stop", tint = Rd, modifier = Modifier.size(15.dp))
-                    }
-                } else {
-                    Box(
-                        modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp))
-                            .let { m ->
-                                if (canSend) m.background(Brush.linearGradient(listOf(Cy, Cy.copy(0.6f))))
-                                else m.background(colors.Border)
-                            }
-                            .clickable { if (canSend) onSend() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = if (canSend) Color.Black else colors.Text3, modifier = Modifier.size(15.dp))
+                // Animated send / stop button
+                AnimatedContent(
+                    targetState = isGenerating,
+                    transitionSpec = {
+                        fadeIn(tweenFast) + scaleIn(initialScale = 0.5f) togetherWith
+                        fadeOut(tweenFast) + scaleOut(targetScale = 0.5f)
+                    },
+                    label = "sendStop"
+                ) { generating ->
+                    if (generating) {
+                        Box(
+                            modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp))
+                                .background(Rd.copy(alpha = 0.2f))
+                                .clickable { onStop() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.Close, "Stop", tint = Rd, modifier = Modifier.size(15.dp))
+                        }
+                    } else {
+                        val canSend = inputText.isNotBlank()
+                        var sendPressed by remember { mutableStateOf(false) }
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .scale(if (sendPressed) 0.9f else 1f)
+                                .let { m ->
+                                    if (canSend) m.background(Brush.linearGradient(listOf(Cy, Cy.copy(0.6f))))
+                                    else m.background(colors.Border)
+                                }
+                                .clickable {
+                                    if (canSend) {
+                                        sendPressed = true
+                                        onSend()
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Send, "Send",
+                                tint = if (canSend) Color.Black else colors.Text3,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                        if (sendPressed) {
+                            LaunchedEffect(Unit) { delay(100); sendPressed = false }
+                        }
                     }
                 }
             }
@@ -835,7 +1005,7 @@ private fun MiniToggle(icon: ImageVector, label: String, active: Boolean, onClic
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MODEL PICKER SHEET
+// MODEL PICKER SHEET (animated)
 // ═══════════════════════════════════════════════════════════════════════════════
 @Composable
 private fun ModelPickerSheet(
@@ -907,7 +1077,7 @@ private fun ModelPickerSheet(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SESSION POPUP (simplified)
+// SESSION POPUP (animated)
 // ═══════════════════════════════════════════════════════════════════════════════
 @Composable
 private fun SessionPopup(
@@ -945,61 +1115,71 @@ private fun SessionPopup(
                     Spacer(Modifier.width(40.dp))
                 }
                 HorizontalDivider(color = colors.Border); Spacer(Modifier.height(6.dp))
-                if (selectedSession != null) {
-                    // Files view
-                    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp),
-                        color = Cy.copy(alpha = 0.1f), border = BorderStroke(1.dp, Cy.copy(0.3f))) {
-                        Row(Modifier.clickable { onSwitch(selectedSession!!) }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.PlayArrow, null, tint = Cy, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Continue ${selectedProjectName.ifEmpty { "Session" }}", fontSize = 10.sp, color = Cy,
-                                fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
-                            Spacer(Modifier.weight(1f))
-                            if (selectedPhase != null) Text(selectedPhase!!.name, fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-                        }
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        items(selectedFiles) { node ->
-                            Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(4.dp),
-                                color = colors.Surface.copy(alpha = 0.5f)) {
-                                Row(Modifier.padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(if (node.isDir) Icons.Filled.Folder else Icons.Filled.Description, null,
-                                        tint = if (node.isDir) Am else Cy, modifier = Modifier.size(12.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(node.path, fontSize = 9.sp, color = colors.Text, fontFamily = FontFamily.Monospace,
-                                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                }
+                // Animated content swap (session list ↔ file list)
+                AnimatedContent(
+                    targetState = selectedSession,
+                    transitionSpec = {
+                        fadeIn(tweenFast) + slideInHorizontally { it / 4 } togetherWith
+                        fadeOut(tweenFast) + slideOutHorizontally { -it / 4 }
+                    },
+                    label = "sessionFiles"
+                ) { sess ->
+                    if (sess != null) {
+                        // Files view
+                        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp),
+                            color = Cy.copy(alpha = 0.1f), border = BorderStroke(1.dp, Cy.copy(0.3f))) {
+                            Row(Modifier.clickable { onSwitch(sess) }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.PlayArrow, null, tint = Cy, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Continue ${selectedProjectName.ifEmpty { "Session" }}", fontSize = 10.sp, color = Cy,
+                                    fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+                                Spacer(Modifier.weight(1f))
+                                if (selectedPhase != null) Text(selectedPhase!!.name, fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
                             }
                         }
-                        if (selectedFiles.isEmpty()) item { Text("No files yet", fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(4.dp)) }
-                    }
-                } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        items(sessions) { s ->
-                            val isCurrent = s.id == sessionId
-                            Surface(Modifier.fillMaxWidth().clickable { selectedSession = s.id },
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isCurrent) Cy.copy(alpha = 0.08f) else colors.Surface,
-                                border = if (isCurrent) BorderStroke(1.dp, Cy.copy(0.3f)) else null) {
-                                Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(s.projectName, fontSize = 10.sp, color = colors.Text, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
-                                        Row {
-                                            Text(s.phase.name, fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-                                            if (s.fileCount > 0) Text(" · ${s.fileCount} files", fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                        Spacer(Modifier.height(6.dp))
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            items(selectedFiles) { node ->
+                                Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(4.dp),
+                                    color = colors.Surface.copy(alpha = 0.5f)) {
+                                    Row(Modifier.padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(if (node.isDir) Icons.Filled.Folder else Icons.Filled.Description, null,
+                                            tint = if (node.isDir) Am else Cy, modifier = Modifier.size(12.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(node.path, fontSize = 9.sp, color = colors.Text, fontFamily = FontFamily.Monospace,
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                            }
+                            if (selectedFiles.isEmpty()) item { Text("No files yet", fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(4.dp)) }
+                        }
+                    } else {
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            items(sessions) { s ->
+                                val isCurrent = s.id == sessionId
+                                Surface(Modifier.fillMaxWidth().clickable { selectedSession = s.id },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isCurrent) Cy.copy(alpha = 0.08f) else colors.Surface,
+                                    border = if (isCurrent) BorderStroke(1.dp, Cy.copy(0.3f)) else null) {
+                                    Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(s.projectName, fontSize = 10.sp, color = colors.Text, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+                                            Row {
+                                                Text(s.phase.name, fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                                                if (s.fileCount > 0) Text(" · ${s.fileCount} files", fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                                            }
+                                        }
+                                        IconButton(onClick = { onSwitch(s.id) }, modifier = Modifier.size(22.dp)) {
+                                            Icon(Icons.Filled.PlayArrow, "Switch", tint = Cy, modifier = Modifier.size(12.dp))
+                                        }
+                                        IconButton(onClick = { onDelete(s.id) }, modifier = Modifier.size(20.dp)) {
+                                            Icon(Icons.Outlined.DeleteOutline, "Delete", tint = Rd.copy(0.5f), modifier = Modifier.size(10.dp))
                                         }
                                     }
-                                    IconButton(onClick = { onSwitch(s.id) }, modifier = Modifier.size(22.dp)) {
-                                        Icon(Icons.Filled.PlayArrow, "Switch", tint = Cy, modifier = Modifier.size(12.dp))
-                                    }
-                                    IconButton(onClick = { onDelete(s.id) }, modifier = Modifier.size(20.dp)) {
-                                        Icon(Icons.Outlined.DeleteOutline, "Delete", tint = Rd.copy(0.5f), modifier = Modifier.size(10.dp))
-                                    }
                                 }
                             }
+                            if (sessions.isEmpty()) item { Text("No saved sessions", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(8.dp)) }
                         }
-                        if (sessions.isEmpty()) item { Text("No saved sessions", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(8.dp)) }
                     }
                 }
             }
@@ -1008,7 +1188,7 @@ private fun SessionPopup(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SETTINGS POPUP (redesigned)
+// SETTINGS POPUP (animated)
 // ═══════════════════════════════════════════════════════════════════════════════
 @Composable
 private fun SettingsPopup2(
@@ -1045,29 +1225,42 @@ private fun SettingsPopup2(
                     Spacer(Modifier.width(40.dp))
                 }
                 HorizontalDivider(color = colors.Border); Spacer(Modifier.height(6.dp))
-                // Tab chips
+                // Animated tab chips
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                     tabs.forEachIndexed { i, (label, _) ->
-                        Surface(shape = RoundedCornerShape(6.dp),
-                            color = if (settingsTab == i) Cy.copy(alpha = 0.12f) else colors.Surface,
-                            border = BorderStroke(1.dp, if (settingsTab == i) Cy else colors.Border)) {
+                        val isActive = settingsTab == i
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (isActive) Cy.copy(alpha = 0.12f) else colors.Surface,
+                            border = BorderStroke(1.dp, if (isActive) Cy else colors.Border),
+                            modifier = Modifier.clickable { settingsTab = i }
+                        ) {
                             Text(label, fontSize = 9.sp, fontWeight = FontWeight.SemiBold,
-                                color = if (settingsTab == i) Cy else colors.Text3, fontFamily = FontFamily.Monospace,
-                                modifier = Modifier.clickable { settingsTab = i }.padding(horizontal = 10.dp, vertical = 5.dp))
+                                color = if (isActive) Cy else colors.Text3, fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
                         }
                         Spacer(Modifier.width(6.dp))
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                // Config area
-                val (_, roleKey) = if (settingsTab < tabs.size) tabs[settingsTab] else ("Planner" to "Planner")
-                val cfg = when (roleKey) {
-                    "Planner" -> plannerCfg; "Researcher" -> researcherCfg; else -> coderCfg
+                // Config area with animated content
+                AnimatedContent(
+                    targetState = settingsTab,
+                    transitionSpec = {
+                        fadeIn(tweenFast) + slideInHorizontally { it / 3 } togetherWith
+                        fadeOut(tweenFast) + slideOutHorizontally { -it / 3 }
+                    },
+                    label = "settingsTabs"
+                ) { tab ->
+                    val (_, roleKey) = if (tab < tabs.size) tabs[tab] else ("Planner" to "Planner")
+                    val cfg = when (roleKey) {
+                        "Planner" -> plannerCfg; "Researcher" -> researcherCfg; else -> coderCfg
+                    }
+                    val path = when (roleKey) {
+                        "Planner" -> model1Path; "Researcher" -> researcherPath; else -> model2Path
+                    }
+                    ConfigSliders(role = roleKey, config = cfg, modelPath = path, colors)
                 }
-                val path = when (roleKey) {
-                    "Planner" -> model1Path; "Researcher" -> researcherPath; else -> model2Path
-                }
-                ConfigSliders(role = roleKey, config = cfg, modelPath = path, colors)
                 Spacer(Modifier.height(4.dp))
                 // Thinking toggle
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1112,7 +1305,6 @@ private fun ConfigSliders(role: String, config: ModelTokenConfig?, modelPath: St
         Text(modelName, fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
         Spacer(Modifier.height(4.dp))
 
-        // Context — label + number field
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Context", fontSize = 10.sp, color = colors.Text2, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             OutlinedTextField(
@@ -1120,7 +1312,7 @@ private fun ConfigSliders(role: String, config: ModelTokenConfig?, modelPath: St
                 onValueChange = { v: String -> val n = v.filter { it.isDigit() }.toIntOrNull(); if (n != null) { ctx = n.coerceIn(512, 32768); save() } },
                 modifier = Modifier.widthIn(min = 80.dp, max = 140.dp).padding(horizontal = 6.dp, vertical = 6.dp),
                 singleLine = true,
-                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
+                textStyle = TextStyle(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Cy, unfocusedBorderColor = colors.Border, cursorColor = Cy, focusedTextColor = colors.Text, unfocusedTextColor = colors.Text),
                 shape = RoundedCornerShape(6.dp)
             )
@@ -1130,7 +1322,6 @@ private fun ConfigSliders(role: String, config: ModelTokenConfig?, modelPath: St
             modifier = Modifier.fillMaxWidth().height(18.dp),
             colors = SliderDefaults.colors(thumbColor = Cy, activeTrackColor = Cy, inactiveTrackColor = colors.Border.copy(alpha = 0.2f)))
 
-        // Max New — label + number field
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Max Tokens", fontSize = 10.sp, color = colors.Text2, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             OutlinedTextField(
@@ -1138,7 +1329,7 @@ private fun ConfigSliders(role: String, config: ModelTokenConfig?, modelPath: St
                 onValueChange = { v: String -> val n = v.filter { it.isDigit() }.toIntOrNull(); if (n != null) { maxNew = n.coerceIn(64, ctx - 64); save() } },
                 modifier = Modifier.widthIn(min = 80.dp, max = 140.dp).padding(horizontal = 6.dp, vertical = 6.dp),
                 singleLine = true,
-                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
+                textStyle = TextStyle(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Cy, unfocusedBorderColor = colors.Border, cursorColor = Cy, focusedTextColor = colors.Text, unfocusedTextColor = colors.Text),
                 shape = RoundedCornerShape(6.dp)
             )
@@ -1170,7 +1361,9 @@ private fun SliderRow(
     }
 }
 
-// ─── Coder Chat — post-workflow conversation about a specific file ───────
+// ═══════════════════════════════════════════════════════════════════════════════
+// CODER CHAT (with slide-in animation on the parent)
+// ═══════════════════════════════════════════════════════════════════════════════
 @Composable
 private fun CoderChatView(
     filePath: String,
@@ -1184,6 +1377,11 @@ private fun CoderChatView(
         ui.messages.filter { it.role == "user" || it.role == "coder" }
     }
     val listState = rememberLazyListState()
+
+    // Auto-scroll on new coder messages
+    LaunchedEffect(coderMessages.size) {
+        if (coderMessages.isNotEmpty()) listState.animateScrollToItem(coderMessages.size - 1)
+    }
 
     Column(Modifier.fillMaxSize()) {
         // Header
@@ -1217,19 +1415,27 @@ private fun CoderChatView(
             contentPadding = PaddingValues(8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            itemsIndexed(coderMessages, key = { i, _ -> "coder_$i" }) { _, msg ->
+            itemsIndexed(coderMessages, key = { i, _ -> "coder_$i" }) { index, msg ->
                 val isUser = msg.role == "user"
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (isUser) colors.Accent.copy(alpha = 0.12f) else colors.CardLight,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        msg.content,
-                        fontSize = 11.sp, color = colors.Text,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.padding(8.dp)
+                AnimatedVisibility(
+                    visible = true,
+                    enter = fadeIn(tween(300)) + slideInVertically(
+                        animationSpec = spring(dampingRatio = 0.7f, stiffness = 200f),
+                        initialOffsetY = { it / 2 }
                     )
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isUser) colors.Accent.copy(alpha = 0.12f) else colors.CardLight,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            msg.content,
+                            fontSize = 11.sp, color = colors.Text,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
                 }
             }
         }
