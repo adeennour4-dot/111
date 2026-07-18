@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -1262,7 +1263,7 @@ private fun CoderChatView(
                     focusedTextColor = colors.Text,
                     unfocusedTextColor = colors.Text
                 ),
-                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp)
+                textStyle = TextStyle(fontSize = 11.sp)
             )
             Spacer(Modifier.width(4.dp))
             IconButton(
