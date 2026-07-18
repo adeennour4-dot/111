@@ -1,57 +1,39 @@
 package com.gguf.zerocopy.domain.inference
 
 import android.util.Log
+import org.json.JSONObject
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * Tool-aware inference loop.
+ * Orchestrates tool-augmented inference.
  *
- * For models that support tool calling (hasToolCallingCapability = true),
- * this injects tool definitions into the system prompt before inference,
- * then after generation parses the output via ToolManager.parseToolCall().
- * If a tool call is detected, it executes the tool and re-runs inference
- * with the result appended as a tool-response turn (max 3 rounds).
+ * Injects tool definitions into the system prompt so the model can decide
+ * whether to call a tool, then parses the output for structured tool calls.
+ * If a tool is called, it executes the tool, feeds the result back, and runs
+ * another round for the model to produce the final answer.
  *
- * For models that do NOT support tool calling, inference runs normally
- * with no keyword sniffing or search injection — the model simply answers
- * from its training data.
+ * For models that don't explicitly support tool calling (based on
+ * [supportsToolCalling]), tool definitions are still injected — many models
+ * can follow the `<tool_call>` syntax without being fine-tuned for it — but
+ * the multi-round tool loop is skipped and the raw output is forwarded.
  */
 object ToolAwareInference {
 
     private const val TAG = "ToolAwareInference"
-    private const val MAX_TOOL_ROUNDS = 3
+    private const val MAX_TOOL_ROUNDS = 5
 
-    /**
-     * Execute inference with model-directed tool calling.
-     *
-     * 1. If the model supports tool calling, inject tool definitions into
-     *    the system prompt using <tools>...</tools> convention.
-     * 2. Run inference normally (no pre-decision based on keywords).
-     * 3. After generation, parse output for tool calls.
-     * 4. If tool call found → execute → append result → loop (max 3).
-     * 5. If no tool call → return generated text as-is.
-     *
-     * @param supportsToolCalling Whether the loaded model can emit tool-call syntax.
-     *        When false, inference runs as plain chat with no tool injection.
-     */
     fun execute(
         userPrompt: String,
         originalSystemPrompt: String,
         toolManager: ToolManager,
         setSystemPrompt: (String) -> Unit,
-        runInference: (prompt: String, tokenSink: TokenCallback, doneSignal: InferenceDoneSignal) -> Unit,
+        runInference: (String, TokenCallback, InferenceDoneSignal) -> Unit,
         callback: TokenCallback,
         isAborted: () -> Boolean = { false },
         searchQuery: String? = null,
         supportsToolCalling: Boolean = false
     ) {
-        if (!supportsToolCalling || toolManager.getToolCount() == 0) {
-            // Plain chat — no tool injection, no keyword sniffing
-            runSingleRound(userPrompt, runInference, callback, isAborted)
-            return
-        }
-
         // ── Inject tool definitions into the system prompt ──
         val toolDefs = toolManager.getToolDefinitionsJson()
         val augmentedSystemPrompt = if (originalSystemPrompt.isNotBlank()) {
@@ -66,6 +48,14 @@ object ToolAwareInference {
             "If you don't need to use any tools, answer normally without the <tool_call> tags."
         }
         setSystemPrompt(augmentedSystemPrompt)
+
+        // ── Single round (no tool loop) ──
+        // Used when the model isn't expected to emit structured tool calls,
+        // or when there are simply no tools registered.
+        if (!supportsToolCalling || toolManager.getToolCount() == 0) {
+            runSingleRound(userPrompt, runInference, callback, isAborted)
+            return
+        }
 
         // ── Tool-calling loop ──
         var currentPrompt = userPrompt
@@ -126,7 +116,22 @@ object ToolAwareInference {
 
             // ── Execute the tool ──
             Log.d(TAG, "Tool call: ${toolCall.name}(${toolCall.arguments})")
-            val toolResult = toolManager.executeTool(toolCall)
+
+            // Use the original clean user query for web_search instead of
+            // whatever the model extracted (which may include reasoning
+            // prompts, RAG context, or other prefixes).
+            val augmentedArgs = if (toolCall.name == "web_search" && searchQuery != null) {
+                val args = JSONObject()
+                args.put("query", searchQuery)
+                toolCall.arguments.keys().forEachRemaining { k -> if (k != "query") args.put(k, toolCall.arguments.get(k)) }
+                args
+            } else toolCall.arguments
+
+            val toolResult = if (augmentedArgs !== toolCall.arguments) {
+                toolManager.executeTool(ToolCall(toolCall.id, toolCall.name, augmentedArgs))
+            } else {
+                toolManager.executeTool(toolCall)
+            }
 
             // ── Append tool result as a user/tool turn for the next round ──
             val toolResultText = if (toolResult.result.length > 2000) {
@@ -193,28 +198,15 @@ object ToolAwareInference {
             else callback.onDone()
             return
         }
-        // Successful completion — signal the outer callback
         callback.onDone()
     }
+}
 
-    // ── InferenceDoneSignal ────────────────────────────────────────────────
+class InferenceDoneSignal {
+    private val latch = CountDownLatch(1)
+    @Volatile var error: String? = null; private set
 
-    class InferenceDoneSignal {
-        private val latch = CountDownLatch(1)
-
-        @Volatile
-        var error: String? = null
-            private set
-
-        fun signalDone() { latch.countDown() }
-
-        fun signalError(msg: String) {
-            error = msg
-            latch.countDown()
-        }
-
-        fun await(timeout: Long, unit: TimeUnit): Boolean {
-            return latch.await(timeout, unit)
-        }
-    }
+    fun signalDone() { latch.countDown() }
+    fun signalError(msg: String) { error = msg; latch.countDown() }
+    fun await(timeout: Long, unit: TimeUnit): Boolean = latch.await(timeout, unit)
 }
