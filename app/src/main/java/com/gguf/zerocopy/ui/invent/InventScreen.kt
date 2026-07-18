@@ -93,6 +93,8 @@ fun InventScreen(
     var showSettings by remember { mutableStateOf(false) }
     var showSessions by remember { mutableStateOf(false) }
     var showFilePanel by remember { mutableStateOf(false) }
+    var coderChatActive by remember { mutableStateOf(false) }
+    var coderChatFile by remember { mutableStateOf("") }
     var showModelPicker by remember { mutableStateOf<Int?>(null) }
     var settingsRestrictRole by remember { mutableStateOf(-1) }
     val listState = rememberLazyListState()
@@ -268,13 +270,34 @@ fun InventScreen(
                 PhaseHint(ui.phase, colors)
             }
 
-            // ── Main content area (chat + optional file panel) ────────────
+            // ── Main content area (files panel left + chat right) ────────
             Row(Modifier.weight(1f)) {
-                // ── Chat scroll ───────────────────────────────────────────────
+                // ── Left file panel (with folder navigation) ────────────────
+                if (showFilePanel && ui.fileTree.isNotEmpty()) {
+                    FilePanel(
+                        fileTree = ui.fileTree,
+                        colors = colors,
+                        vm = vm,
+                        onClose = { showFilePanel = false },
+                        onOpenCoderChat = if (ui.phase == InventPhase.DONE || ui.phase == InventPhase.DEBUGGING)
+                            {{ coderChatFile = it; coderChatActive = true }} else null
+                    )
+                }
+
+                // ── Chat scroll (right side) ─────────────────────────────────
                 Box(Modifier.weight(1f)) {
-                    if (chats.isEmpty() && ui.streamingResponse.isEmpty() && ui.swapInfo.isEmpty() && ui.error.isEmpty()) {
-                        EmptyState(ui.phase, phaseColor, colors)
+                    if (coderChatActive) {
+                        // Coder chat mode — user talks to coder about a specific file
+                        CoderChatView(
+                            filePath = coderChatFile,
+                            vm = vm,
+                            colors = colors,
+                            onClose = { coderChatActive = false }
+                        )
                     } else {
+                        if (chats.isEmpty() && ui.streamingResponse.isEmpty() && ui.swapInfo.isEmpty() && ui.error.isEmpty()) {
+                            EmptyState(ui.phase, phaseColor, colors)
+                        } else {
                         LazyColumn(
                             state = listState,
                             modifier = Modifier.fillMaxSize(),
@@ -331,19 +354,11 @@ fun InventScreen(
                             }
                         }
                     }
+                        }
+                    }
                 }
             }
 
-                // ── Right file panel ───────────────────────────────────
-                if (showFilePanel && ui.fileTree.isNotEmpty()) {
-                    FilePanel(
-                        fileTree = ui.fileTree,
-                        colors = colors,
-                        vm = vm,
-                        onClose = { showFilePanel = false }
-                    )
-                }
-            }
 
             // ── Questioning progress bar (Akinator-style) ────────────────
             if (ui.phase == InventPhase.QUESTIONING && ui.chatStarted && ui.questioningProgress > 0f) {
@@ -1151,5 +1166,116 @@ private fun SliderRow(
         Slider(value = value, onValueChange = onChange, valueRange = range, steps = steps,
             modifier = Modifier.fillMaxWidth().height(18.dp),
             colors = SliderDefaults.colors(thumbColor = Cy, activeTrackColor = Cy, inactiveTrackColor = colors.Border.copy(alpha = 0.2f)))
+    }
+}
+
+// ─── Coder Chat — post-workflow conversation about a specific file ───────
+@Composable
+private fun CoderChatView(
+    filePath: String,
+    vm: InventViewModel,
+    colors: ZcPalette,
+    onClose: () -> Unit
+) {
+    var coderInput by remember { mutableStateOf("") }
+    val ui by vm.ui.collectAsState()
+    val coderMessages = remember(ui.messages) {
+        ui.messages.filter { it.role == "user" || it.role == "coder" }
+    }
+    val listState = rememberLazyListState()
+
+    Column(Modifier.fillMaxSize()) {
+        // Header
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = colors.Card,
+            shadowElevation = 1.dp
+        ) {
+            Row(
+                Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.Chat, null, tint = Cy, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Chat with Coder", fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    color = colors.Text, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+                Text(filePath.substringAfterLast('/'), fontSize = 9.sp, color = colors.Text3,
+                    fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f))
+                IconButton(onClick = onClose, modifier = Modifier.size(24.dp)) {
+                    Icon(Icons.Filled.Close, "Close", tint = colors.Text3, modifier = Modifier.size(14.dp))
+                }
+            }
+        }
+        HorizontalDivider(color = colors.Border.copy(alpha = 0.3f))
+
+        // Messages
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            itemsIndexed(coderMessages, key = { i, _ -> "coder_$i" }) { _, msg ->
+                val isUser = msg.role == "user"
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isUser) colors.Accent.copy(alpha = 0.12f) else colors.CardLight,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        msg.content,
+                        fontSize = 11.sp, color = colors.Text,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
+            }
+        }
+
+        // Input
+        HorizontalDivider(color = colors.Border.copy(alpha = 0.3f))
+        Row(
+            Modifier.fillMaxWidth().padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = coderInput,
+                onValueChange = { coderInput = it },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("Ask the coder about this file…", fontSize = 10.sp,
+                    color = colors.Text3, fontFamily = FontFamily.Monospace) },
+                minLines = 1, maxLines = 3,
+                shape = RoundedCornerShape(8.dp),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = {
+                    if (coderInput.isNotBlank()) {
+                        vm.handleCoderChatMessage(coderInput, filePath)
+                        coderInput = ""
+                    }
+                }),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Cy.copy(alpha = 0.5f),
+                    unfocusedBorderColor = colors.Border,
+                    focusedContainerColor = colors.Card,
+                    unfocusedContainerColor = colors.Card,
+                    focusedTextColor = colors.Text,
+                    unfocusedTextColor = colors.Text
+                ),
+                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp)
+            )
+            Spacer(Modifier.width(4.dp))
+            IconButton(
+                onClick = {
+                    if (coderInput.isNotBlank()) {
+                        vm.handleCoderChatMessage(coderInput, filePath)
+                        coderInput = ""
+                    }
+                },
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = Cy, modifier = Modifier.size(16.dp))
+            }
+        }
     }
 }

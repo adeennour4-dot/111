@@ -37,13 +37,30 @@ fun FilePanel(
     fileTree: List<FileNode>,
     colors: ZcPalette,
     vm: InventViewModel,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onOpenCoderChat: ((filePath: String) -> Unit)? = null
 ) {
     var selectedNode by remember { mutableStateOf<FileNode?>(null) }
     var fileContents by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var selectedFileContent by remember { mutableStateOf("") }
+    var currentDir by remember { mutableStateOf("") } // "" = root, "src/" = inside src
+    var folderStack by remember { mutableStateOf(listOf<String>()) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // Compute files/folders in current directory
+    val visibleItems = remember(fileTree, currentDir) {
+        val prefix = if (currentDir.isEmpty()) "" else currentDir
+        fileTree.filter { node ->
+            if (currentDir.isEmpty()) {
+                !node.path.contains('/')
+            } else {
+                node.path.startsWith(prefix) && node.path.removePrefix(prefix).let { rest ->
+                    !rest.contains('/') || (node.isDir && rest.count { it == '/' } == 1)
+                }
+            }
+        }
+    }
 
     // Load file contents lazily
     LaunchedEffect(fileTree) {
@@ -74,15 +91,34 @@ fun FilePanel(
         border = androidx.compose.foundation.BorderStroke(1.dp, colors.Border.copy(alpha = 0.3f))
     ) {
         Column(Modifier.fillMaxSize()) {
-            // Header
+            // ── Header with folder path / up button ──
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (currentDir.isNotEmpty()) {
+                    IconButton(onClick = {
+                        // Go up one level
+                        val parent = currentDir.substringBeforeLast('/', "").let {
+                            if (it.endsWith('/')) it.substringBeforeLast('/') else it
+                        }
+                        val newParent = if (parent.isEmpty()) "" else "$parent/"
+                        currentDir = newParent
+                        selectedNode = null
+                    }, modifier = Modifier.size(20.dp)) {
+                        Icon(Icons.Filled.ArrowUpward, "Up", tint = Cy, modifier = Modifier.size(14.dp))
+                    }
+                } else {
+                    Spacer(Modifier.width(20.dp))
+                }
                 Icon(Icons.Filled.Description, null, tint = Cy, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("Project Files", fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                    color = colors.Text, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+                Text(
+                    if (currentDir.isEmpty()) "Files" else currentDir,
+                    fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    color = colors.Text, fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
                 IconButton(onClick = onClose, modifier = Modifier.size(24.dp)) {
                     Icon(Icons.Filled.Close, "Close", tint = colors.Text3, modifier = Modifier.size(14.dp))
                 }
@@ -90,7 +126,7 @@ fun FilePanel(
             HorizontalDivider(color = colors.Border.copy(alpha = 0.3f))
 
             if (selectedNode != null && !selectedNode!!.isDir) {
-                // ── Code viewer ──
+                // ── Code viewer (file content) ──
                 Column(Modifier.weight(1f)) {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
@@ -103,7 +139,7 @@ fun FilePanel(
                             Icon(Icons.Filled.ArrowBack, "Back", tint = colors.Text3, modifier = Modifier.size(12.dp))
                         }
                     }
-                    // Action buttons: Copy, Debug, Redo
+                    // Action buttons: Copy, Debug, Chat with Coder
                     Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Surface(
                             shape = RoundedCornerShape(4.dp),
@@ -131,6 +167,22 @@ fun FilePanel(
                                     Icon(Icons.Filled.BugReport, null, tint = Am, modifier = Modifier.size(10.dp))
                                     Spacer(Modifier.width(2.dp))
                                     Text("Debug", fontSize = 8.sp, color = Am, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                            // Chat with Coder button (post-workflow)
+                            if (onOpenCoderChat != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = Cy.copy(alpha = 0.1f),
+                                    modifier = Modifier.clickable {
+                                        onOpenCoderChat(selectedNode!!.path)
+                                    }
+                                ) {
+                                    Row(Modifier.padding(horizontal = 6.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Filled.Chat, null, tint = Cy, modifier = Modifier.size(10.dp))
+                                        Spacer(Modifier.width(2.dp))
+                                        Text("Ask Coder", fontSize = 8.sp, color = Cy, fontFamily = FontFamily.Monospace)
+                                    }
                                 }
                             }
                         }
@@ -161,20 +213,24 @@ fun FilePanel(
                     }
                 }
             } else {
-                // ── File tree view ──
+                // ── File tree view (filtered by currentDir) ──
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(4.dp),
                     verticalArrangement = Arrangement.spacedBy(1.dp)
                 ) {
-                    items(fileTree) { node ->
+                    items(visibleItems) { node ->
                         val isSelected = selectedNode?.path == node.path
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    selectedNode = if (isSelected && !node.isDir) node else {
-                                        if (!node.isDir) node else null
+                                    if (node.isDir) {
+                                        // Navigate INTO the folder
+                                        currentDir = node.path + "/"
+                                        selectedNode = null
+                                    } else {
+                                        selectedNode = node
                                     }
                                 },
                             shape = RoundedCornerShape(4.dp),
@@ -185,7 +241,11 @@ fun FilePanel(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    if (node.isDir) Icons.Filled.Folder else Icons.Filled.Description,
+                                    when {
+                                        node.isDir -> Icons.Filled.Folder
+                                        selectedNode?.path == node.path -> Icons.Filled.Code
+                                        else -> Icons.Filled.Description
+                                    },
                                     null,
                                     tint = if (node.isDir) Am else Cy,
                                     modifier = Modifier.size(12.dp)
@@ -200,6 +260,16 @@ fun FilePanel(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
+                                    if (node.description.isNotEmpty()) {
+                                        Text(
+                                            node.description.take(40),
+                                            fontSize = 7.sp,
+                                            color = colors.Text3,
+                                            fontFamily = FontFamily.Monospace,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
                             }
                         }

@@ -2118,6 +2118,49 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
         }
     }
 
+    /**
+     * Handle a user message in the post-workflow coder chat.
+     * Runs the coder model with the file content and user question as context.
+     */
+    fun handleCoderChatMessage(userText: String, filePath: String) {
+        val state = sessionState ?: return
+        addMessage("user", userText, _ui.value.phase)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // Load the coder model
+                val targetPath = if (state.sameModelMode) state.model1Path else state.model2Path
+                val targetName = if (state.sameModelMode) state.model1Name else state.model2Name
+                if (!loadOrKeepModel(targetPath)) {
+                    addMessage("system", "Failed to load $targetName", _ui.value.phase)
+                    return@launch
+                }
+                // Fetch the file content for context
+                val projectDir = InventStorage.getProjectDir(ctx, sessionId, zcp.projectName)
+                val fileContent = InventStorage.readGeneratedFile(projectDir, filePath) ?: "[File not found on disk]"
+                addMessage("system", "[Context: $filePath]", _ui.value.phase)
+                // Run coder model with file context
+                val response = runInference(
+                    systemPrompt = "You are the coder for this project. The user is asking about a specific file. " +
+                        "Answer clearly and concisely. If they ask for changes, describe what needs to change.",
+                    userMessage = "File: $filePath\n\n```\n$fileContent\n```\n\nUser question: $userText",
+                    history = buildConversationHistory(excludeLast = 2),
+                    onStream = { partial ->
+                        _ui.value = _ui.value.copy(streamingResponse = partial)
+                    }
+                )
+                _ui.value = _ui.value.copy(streamingResponse = "")
+                val trimmed = response.trim()
+                if (trimmed.isNotEmpty()) {
+                    addMessage("coder", trimmed, _ui.value.phase)
+                } else {
+                    addMessage("coder", "I'm not sure about that. Could you clarify?", _ui.value.phase)
+                }
+            } catch (e: Exception) {
+                addMessage("system", "Error: ${e.message}", _ui.value.phase)
+            }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         // Unload engines on background thread — NEVER block the main thread
