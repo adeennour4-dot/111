@@ -75,7 +75,9 @@ data class InventUiState(
     val streamingResponse: String = "",
     val conversationDepth: Int = 0,  // total chars in user+model messages, for Done threshold
     val reasoningEnabled: Boolean = false,
-    val thinkingContent: String = ""  // extracted from <think> tags during streaming
+    val thinkingContent: String = "",
+    val questioningProgress: Float = 0f, // 0..1 akinator-style progress during QUESTIONING
+    val projectCompleted: Boolean = false
 )
 
 data class SessionInfo(
@@ -609,6 +611,13 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 return
             }
         }
+
+        // Update questioning progress based on conversation depth
+        // The more the user tells us, the closer we get to 100%
+        val currentMsgs = _ui.value.messages.count { it.role == "user" || it.role == "model1" }
+        // Progress: 0 at 0 turns, ~85% at 12 turns, 100% when user hits Done
+        val newProgress = (1f - kotlin.math.exp(-currentMsgs.toFloat() / 5f)).coerceIn(0f, 0.95f)
+        _ui.value = _ui.value.copy(questioningProgress = newProgress)
         // Full prompt with entire conversation — no cache dependency
         val response = runInference(
             systemPrompt = buildQuestioningPrompt(),
@@ -673,20 +682,26 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 // ── Step 2: Research prompt ──
                 setSwap("Creating research prompt…")
                 val researchPrompt = runInference(
-                    systemPrompt = "Create a concise research prompt listing exactly which version numbers to verify and which official URLs to query (e.g. python.org, flutter.dev, kotlinlang.org).",
-                    userMessage = "Project:\n$summary\n\nList topics + official URLs to search.",
+                    systemPrompt = "List exactly which official URLs to fetch changelogs from. " +
+                        "Examples: https://docs.python.org/3/whatsnew/changelog.html, " +
+                        "https://flutter.dev/docs/release/notes, " +
+                        "https://kotlinlang.org/docs/releases.html, " +
+                        "https://github.com/flutter/flutter/releases, " +
+                        "https://gradle.org/releases/. " +
+                        "Only official URLs — no blog posts, no tutorials.",
+                    userMessage = "Project:\n$summary\n\nList official changelog/release URLs to fetch.",
                     expectedModelPath = state.model1Path
                 )
-                addMessage("system", "✓ Research prompt ready", InventPhase.PLANNING)
+                addMessage("system", "✓ Research URLs ready", InventPhase.PLANNING)
 
-                // ── Step 3: Research phase ──
+                // ── Step 3: Research phase — fetch official changelogs ──
                 updatePhase(InventPhase.SEARCHING)
                 setSwap("Loading ${state.researcherName}…")
                 if (!loadOrKeepModel(state.researcherPath)) {
                     setSwap(""); _ui.value = _ui.value.copy(error = "Researcher load failed"); return@launch
                 }
-                setSwap("Searching latest versions…")
-                val fetched = fetchSearchContent(researchPrompt)
+                setSwap("Fetching official changelogs…")
+                val fetched = fetchOfficialChangelogs(researchPrompt)
 
                 setSwap("Extracting results…")
                 val searchResults = runInference(
@@ -724,7 +739,11 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                     appendLine("1. Output §PROJECT{name:X}")
                     appendLine("2. Output §TREE blocks for every file")
                     appendLine("3. For EACH file, output §PROMPT{path:X|desc:X|imports:X|classes:X|functions:X}")
-                    appendLine("4. If a file exceeds ${zcp.model2ContextSize} tokens, split it into smaller files")
+                    appendLine("4. Coder context limit: ${zcp.model2ContextSize} tokens. Max new tokens: 4096.")
+                    appendLine("5. If a file's code would exceed ${zcp.model2ContextSize} tokens, " +
+                        "SPLIT it into multiple smaller files that together produce the same result.")
+                    appendLine("6. Each file must be completable in ONE prompt (≤4096 output tokens).")
+                    appendLine("7. Name split files like: databaselayer.dart, databaselayer_queries.dart, databaselayer_migrations.dart")
                     appendLine()
                     appendLine("§TREE{path:src/main.dart|type:file|desc:Main entry}")
                     appendLine("§PROMPT{path:src/main.dart|desc:Entry point|imports:flutter/material|classes:MyApp|functions:main,build}")
@@ -781,6 +800,13 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                     appendLine()
                     appendLine("${summary.take(500)}")
                 })
+
+                // Save summary1 and research1 files
+                val projName2 = zcp.projectName.ifEmpty { "project_$sessionId" }
+                val projDir2 = InventStorage.getProjectDir(ctx, sessionId, projName2)
+                File(projDir2, "summary1.txt").writeText(summary)
+                File(projDir2, "research1.txt").writeText(searchResults)
+                addMessage("system", "✓ summary1.txt + research1.txt saved", InventPhase.PLANNING)
 
                 // Save the file specs so startFileGeneration can use them
                 zcp = zcp.copy(
@@ -1147,10 +1173,33 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
     fun exitDebugging() {
         viewModelScope.launch(Dispatchers.IO) {
-            _ui.value = _ui.value.copy(debugMode = false)
+            _ui.value = _ui.value.copy(debugMode = false, zipReady = true, projectCompleted = true)
             zcp = zcp.copy(phase = InventPhase.DONE)
             updatePhase(InventPhase.DONE)
-            _ui.value = _ui.value.copy(zipReady = true)
+            // Generate EXPLANATION.md — explains everything in the code
+            try {
+                val projectDir = InventStorage.getProjectDir(ctx, sessionId, zcp.projectName)
+                val allCode = StringBuilder()
+                zcp.generatedFiles.forEach { path ->
+                    val code = InventStorage.readGeneratedFile(projectDir, path)
+                    if (code != null) {
+                        allCode.appendLine("=== $path ===")
+                        allCode.appendLine(code.take(2000))
+                        allCode.appendLine()
+                    }
+                }
+                if (allCode.isNotEmpty()) {
+                    val explanation = runInference(
+                        systemPrompt = "You are a technical writer. Write a clear EXPLANATION.md " +
+                            "that explains every part of the project code: architecture, " +
+                            "each file's purpose, key classes/functions, and how they work together.",
+                        userMessage = "Write EXPLANATION.md for this project:\n\n${allCode.take(8000)}",
+                        expectedModelPath = sessionState?.model1Path ?: ""
+                    )
+                    File(projectDir, "EXPLANATION.md").writeText(explanation)
+                    addMessage("system", "✓ EXPLANATION.md generated", InventPhase.DONE)
+                }
+            } catch (_: Exception) { }
             computeStats()
             addMessage("system", "✓ Debugging complete. Export .zip to get the fixed files.", InventPhase.DONE)
         }
@@ -1871,6 +1920,45 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
         }
 
     // ── Search ─────────────────────────────────────────────────────────────
+
+    /** Fetch changelogs from official URLs (python.org, flutter.dev, etc.) directly.
+     *  Instead of general web search, this fetches HTML from official release/changelog pages
+     *  and extracts version information. */
+    private suspend fun fetchOfficialChangelogs(researchPrompt: String): Map<String, String> = withContext(Dispatchers.IO) {
+        val result = mutableMapOf<String, String>()
+        // Extract URLs from the research prompt
+        val urls = Regex("https?://[^\\s,;]+\\.(?:org|com|dev|io|app)[^\\s,;]*")
+            .findAll(researchPrompt)
+            .map { it.value.trimEnd('.', ',', ';') }
+            .distinct()
+            .take(5)
+            .toList()
+        if (urls.isEmpty()) {
+            // Fallback to general web search
+            return@withContext fetchSearchContent(researchPrompt)
+        }
+        urls.forEach { url ->
+            try {
+                val conn = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 15_000
+                    readTimeout = 20_000
+                    instanceFollowRedirects = true
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14)")
+                }
+                if (conn.responseCode == 200) {
+                    val html = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }.take(8000)
+                    result[url] = html
+                }
+                conn.disconnect()
+            } catch (_: Exception) { /* skip failed URLs */ }
+        }
+        if (result.isEmpty()) {
+            // All URLs failed, fallback to web search
+            return@withContext fetchSearchContent(researchPrompt)
+        }
+        result
+    }
 
     /** Actual web search using ToolManager — parallel async execution. */
     private suspend fun fetchSearchContent(promptArg: String = ""): Map<String, String> = withContext(Dispatchers.IO) {

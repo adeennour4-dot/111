@@ -345,6 +345,29 @@ fun InventScreen(
                 }
             }
 
+            // ── Questioning progress bar (Akinator-style) ────────────────
+            if (ui.phase == InventPhase.QUESTIONING && ui.chatStarted && ui.questioningProgress > 0f) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Planning progress", fontSize = 9.sp,
+                            color = colors.Text3, fontFamily = FontFamily.Monospace)
+                        Text("${(ui.questioningProgress * 100).roundToInt()}%", fontSize = 9.sp,
+                            color = Cy, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+                    }
+                    Spacer(Modifier.height(2.dp))
+                    LinearProgressIndicator(
+                        progress = { ui.questioningProgress },
+                        modifier = Modifier.fillMaxWidth().height(4.dp),
+                        color = Cy,
+                        trackColor = colors.Border.copy(alpha = 0.3f)
+                    )
+                }
+            }
+
             // ── Empty / Input area ────────────────────────────────────────
             if (!ui.chatStarted && ui.phase == InventPhase.QUESTIONING) {
                 // Loading state — model is preparing first message

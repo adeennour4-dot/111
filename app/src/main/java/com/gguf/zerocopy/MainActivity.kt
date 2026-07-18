@@ -62,8 +62,9 @@ import com.gguf.zerocopy.ui.settings.SettingsScreen
 import com.gguf.zerocopy.ui.theme.ZeroCopyTheme
 import com.gguf.zerocopy.ui.theme.currentPalette
 import com.gguf.zerocopy.ui.welcome.WelcomeScreen
-import com.gguf.zerocopy.ui.invent.InventSetupScreen
+import com.gguf.zerocopy.ui.invent.InventProjectScreen
 import com.gguf.zerocopy.ui.invent.InventScreen
+import com.gguf.zerocopy.ui.invent.InventSetupScreen
 import androidx.compose.material.icons.outlined.Lightbulb
 import kotlinx.coroutines.delay
 
@@ -110,6 +111,9 @@ fun AppRoot() {
   var selectedTab by rememberSaveable { mutableIntStateOf(0) }
   var showSessionList by remember { mutableStateOf(false) }
   var inventStarted by rememberSaveable { mutableStateOf(false) }
+  var inventProjectSelected by rememberSaveable { mutableStateOf(false) }
+  var inventProjectIndex by rememberSaveable { mutableIntStateOf(0) }
+  var completedInventProjects by rememberSaveable { mutableStateOf<Set<Int>>(emptySet()) }
   var inventModel1Path by rememberSaveable { mutableStateOf("") }
   var inventModel1Name by rememberSaveable { mutableStateOf("") }
   var inventModel2Path by rememberSaveable { mutableStateOf("") }
@@ -242,7 +246,7 @@ fun AppRoot() {
         SettingsScreen(onBack = { selectedTab = 0 })
       }
 
-      // Tab 4: Invent (setup first, then main screen)
+      // Tab 4: Invent (setup → project selection → main screen)
       Box(
         modifier = Modifier.fillMaxSize().graphicsLayer {
           alpha = if (selectedTab == 4) 1f else 0f
@@ -259,8 +263,32 @@ fun AppRoot() {
               inventSameModel = sameModel
               inventReasoningEnabled = reasoning
               inventStarted = true
+              inventProjectSelected = false
             },
             onBack = { selectedTab = 0 }
+          )
+        } else if (!inventProjectSelected) {
+          InventProjectScreen(
+            model1Path = inventModel1Path, model1Name = inventModel1Name,
+            model2Path = inventModel2Path, model2Name = inventModel2Name,
+            researcherPath = inventResPath, researcherName = inventResName,
+            offlineMode = inventOffline,
+            sameModelMode = inventSameModel,
+            reasoningEnabled = inventReasoningEnabled,
+            completedProjects = completedInventProjects,
+            onStartProject = { idx ->
+              inventProjectIndex = idx
+              inventProjectSelected = true
+            },
+            onBack = {
+              inventStarted = false
+            },
+            onSettings = { role, modelPath, modelName ->
+              // Open settings dialog for the model
+            },
+            onPickModel = { role ->
+              selectedTab = 1
+            }
           )
         } else {
           InventScreen(
@@ -271,6 +299,7 @@ fun AppRoot() {
               sameModelMode = inventSameModel,
               reasoningEnabled = inventReasoningEnabled,
               onNewSession = {
+                completedInventProjects = completedInventProjects + inventProjectIndex
                 inventStarted = false
                 inventModel1Path = ""; inventModel1Name = ""
                 inventModel2Path = ""; inventModel2Name = ""
