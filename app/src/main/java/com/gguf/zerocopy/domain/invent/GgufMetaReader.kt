@@ -54,9 +54,9 @@ object GgufMetaReader {
                     return null
                 }
 
-                // ── Single pass: capture architecture and context_length ──
+                // ── Single pass: capture architecture and all .context_length keys ──
                 var architecture: String? = null
-                var contextLengthValue: Long? = null
+                val candidates = mutableMapOf<String, Long>()
 
                 for (i in 0 until kvCount) {
                     val keyLen = readU64(raf)
@@ -73,28 +73,20 @@ object GgufMetaReader {
                             architecture = value
                         }
                         key.endsWith(".context_length") && value is Long -> {
-                            contextLengthValue = value
-                            // If architecture is already known, we can verify
-                            // the prefix match and return immediately.
-                            if (architecture != null &&
-                                key == "$architecture.context_length"
-                            ) {
-                                return value.toInt()
-                            }
+                            candidates[key] = value
                         }
                     }
                 }
 
-                // After the loop: if we found both arch and a context length
-                // (regardless of prefix ordering), use it.  There is exactly
-                // one .context_length key per file, so any match is correct.
-                if (architecture != null && contextLengthValue != null) {
-                    return contextLengthValue.toInt()
-                }
+                // Prefer the key matching the model's actual architecture,
+                // otherwise take whatever .context_length was found.
+                val ctx = architecture?.let { candidates["$it.context_length"] }
+                    ?: candidates.values.firstOrNull()
+                if (ctx != null && ctx > 0L) return ctx.toInt()
 
                 android.util.Log.d(
                     "GgufMetaReader",
-                    "File $path: arch=$architecture ctx=$contextLengthValue (found nothing)"
+                    "File $path: arch=$architecture candidates=$candidates (found nothing)"
                 )
                 null
             }
