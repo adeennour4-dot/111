@@ -6,70 +6,23 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- ZeroCopy App Icon — Original style, bigger cross, cleaner nodes -->
+    <!-- ZeroCopy App Icon — Minimalist Z lettermark with brand gradient -->
 
-    <!-- ─── Center: + sign — purple→teal gradient, outer + inner glow ─── -->
-
-    <!-- Outer glow (15%, 1.10x) -->
-    <group android:pivotX="54" android:pivotY="54" android:scaleX="1.10" android:scaleY="1.10">
-        <path android:pathData="M42,48 L66,48 Q70,48 70,54 Q70,60 66,60 L42,60 Q38,60 38,54 Q38,48 42,48 Z">
+    <!-- Outer glow (soft, 1.08x) -->
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="1.08" android:scaleY="1.08">
+        <path android:pathData="M66,36 L42,36 A4,4 0,0,0 38,40 L38,44 A4,4 0,0,0 42,48 L57,48 L42,66 A4,4 0,0,0 40,70 L40,72 A4,4 0,0,0 44,76 L66,76 A4,4 0,0,0 70,72 L70,68 A4,4 0,0,0 66,64 L51,64 L66,46 A4,4 0,0,0 68,42 L68,40 A4,4 0,0,0 64,36 Z">
             <aapt:attr name="android:fillColor">
                 <gradient android:startX="0" android:startY="108" android:endX="108" android:endY="0"
-                    android:type="linear" android:startColor="#187C5CFF" android:endColor="#1800E5A0"/>
-            </aapt:attr>
-        </path>
-        <path android:pathData="M48,42 L48,66 Q48,70 54,70 Q60,70 60,66 L60,42 Q60,38 54,38 Q48,38 48,42 Z">
-            <aapt:attr name="android:fillColor">
-                <gradient android:startX="0" android:startY="108" android:endX="108" android:endY="0"
-                    android:type="linear" android:startColor="#187C5CFF" android:endColor="#1800E5A0"/>
+                    android:type="linear" android:startColor="#207C5CFF" android:endColor="#2000E5A0"/>
             </aapt:attr>
         </path>
     </group>
 
-    <!-- Inner glow (25%, 1.04x) -->
-    <group android:pivotX="54" android:pivotY="54" android:scaleX="1.04" android:scaleY="1.04">
-        <path android:pathData="M42,48 L66,48 Q70,48 70,54 Q70,60 66,60 L42,60 Q38,60 38,54 Q38,48 42,48 Z">
-            <aapt:attr name="android:fillColor">
-                <gradient android:startX="0" android:startY="108" android:endX="108" android:endY="0"
-                    android:type="linear" android:startColor="#407C5CFF" android:endColor="#4000E5A0"/>
-            </aapt:attr>
-        </path>
-        <path android:pathData="M48,42 L48,66 Q48,70 54,70 Q60,70 60,66 L60,42 Q60,38 54,38 Q48,38 48,42 Z">
-            <aapt:attr name="android:fillColor">
-                <gradient android:startX="0" android:startY="108" android:endX="108" android:endY="0"
-                    android:type="linear" android:startColor="#407C5CFF" android:endColor="#4000E5A0"/>
-            </aapt:attr>
-        </path>
-    </group>
-
-    <!-- Main plus (solid gradient) — bar width 12, length 30 -->
-    <path android:pathData="M42,48 L66,48 Q70,48 70,54 Q70,60 66,60 L42,60 Q38,60 38,54 Q38,48 42,48 Z">
+    <!-- Main Z letter (solid gradient) -->
+    <path android:pathData="M66,36 L42,36 A4,4 0,0,0 38,40 L38,44 A4,4 0,0,0 42,48 L57,48 L42,66 A4,4 0,0,0 40,70 L40,72 A4,4 0,0,0 44,76 L66,76 A4,4 0,0,0 70,72 L70,68 A4,4 0,0,0 66,64 L51,64 L66,46 A4,4 0,0,0 68,42 L68,40 A4,4 0,0,0 64,36 Z">
         <aapt:attr name="android:fillColor">
             <gradient android:startX="0" android:startY="108" android:endX="108" android:endY="0"
                 android:type="linear" android:startColor="#FF7C5CFF" android:endColor="#FF00E5A0"/>
         </aapt:attr>
     </path>
-    <path android:pathData="M48,42 L48,66 Q48,70 54,70 Q60,70 60,66 L60,42 Q60,38 54,38 Q48,38 48,42 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient android:startX="0" android:startY="108" android:endX="108" android:endY="0"
-                android:type="linear" android:startColor="#FF7C5CFF" android:endColor="#FF00E5A0"/>
-        </aapt:attr>
-    </path>
-
-    <!-- ─── Top-right: Teal rounded cube + larger circle behind ─── -->
-    <!-- Outer circle (r=9, 35% teal) -->
-    <path android:fillColor="#3300E5A0"
-        android:pathData="M74,34 m-9,0 a9,9 0,1 1,18 0 a9,9 0,1 1,-18 0"/>
-    <!-- Rounded cube (14×14, r=3) -->
-    <path android:fillColor="#00E5A0"
-        android:pathData="M67,30 A3,3 0,0,1 70,27 L78,27 A3,3 0,0,1 81,30 L81,38 A3,3 0,0,1 78,41 L70,41 A3,3 0,0,1 67,38 Z"/>
-
-    <!-- ─── Bottom-left: Purple circle + larger rounded cube behind ─── -->
-    <!-- Outer cube (20×20, r=4, 35% purple) -->
-    <path android:fillColor="#337C5CFF"
-        android:pathData="M24,70 A4,4 0,0,1 28,66 L40,66 A4,4 0,0,1 44,70 L44,82 A4,4 0,0,1 40,86 L28,86 A4,4 0,0,1 24,82 Z"/>
-    <!-- Purple circle (r=7 — same diameter as cyan square) -->
-    <path android:fillColor="#7C5CFF"
-        android:pathData="M34,76 m-7,0 a7,7 0,1 1,14 0 a7,7 0,1 1,-14 0"/>
-
 </vector>

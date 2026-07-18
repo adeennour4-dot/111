@@ -22,12 +22,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Download
-import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -158,7 +156,7 @@ fun WelcomeScreen(
                         subtitle = "All models run on-device. Nothing leaves your phone."
                     )
                     FeatureItem(
-                        icon = Icons.Outlined.Memory,
+                        icon = Icons.Outlined.Hub,
                         title = "Local Inference",
                         subtitle = "llama.cpp, MNN, LiteRT — no cloud needed"
                     )
@@ -168,7 +166,7 @@ fun WelcomeScreen(
                         subtitle = "Speak your prompts (microphone permission needed)"
                     )
                     FeatureItem(
-                        icon = Icons.Outlined.Extension,
+                        icon = Icons.Outlined.Psychology,
                         title = "Multi-Agent Invent",
                         subtitle = "Generate full projects from an idea"
                     )
@@ -227,7 +225,7 @@ fun WelcomeScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = colors.Accent)
                     ) {
                         Icon(
-                            Icons.Outlined.Download,
+                            Icons.Outlined.Hub,
                             contentDescription = null,
                             modifier = Modifier.size(20.dp)
                         )
