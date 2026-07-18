@@ -47,6 +47,7 @@ fun InventSetupScreen(
     var researcherName by remember { mutableStateOf("") }
     var offlineMode by remember { mutableStateOf(false) }
     var reasoningEnabled by remember { mutableStateOf(true) }
+    var inventMode by remember { mutableStateOf("multi") } // "single" or "multi"
     var showPicker by remember { mutableStateOf<String?>(null) } // "m1","m2","res"
     // 1 = one model all roles, 2 = researcher + combined, 3 = all separate
     var modelMode by remember { mutableStateOf(1) }
@@ -143,7 +144,7 @@ fun InventSetupScreen(
                         .mapNotNull { sid ->
                             val s = com.gguf.zerocopy.data.invent.InventStorage.loadSession(app, sid)
                             val z = com.gguf.zerocopy.data.invent.InventStorage.loadZcp(app, sid)
-                            if (s != null) Triple(sid, s, z?.projectName ?: s.projectName) else null
+                            if (s != null) Triple(sid, s, z?.projectName ?: s.model1Name.ifEmpty { "Untitled" }) else null
                         }
                         .take(4)
                 } catch (_: Exception) { emptyList() }
@@ -205,7 +206,6 @@ fun InventSetupScreen(
             }
 
             // ── Mode selector: Single Model vs Multi-Agent ────────────────
-            var inventMode by remember { mutableStateOf("multi") } // "single" or "multi"
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = colors.Card,

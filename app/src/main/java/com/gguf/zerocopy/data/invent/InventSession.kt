@@ -327,6 +327,11 @@ object InventStorage {
     }
 
     fun resolveDomainsForCategory(ctx: Context, category: String): List<String> {
+        return loadDomainRegistry(ctx)
+            .filter { it.category.equals(category, ignoreCase = true) }
+            .map { it.domain }
+            .take(2)
+    }
 
     /**
      * Compresses conversation history when the context limit is near.
@@ -356,11 +361,6 @@ object InventStorage {
             thinkingContent = ""
         )
         return listOf(summary) + recent
-    }
-        return loadDomainRegistry(ctx)
-            .filter { it.category.equals(category, ignoreCase = true) }
-            .map { it.domain }
-            .take(2)
     }
 
     /**

@@ -51,7 +51,7 @@ fun InventProjectScreen(
 
     // Project slots (4)
     val projectNames = remember { List(4) { "Project ${it + 1}" } }
-    val projectColors = listOf(colors.Purple, colors.Teal, colors.Amber, colors.Red)
+    val projectColors = listOf(colors.Purple, colors.Accent2, colors.Amber, colors.Red)
 
     // Model mode (1=solo, 2=dual, 3=triple)
     var modelMode by remember { mutableStateOf(if (sameModelMode) 1 else 3) }
