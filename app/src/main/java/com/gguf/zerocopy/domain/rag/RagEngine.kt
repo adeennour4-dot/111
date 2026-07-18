@@ -255,7 +255,10 @@ class RagEngine(context: Context, maxFiles: Int = 5) {
 
         // avgDocLen: computed once for this retrieve() call
         val avgDocLen: Float = if (termSets.isEmpty()) 250f
-            else termSets.sumOf { it.size.toDouble() }.toFloat() / termSets.size
+            else {
+                val totalLen = termSets.sumOf { it.size.toDouble() }.toFloat()
+                if (termSets.size > 0) totalLen / termSets.size else 250f
+            }
 
         val selected: List<Pair<Chunk, Float>> = if (queryTerms.isEmpty()) {
             snapshot.take(2).map { it to 1f }

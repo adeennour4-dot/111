@@ -78,6 +78,7 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.material3.SnackbarHost
@@ -199,12 +200,6 @@ fun ModelListScreen(
     val runningEngine = app.engineManager.getActiveEngine()
     if (runningEngine != null && !runningEngine.isInferenceDone()) {
       runningEngine.abortInference()
-      // Spin-wait for inference to actually finish (max ~2s)
-      var waited = 0
-      while (!runningEngine.isInferenceDone() && waited < 2000) {
-        Thread.sleep(50)
-        waited += 50
-      }
     }
     if (loadedModelPath == model.path && activeEngine != null) {
       // Already loaded — just focus without reloading or unloading.
@@ -231,6 +226,15 @@ fun ModelListScreen(
       category = com.gguf.zerocopy.domain.inference.JobManager.JobCategory.MODEL_LOAD
     )
     loadingJob = scope.launch {
+      // Wait for inference to actually stop before freeing C++ globals
+      // (unloadModel inside loadModel).  The abort signal is async.
+      val eng = app.engineManager.getActiveEngine()
+      if (eng != null && !eng.isInferenceDone()) {
+        var waited = 0
+        while (!eng.isInferenceDone() && waited < 2000) {
+          delay(50); waited += 50
+        }
+      }
       val err = loadModel(model, onModelSelected)
       isLoading = false
       loadingJob = null
@@ -242,16 +246,6 @@ fun ModelListScreen(
 
   fun confirmEngineSwitch(model: LocalModel) {
     engineSwitchWarningModel = null
-    // Abort running inference before unloading all engines
-    val runningEngine = app.engineManager.getActiveEngine()
-    if (runningEngine != null && !runningEngine.isInferenceDone()) {
-      runningEngine.abortInference()
-      var waited = 0
-      while (!runningEngine.isInferenceDone() && waited < 2000) {
-        Thread.sleep(50)
-        waited += 50
-      }
-    }
     isLoading = true
     loadCancelRequested = false
     loadingStep = "Switching engine…"
@@ -260,6 +254,16 @@ fun ModelListScreen(
       category = com.gguf.zerocopy.domain.inference.JobManager.JobCategory.MODEL_LOAD
     )
     loadingJob = scope.launch {
+      // Abort running inference inside the coroutine so we don't block the
+      // main thread with a spin-wait (would cause ANR).
+      val runningEngine = app.engineManager.getActiveEngine()
+      if (runningEngine != null && !runningEngine.isInferenceDone()) {
+        runningEngine.abortInference()
+        var waited = 0
+        while (!runningEngine.isInferenceDone() && waited < 2000) {
+          delay(50); waited += 50
+        }
+      }
       app.engineManager.unloadAll()
       val err = loadModel(model, onModelSelected)
       isLoading = false
@@ -271,20 +275,21 @@ fun ModelListScreen(
   }
 
   fun confirmDelete(model: LocalModel) {
-    if (loadedModelPath == model.path) {
-      val engine = app.engineManager.getActiveEngine()
-      if (engine != null && !engine.isInferenceDone()) {
-        engine.abortInference()
-        var waited = 0
-        while (!engine.isInferenceDone() && waited < 2000) {
-          Thread.sleep(50)
-          waited += 50
+    scope.launch {
+      if (loadedModelPath == model.path) {
+        val engine = app.engineManager.getActiveEngine()
+        if (engine != null && !engine.isInferenceDone()) {
+          engine.abortInference()
+          var waited = 0
+          while (!engine.isInferenceDone() && waited < 2000) {
+            delay(50); waited += 50
+          }
         }
+        engine?.unloadModel()
       }
-      engine?.unloadModel()
+      app.modelRepository.deleteModel(model.id)
+      modelToDelete = null
     }
-    app.modelRepository.deleteModel(model.id)
-    modelToDelete = null
   }
 
   Scaffold(
