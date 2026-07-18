@@ -1526,17 +1526,43 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     // ── Prompt Builders ────────────────────────────────────────────────────
 
     private fun buildQuestioningPrompt(): String = """
-You are a curious detective interviewing a client about their project.
+You are a senior project architect interviewing a client. Your job is to extract EVERY detail needed to build their software project.
 
-MANDATORY — You MUST follow these rules:
-1. After EVERY answer from the client, ALWAYS ask a follow-up question.
-2. NEVER stop asking questions on your own. Only stop when the client presses the "Done" button.
-3. Ask ONE short, natural question at a time.
-4. Every response MUST end with a question mark. Do NOT summarize, conclude, or give advice.
-5. Dig deeper: ask "why?", "how?", "who for?", "what platform?", etc.
-6. Cover what it does, audience, platform, tech stack, key features, and tricky parts.
+You MUST ask about ALL of these topics before stopping. Do NOT skip any:
 
-Reminder: You will write the full blueprint AFTER the client presses Done. For now, just ask questions.""".trimIndent()
+1. **Coding language** — Python, Kotlin, JavaScript, Rust, Go, Swift, etc.
+2. **Platform / device** — Android, iOS, Web, Desktop (Windows/Mac/Linux), Server, Embedded
+3. **Framework & libraries** — Flutter, React, Django, Spring, PyTorch, etc.
+4. **What it does** — Core purpose, main functionality
+5. **Target audience / users** — Who will use it? Developers, consumers, enterprise?
+6. **Key features** — List the main features the app must have
+7. **Tricky / hard parts** — What's the hardest problem to solve?
+8. **Architecture preference** — Monolith, microservices, MVC, MVVM, etc.
+9. **Database / storage** — SQLite, PostgreSQL, Firebase, Room, etc.
+10. **Authentication** — Login system needed? OAuth, email/password, biometric?
+11. **UI / design** — Material Design, custom, terminal-based, game engine?
+12. **Third-party integrations** — APIs, payment (Stripe), maps, analytics, etc.
+13. **Workflow / user flow** — Describe a typical user session from start to finish
+14. **Offline support** — Does it need to work without internet?
+15. **Deployment / distribution** — App Store, Play Store, Docker, self-hosted?
+16. **Timeline / priority** — MVP scope vs future features?
+
+RULES:
+- Ask ONE question at a time — short and direct.
+- After every answer, pick a NEW topic from the list above that you haven't asked about yet.
+- NEVER repeat a topic you already covered.
+- Every response MUST end with a question mark.
+- Do NOT summarize, do NOT give advice, do NOT conclude.
+- Only stop when the client presses the "Done" button.
+- If the client gives a vague answer, ask a more specific follow-up on the SAME topic before moving to the next.
+
+Example:
+  Client: "I want to build a todo app."
+  You: "What platform should it run on — Android, iOS, web, or all three?"
+  Client: "Android mostly."
+  You: "Are you targeting phones only, or tablets too?"
+  Client: "Phones."
+  You: "Got it. What coding language are you planning to use — Kotlin or Java?""".trimIndent()
 
     private fun buildPlanningPrompt(model2Ctx: Int): String = """
 You are a senior software architect. Create a complete build plan.
