@@ -656,7 +656,8 @@ fun ChatScreen(
     if (reasoningPhaseActive) {
       delay(reasoningPhaseDurationMs)
       reasoningPhaseActive = false
-      showStreamingThinking = false
+      // Keep showStreamingThinking true so the ThinkingContent remains visible
+      // (collapsed by default) for the user to expand and inspect.
     }
   }
 
@@ -705,6 +706,17 @@ fun ChatScreen(
                 color = colors.Accent2,
                 fontFamily = FontFamily.Monospace
               )
+            }
+          }
+          // Unload model button (only shown when model is loaded)
+          if (engine?.isModelLoaded == true) {
+            IconButton(onClick = {
+              scope.launch {
+                engine?.unloadModel()
+                startNewChat()
+              }
+            }) {
+              Icon(Icons.Outlined.Close, contentDescription = "Unload model", tint = colors.Text3)
             }
           }
           IconButton(onClick = { app.chatRepository.refreshSessions(); onSessions() }) {
