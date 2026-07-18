@@ -207,7 +207,8 @@ fun ModelListScreen(
       }
     }
     if (loadedModelPath == model.path && activeEngine != null) {
-      activeEngine.unloadModel()
+      // Already loaded — just focus without reloading or unloading.
+      onModelSelected(model.path, model.name)
       return
     }
     val targetEngine = app.engineManager.selectEngineForFormat(model.path)

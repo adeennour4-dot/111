@@ -290,7 +290,7 @@ object SettingsManager {
     set(v) { prefs?.edit()?.putString("system_prompt", v)?.apply() }
 
   var lowRamMode: Boolean
-    get() = prefs?.getBoolean("low_ram", true) ?: true
+    get() = prefs?.getBoolean("low_ram", false) ?: false
     set(v) { prefs?.edit()?.putBoolean("low_ram", v)?.apply() }
 
   // Flash attention: user can toggle; native code will further gate on i8mm detection
