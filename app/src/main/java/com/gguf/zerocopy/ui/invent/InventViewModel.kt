@@ -1945,13 +1945,22 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
         val added = if (role == "user" || role == "model1" || role == "model2" || role == "researcher") content.length else 0
         withTransaction(
             uiTransform = { state ->
-                val updated = state.messages + InventMessage(role, cleaned, phase, thinkingContent)
-                state.copy(messages = updated, chatStarted = state.chatStarted || started,
+                val newMsg = InventMessage(role, cleaned, phase, thinkingContent)
+                val appended = state.messages + newMsg
+                // Compact context if messages exceed 60 turns
+                val compacted = if (appended.size > 60) {
+                    InventStorage.compressMessages(appended, maxMessages = 50, keepRecent = 10)
+                } else appended
+                state.copy(messages = compacted, chatStarted = state.chatStarted || started,
                     conversationDepth = state.conversationDepth + added)
             },
             sessionTransform = { sess ->
-                val updated = (sess?.messages ?: emptyList()) + InventMessage(role, cleaned, phase, thinkingContent)
-                sess?.copy(messages = updated)
+                val newMsg = InventMessage(role, cleaned, phase, thinkingContent)
+                val appended = (sess?.messages ?: emptyList()) + newMsg
+                val compacted = if (appended.size > 60) {
+                    InventStorage.compressMessages(appended, maxMessages = 50, keepRecent = 10)
+                } else appended
+                sess?.copy(messages = compacted)
             }
         )
     }

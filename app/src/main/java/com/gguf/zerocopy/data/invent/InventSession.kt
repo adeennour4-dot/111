@@ -327,6 +327,36 @@ object InventStorage {
     }
 
     fun resolveDomainsForCategory(ctx: Context, category: String): List<String> {
+
+    /**
+     * Compresses conversation history when the context limit is near.
+     * Removes older messages beyond a threshold and replaces them with
+     * a compact summary, keeping only the most recent [keepRecent] messages
+     * intact.  This prevents runaway context growth in single-model mode.
+     */
+    fun compressMessages(
+        messages: List<InventMessage>,
+        maxMessages: Int = 30,
+        keepRecent: Int = 8
+    ): List<InventMessage> {
+        if (messages.size <= maxMessages) return messages
+
+        val recent = messages.takeLast(keepRecent)
+        val toCompress = messages.dropLast(keepRecent)
+
+        // Count roles in the compressed segment
+        val userCount = toCompress.count { it.role == "user" }
+        val asstCount = toCompress.count { it.role == "assistant" }
+
+        val summary = InventMessage(
+            role = "system",
+            content = "[Earlier conversation compressed: $userCount user turns, " +
+                "$asstCount assistant turns — key decisions preserved above.]",
+            phase = toCompress.lastOrNull()?.phase ?: InventPhase.DONE,
+            thinkingContent = ""
+        )
+        return listOf(summary) + recent
+    }
         return loadDomainRegistry(ctx)
             .filter { it.category.equals(category, ignoreCase = true) }
             .map { it.domain }

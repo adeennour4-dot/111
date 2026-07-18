@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ZeroCopyApp
@@ -50,7 +51,9 @@ fun InventSetupScreen(
     // 1 = one model all roles, 2 = researcher + combined, 3 = all separate
     var modelMode by remember { mutableStateOf(1) }
 
-    val canStart = when (modelMode) {
+    val canStart = if (inventMode == "single") {
+        model1Path.isNotEmpty()
+    } else when (modelMode) {
         1 -> model1Path.isNotEmpty()
         2 -> researcherPath.isNotEmpty() && model1Path.isNotEmpty()
         3 -> model1Path.isNotEmpty() && model2Path.isNotEmpty() && researcherPath.isNotEmpty()
@@ -128,6 +131,122 @@ fun InventSetupScreen(
                             Text("  GGUF / MNN / TFLite  ", fontSize = 10.sp, color = colors.Accent,
                                 fontFamily = FontFamily.Monospace,
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
+                        }
+                    }
+                }
+            }
+
+            // ── Saved projects (up to 4 slots) ────────────────────────────
+            val savedSessions = remember {
+                try {
+                    com.gguf.zerocopy.data.invent.InventStorage.listSessions(app)
+                        .mapNotNull { sid ->
+                            val s = com.gguf.zerocopy.data.invent.InventStorage.loadSession(app, sid)
+                            val z = com.gguf.zerocopy.data.invent.InventStorage.loadZcp(app, sid)
+                            if (s != null) Triple(sid, s, z?.projectName ?: s.projectName) else null
+                        }
+                        .take(4)
+                } catch (_: Exception) { emptyList() }
+            }
+            if (savedSessions.isNotEmpty()) {
+                Text("Resume Project", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    color = colors.Text2, fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(start = 2.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    savedSessions.forEach { (sid, state, projectName) ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = colors.Card,
+                            border = BorderStroke(1.dp, colors.Accent.copy(alpha = 0.25f)),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    // Resume this project
+                                    val allSame = state.sameModelMode
+                                    onStart(
+                                        state.model1Path, state.model1Name,
+                                        state.model2Path, state.model2Name,
+                                        state.researcherPath, state.researcherName,
+                                        state.offlineMode, allSame, true
+                                    )
+                                }
+                        ) {
+                            Column(
+                                Modifier.padding(10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(Icons.Filled.Folder, null, tint = colors.Accent,
+                                    modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    projectName.take(12),
+                                    fontSize = 9.sp, color = colors.Text,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    state.phase.name.take(8),
+                                    fontSize = 8.sp, color = colors.Text3,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                    }
+                    // Fill empty slots with invisible spacers to keep layout consistent
+                    repeat(4 - savedSessions.size) {
+                        Spacer(Modifier.weight(1f))
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+            }
+
+            // ── Mode selector: Single Model vs Multi-Agent ────────────────
+            var inventMode by remember { mutableStateOf("multi") } // "single" or "multi"
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = colors.Card,
+                border = BorderStroke(1.dp, colors.Border),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Text("Mode", fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                        color = colors.Text, fontFamily = FontFamily.Monospace)
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(
+                            "single" to "Single Model",
+                            "multi" to "Multi-Agent"
+                        ).forEach { (mode, label) ->
+                            val active = inventMode == mode
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (active) colors.Accent.copy(alpha = 0.2f) else colors.Surface,
+                                border = BorderStroke(1.dp, if (active) colors.Accent else colors.Border),
+                                modifier = Modifier.weight(1f).clickable { inventMode = mode }
+                            ) {
+                                Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(
+                                        if (mode == "single") Icons.Filled.Person else Icons.Filled.Groups,
+                                        null,
+                                        tint = if (active) colors.Accent else colors.Text3,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                        color = if (active) colors.Accent else colors.Text2,
+                                        fontFamily = FontFamily.Monospace)
+                                    Text(
+                                        if (mode == "single") "One model handles all roles"
+                                        else "Planner + Coder + Researcher",
+                                        fontSize = 9.sp, color = if (active) colors.Accent else colors.Text3,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -403,12 +522,13 @@ fun InventSetupScreen(
                         else Brush.horizontalGradient(listOf(colors.Border, colors.Border))
                     )
                     .then(if (canStart) Modifier.clickable {
-                        val coderPath = if (modelMode == 3) model2Path else model1Path
-                        val coderName = if (modelMode == 3) model2Name else model1Name
-                        // In mode 1 (all same), researcher uses the same model as planner
-                        val actualResPath = if (modelMode == 1) model1Path else researcherPath
-                        val actualResName = if (modelMode == 1) model1Name else researcherName
-                        val allSame = modelMode == 1
+                        val isSingle = inventMode == "single"
+                        val coderPath = if (isSingle || modelMode != 3) model1Path else model2Path
+                        val coderName = if (isSingle || modelMode != 3) model1Name else model2Name
+                        // In single mode or mode 1, researcher uses the same model as planner
+                        val actualResPath = if (isSingle || modelMode == 1) model1Path else researcherPath
+                        val actualResName = if (isSingle || modelMode == 1) model1Name else researcherName
+                        val allSame = isSingle || modelMode == 1
                         onStart(
                             model1Path, model1Name,
                             coderPath, coderName,
