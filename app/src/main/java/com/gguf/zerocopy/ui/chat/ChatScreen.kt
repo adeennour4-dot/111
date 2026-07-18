@@ -148,6 +148,9 @@ fun ChatScreen(
     kvUsagePercent = 0
     showStreamingThinking = false
     reasoningPhaseActive = false
+    // Actually create a new session in the repository
+    app.chatRepository.createSession(modelPath = modelPath, modelName = modelName)
+    chatId = app.chatRepository.currentSessionId
   }
 
   var attachmentUris by remember { mutableStateOf(listOf<Uri>()) }

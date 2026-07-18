@@ -136,8 +136,11 @@ object ToolAwareInference {
             } else toolResult.result
 
             // Use a simple format: the model sees the tool result as context
+            // Include a step-by-step reasoning instruction so that when
+            // both search and reasoning are enabled, the model reasons
+            // about the tool result rather than just regurgitating it.
             currentPrompt = "$output\n\nTool result (${toolCall.name}):\n$toolResultText\n\n" +
-                "Please provide your final answer based on this result."
+                "Think step by step about this information and provide your final answer."
             totalRounds++
         }
 
