@@ -92,6 +92,7 @@ fun InventScreen(
     var inputText by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
     var showSessions by remember { mutableStateOf(false) }
+    var showFilePanel by remember { mutableStateOf(false) }
     var showModelPicker by remember { mutableStateOf<Int?>(null) }
     var settingsRestrictRole by remember { mutableStateOf(-1) }
     val listState = rememberLazyListState()
@@ -219,6 +220,14 @@ fun InventScreen(
                         vm.refreshSessionList()
                         showSessions = true
                     })
+                    if (ui.fileTree.isNotEmpty()) {
+                        HeaderBtn(
+                            if (showFilePanel) Icons.Filled.Close else Icons.Filled.Description,
+                            "Files",
+                            if (showFilePanel) Cy else colors.Text2,
+                            onClick = { showFilePanel = !showFilePanel }
+                        )
+                    }
                     HeaderBtn(Icons.Filled.Settings, "Settings", colors.Text2, onClick = { showSettings = true })
                     HeaderBtn(Icons.Filled.Refresh, "Restart", Color.White, onClick = {
                         vm.restartConversation()
@@ -259,14 +268,16 @@ fun InventScreen(
                 PhaseHint(ui.phase, colors)
             }
 
-            // ── Chat scroll ─────────────────────────────────────────────────
-            Box(Modifier.weight(1f)) {
-                if (chats.isEmpty() && ui.streamingResponse.isEmpty() && ui.swapInfo.isEmpty() && ui.error.isEmpty()) {
-                    EmptyState(ui.phase, phaseColor, colors)
-                } else {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
+            // ── Main content area (chat + optional file panel) ────────────
+            Row(Modifier.weight(1f)) {
+                // ── Chat scroll ───────────────────────────────────────────────
+                Box(Modifier.weight(1f)) {
+                    if (chats.isEmpty() && ui.streamingResponse.isEmpty() && ui.swapInfo.isEmpty() && ui.error.isEmpty()) {
+                        EmptyState(ui.phase, phaseColor, colors)
+                    } else {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
@@ -320,6 +331,15 @@ fun InventScreen(
                             }
                         }
                     }
+
+                // ── Right file panel ───────────────────────────────────
+                if (showFilePanel && ui.fileTree.isNotEmpty()) {
+                    FilePanel(
+                        fileTree = ui.fileTree,
+                        colors = colors,
+                        vm = vm,
+                        onClose = { showFilePanel = false }
+                    )
                 }
             }
 

@@ -1972,6 +1972,55 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
 
     private fun setSwap(info: String) { _ui.value = _ui.value.copy(swapInfo = info) }
 
+    /**
+     * Get the content of a generated file by searching through the chat messages
+     * for the relevant code block.
+     */
+    fun getFileContent(filePath: String): String? {
+        val cur = _ui.value
+        // First try from zcp memory
+        val z = zcp
+        if (z.fileTree.any { it.path == filePath }) {
+            // Scan session messages for code blocks matching this file name
+            val fileName = filePath.substringAfterLast('/')
+            for (msg in cur.messages) {
+                val content = msg.content
+                // Match code blocks with a comment/heading that includes the file name
+                val codeRegex = Regex("```[\s\S]*?" + Regex.escape(fileName) + "[\s\S]*?```", RegexOption.IGNORE_CASE)
+                val match = codeRegex.find(content)
+                if (match != null) {
+                    return match.value
+                        .replace(Regex("^```\\w*\\n?", RegexOption.MULTILINE), "")
+                        .replace(Regex("\\n?```$", RegexOption.MULTILINE), "")
+                        .trim()
+                }
+            }
+            // Fallback: try loading from the actual file if it was saved
+            try {
+                val dir = java.io.File(app.filesDir, "invent_generated/${cur.sessionId}${filePath.substringBeforeLast('/')}")
+                val file = java.io.File(dir, fileName)
+                if (file.exists()) return file.readText()
+            } catch (_: Exception) {}
+        }
+        return null
+    }
+
+    /**
+     * Start a debug session for a specific file.
+     */
+    fun requestDebug(filePath: String, fileContent: String) {
+        val cur = _ui.value
+        // Send a message to the coder model asking it to debug this specific file
+        val debugPrompt = "Please review the following file for bugs and issues. " +
+            "File: $filePath\n\n```\n$fileContent\n```\n\n" +
+            "Identify any bugs, security issues, or improvements needed."
+        _ui.value = cur.copy(debugMode = true, phase = InventPhase.DEBUGGING)
+        // Queue the message for sending
+        viewModelScope.launch {
+            sendUserMessage(debugPrompt)
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         // Unload engines on background thread — NEVER block the main thread
