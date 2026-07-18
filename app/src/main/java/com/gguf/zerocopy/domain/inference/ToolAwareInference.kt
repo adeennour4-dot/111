@@ -31,8 +31,7 @@ object ToolAwareInference {
         runInference: (String, TokenCallback, InferenceDoneSignal) -> Unit,
         callback: TokenCallback,
         isAborted: () -> Boolean = { false },
-        searchQuery: String? = null,
-        supportsToolCalling: Boolean = false
+        searchQuery: String? = null
     ) {
         // ── Inject tool definitions into the system prompt ──
         val toolDefs = toolManager.getToolDefinitionsJson()
@@ -49,10 +48,8 @@ object ToolAwareInference {
         }
         setSystemPrompt(augmentedSystemPrompt)
 
-        // ── Single round (no tool loop) ──
-        // Used when the model isn't expected to emit structured tool calls,
-        // or when there are simply no tools registered.
-        if (!supportsToolCalling || toolManager.getToolCount() == 0) {
+        // ── Single round when no tools exist ──
+        if (toolManager.getToolCount() == 0) {
             runSingleRound(userPrompt, runInference, callback, isAborted)
             return
         }

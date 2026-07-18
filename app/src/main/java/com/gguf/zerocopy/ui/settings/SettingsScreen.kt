@@ -210,6 +210,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       it.config = if (modelPath != null) SettingsManager.toConfig(modelPath) else cfg
       it.repeatPenalty = rp
       it.systemPrompt = sysPrompt
+      it.chatTemplate = chatTemplate
     }
   }
 
@@ -237,6 +238,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         )
         eng.repeatPenalty = SettingsManager.toRepeatPenalty()
         eng.systemPrompt = SettingsManager.systemPrompt
+        eng.chatTemplate = SettingsManager.chatTemplate
         eng.loadModel(path)
       }
     }
@@ -345,6 +347,20 @@ fun SettingsScreen(onBack: () -> Unit) {
             color = colors.Accent, fontFamily = FontFamily.Monospace)
           Spacer(Modifier.height(6.dp))
           ChatTemplateSelector(current = chatTemplate, onChange = { chatTemplate = it }, colors = colors)
+        }
+      }
+
+      // ── Auto-load after import ──
+      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+        border = BorderStroke(1.dp, colors.Border)) {
+        Column(Modifier.padding(14.dp)) {
+          ToggleRow(
+            "Auto-load after import",
+            "When enabled, newly imported models are loaded immediately",
+            SettingsManager.autoLoadAfterImport,
+            { SettingsManager.autoLoadAfterImport = it },
+            colors
+          )
         }
       }
 

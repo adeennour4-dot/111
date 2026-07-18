@@ -24,6 +24,8 @@ class LlamaCppEngine : InferenceEngine {
   override var repeatPenalty = RepeatPenaltyConfig()
   override var systemPrompt = ""
     set(v) { field = v; if (isModelLoaded) NativeBridge.setSystemPromptNative(v) }
+  override var chatTemplate = "auto"
+    set(v) { field = v; if (isModelLoaded) NativeBridge.setChatTemplateNative(v) }
   override var mmprojPath: String = ""
 
   private val lock = Any()

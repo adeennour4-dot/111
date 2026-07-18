@@ -66,6 +66,7 @@ struct EngineConfig {
         "You are a helpful, concise assistant running on-device. "
         "Respond clearly and directly.";
     std::string mmproj_path = "";
+    std::string chat_template = "auto";
 };
 
 static llama_model*   g_model       = nullptr;
@@ -179,8 +180,14 @@ static std::string build_chat_prompt() {
         msgs.push_back({"system", g_cfg.system_prompt.c_str()});
     }
     for (auto& m : g_history) msgs.push_back({m.role.c_str(), m.content.c_str()});
-    // Use the model's actual chat template from metadata, fall back to chatml
-    const char * tmpl = g_model ? llama_model_chat_template(g_model, nullptr) : nullptr;
+    // Use user-selected template when set (not "auto"), otherwise fall
+    // back to the model's built-in chat template from GGUF metadata.
+    const char * tmpl = nullptr;
+    if (g_cfg.chat_template != "auto") {
+        tmpl = g_cfg.chat_template.c_str();
+    } else {
+        tmpl = g_model ? llama_model_chat_template(g_model, nullptr) : nullptr;
+    }
     if (!tmpl) tmpl = "chatml";
     std::vector<char> buf(65536);
     int n = llama_chat_apply_template(tmpl, msgs.data(), (int)msgs.size(), true, buf.data(), (int)buf.size());
@@ -375,6 +382,13 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_setSystemPromptNative(
         JNIEnv* env, jobject, jstring prompt) {
     const char* s = env->GetStringUTFChars(prompt, nullptr);
     if (s) { g_cfg.system_prompt = s; env->ReleaseStringUTFChars(prompt, s); }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_gguf_zerocopy_domain_inference_NativeBridge_setChatTemplateNative(
+        JNIEnv* env, jobject, jstring template_) {
+    const char* t = env->GetStringUTFChars(template_, nullptr);
+    if (t) { g_cfg.chat_template = t; env->ReleaseStringUTFChars(template_, t); }
 }
 
 extern "C" JNIEXPORT void JNICALL

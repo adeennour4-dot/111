@@ -446,23 +446,26 @@ fun ModelListScreen(
             pendingImport = false
             // Load model after config (fresh import or reload)
             if (isFreshImport || loadedModelPath == model.path) {
-              reloading = true
-              scope.launch {
-                if (loadedModelPath == model.path) app.engineManager.unloadAll()
-                val err = loadModel(model, onModelSelected)
-                reloading = false
-                if (err != null) { loadError = err; loadErrorModel = model }
+              if (!isFreshImport || com.gguf.zerocopy.data.local.SettingsManager.autoLoadAfterImport) {
+                reloading = true
+                scope.launch {
+                  if (loadedModelPath == model.path) app.engineManager.unloadAll()
+                  val err = loadModel(model, onModelSelected)
+                  reloading = false
+                  if (err != null) { loadError = err; loadErrorModel = model }
+                }
               }
             }
           },
           onDismiss = {
             tokenConfigModel = null
             if (isFreshImport) {
-              // Load with defaults if user skipped config
               pendingImport = false
-              scope.launch {
-                val err = loadModel(model, onModelSelected)
-                if (err != null) { loadError = err; loadErrorModel = model }
+              if (com.gguf.zerocopy.data.local.SettingsManager.autoLoadAfterImport) {
+                scope.launch {
+                  val err = loadModel(model, onModelSelected)
+                  if (err != null) { loadError = err; loadErrorModel = model }
+                }
               }
             }
           },
@@ -998,6 +1001,7 @@ private suspend fun loadModel(
   engine.config = optimizedConfig
   engine.repeatPenalty = SettingsManager.toRepeatPenalty()
   engine.systemPrompt = SettingsManager.systemPrompt
+  engine.chatTemplate = SettingsManager.chatTemplate
   engine.mmprojPath = SettingsManager.mmprojPath
 
   Log.i("ModelList", "Config for ${model.name}: " +

@@ -25,6 +25,7 @@ class LiteRtEngine : InferenceEngine {
   override var config = InferenceConfig()
   override var repeatPenalty = RepeatPenaltyConfig()
   override var systemPrompt = ""
+  override var chatTemplate = "auto"
   override var mmprojPath: String = ""
 
   private var engine: Engine? = null

@@ -199,7 +199,6 @@ fun AppRoot() {
                 else currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
               } else currentSessionId = app.chatRepository.createSession("Chat - $name", path, name).id
             },
-            onSettings = { selectedTab = 3 },
             onSessions = { app.chatRepository.refreshSessions(); showSessionList = true },
             onCloud = { selectedTab = 2 }
           )

@@ -120,16 +120,20 @@ class ZeroCopyApp : Application() {
     val config = SettingsManager.toConfig()
     val rp = SettingsManager.toRepeatPenalty()
     val prompt = SettingsManager.systemPrompt
+    val chatTemplate = SettingsManager.chatTemplate
     engineManager.llamaCpp.config = config
     engineManager.llamaCpp.repeatPenalty = rp
     engineManager.llamaCpp.systemPrompt = prompt
+    engineManager.llamaCpp.chatTemplate = chatTemplate
     engineManager.llamaCpp.mmprojPath = config.mmprojPath
     engineManager.mnn.config = config
     engineManager.mnn.repeatPenalty = rp
     engineManager.mnn.systemPrompt = prompt
+    engineManager.mnn.chatTemplate = chatTemplate
     engineManager.liteRt.config = config
     engineManager.liteRt.repeatPenalty = rp
     engineManager.liteRt.systemPrompt = prompt
+    engineManager.liteRt.chatTemplate = chatTemplate
   }
 
   override fun onTerminate() {

@@ -82,6 +82,7 @@ class ModelServer(val port: Int = 8080) {
             } else config
             e.config = tunedConfig
             e.systemPrompt = com.gguf.zerocopy.data.local.SettingsManager.systemPrompt
+            e.chatTemplate = com.gguf.zerocopy.data.local.SettingsManager.chatTemplate
             e.repeatPenalty = com.gguf.zerocopy.data.local.SettingsManager.toRepeatPenalty()
             val result = runBlocking { e.loadModel(modelInfo.path) }
             if (result.isSuccess) {

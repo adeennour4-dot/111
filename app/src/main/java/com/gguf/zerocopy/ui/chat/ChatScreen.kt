@@ -109,7 +109,6 @@ fun ChatScreen(
   modelName: String,
   sessionId: String?,
   onModelSelected: (path: String, name: String) -> Unit,
-  onSettings: () -> Unit,
   onSessions: () -> Unit,
   onCloud: () -> Unit
 ) {
@@ -131,6 +130,16 @@ fun ChatScreen(
   var streamedContent by remember { mutableStateOf("") }
   var streamedTokens by remember { mutableIntStateOf(0) }
   var streamedTps by remember { mutableFloatStateOf(0f) }
+
+  fun startNewChat() {
+    chatId = null
+    inferenceActive = false
+    isInferring = false
+    streamedContent = ""
+    streamedTokens = 0
+    streamedTps = 0f
+    kvUsagePercent = 0
+  }
 
   var attachmentUris by remember { mutableStateOf(listOf<Uri>()) }
   var attachmentFileNames by remember { mutableStateOf(listOf<String>()) }
@@ -322,7 +331,11 @@ fun ChatScreen(
     streamedTokens = 0
     streamedTps = 0f
     reasoningPhaseActive = reasoningEnabled
-    if (reasoningEnabled) showStreamingThinking = true
+    if (reasoningEnabled) {
+      showStreamingThinking = true
+    } else {
+      showStreamingThinking = false
+    }
 
     val tokenBuffer = AtomicReference("")
     val startTime   = System.currentTimeMillis()
@@ -694,11 +707,11 @@ fun ChatScreen(
               )
             }
           }
-          IconButton(onClick = onSessions) {
+          IconButton(onClick = { app.chatRepository.refreshSessions(); onSessions() }) {
             Icon(Icons.Outlined.History, contentDescription = "Sessions", tint = colors.Text2)
           }
-          IconButton(onClick = onSettings) {
-            Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = colors.Text2)
+          IconButton(onClick = { startNewChat() }) {
+            Icon(Icons.Filled.Add, contentDescription = "New conversation", tint = colors.Text2)
           }
             // Server icon removed per user request
           IconButton(

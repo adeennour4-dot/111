@@ -57,6 +57,8 @@ object NativeBridge {
 
   external fun setSystemPromptNative(prompt: String)
 
+  external fun setChatTemplateNative(template: String)
+
   external fun setRepeatPenaltyNative(repeatPenalty: Float, freqPenalty: Float, presPenalty: Float)
 
   external fun resetContextNative()

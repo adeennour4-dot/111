@@ -19,6 +19,7 @@ class MnnEngine : InferenceEngine {
   override var config = InferenceConfig()
   override var repeatPenalty = RepeatPenaltyConfig()
   override var systemPrompt = ""
+  override var chatTemplate = "auto"
   // MNN does not support mmproj/vision — override hasVisionCapability via InferenceEngine
   override var mmprojPath: String = ""
 

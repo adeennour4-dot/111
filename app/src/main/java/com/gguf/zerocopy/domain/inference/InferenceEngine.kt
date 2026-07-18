@@ -66,6 +66,7 @@ interface InferenceEngine {
   var config: InferenceConfig
   var repeatPenalty: RepeatPenaltyConfig
   var systemPrompt: String
+  var chatTemplate: String
   var mmprojPath: String
   val loadedModelPath: String?
   val hasVisionCapability: Boolean
