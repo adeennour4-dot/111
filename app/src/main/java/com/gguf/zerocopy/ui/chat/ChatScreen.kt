@@ -139,6 +139,8 @@ fun ChatScreen(
     streamedTokens = 0
     streamedTps = 0f
     kvUsagePercent = 0
+    showStreamingThinking = false
+    reasoningPhaseActive = false
   }
 
   var attachmentUris by remember { mutableStateOf(listOf<Uri>()) }
