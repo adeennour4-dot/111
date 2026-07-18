@@ -116,6 +116,17 @@ fun WelcomeScreen(
         ) {
             Spacer(Modifier.weight(1f))
 
+            // ── Logo icon ──
+            Box(modifier = Modifier.alpha(titleAlpha.value)) {
+                Icon(
+                    imageVector = Icons.Outlined.Hub,
+                    contentDescription = "ZeroCopy",
+                    modifier = Modifier.size(56.dp),
+                    tint = colors.Accent
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+
             // ── Title ──
             Box(modifier = Modifier.alpha(titleAlpha.value)) {
                 Text(
