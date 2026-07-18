@@ -55,7 +55,10 @@ data class LocalModel(
   val engine: EngineType,
   val sizeBytes: Long = 0,
   val addedAt: Long = System.currentTimeMillis(),
-  val lastUsed: Long = 0
+  val lastUsed: Long = 0,
+  val isMoE: Boolean = false,
+  val expertCount: Int = 0,
+  val expertUsedCount: Int = 0
 ) {
   val sizeFormatted: String get() =
     when {
@@ -269,6 +272,19 @@ class ModelRepository(private val context: Context) {
         // ── Single model file (GGUF / TFLite / LiteRT) ──────────────────────
         file.isFile && file.extension.lowercase() in VALID_EXTENSIONS && isValidModelFile(file) -> {
           val ext = file.extension.lowercase()
+          var isMoE = false
+          var expertCount = 0
+          var expertUsedCount = 0
+          if (ext == "gguf") {
+            try {
+              val info = com.gguf.zerocopy.domain.invent.GgufMetaReader.readInfo(file.absolutePath)
+              if (info != null) {
+                isMoE = info.isMoE
+                expertCount = info.expertCount ?: 0
+                expertUsedCount = info.expertUsedCount ?: 0
+              }
+            } catch (_: Exception) {}
+          }
           discovered += LocalModel(
             id = "${file.name}_${file.lastModified()}",
             name = file.name,
@@ -277,7 +293,10 @@ class ModelRepository(private val context: Context) {
             engine = engineForExt(ext),
             sizeBytes = file.length(),
             addedAt = file.lastModified(),
-            lastUsed = file.lastModified()
+            lastUsed = file.lastModified(),
+            isMoE = isMoE,
+            expertCount = expertCount,
+            expertUsedCount = expertUsedCount
           )
         }
 

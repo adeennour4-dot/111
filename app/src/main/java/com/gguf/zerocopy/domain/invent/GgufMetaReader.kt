@@ -5,6 +5,14 @@ import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
+data class GgufInfo(
+    val contextLength: Int?,
+    val expertCount: Int?,
+    val expertUsedCount: Int?
+) {
+    val isMoE: Boolean get() = (expertCount ?: 0) > 0
+}
+
 // Reads metadata from GGUF file header without loading the model
 object GgufMetaReader {
 
@@ -25,7 +33,14 @@ object GgufMetaReader {
      * @return The context length, or null if not found / file unreadable / not a valid GGUF.
      *         Callers should use a sensible default (e.g., 2048) when null is returned.
      */
-    fun readContextLength(path: String): Int? {
+    fun readContextLength(path: String): Int? = readInfo(path)?.contextLength
+
+    /**
+     * Read comprehensive GGUF metadata in a single pass.
+     *
+     * @return GgufInfo with contextLength, expertCount, expertUsedCount, or null on error.
+     */
+    fun readInfo(path: String): GgufInfo? {
         return try {
             RandomAccessFile(File(path), "r").use { raf ->
                 val buf4 = ByteArray(4)
@@ -54,9 +69,11 @@ object GgufMetaReader {
                     return null
                 }
 
-                // ── Single pass: capture architecture and all .context_length keys ──
+                // ── Single pass: capture architecture, context_length, expert counts ──
                 var architecture: String? = null
-                val candidates = mutableMapOf<String, Long>()
+                val contextCandidates = mutableMapOf<String, Long>()
+                var expertCount: Long? = null
+                var expertUsedCount: Long? = null
 
                 for (i in 0 until kvCount) {
                     val keyLen = readU64(raf)
@@ -73,22 +90,27 @@ object GgufMetaReader {
                             architecture = value
                         }
                         key.endsWith(".context_length") && value is Long -> {
-                            candidates[key] = value
+                            contextCandidates[key] = value
+                        }
+                        key.endsWith(".expert_count") && value is Long -> {
+                            expertCount = value
+                        }
+                        key.endsWith(".expert_used_count") && value is Long -> {
+                            expertUsedCount = value
                         }
                     }
                 }
 
                 // Prefer the key matching the model's actual architecture,
                 // otherwise take whatever .context_length was found.
-                val ctx = architecture?.let { candidates["$it.context_length"] }
-                    ?: candidates.values.firstOrNull()
-                if (ctx != null && ctx > 0L) return ctx.toInt()
+                val ctx = architecture?.let { contextCandidates["$it.context_length"] }
+                    ?: contextCandidates.values.firstOrNull()
 
-                android.util.Log.d(
-                    "GgufMetaReader",
-                    "File $path: arch=$architecture candidates=$candidates (found nothing)"
+                GgufInfo(
+                    contextLength = if (ctx != null && ctx > 0L) ctx.toInt() else null,
+                    expertCount = expertCount?.toInt(),
+                    expertUsedCount = expertUsedCount?.toInt()
                 )
-                null
             }
         } catch (e: Exception) {
             android.util.Log.w("GgufMetaReader", "File $path: failed to read", e)

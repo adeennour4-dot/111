@@ -579,6 +579,13 @@ fun ModelListScreen(
               DetailRow("Format", model.format.uppercase())
               DetailRow("Engine", model.engine.id)
               DetailRow("Size", model.sizeFormatted)
+              if (model.isMoE) {
+                DetailRow(
+                  "Architecture",
+                  if (model.expertUsedCount > 0) "MoE · ${model.expertCount} experts, ${model.expertUsedCount} active"
+                  else "MoE · ${model.expertCount} experts"
+                )
+              }
 
               DetailRow(
                 "Added",
@@ -884,6 +891,24 @@ private fun ModelCard(
               )
             }
           }
+          // MoE badge
+          if (model.isMoE) {
+            Spacer(Modifier.width(6.dp))
+            Surface(
+              shape = RoundedCornerShape(3.dp),
+              color = colors.Purple.copy(alpha = 0.2f)
+            ) {
+              Text(
+                if (model.expertUsedCount > 0) "MoE · ${model.expertUsedCount}/${model.expertCount} active"
+                else "MoE",
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                fontSize = 8.sp,
+                color = colors.Purple,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold
+              )
+            }
+          }
           if (model.lastUsed > 0) {
             Spacer(Modifier.width(8.dp))
             Text(
@@ -967,15 +992,29 @@ private suspend fun loadModel(
     else -> (model.sizeBytes.toFloat() / 512_000_000f).coerceIn(0.5f, 72f)
   }
 
+  // Read GGUF metadata for MoE detection and native context length
+  val ggufInfo = if (model.format == "gguf") {
+    com.gguf.zerocopy.domain.invent.GgufMetaReader.readInfo(model.path)
+  } else null
+
+  val isMoE = ggufInfo?.isMoE == true
+  val expertCount = ggufInfo?.expertCount ?: 0
+  val expertUsedCount = ggufInfo?.expertUsedCount ?: 0
+
   val perModelCfg = SettingsManager.getModelTokenConfig(model.path)
   val config = if (perModelCfg != null) {
     SettingsManager.toConfig(model.path)
   } else {
-    deviceInfo.suggestConfig(modelSizeB = estimatedParamsB)
+    deviceInfo.suggestConfig(
+      modelSizeB = estimatedParamsB,
+      isMoE = isMoE,
+      expertCount = expertCount,
+      expertUsedCount = expertUsedCount
+    )
   }
 
-  val tunedConfig = if (model.format == "gguf") {
-    val nativeCtx = com.gguf.zerocopy.domain.invent.GgufMetaReader.readContextLength(model.path) ?: -1
+  val tunedConfig = if (ggufInfo != null) {
+    val nativeCtx = ggufInfo.contextLength ?: -1
     if (nativeCtx > 0 && (config.nCtx <= 0 || config.nCtx > nativeCtx)) {
       config.copy(nCtx = nativeCtx)
     } else config

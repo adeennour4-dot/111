@@ -23,7 +23,7 @@ data class DeviceInfo(
   val hasVulkan: Boolean = false,
   val hasOpenCL: Boolean = false
 ) {
-  fun suggestConfig(modelSizeB: Float = 7f): InferenceConfig {
+  fun suggestConfig(modelSizeB: Float = 7f, isMoE: Boolean = false, expertCount: Int = 0, expertUsedCount: Int = 0): InferenceConfig {
     val suggestedThreads =
       if (bigCores.isNotEmpty()) {
         bigCores.size.coerceIn(1, 4)
@@ -35,21 +35,31 @@ data class DeviceInfo(
     // Exynos chips (Note 10 Lite = 9825, S23 FE = 2200) have Vulkan but
     // the NDK cross-compilation for llama.cpp Vulkan is broken on Exynos Mali.
     // Only suggest GPU layers on verified Snapdragon / Tensor with Vulkan.
-    val suggestedGpuLayers = if (hasVulkan && (isSnapdragon || isTensor)) 99 else 0
+    // MoE models: force CPU+mmap unless VRAM can hold ALL experts,
+    // because GPU offload loads every expert into VRAM at once.
+    val suggestedGpuLayers = when {
+        isMoE -> 0  // mmap + CPU lets the OS page in only active experts
+        hasVulkan && (isSnapdragon || isTensor) -> 99
+        else -> 0
+    }
 
-    // Context window based on model size:
+    // Context window based on ACTIVE model size:
     //   - 1B  models → 4096 (room for search results)
     //   - 4B  models → 2048
     //   - 7B  models → 1024
     //   - 12B+ models → 512
+    // For MoE models, the active parameter count is
+    // total × (expert_used / expert_total), so the model can afford
+    // a larger context than its file size suggests.
+    val effectiveModelSizeB = if (isMoE && expertCount > 0 && expertUsedCount > 0)
+        modelSizeB * (expertUsedCount.toFloat() / expertCount)
+    else modelSizeB
     // Capped by total RAM so the system doesn't OOM.
-    // 8 GB device → max ~4900 tokens (8192*0.6)
-    // 6 GB device → max ~3686 tokens
     val maxCtxByRam = (totalRamMB * 0.6f).toInt().coerceIn(256, 16384)
     val suggestedCtx = when {
-      modelSizeB <= 1f -> 4096
-      modelSizeB <= 4f -> 2048
-      modelSizeB <= 7f -> 1024
+      effectiveModelSizeB <= 1f -> 4096
+      effectiveModelSizeB <= 4f -> 2048
+      effectiveModelSizeB <= 7f -> 1024
       else             -> 512
     }.coerceAtMost(maxCtxByRam)
 
