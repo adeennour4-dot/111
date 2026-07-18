@@ -331,6 +331,8 @@ fun InventScreen(
                             }
                         }
                     }
+                }
+            }
 
                 // ── Right file panel ───────────────────────────────────
                 if (showFilePanel && ui.fileTree.isNotEmpty()) {

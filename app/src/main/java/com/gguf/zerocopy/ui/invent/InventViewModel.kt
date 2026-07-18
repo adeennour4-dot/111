@@ -1986,7 +1986,7 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
             for (msg in cur.messages) {
                 val content = msg.content
                 // Match code blocks with a comment/heading that includes the file name
-                val codeRegex = Regex("```[\s\S]*?" + Regex.escape(fileName) + "[\s\S]*?```", RegexOption.IGNORE_CASE)
+                val codeRegex = Regex("`{3}[\\s\\S]*?" + Regex.escape(fileName) + "[\\s\\S]*?`{3}", RegexOption.IGNORE_CASE)
                 val match = codeRegex.find(content)
                 if (match != null) {
                     return match.value
@@ -1997,7 +1997,7 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
             }
             // Fallback: try loading from the actual file if it was saved
             try {
-                val dir = java.io.File(app.filesDir, "invent_generated/${cur.sessionId}${filePath.substringBeforeLast('/')}")
+                val dir = java.io.File(getApplication<android.app.Application>().filesDir, "invent_generated/${cur.sessionId}${filePath.substringBeforeLast('/')}")
                 val file = java.io.File(dir, fileName)
                 if (file.exists()) return file.readText()
             } catch (_: Exception) {}
