@@ -2124,12 +2124,15 @@ Do NOT wrap the blocks in markdown or code fences. Output them as plain text.
      */
     fun handleCoderChatMessage(userText: String, filePath: String) {
         val state = sessionState ?: return
-        addMessage("user", userText, _ui.value.phase)
+        val cur = _ui.value
+        if (cur.isGenerating) return // already busy
+        addMessage("user", userText, cur.phase)
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // Load the coder model
-                val targetPath = if (state.sameModelMode) state.model1Path else state.model2Path
-                val targetName = if (state.sameModelMode) state.model1Name else state.model2Name
+                // Determine coder model: use model2 if distinct, otherwise model1
+                val isSame = state.sameModelMode || state.model1Path == state.model2Path || state.model2Path.isBlank()
+                val targetPath = if (!isSame) state.model2Path else state.model1Path
+                val targetName = if (!isSame) state.model2Name else state.model1Name
                 if (!loadOrKeepModel(targetPath)) {
                     addMessage("system", "Failed to load $targetName", _ui.value.phase)
                     return@launch
