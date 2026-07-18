@@ -37,6 +37,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
@@ -131,6 +133,10 @@ fun ChatScreen(
   var streamedTokens by remember { mutableIntStateOf(0) }
   var streamedTps by remember { mutableFloatStateOf(0f) }
 
+  var kvUsagePercent by remember { mutableIntStateOf(0) }
+  var showStreamingThinking by remember { mutableStateOf(false) }
+  var reasoningPhaseActive by remember { mutableStateOf(false) }
+
   fun startNewChat() {
     chatId = null
     inferenceActive = false
@@ -178,7 +184,6 @@ fun ChatScreen(
     SettingsManager.webSearchEnabled = webSearchEnabled
   }
   var showExportDialog by remember { mutableStateOf(false) }
-  var kvUsagePercent by remember { mutableIntStateOf(0) }
 
   // ── Text-to-Speech ────────────────────────────────────────────────────────
   var tts by remember { mutableStateOf<TextToSpeech?>(null) }
@@ -210,8 +215,6 @@ fun ChatScreen(
   }
 
   var deleteMsgIndex by remember { mutableIntStateOf(-1) }
-  var showStreamingThinking by remember { mutableStateOf(false) }
-  var reasoningPhaseActive by remember { mutableStateOf(false) }
 
   val suggestions = remember {
     listOf(
@@ -865,8 +868,7 @@ fun ChatScreen(
           modifier = Modifier
             .fillMaxWidth()
             .align(Alignment.TopCenter)
-            .padding(top = 4.dp, start = 8.dp, end = 8.dp)
-            .clickable { onSettings() },
+            .padding(top = 4.dp, start = 8.dp, end = 8.dp),
           shape = RoundedCornerShape(8.dp),
           color = colors.Red.copy(alpha = 0.08f),
           border = BorderStroke(1.dp, colors.Red.copy(alpha = 0.3f))

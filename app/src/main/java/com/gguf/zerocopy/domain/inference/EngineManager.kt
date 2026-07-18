@@ -83,6 +83,7 @@ private class UnavailableLiteRtEngine : InferenceEngine {
   override fun isInferenceDone(): Boolean = true
   override fun getTokensGenerated(): Int = 0
   override fun getKvUsage(): Int = 0
+  override var chatTemplate = ""
 
   override suspend fun benchmark(ppTokens: Int, tgTokens: Int): BenchmarkResult =
     BenchmarkResult(engine = engineName)
