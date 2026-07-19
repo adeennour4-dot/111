@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -54,10 +55,12 @@ private val Rd = Color(0xFFFF6B6B)
 private val Gy = Color(0xFF6A6A7A)
 
 // ─── Animation specs ──────────────────────────────────────────────────────────
-private val springFast = spring<Float>(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy)
-private val springSlow = spring<Float>(stiffness = Spring.StiffnessLow, dampingRatio = Spring.DampingRatioLowBouncy)
 private val tweenFast = tween<Float>(300, easing = FastOutSlowInEasing)
 private val tweenSlow = tween<Float>(500, easing = FastOutSlowInEasing)
+private val springFast = spring<Float>(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy)
+private val springSlow = spring<Float>(stiffness = Spring.StiffnessLow, dampingRatio = Spring.DampingRatioLowBouncy)
+private val slideFast = tween<IntOffset>(300, easing = FastOutSlowInEasing)
+private val slideSlow = tween<IntOffset>(500, easing = FastOutSlowInEasing)
 
 // ─── Log builder ──────────────────────────────────────────────────────────────
 private data class ChatBubble(
@@ -240,7 +243,7 @@ fun InventScreen(
                         contentPadding = PaddingValues(horizontal = 4.dp)
                     ) {
                         Text("🧠", fontSize = 12.sp, color = if (ui.reasoningEnabled) colors.Accent2 else colors.Text3,
-                            modifier = Modifier.graphicsLayer { rotationZ = thinkRotate })
+                            modifier = Modifier.rotate(thinkRotate))
                     }
                     HeaderBtn(Icons.Outlined.History, "Sessions", colors.Text2, onClick = {
                         vm.refreshSessionList()
@@ -304,11 +307,11 @@ fun InventScreen(
                 AnimatedVisibility(
                     visible = showFilePanel && ui.fileTree.isNotEmpty(),
                     enter = slideInHorizontally(
-                        animationSpec = springSlow,
+                        animationSpec = slideSlow,
                         initialOffsetX = { -it }
                     ) + fadeIn(tweenFast),
                     exit = slideOutHorizontally(
-                        animationSpec = springFast,
+                        animationSpec = slideFast,
                         targetOffsetX = { -it }
                     ) + fadeOut(tweenFast)
                 ) {
@@ -330,21 +333,21 @@ fun InventScreen(
                             if (targetState) {
                                 // Entering coder chat: slide in from right
                                 slideInHorizontally(
-                                    animationSpec = springFast,
+                                    animationSpec = slideFast,
                                     initialOffsetX = { it }
                                 ) + fadeIn(tweenFast) togetherWith
                                 slideOutHorizontally(
-                                    animationSpec = springFast,
+                                    animationSpec = slideFast,
                                     targetOffsetX = { -it }
                                 ) + fadeOut(tweenFast)
                             } else {
                                 // Exiting coder chat: slide out to right
                                 slideInHorizontally(
-                                    animationSpec = springFast,
+                                    animationSpec = slideFast,
                                     initialOffsetX = { -it }
                                 ) + fadeIn(tweenFast) togetherWith
                                 slideOutHorizontally(
-                                    animationSpec = springFast,
+                                    animationSpec = slideFast,
                                     targetOffsetX = { it }
                                 ) + fadeOut(tweenFast)
                             }
@@ -650,18 +653,16 @@ private fun HeaderBtn(icon: ImageVector, label: String, tint: Color, onClick: ()
 private fun EmptyState(phase: InventPhase, phaseColor: Color, colors: ZcPalette) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            val bounce by rememberInfiniteTransition(label = "bounce")
+                .animateFloat(
+                    initialValue = 0f, targetValue = -8f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(1200, easing = FastOutSlowInEasing),
+                        repeatMode = RepeatMode.Reverse
+                    ), label = "bounce"
+                )
             Text("🧠", fontSize = 28.sp,
-                modifier = Modifier.graphicsLayer {
-                    val inf = rememberInfiniteTransition(label = "bounce")
-                    val bounce by inf.animateFloat(
-                        initialValue = 0f, targetValue = -8f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(1200, easing = FastOutSlowInEasing),
-                            repeatMode = RepeatMode.Reverse
-                        ), label = "bounce"
-                    )
-                    translationY = bounce
-                }
+                modifier = Modifier.offset(y = bounce)
             )
             Spacer(Modifier.height(8.dp))
             Text(
