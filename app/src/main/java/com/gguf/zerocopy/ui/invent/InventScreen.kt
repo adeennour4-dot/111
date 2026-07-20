@@ -28,6 +28,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gguf.zerocopy.data.invent.*
@@ -243,7 +244,7 @@ fun InventScreen(
                         contentPadding = PaddingValues(horizontal = 4.dp)
                     ) {
                         Text("🧠", fontSize = 12.sp, color = if (ui.reasoningEnabled) colors.Accent2 else colors.Text3,
-                            modifier = Modifier.rotate(thinkRotate))
+                            modifier = Modifier.graphicsLayer { rotationZ = thinkRotate })
                     }
                     HeaderBtn(Icons.Outlined.History, "Sessions", colors.Text2, onClick = {
                         vm.refreshSessionList()
@@ -662,7 +663,7 @@ private fun EmptyState(phase: InventPhase, phaseColor: Color, colors: ZcPalette)
                     ), label = "bounce"
                 )
             Text("🧠", fontSize = 28.sp,
-                modifier = Modifier.offset(y = bounce)
+                modifier = Modifier.offset(y = bounce.dp)
             )
             Spacer(Modifier.height(8.dp))
             Text(
