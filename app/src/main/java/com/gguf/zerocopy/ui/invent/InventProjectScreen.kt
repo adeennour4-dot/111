@@ -86,7 +86,7 @@ fun InventProjectScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // ── 4 Project slots ──────────────────────────────────────────
-            Text("Select a Project Slot", fontSize = 13.sp, fontWeight = FontWeight.Bold,
+            Text("Select a Project Slot", fontSize = 15.sp, fontWeight = FontWeight.Bold,
                 color = colors.Text, fontFamily = FontFamily.Monospace)
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -94,8 +94,8 @@ fun InventProjectScreen(
                     val isSelected = selectedProject == idx
                     val slotColor = projectColors[idx]
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = if (isSelected) slotColor.copy(alpha = 0.15f) else colors.Card,
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (isSelected) slotColor.copy(alpha = 0.16f) else colors.Card,
                         border = BorderStroke(
                             2.dp,
                             if (isSelected) slotColor else colors.Border
@@ -108,19 +108,33 @@ fun InventProjectScreen(
                             Modifier.padding(12.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Icon(
-                                if (isSelected) Icons.Filled.Folder else Icons.Outlined.FolderOpen,
-                                null,
-                                tint = if (isSelected) slotColor else colors.Text3,
-                                modifier = Modifier.size(28.dp)
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Text(name, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                            Box {
+                                Icon(
+                                    if (isSelected) Icons.Filled.Folder else Icons.Outlined.FolderOpen,
+                                    null,
+                                    tint = if (isSelected) slotColor else colors.Text3,
+                                    modifier = Modifier.size(30.dp)
+                                )
+                                if (isSelected) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .size(14.dp)
+                                            .clip(RoundedCornerShape(7.dp))
+                                            .background(slotColor),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Filled.Check, null, tint = colors.Bg, modifier = Modifier.size(9.dp))
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(7.dp))
+                            Text(name, fontSize = 11.5.sp, fontWeight = FontWeight.Bold,
                                 color = if (isSelected) slotColor else colors.Text2,
                                 fontFamily = FontFamily.Monospace)
                             Text(
                                 if (isSelected) "Selected" else "Tap to select",
-                                fontSize = 8.sp, color = if (isSelected) slotColor else colors.Text3,
+                                fontSize = 8.5.sp, color = if (isSelected) slotColor else colors.Text3,
                                 fontFamily = FontFamily.Monospace
                             )
                         }
@@ -130,33 +144,33 @@ fun InventProjectScreen(
 
             // ── Model mode selector (1/2/3) ──────────────────────────────
             Surface(
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = colors.Card,
                 border = BorderStroke(1.dp, colors.Border),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(Modifier.padding(14.dp)) {
-                    Text("Model Mode", fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                Column(Modifier.padding(16.dp)) {
+                    Text("Model Mode", fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                         color = colors.Text, fontFamily = FontFamily.Monospace)
                     Text("How many models work on this project?",
-                        fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-                    Spacer(Modifier.height(8.dp))
+                        fontSize = 10.5.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                    Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf(
                             1 to "Solo", 2 to "Duo", 3 to "Trio"
                         ).forEach { (mode, label) ->
                             val active = modelMode == mode
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
+                                shape = RoundedCornerShape(12.dp),
                                 color = if (active) colors.Accent.copy(alpha = 0.2f) else colors.Surface,
                                 border = BorderStroke(1.dp, if (active) colors.Accent else colors.Border),
                                 modifier = Modifier.weight(1f).clickable { modelMode = mode }
                             ) {
-                                Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("$mode", fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                                Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("$mode", fontSize = 20.sp, fontWeight = FontWeight.Bold,
                                         color = if (active) colors.Accent else colors.Text2,
                                         fontFamily = FontFamily.Monospace)
-                                    Text(label, fontSize = 9.sp, color = if (active) colors.Accent else colors.Text3,
+                                    Text(label, fontSize = 10.sp, color = if (active) colors.Accent else colors.Text3,
                                         fontFamily = FontFamily.Monospace)
                                 }
                             }
@@ -167,7 +181,7 @@ fun InventProjectScreen(
 
             // ── Model cards (clickable, with settings & remove) ──────────
             val activeModelCount = modelMode
-            Text("Models", fontSize = 13.sp, fontWeight = FontWeight.Bold,
+            Text("Models", fontSize = 15.sp, fontWeight = FontWeight.Bold,
                 color = colors.Text, fontFamily = FontFamily.Monospace)
 
             // Planner
@@ -249,7 +263,7 @@ private fun ModelAssignmentCard(
         border = BorderStroke(1.dp, if (path.isNotEmpty()) colors.Accent.copy(0.4f) else colors.Border),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(Modifier.padding(14.dp)) {
+        Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Clickable model name area
                 Column(Modifier.weight(1f).clickable { onPick() }) {
@@ -259,17 +273,17 @@ private fun ModelAssignmentCard(
                         if (!isActive) {
                             Spacer(Modifier.width(6.dp))
                             Surface(shape = RoundedCornerShape(4.dp), color = colors.Text3.copy(alpha = 0.2f)) {
-                                Text(" off ", fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                                Text(" off ", fontSize = 8.5.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
                             }
                         }
                     }
                     if (name.isNotEmpty()) {
-                        Spacer(Modifier.height(2.dp))
-                        Text(name.take(40), fontSize = 11.sp, color = colors.Accent,
+                        Spacer(Modifier.height(3.dp))
+                        Text(name.take(40), fontSize = 11.5.sp, color = colors.Accent,
                             fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium)
                     } else {
-                        Spacer(Modifier.height(2.dp))
-                        Text("Tap to select model", fontSize = 10.sp, color = colors.Text3,
+                        Spacer(Modifier.height(3.dp))
+                        Text("Tap to select model", fontSize = 10.5.sp, color = colors.Text3,
                             fontFamily = FontFamily.Monospace)
                     }
                 }

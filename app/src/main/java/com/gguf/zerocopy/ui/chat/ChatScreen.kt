@@ -17,6 +17,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -709,12 +712,28 @@ fun ChatScreen(
               overflow = TextOverflow.Ellipsis
             )
             if (modelName.isNotEmpty()) {
-              Text(
-                text = modelName,
-                fontSize = 10.sp,
-                color = colors.Accent2,
-                fontFamily = FontFamily.Monospace
-              )
+              Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = colors.Accent2.copy(alpha = 0.10f),
+                border = BorderStroke(1.dp, colors.Accent2.copy(alpha = 0.25f)),
+                modifier = Modifier.padding(top = 3.dp)
+              ) {
+                Row(
+                  modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Box(Modifier.size(5.dp).clip(CircleShape).background(colors.Accent2))
+                  Spacer(Modifier.width(4.dp))
+                  Text(
+                    text = modelName,
+                    fontSize = 9.5.sp,
+                    color = colors.Accent2,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                  )
+                }
+              }
             }
           }
           // Unload model button (only shown when model is loaded)

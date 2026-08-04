@@ -28,6 +28,7 @@ import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -147,22 +148,34 @@ fun AppRoot() {
 
   Scaffold(
     bottomBar = {
-      NavigationBar(
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 4.dp
-      ) {
-        navItems.forEachIndexed { idx, item ->
-          NavigationBarItem(
-            selected = selectedTab == idx,
-            onClick = { selectedTab = idx },
-            icon = { Icon(item.icon, item.label) },
-            label = { Text(item.label, fontSize = 9.sp) },
-            colors = NavigationBarItemDefaults.colors(
-              selectedIconColor = MaterialTheme.colorScheme.primary,
-              unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-              indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+      val navColors = currentPalette()
+      Column {
+        HorizontalDivider(color = navColors.Border.copy(alpha = 0.4f), thickness = 0.5.dp)
+        NavigationBar(
+          containerColor = navColors.Surface,
+          tonalElevation = 0.dp
+        ) {
+          navItems.forEachIndexed { idx, item ->
+            val isSelected = selectedTab == idx
+            NavigationBarItem(
+              selected = isSelected,
+              onClick = { selectedTab = idx },
+              icon = { Icon(item.icon, item.label, modifier = Modifier.size(22.dp)) },
+              label = {
+                Text(
+                  item.label,
+                  fontSize = 10.sp,
+                  fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                  color = if (isSelected) navColors.Accent else navColors.Text3
+                )
+              },
+              colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = navColors.Accent,
+                unselectedIconColor = navColors.Text3,
+                indicatorColor = navColors.Accent.copy(alpha = 0.16f)
+              )
             )
-          )
+          }
         }
       }
     }

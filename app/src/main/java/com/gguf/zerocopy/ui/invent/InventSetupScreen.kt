@@ -119,19 +119,19 @@ fun InventSetupScreen(
                     ).padding(16.dp)
                 ) {
                     Column {
-                        Text("🧠 Invent", fontSize = 22.sp, fontWeight = FontWeight.Black,
+                        Text("🧠 Invent", fontSize = 24.sp, fontWeight = FontWeight.Black,
                             fontFamily = FontFamily.Monospace, color = colors.Text)
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(5.dp))
                         Text("3 AIs. Your idea. Full project structure.",
                             fontSize = 13.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(8.dp))
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
+                            shape = RoundedCornerShape(7.dp),
                             color = colors.Accent.copy(alpha = 0.15f)
                         ) {
                             Text("  GGUF / MNN / TFLite  ", fontSize = 10.sp, color = colors.Accent,
                                 fontFamily = FontFamily.Monospace,
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp))
                         }
                     }
                 }
@@ -150,7 +150,7 @@ fun InventSetupScreen(
                 } catch (_: Exception) { emptyList() }
             }
             if (savedSessions.isNotEmpty()) {
-                Text("Resume Project", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                Text("Resume Project", fontSize = 12.sp, fontWeight = FontWeight.Bold,
                     color = colors.Text2, fontFamily = FontFamily.Monospace,
                     modifier = Modifier.padding(start = 2.dp))
                 Row(
@@ -212,10 +212,10 @@ fun InventSetupScreen(
                 border = BorderStroke(1.dp, colors.Border),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(Modifier.padding(14.dp)) {
-                    Text("Mode", fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                Column(Modifier.padding(16.dp)) {
+                    Text("Mode", fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                         color = colors.Text, fontFamily = FontFamily.Monospace)
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf(
                             "single" to "Single Model",
@@ -236,13 +236,13 @@ fun InventSetupScreen(
                                         modifier = Modifier.size(22.dp)
                                     )
                                     Spacer(Modifier.height(4.dp))
-                                    Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                                    Text(label, fontSize = 12.5.sp, fontWeight = FontWeight.Bold,
                                         color = if (active) colors.Accent else colors.Text2,
                                         fontFamily = FontFamily.Monospace)
                                     Text(
                                         if (mode == "single") "One model handles all roles"
                                         else "Planner + Coder + Researcher",
-                                        fontSize = 9.sp, color = if (active) colors.Accent else colors.Text3,
+                                        fontSize = 9.5.sp, color = if (active) colors.Accent else colors.Text3,
                                         fontFamily = FontFamily.Monospace
                                     )
                                 }
@@ -261,10 +261,10 @@ fun InventSetupScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.Warning, null, tint = colors.Amber, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Outlined.Warning, null, tint = colors.Amber, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(10.dp))
                         Text("No GGUF models found. Import at least 2 GGUF models to use Invent.",
-                            fontSize = 12.sp, color = colors.Amber, fontFamily = FontFamily.Monospace)
+                            fontSize = 12.5.sp, color = colors.Amber, fontFamily = FontFamily.Monospace)
                     }
                 }
             }
@@ -276,10 +276,10 @@ fun InventSetupScreen(
                 border = BorderStroke(1.dp, colors.Border),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(Modifier.padding(14.dp)) {
-                    Text("How many models?", fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                Column(Modifier.padding(16.dp)) {
+                    Text("How many models?", fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                         color = colors.Text, fontFamily = FontFamily.Monospace)
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf(1, 2, 3).forEach { mode ->
                             val active = modelMode == mode
@@ -299,7 +299,7 @@ fun InventSetupScreen(
                                             2 -> "Two models"
                                             else -> "Three models"
                                         },
-                                        fontSize = 9.sp, color = if (active) colors.Accent else colors.Text3,
+                                        fontSize = 9.5.sp, color = if (active) colors.Accent else colors.Text3,
                                         fontFamily = FontFamily.Monospace
                                     )
                                 }
@@ -700,12 +700,12 @@ fun InventGroupCard(
         border = BorderStroke(1.dp, if (selected.isNotEmpty()) colors.Accent.copy(0.4f) else colors.Border),
         modifier = Modifier.fillMaxWidth().clickable { onPick() }
     ) {
-        Column(Modifier.padding(14.dp)) {
+        Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(roles, fontSize = 14.sp, fontWeight = FontWeight.Bold,
                         color = colors.Text, fontFamily = FontFamily.Monospace)
-                    Text(subtitle, fontSize = 11.sp, color = colors.Text3,
+                    Text(subtitle, fontSize = 11.5.sp, color = colors.Text3,
                         fontFamily = FontFamily.Monospace)
                 }
                 if (selected.isNotEmpty() && onSettings != null) {
@@ -730,9 +730,9 @@ fun InventGroupCard(
                     color = colors.Accent.copy(alpha = 0.1f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("   Model:  $selected", fontSize = 12.sp, color = colors.Accent2,
+                    Text("   Model:  $selected", fontSize = 12.5.sp, color = colors.Accent2,
                         fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(vertical = 5.dp, horizontal = 8.dp))
+                        modifier = Modifier.padding(vertical = 6.dp, horizontal = 9.dp))
                 }
             }
         }

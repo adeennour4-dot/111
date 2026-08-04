@@ -1,6 +1,7 @@
 package com.gguf.zerocopy.ui.theme
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -8,6 +9,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.data.local.SettingsManager
 
 object ThemeState {
@@ -50,10 +55,29 @@ private val LightScheme =
     outlineVariant = ZcLightColors.Border.copy(alpha = 0.5f)
   )
 
+/**
+ * ZeroCopy terminal-style typography.
+ * Monospace everywhere keeps the identity, but with legible sizes:
+ * body 12.5–14sp, labels ≥9sp (the app previously used 7–11sp everywhere).
+ */
+val ZcTypography = Typography(
+  displaySmall = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 34.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp),
+  headlineMedium = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 24.sp, fontWeight = FontWeight.Bold),
+  titleLarge = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp, fontWeight = FontWeight.Bold),
+  titleMedium = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
+  titleSmall = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp, fontWeight = FontWeight.SemiBold),
+  bodyLarge = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp, lineHeight = 20.sp),
+  bodyMedium = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.5.sp, lineHeight = 18.sp),
+  bodySmall = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 15.sp),
+  labelLarge = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+  labelMedium = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 10.5.sp, fontWeight = FontWeight.Medium),
+  labelSmall = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 9.sp)
+)
+
 @Composable
 fun ZeroCopyTheme(content: @Composable () -> Unit) {
   val colorScheme = if (ThemeState.isDark) DarkScheme else LightScheme
-  MaterialTheme(colorScheme = colorScheme) { content() }
+  MaterialTheme(colorScheme = colorScheme, typography = ZcTypography) { content() }
 }
 
 @Composable

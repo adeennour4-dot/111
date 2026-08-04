@@ -114,11 +114,11 @@ fun FilePanel(
                 } else {
                     Spacer(Modifier.width(20.dp))
                 }
-                Icon(Icons.Filled.Description, null, tint = Cy, modifier = Modifier.size(14.dp))
-                Spacer(Modifier.width(4.dp))
+                Icon(Icons.Filled.Description, null, tint = Cy, modifier = Modifier.size(15.dp))
+                Spacer(Modifier.width(5.dp))
                 Text(
                     if (currentDir.isEmpty()) "Files" else currentDir,
-                    fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp, fontWeight = FontWeight.Bold,
                     color = colors.Text, fontFamily = FontFamily.Monospace,
                     modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
@@ -144,7 +144,7 @@ fun FilePanel(
                         Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(selectedNode!!.path, fontSize = 9.sp, color = Cy,
+                        Text(selectedNode!!.path, fontSize = 10.5.sp, color = Cy,
                             fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         IconButton(onClick = { selectedNode = null }, modifier = Modifier.size(20.dp)) {
@@ -161,10 +161,10 @@ fun FilePanel(
                                 clipboard.setPrimaryClip(ClipData.newPlainText("code", selectedFileContent))
                             }
                         ) {
-                            Row(Modifier.padding(horizontal = 6.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Outlined.ContentCopy, null, tint = Cy, modifier = Modifier.size(10.dp))
-                                Spacer(Modifier.width(2.dp))
-                                Text("Copy", fontSize = 8.sp, color = Cy, fontFamily = FontFamily.Monospace)
+                            Row(Modifier.padding(horizontal = 7.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Outlined.ContentCopy, null, tint = Cy, modifier = Modifier.size(11.dp))
+                                Spacer(Modifier.width(3.dp))
+                                Text("Copy", fontSize = 9.sp, color = Cy, fontFamily = FontFamily.Monospace)
                             }
                         }
                         if (selectedFileContent.isNotEmpty()) {
@@ -175,10 +175,10 @@ fun FilePanel(
                                     vm.requestDebug(selectedNode!!.path, selectedFileContent)
                                 }
                             ) {
-                                Row(Modifier.padding(horizontal = 6.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Filled.BugReport, null, tint = Am, modifier = Modifier.size(10.dp))
-                                    Spacer(Modifier.width(2.dp))
-                                    Text("Debug", fontSize = 8.sp, color = Am, fontFamily = FontFamily.Monospace)
+                                Row(Modifier.padding(horizontal = 7.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Filled.BugReport, null, tint = Am, modifier = Modifier.size(11.dp))
+                                    Spacer(Modifier.width(3.dp))
+                                    Text("Debug", fontSize = 9.sp, color = Am, fontFamily = FontFamily.Monospace)
                                 }
                             }
                             // Chat with Coder button (post-workflow)
@@ -190,10 +190,10 @@ fun FilePanel(
                                         onOpenCoderChat(selectedNode!!.path)
                                     }
                                 ) {
-                                    Row(Modifier.padding(horizontal = 6.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Filled.Chat, null, tint = Cy, modifier = Modifier.size(10.dp))
-                                        Spacer(Modifier.width(2.dp))
-                                        Text("Ask Coder", fontSize = 8.sp, color = Cy, fontFamily = FontFamily.Monospace)
+                                    Row(Modifier.padding(horizontal = 7.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Filled.Chat, null, tint = Cy, modifier = Modifier.size(11.dp))
+                                        Spacer(Modifier.width(3.dp))
+                                        Text("Ask Coder", fontSize = 9.sp, color = Cy, fontFamily = FontFamily.Monospace)
                                     }
                                 }
                             }
@@ -212,7 +212,7 @@ fun FilePanel(
                         ) {
                             Text(
                                 selectedFileContent,
-                                fontSize = 8.sp,
+                                fontSize = 10.sp,
                                 color = colors.Text2,
                                 fontFamily = FontFamily.Monospace,
                                 modifier = Modifier.fillMaxWidth()
@@ -260,13 +260,13 @@ fun FilePanel(
                                     },
                                     null,
                                     tint = if (node.isDir) Am else Cy,
-                                    modifier = Modifier.size(12.dp)
+                                    modifier = Modifier.size(13.dp)
                                 )
-                                Spacer(Modifier.width(6.dp))
+                                Spacer(Modifier.width(7.dp))
                                 Column {
                                     Text(
                                         node.path.substringAfterLast('/'),
-                                        fontSize = 9.sp,
+                                        fontSize = 10.5.sp,
                                         color = if (isSelected) Cy else colors.Text,
                                         fontFamily = FontFamily.Monospace,
                                         maxLines = 1,
@@ -275,7 +275,7 @@ fun FilePanel(
                                     if (node.description.isNotEmpty()) {
                                         Text(
                                             node.description.take(40),
-                                            fontSize = 7.sp,
+                                            fontSize = 8.5.sp,
                                             color = colors.Text3,
                                             fontFamily = FontFamily.Monospace,
                                             maxLines = 1,
