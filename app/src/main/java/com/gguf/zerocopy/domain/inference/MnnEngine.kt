@@ -116,7 +116,10 @@ class MnnEngine : InferenceEngine {
       },
       callback = callback,
       isAborted = { inferenceAborted.get() },
-      searchQuery = searchQuery
+      searchQuery = searchQuery,
+      contextLimit = config.nCtx,
+      maxNewTokens = config.maxNewTokens,
+      currentContextTokens = { kvUsage * config.nCtx / 100 }
     )
   }
 

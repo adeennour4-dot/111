@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit
 object ToolAwareInference {
 
     private const val TAG = "ToolAwareInference"
-    private const val MAX_TOOL_ROUNDS = 5
+    private const val MAX_TOOL_ROUNDS = 3
 
     fun execute(
         userPrompt: String,
@@ -31,7 +31,10 @@ object ToolAwareInference {
         runInference: (String, TokenCallback, InferenceDoneSignal) -> Unit,
         callback: TokenCallback,
         isAborted: () -> Boolean = { false },
-        searchQuery: String? = null
+        searchQuery: String? = null,
+        contextLimit: Int = 4096,
+        maxNewTokens: Int = 1024,
+        currentContextTokens: () -> Int = { 0 }
     ) {
         // ── Inject tool definitions into the system prompt ──
         val toolDefs = toolManager.getToolDefinitionsJson()
@@ -133,8 +136,18 @@ object ToolAwareInference {
             }
 
             // ── Append tool result as a user/tool turn for the next round ──
-            val toolResultText = if (toolResult.result.length > 2000) {
-                toolResult.result.take(2000) + "\n[... truncated]"
+            // Token-budget the result with the SAME accounting the app uses for
+            // the context (model nCtx vs live native KV-cache usage vs
+            // max-new-tokens), so a large web-search result can never overflow
+            // the context window and OOM the app when search + reasoning are
+            // both enabled. The search text costs ~3 chars per token — the
+            // same estimate the app uses everywhere for prompt budgeting.
+            val usedTokens = currentContextTokens()
+            val budget = (contextLimit - usedTokens - maxNewTokens.coerceAtLeast(128) - 128)
+                .coerceAtLeast(64)
+            val maxResultChars = (budget * 3).coerceIn(140, 2000)
+            val toolResultText = if (toolResult.result.length > maxResultChars) {
+                toolResult.result.take(maxResultChars) + "\n[... truncated to fit context]"
             } else toolResult.result
             lastToolResult = toolResultText
 
