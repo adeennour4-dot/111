@@ -211,6 +211,15 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             zcpTransform = { savedZcp }
         )
         sessionId = existing
+        // Process-death recovery: restart any in-flight pipeline step so a
+        // restored GENERATING/FINALIZING session doesn't sit frozen.
+        viewModelScope.launch {
+            when (saved.phase) {
+                InventPhase.GENERATING -> resumeGeneration()
+                InventPhase.FINALIZING -> finishGeneration()
+                else -> {}
+            }
+        }
     }
 
     // ── Atomic persistence ── All state mutations either go through
@@ -486,51 +495,6 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             clearToolManagerOnEngines()
-
-            // Resume most advanced in-progress session
-            val phaseOrder = InventPhase.values().toList()
-            val existing = InventStorage.listSessions(ctx)
-                .mapNotNull { sid ->
-                    val s = InventStorage.loadSession(ctx, sid)
-                    if (s != null && s.phase != InventPhase.DONE && s.phase != InventPhase.DEBUGGING) sid to s else null
-                }
-                .sortedByDescending { (_, s) -> phaseOrder.indexOf(s.phase) }
-                .firstOrNull()?.first
-
-            if (existing != null) {
-                val saved = InventStorage.loadSession(ctx, existing)
-                val savedZcp = InventStorage.loadZcp(ctx, existing)
-                if (saved != null && savedZcp != null) {
-                    sessionId = existing
-                    withTransaction(
-                        uiTransform = {
-                            it.copy(
-                                phase = saved.phase, messages = saved.messages, sessionId = existing,
-                                model1Name = saved.model1Name, model2Name = saved.model2Name,
-                                researcherName = saved.researcherName,
-                                offlineMode = saved.offlineMode, sameModelMode = saved.sameModelMode,
-                                reasoningEnabled = reasoningEnabled,
-                                modelMode = when {
-                                    saved.sameModelMode && saved.researcherPath == saved.model1Path -> ModelMode.SINGLE
-                                    saved.sameModelMode -> ModelMode.DUAL
-                                    else -> ModelMode.TRIPLE
-                                },
-                                fileTree = savedZcp.fileTree,
-                                searchRound = saved.searchRound, mergeCount = saved.mergeCount,
-                                currentFileIndex = saved.currentFileIndex, totalFiles = saved.totalFiles,
-                                debugMode = saved.phase == InventPhase.DEBUGGING,
-                                zipReady = saved.phase == InventPhase.DONE || saved.phase == InventPhase.DEBUGGING
-                            )
-                        },
-                        sessionTransform = { saved },
-                        zcpTransform = { savedZcp }
-                    )
-                    computeStats()
-                    if (saved.phase == InventPhase.GENERATING) resumeGeneration()
-                    if (saved.phase == InventPhase.FINALIZING) finishGeneration()
-                    return@launch
-                }
-            }
 
             val m1Ctx = GgufMetaReader.readContextLength(m1p).let { if (it == null || it <= 0) 2048 else it }
             val m2Ctx = if (sameModelMode) m1Ctx

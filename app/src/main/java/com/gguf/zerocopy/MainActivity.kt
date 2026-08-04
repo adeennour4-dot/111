@@ -142,6 +142,11 @@ fun AppRoot() {
   var inventProjectIndex by rememberSaveable { mutableIntStateOf(0) }
   var completedInventProjects by rememberSaveable { mutableStateOf<Set<Int>>(emptySet()) }
   var inventModel1Path by rememberSaveable { mutableStateOf("") }
+  // True only when the user completed the setup flow in THIS process instance.
+  // Deliberately NOT rememberSaveable: after a process death the restored
+  // session must be auto-resumed (startFresh = false), never wiped by a fresh
+  // setupSession with stale/empty picks.
+  var inventFreshStart by remember { mutableStateOf(false) }
   var inventModel1Name by rememberSaveable { mutableStateOf("") }
   var inventModel2Path by rememberSaveable { mutableStateOf("") }
   var inventModel2Name by rememberSaveable { mutableStateOf("") }
@@ -314,6 +319,7 @@ fun AppRoot() {
               inventOffline = offline
               inventSameModel = sameModel
               inventReasoningEnabled = reasoning
+              inventFreshStart = true
               inventStarted = true
               inventProjectSelected = false
             },
@@ -334,6 +340,7 @@ fun AppRoot() {
             },
             onBack = {
               inventStarted = false
+              inventFreshStart = false
             },
             onSettings = { role, modelPath, modelName ->
               // Open settings dialog for the model
@@ -353,12 +360,14 @@ fun AppRoot() {
               onNewSession = {
                 completedInventProjects = completedInventProjects + inventProjectIndex
                 inventStarted = false
+                inventFreshStart = false
                 inventModel1Path = ""; inventModel1Name = ""
                 inventModel2Path = ""; inventModel2Name = ""
                 inventResPath = ""; inventResName = ""
               },
               onBack = { selectedTab = 0 },
-              onModelsClick = { selectedTab = 1 }
+              onModelsClick = { selectedTab = 1 },
+              startFresh = inventFreshStart
           )
         }
       }

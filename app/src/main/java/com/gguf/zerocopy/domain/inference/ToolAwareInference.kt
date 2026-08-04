@@ -58,6 +58,8 @@ object ToolAwareInference {
         var currentPrompt = userPrompt
         var totalRounds = 0
         var finalText = ""
+        var lastToolKey: String? = null
+        var lastToolResult: String? = null
 
         while (totalRounds < MAX_TOOL_ROUNDS) {
             if (isAborted()) {
@@ -134,13 +136,27 @@ object ToolAwareInference {
             val toolResultText = if (toolResult.result.length > 2000) {
                 toolResult.result.take(2000) + "\n[... truncated]"
             } else toolResult.result
+            lastToolResult = toolResultText
 
-            // Use a simple format: the model sees the tool result as context
-            // Include a step-by-step reasoning instruction so that when
-            // both search and reasoning are enabled, the model reasons
-            // about the tool result rather than just regurgitating it.
-            currentPrompt = "$output\n\nTool result (${toolCall.name}):\n$toolResultText\n\n" +
-                "Think step by step about this information and provide your final answer."
+            // Stuck-loop guard: the model re-requesting the SAME tool with the
+            // SAME query means it isn't cooperating — stop searching here and
+            // answer from what we already have.
+            val toolKey = "${toolCall.name}|${toolCall.arguments.optString("query")}"
+            if (toolKey == lastToolKey && totalRounds >= 1) {
+                break
+            }
+            lastToolKey = toolKey
+
+            // Round 2+ prompt: do NOT echo the model's previous output back at
+            // it. That output contains the <tool_call> markup (which weak GGUF
+            // models happily copy into the next round, re-firing the tool over
+            // and over) and any partial answer written before seeing the
+            // results (which biases the model toward its own guess instead of
+            // the evidence). A clean, forceful instruction yields a reliable
+            // final answer.
+            currentPrompt = "You called the ${toolCall.name} tool. Here is the result:\n\n" +
+                "$toolResultText\n\n" +
+                "Do NOT call any more tools. Provide your final answer now, using ONLY the information above."
             totalRounds++
         }
 
@@ -148,9 +164,23 @@ object ToolAwareInference {
         // When totalRounds == 0 the model answered directly (no tool call), so
         // the buffered tokens must be forwarded.  When totalRounds > 0 a tool
         // was called and only the final round's complete text is pushed.
-        // In either case, never silently drop the model's output.
-        if (finalText.isNotEmpty()) {
-            callback.onToken(finalText)
+        // In either case, never silently drop the model's output — but strip
+        // any residual tool scaffolding so the UI never shows raw
+        // <tool_call>/<tool_result> markup, and if nothing usable remains,
+        // fall back to the last tool result so the user still gets the info.
+        val cleaned = finalText
+            .replace(Regex("<tool_call>\\s*\\{.*?\\}\\s*</tool_call>", RegexOption.DOT_MATCHES_ALL), "")
+            .replace(Regex("<tool_result>.*?</tool_result>", RegexOption.DOT_MATCHES_ALL), "")
+            .replace("</tool_call>", "")
+            .replace("<tool_call>", "")
+            .trim()
+        val answer = when {
+            cleaned.isNotEmpty() -> cleaned
+            lastToolResult != null -> "Here is the tool result:\n\n$lastToolResult"
+            else -> ""
+        }
+        if (answer.isNotEmpty()) {
+            callback.onToken(answer)
         }
         callback.onDone()
     }

@@ -141,6 +141,7 @@ fun InventScreen(
     onBack: () -> Unit,
     onModelsClick: () -> Unit,
     onNewSession: (() -> Unit)? = null,
+    startFresh: Boolean = false,
     vm: InventViewModel = viewModel()
 ) {
     val ui by vm.ui.collectAsState()
@@ -197,7 +198,11 @@ fun InventScreen(
     }
 
     LaunchedEffect(Unit) {
-        if (ui.sessionId.isEmpty()) {
+        // A session is only re-entered (not re-created) when the user reaches
+        // InventScreen WITHOUT going through the setup flow (process-death
+        // auto-resume). When the user explicitly picked models in setup, always
+        // start a fresh session with those exact models — never a stale one.
+        if (ui.sessionId.isEmpty() || startFresh) {
             vm.setupSession(model1Path, model1Name, model2Path, model2Name,
                 researcherPath, researcherName, offlineMode, sameModelMode,
                 reasoningEnabled = reasoningEnabled)
