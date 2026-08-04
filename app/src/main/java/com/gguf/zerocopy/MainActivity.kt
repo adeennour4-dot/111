@@ -26,6 +26,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,7 +40,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.outlined.Chat
@@ -68,7 +68,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -95,7 +97,7 @@ private val navItems = listOf(
   NavItem("Models", Icons.Outlined.SmartToy, Icons.Filled.SmartToy),
   NavItem("Server", Icons.Outlined.Dns, Icons.Filled.Dns),
   NavItem("Settings", Icons.Outlined.Settings, Icons.Filled.Settings),
-  NavItem("Invent", Icons.Outlined.Lightbulb, Icons.Filled.Lightbulb)
+  NavItem("Invent", Icons.Outlined.Lightbulb, Icons.Outlined.Lightbulb)
 )
 
 class MainActivity : ComponentActivity() {
@@ -398,6 +400,26 @@ private fun NavSprite(item: NavItem, isSelected: Boolean, colors: ZcPalette) {
       Modifier.size(30.dp).clip(CircleShape)
         .background(activeTint.copy(alpha = (0.26f * halo.value).coerceIn(0f, 1f)))
     )
+    // Ray burst — lightbulb "turned on" rays (Invent tab only)
+    if (isBulb && isSelected) {
+      Canvas(Modifier.size(36.dp)) {
+        val c = Offset(this.size.width / 2f, this.size.height / 2f)
+        val baseR = 11.dp.toPx()
+        val rayLen = (5f + (pulse?.value ?: 1f) * 3f).dp.toPx()
+        for (i in 0 until 8) {
+          val a = i * (Math.PI / 4.0)
+          val dx = Math.cos(a)
+          val dy = Math.sin(a)
+          drawLine(
+            color = activeTint.copy(alpha = 0.7f),
+            start = Offset(c.x + (dx * baseR).toFloat(), c.y + (dy * baseR).toFloat()),
+            end = Offset(c.x + (dx * (baseR + rayLen)).toFloat(), c.y + (dy * (baseR + rayLen)).toFloat()),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round
+          )
+        }
+      }
+    }
     AnimatedContent(
       targetState = isSelected,
       transitionSpec = {

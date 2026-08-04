@@ -845,13 +845,13 @@ private fun EmptyState(phase: InventPhase, phaseColor: Color, colors: ZcPalette)
                     infiniteRepeatable(tween(16000, easing = LinearEasing)), label = "orbitSpin")
                 Box(Modifier.size(88.dp).clip(CircleShape).border(1.dp, phaseColor.copy(alpha = 0.35f)))
                 Box(
-                    Modifier.size(88.dp).graphicsLayer { rotationZ = rot.value },
+                    Modifier.size(88.dp).graphicsLayer { rotationZ = rot },
                     contentAlignment = Alignment.TopCenter
                 ) {
                     Box(Modifier.size(8.dp).offset(y = (-4).dp).clip(CircleShape).background(phaseColor))
                 }
                 Box(
-                    Modifier.size(50.dp).graphicsLayer { rotationZ = spin.value }
+                    Modifier.size(50.dp).graphicsLayer { rotationZ = spin }
                         .clip(RoundedCornerShape(15.dp))
                         .background(Brush.linearGradient(listOf(colors.GradientStart, colors.GradientEnd))),
                     contentAlignment = Alignment.Center
@@ -1013,16 +1013,16 @@ private fun FileProgress(index: Int, total: Int, name: String, accent: Color, co
 @Composable
 private fun DoneStats(lines: Int, bytes: Long, debugCount: Int, colors: ZcPalette) {
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        StatTile("LINES", "$lines", Cy, colors)
-        StatTile("SIZE", "${bytes / 1024}KB", Pr, colors)
-        StatTile("DEBUG", "$debugCount", Am, colors)
+        StatTile("LINES", "$lines", Cy, colors, Modifier.weight(1f))
+        StatTile("SIZE", "${bytes / 1024}KB", Pr, colors, Modifier.weight(1f))
+        StatTile("DEBUG", "$debugCount", Am, colors, Modifier.weight(1f))
     }
 }
 
 @Composable
-private fun StatTile(label: String, value: String, accent: Color, colors: ZcPalette) {
+private fun StatTile(label: String, value: String, accent: Color, colors: ZcPalette, modifier: Modifier = Modifier) {
     Surface(
-        Modifier.weight(1f),
+        modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
         color = accent.copy(alpha = 0.07f),
         border = BorderStroke(1.dp, accent.copy(0.22f))
@@ -1119,7 +1119,7 @@ private fun InputArea(
                             modifier = Modifier
                                 .size(40.dp)
                                 .clip(CircleShape)
-                                .scale(if (sendPressed) 0.9f else if (canSend) idleScale.value else 1f)
+                                .scale(if (sendPressed) 0.9f else if (canSend) idleScale else 1f)
                                 .let { m ->
                                     if (canSend) m.background(Brush.linearGradient(listOf(Cy, Pr)))
                                     else m.background(colors.Border)
