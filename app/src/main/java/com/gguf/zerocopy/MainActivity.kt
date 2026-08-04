@@ -371,7 +371,14 @@ fun AppRoot() {
 @Composable
 private fun NavSprite(item: NavItem, isSelected: Boolean, colors: ZcPalette) {
   val isBulb = item.label == "Invent"
-  val activeTint = if (isBulb) Color(0xFFFFD166) else colors.Accent
+  // Each tab gets its own accent while active; Invent keeps its warm bulb amber
+  val activeTint = when (item.label) {
+    "Chat" -> colors.Accent2
+    "Models" -> colors.Accent
+    "Server" -> colors.Amber
+    "Settings" -> colors.Purple
+    else -> Color(0xFFFFD166)
+  }
   val scale = remember { Animatable(if (isSelected) 1f else 0.9f) }
   val halo = remember { Animatable(if (isSelected) 1f else 0f) }
 
@@ -389,10 +396,15 @@ private fun NavSprite(item: NavItem, isSelected: Boolean, colors: ZcPalette) {
     }
   }
 
-  // Lightbulb stays "lit" with a gentle pulse while Invent is open
-  val pulse = if (isBulb && isSelected) {
-    val t = rememberInfiniteTransition(label = "bulbPulse")
-    t.animateFloat(0.88f, 1.12f, infiniteRepeatable(tween(850, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "bulbPulseVal")
+  // Every selected sprite breathes gently while its tab is open
+  // (the Invent bulb keeps its original stronger pulse)
+  val pulse = if (isSelected) {
+    val t = rememberInfiniteTransition(label = "spritePulse")
+    if (isBulb) {
+      t.animateFloat(0.88f, 1.12f, infiniteRepeatable(tween(850, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "bulbPulseVal")
+    } else {
+      t.animateFloat(0.94f, 1.06f, infiniteRepeatable(tween(850, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "spritePulseVal")
+    }
   } else null
 
   Box(contentAlignment = Alignment.Center, modifier = Modifier.size(38.dp)) {

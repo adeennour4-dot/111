@@ -1,7 +1,9 @@
 package com.gguf.zerocopy.ui.invent
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -13,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -20,7 +23,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ZeroCopyApp
 import com.gguf.zerocopy.data.repository.LocalModel
+import com.gguf.zerocopy.ui.theme.ZcPalette
 import com.gguf.zerocopy.ui.theme.currentPalette
+
+// ─── Role accents (mirror InventScreen) ──────────────────────────────────────
+private val Cy = Color(0xFF00E5A0)
+private val Pr = Color(0xFF8B83FF)
+private val Am = Color(0xFFFFB74D)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,19 +56,12 @@ fun InventSetupScreen(
     var researcherName by remember { mutableStateOf("") }
     var offlineMode by remember { mutableStateOf(false) }
     var reasoningEnabled by remember { mutableStateOf(true) }
-    var inventMode by remember { mutableStateOf("multi") } // "single" or "multi"
     var showPicker by remember { mutableStateOf<String?>(null) } // "m1","m2","res"
-    // 1 = one model all roles, 2 = researcher + combined, 3 = all separate
-    var modelMode by remember { mutableStateOf(1) }
 
-    val canStart = if (inventMode == "single") {
-        model1Path.isNotEmpty()
-    } else when (modelMode) {
-        1 -> model1Path.isNotEmpty()
-        2 -> researcherPath.isNotEmpty() && model1Path.isNotEmpty()
-        3 -> model1Path.isNotEmpty() && model2Path.isNotEmpty() && researcherPath.isNotEmpty()
-        else -> false
-    }
+    // The planner is the anchor role; empty coder/researcher slots reuse it.
+    // (sameModel is auto-derived from the actual paths — mirrors the old
+    //  single/dual/triple modes without any mode picker UI.)
+    val canStart = model1Path.isNotEmpty() || compatibleModels.isNotEmpty()
 
     // State for model settings dialog (function scope — used inside Scaffold and picker dialog)
     val modelSettingsRole = remember { mutableStateOf<String?>(null) }
@@ -68,7 +70,7 @@ fun InventSetupScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text("Invent Setup", fontFamily = FontFamily.Monospace,
+                    Text("Invent", fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold, color = colors.Text)
                 },
                 navigationIcon = {
@@ -104,38 +106,8 @@ fun InventSetupScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
 
-            // ── Header card ─────────────────────────────────────────────────
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color.Transparent,
-                border = BorderStroke(1.dp, colors.Accent.copy(alpha = 0.3f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Box(
-                    Modifier.background(
-                        Brush.horizontalGradient(
-                            listOf(colors.GradientStart.copy(0.08f), colors.GradientEnd.copy(0.08f))
-                        ), RoundedCornerShape(16.dp)
-                    ).padding(16.dp)
-                ) {
-                    Column {
-                        Text("🧠 Invent", fontSize = 24.sp, fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace, color = colors.Text)
-                        Spacer(Modifier.height(5.dp))
-                        Text("3 AIs. Your idea. Full project structure.",
-                            fontSize = 13.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
-                        Spacer(Modifier.height(8.dp))
-                        Surface(
-                            shape = RoundedCornerShape(7.dp),
-                            color = colors.Accent.copy(alpha = 0.15f)
-                        ) {
-                            Text("  GGUF / MNN / TFLite  ", fontSize = 10.sp, color = colors.Accent,
-                                fontFamily = FontFamily.Monospace,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp))
-                        }
-                    }
-                }
-            }
+            // ── Hero header — pulsing emblem ───────────────────────────────
+            HeroCard(colors)
 
             // ── Saved projects (up to 4 slots) ────────────────────────────
             val savedSessions = remember {
@@ -205,52 +177,40 @@ fun InventSetupScreen(
                 Spacer(Modifier.height(4.dp))
             }
 
-            // ── Mode selector: Single Model vs Multi-Agent ────────────────
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = colors.Card,
-                border = BorderStroke(1.dp, colors.Border),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("Mode", fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                        color = colors.Text, fontFamily = FontFamily.Monospace)
-                    Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(
-                            "single" to "Single Model",
-                            "multi" to "Multi-Agent"
-                        ).forEach { (mode, label) ->
-                            val active = inventMode == mode
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (active) colors.Accent.copy(alpha = 0.2f) else colors.Surface,
-                                border = BorderStroke(1.dp, if (active) colors.Accent else colors.Border),
-                                modifier = Modifier.weight(1f).clickable { inventMode = mode }
-                            ) {
-                                Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(
-                                        if (mode == "single") Icons.Filled.Person else Icons.Filled.Groups,
-                                        null,
-                                        tint = if (active) colors.Accent else colors.Text3,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(label, fontSize = 12.5.sp, fontWeight = FontWeight.Bold,
-                                        color = if (active) colors.Accent else colors.Text2,
-                                        fontFamily = FontFamily.Monospace)
-                                    Text(
-                                        if (mode == "single") "One model handles all roles"
-                                        else "Planner + Coder + Researcher",
-                                        fontSize = 9.5.sp, color = if (active) colors.Accent else colors.Text3,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            // ── Agent crew — three role cards ──────────────────────────────
+            Text("Agent Crew", fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                color = colors.Text2, fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(start = 2.dp))
+            AgentCard(
+                role = "Planner", monogram = "P",
+                tagline = "Asks questions, plans the file structure, guides the build.",
+                accent = Am,
+                selected = model1Name,
+                onPick = { showPicker = "m1" },
+                onSettings = { if (model1Path.isNotEmpty()) modelSettingsRole.value = "Planner" },
+                colors = colors
+            )
+            AgentCard(
+                role = "Coder", monogram = "C",
+                tagline = "Writes every file of the implementation.",
+                accent = Cy,
+                selected = model2Name,
+                onPick = { showPicker = "m2" },
+                onSettings = { if (model2Path.isNotEmpty()) modelSettingsRole.value = "Coder" },
+                colors = colors
+            )
+            AgentCard(
+                role = "Researcher", monogram = "R",
+                tagline = "Searches the web for current APIs & best practices.",
+                accent = Pr,
+                selected = researcherName,
+                onPick = { showPicker = "res" },
+                onSettings = { if (researcherPath.isNotEmpty()) modelSettingsRole.value = "Researcher" },
+                colors = colors
+            )
+            Text("Empty roles reuse the Planner model — one model is enough to start.",
+                fontSize = 9.5.sp, color = colors.Text3, fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(start = 2.dp))
 
             // ── GGUF not found warning ──────────────────────────────────────
             if (compatibleModels.isEmpty()) {
@@ -263,153 +223,47 @@ fun InventSetupScreen(
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.Warning, null, tint = colors.Amber, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(10.dp))
-                        Text("No GGUF models found. Import at least 2 GGUF models to use Invent.",
+                        Text("No compatible models found yet. Import a GGUF/MNN model, or the currently loaded model will be used.",
                             fontSize = 12.5.sp, color = colors.Amber, fontFamily = FontFamily.Monospace)
                     }
                 }
             }
 
-            // ── Model mode selector ────────────────────────────────────────
+            // ── Preferences: reasoning + offline ───────────────────────────
             Surface(
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = colors.Card,
                 border = BorderStroke(1.dp, colors.Border),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("How many models?", fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                        color = colors.Text, fontFamily = FontFamily.Monospace)
-                    Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(1, 2, 3).forEach { mode ->
-                            val active = modelMode == mode
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (active) colors.Accent.copy(alpha = 0.2f) else colors.Surface,
-                                border = BorderStroke(1.dp, if (active) colors.Accent else colors.Border),
-                                modifier = Modifier.weight(1f).clickable { modelMode = mode }
-                            ) {
-                                Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("$mode", fontSize = 18.sp, fontWeight = FontWeight.Bold,
-                                        color = if (active) colors.Accent else colors.Text2,
-                                        fontFamily = FontFamily.Monospace)
-                                    Text(
-                                        when (mode) {
-                                            1 -> "All-in-one"
-                                            2 -> "Two models"
-                                            else -> "Three models"
-                                        },
-                                        fontSize = 9.5.sp, color = if (active) colors.Accent else colors.Text3,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── Model group cards ──────────────────────────────────────────
-            when (modelMode) {
-                1 -> {
-                    // One card: Planner + Researcher + Coder (all same model)
-                    InventGroupCard(
-                        roles = "Planner + Researcher + Coder",
-                        subtitle = "One model handles all three roles",
-                        selected = model1Name,
-                        onPick = { showPicker = "m1" },
-                        onSettings = { if (model1Path.isNotEmpty()) modelSettingsRole.value = "Planner" },
-                        colors = colors
-                    )
-                }
-                2 -> {
-                    // Two cards: Researcher + Planner+Coder
-                    InventGroupCard(
-                        roles = "🔍  Researcher",
-                        subtitle = "~1B — searches web & extracts info",
-                        selected = researcherName,
-                        onPick = { showPicker = "res" },
-                        onSettings = { if (researcherPath.isNotEmpty()) modelSettingsRole.value = "Researcher" },
-                        colors = colors
-                    )
-                    InventGroupCard(
-                        roles = "⚙  Planner + 💻  Coder",
-                        subtitle = "Logic, planning & code generation",
-                        selected = model1Name,
-                        onPick = { showPicker = "m1" },
-                        onSettings = { if (model1Path.isNotEmpty()) modelSettingsRole.value = "Planner" },
-                        colors = colors
-                    )
-                }
-                3 -> {
-                    // Three separate cards
-                    InventGroupCard(
-                        roles = "⚙  Planner",
-                        subtitle = "Logic — asks questions & plans the project",
-                        selected = model1Name,
-                        onPick = { showPicker = "m1" },
-                        onSettings = { if (model1Path.isNotEmpty()) modelSettingsRole.value = "Planner" },
-                        colors = colors
-                    )
-                    InventGroupCard(
-                        roles = "💻  Coder",
-                        subtitle = "Code-specialized — builds the implementation plan",
-                        selected = model2Name,
-                        onPick = { showPicker = "m2" },
-                        onSettings = { if (model2Path.isNotEmpty()) modelSettingsRole.value = "Coder" },
-                        colors = colors
-                    )
-                    InventGroupCard(
-                        roles = "🔍  Researcher",
-                        subtitle = "~1B — searches web & extracts info",
-                        selected = researcherName,
-                        onPick = { showPicker = "res" },
-                        onSettings = { if (researcherPath.isNotEmpty()) modelSettingsRole.value = "Researcher" },
-                        colors = colors
-                    )
-                }
-            }
-
-            // ── Reasoning toggle ───────────────────────────────────────────
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = colors.Card,
-                border = BorderStroke(1.dp, colors.Border),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        if (reasoningEnabled) Icons.Filled.Lightbulb else Icons.Outlined.Lightbulb,
-                        null,
-                        tint = if (reasoningEnabled) colors.Amber else colors.Text2,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Think / Reason", fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                            color = colors.Text, fontFamily = FontFamily.Monospace)
-                        Text(
-                            if (reasoningEnabled) "Models use step-by-step reasoning with <think> tags."
-                            else "Models answer directly without explicit reasoning.",
-                            fontSize = 11.sp, color = colors.Text3, fontFamily = FontFamily.Monospace
-                        )
-                    }
-                    Switch(
+                Column {
+                    ToggleRow(
+                        icon = { if (reasoningEnabled) Icons.Filled.Lightbulb else Icons.Outlined.Lightbulb },
+                        title = "Think / Reason",
+                        desc = if (reasoningEnabled) "Step-by-step reasoning with <think> tags."
+                                else "Direct answers, no explicit reasoning.",
+                        accent = Am,
                         checked = reasoningEnabled,
-                        onCheckedChange = { reasoningEnabled = it },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = colors.Amber,
-                            checkedTrackColor = colors.Amber.copy(alpha = 0.3f)
-                        )
+                        onChange = { reasoningEnabled = it },
+                        colors = colors
+                    )
+                    HorizontalDivider(color = colors.Border.copy(alpha = 0.4f))
+                    ToggleRow(
+                        icon = { if (offlineMode) Icons.Outlined.WifiOff else Icons.Outlined.Wifi },
+                        title = "Offline Mode",
+                        desc = if (offlineMode) "Training knowledge only. Fields marked [OFFLINE]."
+                                else "Fetches real-time info from trusted domains.",
+                        accent = colors.Accent,
+                        checked = offlineMode,
+                        onChange = { offlineMode = it },
+                        colors = colors
                     )
                 }
             }
-
-            Spacer(Modifier.height(4.dp))
 
             // ── Chat template ─────────────────────────────────────────────
             Surface(
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = colors.Card,
                 border = BorderStroke(1.dp, colors.Border),
                 modifier = Modifier.fillMaxWidth()
@@ -475,60 +329,21 @@ fun InventSetupScreen(
 
             Spacer(Modifier.height(4.dp))
 
-            // ── Offline toggle ──────────────────────────────────────────────
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = colors.Card,
-                border = BorderStroke(1.dp, colors.Border),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        if (offlineMode) Icons.Outlined.WifiOff else Icons.Outlined.Wifi,
-                        null,
-                        tint = if (offlineMode) colors.Amber else colors.Text2,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Offline Mode", fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                            color = colors.Text, fontFamily = FontFamily.Monospace)
-                        Text(
-                            if (offlineMode) "Uses model training knowledge only. Fields marked [OFFLINE]."
-                            else "Fetches real-time info from trusted domains.",
-                            fontSize = 11.sp, color = colors.Text3, fontFamily = FontFamily.Monospace
-                        )
-                    }
-                    Switch(
-                        checked = offlineMode,
-                        onCheckedChange = { offlineMode = it },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = colors.Amber,
-                            checkedTrackColor = colors.Amber.copy(alpha = 0.3f)
-                        )
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(4.dp))
-
             // ── Start button ────────────────────────────────────────────────
             Box(
-                Modifier.fillMaxWidth().height(52.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                Modifier.fillMaxWidth().height(54.dp)
+                    .clip(RoundedCornerShape(16.dp))
                     .background(
                         if (canStart)
-                            Brush.horizontalGradient(listOf(colors.GradientStart, colors.GradientEnd))
+                            Brush.horizontalGradient(listOf(Cy, Pr))
                         else Brush.horizontalGradient(listOf(colors.Border, colors.Border))
                     )
                     .then(if (canStart) Modifier.clickable {
-                        val isSingle = inventMode == "single"
-                        val coderPath = if (isSingle || modelMode != 3) model1Path else model2Path
-                        val coderName = if (isSingle || modelMode != 3) model1Name else model2Name
-                        // In single mode or mode 1, researcher uses the same model as planner
-                        val actualResPath = if (isSingle || modelMode == 1) model1Path else researcherPath
-                        val actualResName = if (isSingle || modelMode == 1) model1Name else researcherName
-                        val allSame = isSingle || modelMode == 1
+                        val coderPath = model2Path.ifEmpty { model1Path }
+                        val coderName = model2Name.ifEmpty { model1Name }
+                        val actualResPath = researcherPath.ifEmpty { model1Path }
+                        val actualResName = researcherName.ifEmpty { model1Name }
+                        val allSame = coderPath == model1Path && actualResPath == model1Path
                         onStart(
                             model1Path, model1Name,
                             coderPath, coderName,
@@ -553,17 +368,31 @@ fun InventSetupScreen(
 
     // ── Model picker dialog ─────────────────────────────────────────────────
     if (showPicker != null) {
+        val pickAccent = when (showPicker) {
+            "m1" -> Am; "m2" -> Cy; else -> Pr
+        }
+        val pickMonogram = when (showPicker) {
+            "m1" -> "P"; "m2" -> "C"; else -> "R"
+        }
         AlertDialog(
             onDismissRequest = { showPicker = null },
             title = {
-                Text(
-                    when (showPicker) {
-                        "m1" -> "Pick Planner Model"
-                        "m2" -> "Pick Coder Model"
-                        else -> "Pick Researcher (~1B)"
-                    },
-                    color = colors.Text, fontFamily = FontFamily.Monospace
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(28.dp).clip(RoundedCornerShape(9.dp)).background(pickAccent.copy(alpha = 0.16f)),
+                        contentAlignment = Alignment.Center) {
+                        Text(pickMonogram, fontSize = 12.sp, fontWeight = FontWeight.Black,
+                            color = pickAccent, fontFamily = FontFamily.Monospace)
+                    }
+                    Spacer(Modifier.width(9.dp))
+                    Text(
+                        when (showPicker) {
+                            "m1" -> "Pick Planner Model"
+                            "m2" -> "Pick Coder Model"
+                            else -> "Pick Researcher Model"
+                        },
+                        color = colors.Text, fontFamily = FontFamily.Monospace
+                    )
+                }
             },
             text = {
                 if (compatibleModels.isEmpty()) {
@@ -573,7 +402,7 @@ fun InventSetupScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         compatibleModels.forEach { model: LocalModel ->
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 color = colors.CardLight,
                                 border = BorderStroke(1.dp, colors.Border),
                                 modifier = Modifier.fillMaxWidth().clickable {
@@ -592,10 +421,10 @@ fun InventSetupScreen(
                                     modelSettingsRole.value = settingsRole
                                 }
                             ) {
-                                Column(Modifier.padding(12.dp)) {
+                                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(model.name, fontSize = 13.sp, color = colors.Text,
                                         fontFamily = FontFamily.Monospace,
-                                        fontWeight = FontWeight.Medium)
+                                        fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                                     Text(model.sizeFormatted, fontSize = 10.sp,
                                         color = colors.Text3, fontFamily = FontFamily.Monospace)
                                 }
@@ -614,13 +443,153 @@ fun InventSetupScreen(
     }
 }
 
+// ── Hero header — pulsing emblem + format chips ─────────────────────────────
+@Composable
+private fun HeroCard(colors: ZcPalette) {
+    Box(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(
+                Brush.linearGradient(listOf(colors.GradientStart.copy(alpha = 0.16f), colors.GradientEnd.copy(alpha = 0.16f)))
+            )
+            .border(1.dp, colors.Accent.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+            .padding(16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Pulsing emblem
+            val orb = rememberInfiniteTransition(label = "heroOrb")
+            val ring by orb.animateFloat(0.72f, 1.2f,
+                infiniteRepeatable(tween(1100, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "heroRing")
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(58.dp)) {
+                Box(Modifier.size(44.dp * ring).clip(CircleShape).background(colors.Accent.copy(alpha = 0.14f)))
+                Box(Modifier.size(38.dp).clip(RoundedCornerShape(13.dp))
+                    .background(Brush.linearGradient(listOf(Cy, Pr))),
+                    contentAlignment = Alignment.Center) {
+                    Text("Z", fontSize = 19.sp, fontWeight = FontWeight.Black,
+                        color = colors.Bg, fontFamily = FontFamily.Monospace)
+                }
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Invent", fontSize = 22.sp, fontWeight = FontWeight.Black,
+                    color = colors.Text, fontFamily = FontFamily.Monospace)
+                Text("A crew of agents turns your idea into a full project.",
+                    fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.height(7.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    listOf("GGUF", "MNN", "TFLite").forEach { fmt ->
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = colors.Accent.copy(alpha = 0.14f),
+                            border = BorderStroke(1.dp, colors.Accent.copy(alpha = 0.25f))
+                        ) {
+                            Text(" $fmt ", fontSize = 8.5.sp, color = colors.Accent,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Agent role card — monogram avatar + model chip ──────────────────────────
+@Composable
+private fun AgentCard(
+    role: String, monogram: String, tagline: String, accent: Color,
+    selected: String, onPick: () -> Unit,
+    onSettings: (() -> Unit)? = null,
+    colors: ZcPalette
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected.isNotEmpty()) accent.copy(alpha = 0.06f) else colors.Card,
+        border = BorderStroke(1.dp, if (selected.isNotEmpty()) accent.copy(0.4f) else colors.Border.copy(0.5f)),
+        modifier = Modifier.fillMaxWidth().clickable { onPick() }
+    ) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(34.dp).clip(RoundedCornerShape(11.dp))
+                    .background(if (selected.isNotEmpty()) accent.copy(0.16f) else colors.Surface)
+                    .border(1.dp, accent.copy(0.3f), RoundedCornerShape(11.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(monogram, fontSize = 14.sp, fontWeight = FontWeight.Black,
+                    color = if (selected.isNotEmpty()) accent else colors.Text3,
+                    fontFamily = FontFamily.Monospace)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(role, fontSize = 13.5.sp, fontWeight = FontWeight.Bold,
+                    color = colors.Text, fontFamily = FontFamily.Monospace)
+                Text(tagline, fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.height(4.dp))
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (selected.isNotEmpty()) accent.copy(0.12f) else colors.Surface
+                ) {
+                    Text(
+                        if (selected.isNotEmpty()) "Model: $selected" else "auto → uses Planner model",
+                        fontSize = 10.sp, color = if (selected.isNotEmpty()) accent else colors.Text3,
+                        fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            if (selected.isNotEmpty() && onSettings != null) {
+                IconButton(onClick = onSettings, modifier = Modifier.size(30.dp)) {
+                    Icon(Icons.Filled.Settings, "Settings", tint = colors.Text3, modifier = Modifier.size(15.dp))
+                }
+            }
+            Icon(
+                if (selected.isNotEmpty()) Icons.Filled.CheckCircle else Icons.Outlined.AddCircleOutline,
+                null,
+                tint = if (selected.isNotEmpty()) accent else colors.Text3,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+    }
+}
+
+// ── Toggle row (preferences) ────────────────────────────────────────────────
+@Composable
+private fun ToggleRow(
+    icon: () -> ImageVector,
+    title: String, desc: String, accent: Color,
+    checked: Boolean, onChange: (Boolean) -> Unit, colors: ZcPalette
+) {
+    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon(), null,
+            tint = if (checked) accent else colors.Text2,
+            modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                color = colors.Text, fontFamily = FontFamily.Monospace)
+            Text(desc, fontSize = 11.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = accent,
+                checkedTrackColor = accent.copy(alpha = 0.3f),
+                uncheckedThumbColor = colors.Text3,
+                uncheckedTrackColor = colors.Border
+            )
+        )
+    }
+}
+
 // ── Model Settings Dialog ────────────────────────────────────────────────
 @Composable
 fun ModelSettingsDialog(
     role: String,
     modelName: String,
     modelPath: String,
-    colors: com.gguf.zerocopy.ui.theme.ZcPalette,
+    colors: ZcPalette,
     onDismiss: () -> Unit,
     onSaved: () -> Unit
 ) {
@@ -684,58 +653,3 @@ fun ModelSettingsDialog(
         containerColor = colors.Card
     )
 }
-
-@Composable
-fun InventGroupCard(
-    roles: String,
-    subtitle: String,
-    selected: String,
-    onPick: () -> Unit,
-    colors: com.gguf.zerocopy.ui.theme.ZcPalette,
-    onSettings: (() -> Unit)? = null
-) {
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = colors.Card,
-        border = BorderStroke(1.dp, if (selected.isNotEmpty()) colors.Accent.copy(0.4f) else colors.Border),
-        modifier = Modifier.fillMaxWidth().clickable { onPick() }
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(roles, fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                        color = colors.Text, fontFamily = FontFamily.Monospace)
-                    Text(subtitle, fontSize = 11.5.sp, color = colors.Text3,
-                        fontFamily = FontFamily.Monospace)
-                }
-                if (selected.isNotEmpty() && onSettings != null) {
-                    IconButton(
-                        onClick = onSettings,
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(Icons.Filled.Settings, "Settings", tint = colors.Text3, modifier = Modifier.size(16.dp))
-                    }
-                }
-                Icon(
-                    if (selected.isNotEmpty()) Icons.Filled.CheckCircle else Icons.Outlined.AddCircleOutline,
-                    null,
-                    tint = if (selected.isNotEmpty()) colors.Accent2 else colors.Text3,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-            if (selected.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = colors.Accent.copy(alpha = 0.1f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("   Model:  $selected", fontSize = 12.5.sp, color = colors.Accent2,
-                        fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(vertical = 6.dp, horizontal = 9.dp))
-                }
-            }
-        }
-    }
-}
-

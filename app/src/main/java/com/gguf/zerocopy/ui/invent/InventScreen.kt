@@ -230,7 +230,7 @@ fun InventScreen(
                     // Pulsing phase orb
                     PhaseOrb(animPhaseColor)
                     Spacer(Modifier.width(8.dp))
-                    // Project name + agent mode
+                    // Project name
                     Column(Modifier.weight(1f, fill = false)) {
                         Text(
                             if (ui.projectName.isNotEmpty()) ui.projectName.take(22) else "New Project",
@@ -239,11 +239,7 @@ fun InventScreen(
                             maxLines = 1, overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            when (ui.modelMode) {
-                                ModelMode.SINGLE -> "SOLO AGENT"
-                                ModelMode.DUAL -> "DUO AGENTS"
-                                ModelMode.TRIPLE -> "TRIO AGENTS"
-                            },
+                            phaseLabel(ui.phase).uppercase(),
                             fontSize = 8.sp, fontWeight = FontWeight.Bold,
                             color = colors.Text3, fontFamily = FontFamily.Monospace,
                             letterSpacing = 1.sp
