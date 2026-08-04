@@ -396,26 +396,26 @@ private fun NavSprite(item: NavItem, isSelected: Boolean, colors: ZcPalette) {
   } else null
 
   Box(contentAlignment = Alignment.Center, modifier = Modifier.size(38.dp)) {
-    // Glow halo behind the active sprite
+    // Glow halo behind the active sprite (small, tight)
     Box(
-      Modifier.size(30.dp).clip(CircleShape)
-        .background(activeTint.copy(alpha = (0.26f * halo.value).coerceIn(0f, 1f)))
+      Modifier.size(20.dp).clip(CircleShape)
+        .background(activeTint.copy(alpha = (0.16f * halo.value).coerceIn(0f, 1f)))
     )
-    // Ray burst — lightbulb "turned on" rays (Invent tab only)
+    // Ray burst — lightbulb "turned on" rays (Invent tab only, short rays)
     if (isBulb && isSelected) {
-      Canvas(Modifier.size(36.dp)) {
+      Canvas(Modifier.size(28.dp)) {
         val c = Offset(this.size.width / 2f, this.size.height / 2f)
-        val baseR = 11.dp.toPx()
-        val rayLen = (5f + (pulse?.value ?: 1f) * 3f).dp.toPx()
+        val baseR = 8.dp.toPx()
+        val rayLen = (2f + (pulse?.value ?: 1f) * 1.2f).dp.toPx()
         for (i in 0 until 8) {
           val a = i * (Math.PI / 4.0)
           val dx = Math.cos(a)
           val dy = Math.sin(a)
           drawLine(
-            color = activeTint.copy(alpha = 0.7f),
+            color = activeTint.copy(alpha = 0.5f),
             start = Offset(c.x + (dx * baseR).toFloat(), c.y + (dy * baseR).toFloat()),
             end = Offset(c.x + (dx * (baseR + rayLen)).toFloat(), c.y + (dy * (baseR + rayLen)).toFloat()),
-            strokeWidth = 2.dp.toPx(),
+            strokeWidth = 1.2.dp.toPx(),
             cap = StrokeCap.Round
           )
         }
