@@ -52,6 +52,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -267,7 +269,7 @@ fun InputBar(
           Icon(
             Icons.Filled.Mic,
             contentDescription = "Voice input",
-            tint = colors.Text2,
+            tint = colors.Accent2,
             modifier = Modifier.size(18.dp)
           )
         }
@@ -278,7 +280,7 @@ fun InputBar(
           Icon(
             if (isSpeaking) Icons.Filled.VolumeOff else Icons.Filled.VolumeUp,
             contentDescription = if (isSpeaking) "Stop speaking" else "Read aloud",
-            tint = if (isSpeaking) colors.Red else colors.Text2,
+            tint = if (isSpeaking) colors.Red else colors.Purple,
             modifier = Modifier.size(18.dp)
           )
         }
@@ -303,7 +305,7 @@ fun InputBar(
         } else {
           val canSend = prompt.isNotBlank()
           val sendGradient = remember {
-            Brush.horizontalGradient(listOf(colors.GradientStart, colors.GradientEnd))
+            Brush.horizontalGradient(listOf(Color(0xFF00E5A0), Color(0xFF8B83FF)))
           }
           Box(
             modifier = Modifier

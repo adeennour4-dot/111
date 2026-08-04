@@ -7,6 +7,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -177,7 +178,8 @@ fun ChatBubble(
               onLongClick = { showMenu = true }
             ),
           color = if (isUser) colors.UserBg else colors.Card,
-          tonalElevation = if (isUser) 0.dp else 1.dp
+          tonalElevation = if (isUser) 0.dp else 1.dp,
+          border = if (isUser) null else BorderStroke(1.dp, colors.Border.copy(alpha = 0.25f))
         ) {
           Column(
             modifier = Modifier

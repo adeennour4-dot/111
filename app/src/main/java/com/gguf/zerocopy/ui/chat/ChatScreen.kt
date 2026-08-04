@@ -41,6 +41,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Settings
@@ -75,9 +76,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -707,6 +711,7 @@ fun ChatScreen(
   Scaffold(
     topBar = {
       Surface(color = colors.Bg) {
+        Column {
         Row(
           modifier = Modifier
             .fillMaxWidth()
@@ -718,14 +723,27 @@ fun ChatScreen(
               .weight(1f)
               .padding(start = 12.dp)
           ) {
-            Text(
-              text = sessionName,
-              fontSize = 16.sp,
-              fontWeight = FontWeight.Bold,
-              color = colors.Text,
-              maxLines = 1,
-              overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              // Live status dot: teal = model ready, amber = generating, red = none loaded
+              Box(
+                Modifier.size(7.dp).clip(CircleShape).background(
+                  when {
+                    isInferring -> colors.Amber
+                    engine?.isModelLoaded == true -> colors.Accent2
+                    else -> colors.Red
+                  }
+                )
+              )
+              Spacer(Modifier.width(6.dp))
+              Text(
+                text = sessionName,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.Text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+              )
+            }
             if (modelName.isNotEmpty()) {
               Surface(
                 shape = RoundedCornerShape(6.dp),
@@ -776,6 +794,12 @@ fun ChatScreen(
             Icon(Icons.Outlined.Share, contentDescription = "Export",
               tint = if (chatId != null && messages.isNotEmpty()) colors.Text2 else colors.Text3)
           }
+        }
+        // Gradient accent divider
+        Box(
+          Modifier.fillMaxWidth().height(2.dp)
+            .background(Brush.horizontalGradient(listOf(colors.GradientStart, colors.Accent2, colors.GradientEnd)))
+        )
         }
       }
     },
@@ -936,12 +960,40 @@ fun ChatScreen(
           verticalArrangement = Arrangement.Center,
           horizontalAlignment = Alignment.CenterHorizontally
         ) {
-          Spacer(Modifier.height(48.dp))
+          // Glowing chat emblem
+          Box(contentAlignment = Alignment.Center, modifier = Modifier.size(88.dp)) {
+            Box(
+              Modifier.size(88.dp).background(
+                Brush.radialGradient(listOf(colors.Accent.copy(alpha = 0.16f), colors.Accent.copy(alpha = 0f))),
+                CircleShape
+              )
+            )
+            Box(
+              Modifier.size(54.dp).clip(RoundedCornerShape(18.dp))
+                .background(Brush.linearGradient(listOf(colors.GradientStart, colors.GradientEnd))),
+              contentAlignment = Alignment.Center
+            ) {
+              Icon(Icons.Filled.Chat, null, tint = Color.White, modifier = Modifier.size(24.dp))
+            }
+          }
+          Spacer(Modifier.height(18.dp))
           Text(
             text = if (engine?.isModelLoaded == true) "Start a conversation"
-                   else "No model loaded — tap the model name at top to load one",
-            color = if (engine?.isModelLoaded == true) colors.Text3 else colors.Amber,
-            fontSize = 15.sp
+                   else "No model loaded",
+            color = if (engine?.isModelLoaded == true) colors.Text else colors.Amber,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace
+          )
+          Spacer(Modifier.height(6.dp))
+          Text(
+            text = if (engine?.isModelLoaded == true)
+              "Ask anything — attach files, search the web, or think step by step."
+            else "Tap the model name at the top to load one",
+            color = colors.Text3,
+            fontSize = 11.5.sp,
+            fontFamily = FontFamily.Monospace,
+            textAlign = TextAlign.Center
           )
         }
       } else {

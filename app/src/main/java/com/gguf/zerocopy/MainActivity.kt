@@ -176,7 +176,8 @@ fun AppRoot() {
                   item.label,
                   fontSize = 10.sp,
                   fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                  color = if (isSelected) navColors.Accent else navColors.Text3
+                  color = if (isSelected) navTabColor(item.label, navColors)
+                          else navTabColor(item.label, navColors).copy(alpha = 0.45f)
                 )
               },
               colors = NavigationBarItemDefaults.colors(
@@ -367,88 +368,90 @@ fun AppRoot() {
 
 /** Animated bottom-bar sprite: outlined when idle, filled + glowing when active,
  *  with a pop-in scale and — for Invent's lightbulb — a warm "turned on" pulse. */
-@OptIn(ExperimentalAnimationApi::class)
+/** Animated bottom-bar sprite: outlined when idle, filled when active, with a
+ *  3D flip switching effect (rotationY + crossfade), a soft radial glow halo,
+ *  and — for Invent's lightbulb — warm amber rays. Every icon has its own color. */
 @Composable
 private fun NavSprite(item: NavItem, isSelected: Boolean, colors: ZcPalette) {
   val isBulb = item.label == "Invent"
-  // Each tab gets its own accent while active; Invent keeps its warm bulb amber
-  val activeTint = when (item.label) {
-    "Chat" -> colors.Accent2
-    "Models" -> colors.Accent
-    "Server" -> colors.Amber
-    "Settings" -> colors.Purple
-    else -> Color(0xFFFFD166)
-  }
-  val scale = remember { Animatable(if (isSelected) 1f else 0.9f) }
+  // Every icon has its own color — dim when idle, full + glow when active
+  val tabColor = navTabColor(item.label, colors)
+  val idleTint = tabColor.copy(alpha = 0.45f)
   val halo = remember { Animatable(if (isSelected) 1f else 0f) }
+  // Icon flip progress: 0 = idle icon, 1 = active icon (3D switching effect)
+  val flip by animateFloatAsState(
+    targetValue = if (isSelected) 1f else 0f,
+    animationSpec = tween(320, easing = FastOutSlowInEasing),
+    label = "iconFlip"
+  )
 
   LaunchedEffect(isSelected) {
-    if (isSelected) {
-      // Turn on: pop-in (small → overshoot → settle) + halo glow
-      scale.snapTo(0.55f)
-      scale.animateTo(1.18f, tween(240, easing = FastOutSlowInEasing))
-      scale.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy))
-      halo.animateTo(1f, tween(350))
-    } else {
-      // Turn off: glow fades, sprite shrinks back (reverse)
-      halo.animateTo(0f, tween(200))
-      scale.animateTo(0.9f, tween(220))
-    }
+    if (isSelected) halo.animateTo(1f, tween(350))
+    else halo.animateTo(0f, tween(200))
   }
 
-  // Every selected sprite breathes gently while its tab is open
-  // (the Invent bulb keeps its original stronger pulse)
-  val pulse = if (isSelected) {
-    val t = rememberInfiniteTransition(label = "spritePulse")
-    if (isBulb) {
-      t.animateFloat(0.88f, 1.12f, infiniteRepeatable(tween(850, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "bulbPulseVal")
-    } else {
-      t.animateFloat(0.94f, 1.06f, infiniteRepeatable(tween(850, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "spritePulseVal")
-    }
-  } else null
-
   Box(contentAlignment = Alignment.Center, modifier = Modifier.size(38.dp)) {
-    // Glow halo behind the active sprite (small, tight)
+    // Soft radial glow — fades smoothly from center to edge
     Box(
-      Modifier.size(20.dp).clip(CircleShape)
-        .background(activeTint.copy(alpha = (0.16f * halo.value).coerceIn(0f, 1f)))
+      Modifier.size(34.dp).background(
+        Brush.radialGradient(
+          listOf(tabColor.copy(alpha = (0.38f * halo.value).coerceIn(0f, 1f)), tabColor.copy(alpha = 0f))
+        ),
+        CircleShape
+      )
     )
-    // Ray burst — lightbulb "turned on" rays (Invent tab only, short rays)
+    // Ray burst — lightbulb "turned on" rays (Invent tab only, short static rays)
     if (isBulb && isSelected) {
       Canvas(Modifier.size(28.dp)) {
         val c = Offset(this.size.width / 2f, this.size.height / 2f)
         val baseR = 8.dp.toPx()
-        val rayLen = (2f + (pulse?.value ?: 1f) * 1.2f).dp.toPx()
+        val rayLen = 3.2f.dp.toPx()
         for (i in 0 until 8) {
           val a = i * (Math.PI / 4.0)
           val dx = Math.cos(a)
           val dy = Math.sin(a)
           drawLine(
-            color = activeTint.copy(alpha = 0.5f),
+            color = tabColor.copy(alpha = 0.55f),
             start = Offset(c.x + (dx * baseR).toFloat(), c.y + (dy * baseR).toFloat()),
             end = Offset(c.x + (dx * (baseR + rayLen)).toFloat(), c.y + (dy * (baseR + rayLen)).toFloat()),
-            strokeWidth = 1.2.dp.toPx(),
+            strokeWidth = 1.4.dp.toPx(),
             cap = StrokeCap.Round
           )
         }
       }
     }
-    AnimatedContent(
-      targetState = isSelected,
-      transitionSpec = {
-        (fadeIn(tween(160)) + scaleIn(initialScale = 0.5f)) togetherWith
-          (fadeOut(tween(120)) + scaleOut(targetScale = 0.6f))
-      },
-      label = "sprite"
-    ) { selected ->
+    // Switching effect: outlined ↔ filled via 3D flip + crossfade + pop-in
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(24.dp)) {
       Icon(
-        if (selected) item.activeIcon else item.icon,
+        item.icon,
         item.label,
-        tint = if (selected) activeTint else colors.Text3,
-        modifier = Modifier.size(22.dp).scale(scale.value * (pulse?.value ?: 1f))
+        tint = idleTint,
+        modifier = Modifier.size(22.dp).graphicsLayer {
+          alpha = 1f - flip
+          rotationY = -180f * flip
+        }
+      )
+      Icon(
+        item.activeIcon,
+        item.label,
+        tint = tabColor,
+        modifier = Modifier.size(22.dp).graphicsLayer {
+          alpha = flip
+          rotationY = -180f * (1f - flip)
+          scaleX = 0.8f + 0.2f * flip
+          scaleY = 0.8f + 0.2f * flip
+        }
       )
     }
   }
+}
+
+private fun navTabColor(label: String, colors: ZcPalette): Color = when (label) {
+  "Chat" -> colors.Accent2
+  "Models" -> colors.Accent
+  "Server" -> colors.Amber
+  "Settings" -> colors.Purple
+  else -> Color(0xFFFFD166) // Invent bulb amber
 }
 
 @Composable

@@ -873,9 +873,9 @@ private fun ModelCard(
               fontFamily = FontFamily.Monospace
             )
           }
-          // Vision-capable badge (mmproj found in global config)
+          // Vision-capable badge (mmproj auto-detected next to the model or via global config)
           if (model.format.equals("gguf", ignoreCase = true) &&
-              com.gguf.zerocopy.data.local.SettingsManager.mmprojPath.isNotEmpty()) {
+              (findMmprojFor(model.path) != null || com.gguf.zerocopy.data.local.SettingsManager.mmprojPath.isNotEmpty())) {
             Spacer(Modifier.width(6.dp))
             Surface(
               shape = RoundedCornerShape(3.dp),
@@ -1041,7 +1041,16 @@ private suspend fun loadModel(
   engine.repeatPenalty = SettingsManager.toRepeatPenalty()
   engine.systemPrompt = SettingsManager.systemPrompt
   engine.chatTemplate = SettingsManager.chatTemplate
-  engine.mmprojPath = SettingsManager.mmprojPath
+
+  // Auto-detect an mmproj (vision projector) file for GGUF models and load it
+  // automatically. Common naming conventions: <model>.mmproj (HuggingFace),
+  // mmproj-model-f16.gguf, or mmproj-<modelname>. Falls back to the globally
+  // configured mmproj path if no sibling is found.
+  engine.mmprojPath = if (model.format.equals("gguf", ignoreCase = true)) {
+    findMmprojFor(model.path) ?: SettingsManager.mmprojPath
+  } else SettingsManager.mmprojPath
+
+  Log.i("ModelList", "mmproj for ${model.name}: ${engine.mmprojPath.ifEmpty { "none" }}")
 
   Log.i("ModelList", "Config for ${model.name}: " +
     "ctx=${tunedConfig.nCtx} maxTkns=${tunedConfig.maxNewTokens} " +
@@ -1072,6 +1081,20 @@ private suspend fun loadModel(
   app.modelRepository.markUsed(model.id)
   onModelSelected(model.path, model.name)
   return null
+}
+
+/** Auto-detect the mmproj (vision projector) file that belongs to a GGUF
+ *  model, checking common sibling naming conventions. Returns null if none
+ *  is found next to the model. */
+private fun findMmprojFor(modelPath: String): String? {
+  val modelFile = java.io.File(modelPath)
+  val parent = modelFile.parentFile ?: return null
+  val candidates = listOf(
+    java.io.File(parent, modelFile.nameWithoutExtension + ".mmproj"),
+    java.io.File(parent, "mmproj-model-f16.gguf"),
+    java.io.File(parent, "mmproj-" + modelFile.name)
+  )
+  return candidates.firstOrNull { it.exists() && it.isFile }?.absolutePath
 }
 
 private fun getFileName(context: android.content.Context, uri: android.net.Uri): String {
