@@ -872,7 +872,7 @@ private fun ModelPills(
                     Box(Modifier.size(6.dp).clip(RoundedCornerShape(3.dp))
                         .background(if (loaded) accent else colors.Text3.copy(0.3f)))
                     Spacer(Modifier.width(5.dp))
-                    Text("$emoji ${label.take(8)}", fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                    Text("${emojis[idx]} ${label.take(8)}", fontSize = 9.sp, fontWeight = FontWeight.Bold,
                         color = if (loaded) Color.White else colors.Text3, fontFamily = FontFamily.Monospace)
                     Spacer(Modifier.width(5.dp))
                     Text(shortName, fontSize = 8.5.sp,
