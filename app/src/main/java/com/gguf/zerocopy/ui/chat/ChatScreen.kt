@@ -303,19 +303,34 @@ fun ChatScreen(
     null
   }
 
-  fun buildConversationPrompt(currentUserText: String, useReasoning: Boolean, useRag: Boolean): String {
+  fun buildConversationPrompt(currentUserText: String, useReasoning: Boolean, useRag: Boolean, useSearch: Boolean = false): String {
     var prompt = currentUserText
     if (useRag && currentUserText.contains("[Relevant document excerpts]")) {
       prompt = "Use the document excerpts above to answer the user's question. If the excerpts don't contain the answer, say so.\n\n$prompt"
     }
     if (useReasoning) {
-      // Universal reasoning prompt that works with ALL models, not just
-      // those fine-tuned for <think> tags (DeepSeek, etc.).
-      // The <think> tag format is still used by some models, so we also
-      // include it as guidance in case the model supports it.
-      prompt = "Let's work through this step by step to be thorough. " +
-               "You may wrap your reasoning in <think></think> tags if you wish, " +
-               "but it's not required.\n\n$prompt"
+      if (useSearch) {
+        // Fix A: when web search AND reasoning are both enabled, the old soft
+        // "thinking is optional" wrapper conflicted with the tool-call system
+        // prompt ("answer normally if you don't need tools") — small GGUF models
+        // answered directly from memory and did NEITHER: no web_search call and
+        // no visible reasoning. This bridged protocol gives an explicit order:
+        // search first (if needed), then reason over the results, then answer.
+        prompt = "Work through this task step by step. Follow this protocol:\n" +
+                 "1. If your answer needs current, recent, or factual information, FIRST respond with a single tool call:\n" +
+                 "<tool_call>\n{\"name\": \"web_search\", \"arguments\": {\"query\": \"your search query\"}}\n</tool_call>\n" +
+                 "2. Wait for the tool result, then reason step by step about what it means (you may wrap your reasoning in <think></think> tags).\n" +
+                 "3. Provide your final answer, using the tool results where relevant.\n\n" +
+                 "$prompt"
+      } else {
+        // Universal reasoning prompt that works with ALL models, not just
+        // those fine-tuned for <think> tags (DeepSeek, etc.).
+        // The <think> tag format is still used by some models, so we also
+        // include it as guidance in case the model supports it.
+        prompt = "Let's work through this step by step to be thorough. " +
+                 "You may wrap your reasoning in <think></think> tags if you wish, " +
+                 "but it's not required.\n\n$prompt"
+      }
     }
     return prompt
   }
@@ -513,7 +528,7 @@ fun ChatScreen(
             msg.role.name.lowercase() to msg.content
           }
           activeEngine.restoreHistory(historyPairs)
-          val prompt = buildConversationPrompt(finalPrompt, reasoningEnabled, ragContext.isNotEmpty())
+          val prompt = buildConversationPrompt(finalPrompt, reasoningEnabled, ragContext.isNotEmpty(), webSearchEnabled)
           // Pass original user text as searchQuery so ToolAwareInference uses
           // the clean query (without reasoning/RAG instructions) for web search.
           if (savedPaths.isNotEmpty() && activeEngine.hasVisionCapability) {
