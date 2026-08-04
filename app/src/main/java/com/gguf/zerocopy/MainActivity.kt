@@ -9,9 +9,23 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,9 +37,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.outlined.Chat
 import androidx.compose.material.icons.outlined.Dns
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
@@ -46,6 +65,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -61,22 +81,21 @@ import com.gguf.zerocopy.ui.models.ModelListScreen
 import com.gguf.zerocopy.ui.sessions.SessionListScreen
 import com.gguf.zerocopy.ui.settings.SettingsScreen
 import com.gguf.zerocopy.ui.theme.ZeroCopyTheme
+import com.gguf.zerocopy.ui.theme.ZcPalette
 import com.gguf.zerocopy.ui.theme.currentPalette
-import com.gguf.zerocopy.ui.welcome.WelcomeScreen
 import com.gguf.zerocopy.ui.invent.InventProjectScreen
 import com.gguf.zerocopy.ui.invent.InventScreen
 import com.gguf.zerocopy.ui.invent.InventSetupScreen
-import androidx.compose.material.icons.outlined.Lightbulb
 import kotlinx.coroutines.delay
 
-data class NavItem(val label: String, val icon: ImageVector)
+data class NavItem(val label: String, val icon: ImageVector, val activeIcon: ImageVector)
 
 private val navItems = listOf(
-  NavItem("Chat", Icons.Outlined.Chat),
-  NavItem("Models", Icons.Outlined.SmartToy),
-  NavItem("Server", Icons.Outlined.Dns),
-  NavItem("Settings", Icons.Filled.Settings),
-  NavItem("Invent", Icons.Outlined.Lightbulb)
+  NavItem("Chat", Icons.Outlined.Chat, Icons.Filled.Chat),
+  NavItem("Models", Icons.Outlined.SmartToy, Icons.Filled.SmartToy),
+  NavItem("Server", Icons.Outlined.Dns, Icons.Filled.Dns),
+  NavItem("Settings", Icons.Outlined.Settings, Icons.Filled.Settings),
+  NavItem("Invent", Icons.Outlined.Lightbulb, Icons.Filled.Lightbulb)
 )
 
 class MainActivity : ComponentActivity() {
@@ -104,11 +123,15 @@ class MainActivity : ComponentActivity() {
 fun AppRoot() {
   val app = ZeroCopyApp.instance
   var showSplash by remember { mutableStateOf(true) }
-  var showWelcome by rememberSaveable { mutableStateOf(!SettingsManager.welcomeDone) }
   var loadedModelPath by remember { mutableStateOf("") }
   var loadedModelName by remember { mutableStateOf("") }
   var currentSessionId by remember { mutableStateOf<String?>(null) }  // start with new session
-  LaunchedEffect(Unit) { SettingsManager.currentSessionId = "" }
+  LaunchedEffect(Unit) {
+    SettingsManager.currentSessionId = ""
+    // Onboarding screen removed — mark first-run done so device defaults are
+    // applied exactly once (in ZeroCopyApp.onCreate), never on later launches.
+    SettingsManager.welcomeDone = true
+  }
   var selectedTab by rememberSaveable { mutableIntStateOf(0) }
   var showSessionList by remember { mutableStateOf(false) }
   var inventStarted by rememberSaveable { mutableStateOf(false) }
@@ -130,22 +153,6 @@ fun AppRoot() {
     return
   }
 
-  if (showWelcome) {
-    WelcomeScreen(
-      onImportModel = {
-        SettingsManager.welcomeDone = true
-        showWelcome = false
-        // Navigate to Models tab so user can import a model
-        selectedTab = 1
-      },
-      onContinue = {
-        SettingsManager.welcomeDone = true
-        showWelcome = false
-      }
-    )
-    return
-  }
-
   Scaffold(
     bottomBar = {
       val navColors = currentPalette()
@@ -160,7 +167,7 @@ fun AppRoot() {
             NavigationBarItem(
               selected = isSelected,
               onClick = { selectedTab = idx },
-              icon = { Icon(item.icon, item.label, modifier = Modifier.size(22.dp)) },
+              icon = { NavSprite(item, isSelected, navColors) },
               label = {
                 Text(
                   item.label,
@@ -170,9 +177,11 @@ fun AppRoot() {
                 )
               },
               colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = navColors.Accent,
-                unselectedIconColor = navColors.Text3,
-                indicatorColor = navColors.Accent.copy(alpha = 0.16f)
+                selectedIconColor = Color.Transparent,
+                unselectedIconColor = Color.Transparent,
+                indicatorColor = Color.Transparent,
+                selectedTextColor = navColors.Accent,
+                unselectedTextColor = navColors.Text3
               )
             )
           }
@@ -184,10 +193,32 @@ fun AppRoot() {
     // This preserves inference state when switching tabs (e.g., chat keeps running
     // while you check Settings or Models).
     Box(modifier = Modifier.padding(innerPad).fillMaxSize()) {
+      // Tab slide offsets — scroll-like feel when switching tabs
+      val slide0 by animateFloatAsState(
+        targetValue = when { selectedTab == 0 -> 0f; selectedTab > 0 -> -1f; else -> 1f },
+        animationSpec = tween(320, easing = FastOutSlowInEasing), label = "slide0"
+      )
+      val slide1 by animateFloatAsState(
+        targetValue = when { selectedTab == 1 -> 0f; selectedTab > 1 -> -1f; else -> 1f },
+        animationSpec = tween(320, easing = FastOutSlowInEasing), label = "slide1"
+      )
+      val slide2 by animateFloatAsState(
+        targetValue = when { selectedTab == 2 -> 0f; selectedTab > 2 -> -1f; else -> 1f },
+        animationSpec = tween(320, easing = FastOutSlowInEasing), label = "slide2"
+      )
+      val slide3 by animateFloatAsState(
+        targetValue = when { selectedTab == 3 -> 0f; selectedTab > 3 -> -1f; else -> 1f },
+        animationSpec = tween(320, easing = FastOutSlowInEasing), label = "slide3"
+      )
+      val slide4 by animateFloatAsState(
+        targetValue = when { selectedTab == 4 -> 0f; selectedTab > 4 -> -1f; else -> 1f },
+        animationSpec = tween(320, easing = FastOutSlowInEasing), label = "slide4"
+      )
       // Tab 0: Chat (always composed so inference continues)
       Box(
         modifier = Modifier.fillMaxSize().graphicsLayer {
           alpha = if (selectedTab == 0) 1f else 0f
+          translationX = slide0 * size.width * 0.10f
           if (selectedTab != 0) { scaleX = 0.001f; scaleY = 0.001f }
         }
       ) {
@@ -226,6 +257,7 @@ fun AppRoot() {
       Box(
         modifier = Modifier.fillMaxSize().graphicsLayer {
           alpha = if (selectedTab == 1) 1f else 0f
+          translationX = slide1 * size.width * 0.10f
           if (selectedTab != 1) { scaleX = 0.001f; scaleY = 0.001f }
         }
       ) {
@@ -243,6 +275,7 @@ fun AppRoot() {
       Box(
         modifier = Modifier.fillMaxSize().graphicsLayer {
           alpha = if (selectedTab == 2) 1f else 0f
+          translationX = slide2 * size.width * 0.10f
           if (selectedTab != 2) { scaleX = 0.001f; scaleY = 0.001f }
         }
       ) {
@@ -253,6 +286,7 @@ fun AppRoot() {
       Box(
         modifier = Modifier.fillMaxSize().graphicsLayer {
           alpha = if (selectedTab == 3) 1f else 0f
+          translationX = slide3 * size.width * 0.10f
           if (selectedTab != 3) { scaleX = 0.001f; scaleY = 0.001f }
         }
       ) {
@@ -263,6 +297,7 @@ fun AppRoot() {
       Box(
         modifier = Modifier.fillMaxSize().graphicsLayer {
           alpha = if (selectedTab == 4) 1f else 0f
+          translationX = slide4 * size.width * 0.10f
           if (selectedTab != 4) { scaleX = 0.001f; scaleY = 0.001f }
         }
       ) {
@@ -323,6 +358,60 @@ fun AppRoot() {
           )
         }
       }
+    }
+  }
+}
+
+/** Animated bottom-bar sprite: outlined when idle, filled + glowing when active,
+ *  with a pop-in scale and — for Invent's lightbulb — a warm "turned on" pulse. */
+@OptIn(ExperimentalAnimationApi::class)
+@Composable
+private fun NavSprite(item: NavItem, isSelected: Boolean, colors: ZcPalette) {
+  val isBulb = item.label == "Invent"
+  val activeTint = if (isBulb) Color(0xFFFFD166) else colors.Accent
+  val scale = remember { Animatable(if (isSelected) 1f else 0.9f) }
+  val halo = remember { Animatable(if (isSelected) 1f else 0f) }
+
+  LaunchedEffect(isSelected) {
+    if (isSelected) {
+      // Turn on: pop-in (small → overshoot → settle) + halo glow
+      scale.snapTo(0.55f)
+      scale.animateTo(1.18f, tween(240, easing = FastOutSlowInEasing))
+      scale.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy))
+      halo.animateTo(1f, tween(350))
+    } else {
+      // Turn off: glow fades, sprite shrinks back (reverse)
+      halo.animateTo(0f, tween(200))
+      scale.animateTo(0.9f, tween(220))
+    }
+  }
+
+  // Lightbulb stays "lit" with a gentle pulse while Invent is open
+  val pulse = if (isBulb && isSelected) {
+    val t = rememberInfiniteTransition(label = "bulbPulse")
+    t.animateFloat(0.88f, 1.12f, infiniteRepeatable(tween(850, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "bulbPulseVal")
+  } else null
+
+  Box(contentAlignment = Alignment.Center, modifier = Modifier.size(38.dp)) {
+    // Glow halo behind the active sprite
+    Box(
+      Modifier.size(30.dp).clip(CircleShape)
+        .background(activeTint.copy(alpha = (0.26f * halo.value).coerceIn(0f, 1f)))
+    )
+    AnimatedContent(
+      targetState = isSelected,
+      transitionSpec = {
+        (fadeIn(tween(160)) + scaleIn(initialScale = 0.5f)) togetherWith
+          (fadeOut(tween(120)) + scaleOut(targetScale = 0.6f))
+      },
+      label = "sprite"
+    ) { selected ->
+      Icon(
+        if (selected) item.activeIcon else item.icon,
+        item.label,
+        tint = if (selected) activeTint else colors.Text3,
+        modifier = Modifier.size(22.dp).scale(scale.value * (pulse?.value ?: 1f))
+      )
     }
   }
 }

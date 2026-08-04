@@ -5,6 +5,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -48,13 +49,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-// ─── Palette (kept local to this screen, mirrors theme accents) ─────────────
+// ─── Accent palette (local to this screen, mirrors theme) ─────────────────────
 private val Cy = Color(0xFF00E5A0)
 private val CyGlow = Color(0x6000E5A0)
 private val Pr = Color(0xFF8B83FF)
 private val Am = Color(0xFFFFB74D)
 private val Rd = Color(0xFFFF6B6B)
 private val Gy = Color(0xFF6A6A7A)
+private val Bulb = Color(0xFFFFD166)
 
 // ─── Animation specs ──────────────────────────────────────────────────────────
 private val tweenFast = tween<Float>(300, easing = FastOutSlowInEasing)
@@ -64,7 +66,7 @@ private val springSlow = spring<Float>(stiffness = Spring.StiffnessLow, dampingR
 private val slideFast = tween<IntOffset>(300, easing = FastOutSlowInEasing)
 private val slideSlow = tween<IntOffset>(500, easing = FastOutSlowInEasing)
 
-// ─── Log builder ──────────────────────────────────────────────────────────────
+// ─── Chat model ───────────────────────────────────────────────────────────────
 private data class ChatBubble(
     val role: String,
     val content: String,
@@ -101,18 +103,7 @@ private fun phaseLabel(phase: InventPhase): String = when (phase) {
     InventPhase.DEBUGGING -> "Debugging"
 }
 
-/** Ordered pipeline steps shown in the header stepper. */
-private data class PipelineStep(val label: String, val phase: InventPhase)
-
-private val pipeline = listOf(
-    PipelineStep("ASK", InventPhase.QUESTIONING),
-    PipelineStep("SEARCH", InventPhase.SEARCHING),
-    PipelineStep("PLAN", InventPhase.PLANNING),
-    PipelineStep("REVIEW", InventPhase.CONFIRMING),
-    PipelineStep("BUILD", InventPhase.GENERATING),
-    PipelineStep("FINAL", InventPhase.FINALIZING),
-    PipelineStep("DONE", InventPhase.DONE)
-)
+private val pipeline = listOf("ASK", "SEARCH", "PLAN", "REVIEW", "BUILD", "FINAL", "DONE")
 
 private fun pipelineIndex(phase: InventPhase): Int = when (phase) {
     InventPhase.QUESTIONING -> 0
@@ -137,7 +128,7 @@ private fun phaseColor(phase: InventPhase): Color = when (phase) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MAIN SCREEN
+// MAIN SCREEN — rebuilt from scratch (visuals), all vm.*/ui.* wiring preserved
 // ═══════════════════════════════════════════════════════════════════════════════
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
 @Composable
@@ -225,7 +216,7 @@ fun InventScreen(
 
     Box(Modifier.fillMaxSize().background(colors.Bg)) {
         Column(Modifier.fillMaxSize()) {
-            // ── Header (logo + actions + pipeline stepper) ─────────────────
+            // ══ HEADER — mission strip + action rail + flow ribbon ══
             Column(Modifier.background(colors.Surface)) {
                 Row(
                     Modifier.fillMaxWidth().padding(start = 4.dp, end = 6.dp, top = 6.dp),
@@ -236,19 +227,10 @@ fun InventScreen(
                     }, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Filled.ArrowBack, "Back", tint = colors.Text2, modifier = Modifier.size(18.dp))
                     }
-                    // Logo tile
-                    Box(
-                        modifier = Modifier
-                            .size(26.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Brush.linearGradient(listOf(colors.GradientStart, colors.GradientEnd))),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("Z", fontSize = 13.sp, fontWeight = FontWeight.Black,
-                            color = colors.Bg, fontFamily = FontFamily.Monospace)
-                    }
+                    // Pulsing phase orb
+                    PhaseOrb(animPhaseColor)
                     Spacer(Modifier.width(8.dp))
-                    // Project name + mode
+                    // Project name + agent mode
                     Column(Modifier.weight(1f, fill = false)) {
                         Text(
                             if (ui.projectName.isNotEmpty()) ui.projectName.take(22) else "New Project",
@@ -268,6 +250,15 @@ fun InventScreen(
                         )
                     }
                     Spacer(Modifier.weight(1f))
+                    // Thinking toggle (rotates on tap)
+                    TextButton(
+                        onClick = { vm.toggleReasoning(); thinkRotate += 360f },
+                        modifier = Modifier.height(28.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp)
+                    ) {
+                        Text("🧠", fontSize = 12.sp, color = if (ui.reasoningEnabled) colors.Accent2 else colors.Text3,
+                            modifier = Modifier.graphicsLayer { rotationZ = thinkRotate })
+                    }
                     // Token chip
                     if (ui.totalTokensUsed > 0) {
                         Surface(
@@ -282,46 +273,42 @@ fun InventScreen(
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp))
                         }
                     }
-                    // Animated action buttons
+                }
+                // Action rail (compact chips)
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     AnimatedVisibility(
                         visible = ui.phase == InventPhase.DONE || ui.phase == InventPhase.DEBUGGING,
                         enter = fadeIn(tweenFast) + scaleIn(initialScale = 0.8f),
                         exit = fadeOut(tweenFast) + scaleOut(targetScale = 0.8f)
                     ) {
-                        HeaderBtn(Icons.Filled.FileDownload, "Export", Cy, onClick = { vm.exportProjectZip() })
+                        ActionChip(Icons.Filled.FileDownload, "Export", Cy) { vm.exportProjectZip() }
                     }
-                    // Thinking toggle with rotation
-                    TextButton(
-                        onClick = { vm.toggleReasoning(); thinkRotate += 360f },
-                        modifier = Modifier.height(28.dp),
-                        contentPadding = PaddingValues(horizontal = 4.dp)
-                    ) {
-                        Text("🧠", fontSize = 12.sp, color = if (ui.reasoningEnabled) colors.Accent2 else colors.Text3,
-                            modifier = Modifier.graphicsLayer { rotationZ = thinkRotate })
-                    }
-                    HeaderBtn(Icons.Outlined.History, "Sessions", colors.Text2, onClick = {
+                    ActionChip(Icons.Outlined.History, "Sessions", colors.Text2) {
                         vm.refreshSessionList()
                         showSessions = true
-                    })
+                    }
                     if (ui.fileTree.isNotEmpty()) {
-                        HeaderBtn(
+                        ActionChip(
                             if (showFilePanel) Icons.Filled.Close else Icons.Filled.Description,
                             "Files",
                             if (showFilePanel) Cy else colors.Text2,
-                            onClick = { showFilePanel = !showFilePanel }
-                        )
+                            active = showFilePanel
+                        ) { showFilePanel = !showFilePanel }
                     }
-                    HeaderBtn(Icons.Filled.Settings, "Settings", colors.Text2, onClick = { showSettings = true })
-                    HeaderBtn(Icons.Filled.Refresh, "Restart", Color.White, onClick = {
+                    ActionChip(Icons.Filled.Settings, "Settings", colors.Text2) { showSettings = true }
+                    ActionChip(Icons.Filled.Refresh, "Restart", Color.White) {
                         vm.restartConversation()
                         onNewSession?.invoke()
-                    })
+                    }
                 }
-                // Pipeline stepper (segmented track + current phase label)
-                PipelineStepper(phase = ui.phase, animColor = animPhaseColor, colors = colors)
+                // Flow ribbon pipeline
+                FlowRibbon(phase = ui.phase, animColor = animPhaseColor, colors = colors)
             }
 
-            // ── Model status pills ─────────────────────────────────────────
+            // ══ Model status monograms ══
             ModelPills(
                 modelMode = ui.modelMode,
                 plannerLoaded = ui.plannerLoaded,
@@ -341,7 +328,7 @@ fun InventScreen(
                 colors = colors
             )
 
-            // ── Phase hint banner (fades in/out) ────────────────────────────
+            // ══ Phase hint banner ══
             AnimatedVisibility(
                 visible = ui.phase != InventPhase.DONE && ui.phase != InventPhase.DEBUGGING && chats.isEmpty(),
                 enter = fadeIn(tweenFast) + expandVertically(expandFrom = Alignment.Top),
@@ -350,9 +337,9 @@ fun InventScreen(
                 PhaseHint(ui.phase, colors)
             }
 
-            // ── Main content area (files panel left + chat right) ────────
+            // ══ Main content area ══
             Row(Modifier.weight(1f)) {
-                // ── Animated left file panel ─────────────────────────────────
+                // Animated left file panel
                 AnimatedVisibility(
                     visible = showFilePanel && ui.fileTree.isNotEmpty(),
                     enter = slideInHorizontally(
@@ -374,13 +361,12 @@ fun InventScreen(
                     )
                 }
 
-                // ── Chat / Coder chat (animated swap) ────────────────────────
+                // Chat / coder chat
                 Box(Modifier.weight(1f)) {
                     AnimatedContent(
                         targetState = coderChatActive,
                         transitionSpec = {
                             if (targetState) {
-                                // Entering coder chat: slide in from right
                                 slideInHorizontally(
                                     animationSpec = slideFast,
                                     initialOffsetX = { it }
@@ -390,7 +376,6 @@ fun InventScreen(
                                     targetOffsetX = { -it }
                                 ) + fadeOut(tweenFast)
                             } else {
-                                // Exiting coder chat: slide out to right
                                 slideInHorizontally(
                                     animationSpec = slideFast,
                                     initialOffsetX = { -it }
@@ -485,7 +470,7 @@ fun InventScreen(
                 }
             }
 
-            // ── Questioning progress bar (Akinator-style, animated) ─────────
+            // ══ Questioning progress (Akinator-style) ══
             AnimatedVisibility(
                 visible = ui.phase == InventPhase.QUESTIONING && ui.chatStarted && ui.questioningProgress > 0f,
                 enter = fadeIn(tweenSlow) + expandVertically(expandFrom = Alignment.Bottom),
@@ -512,7 +497,7 @@ fun InventScreen(
                 }
             }
 
-            // ── Input area (animated visibility by state) ─────────────────────
+            // ══ Input dock ══
             if (!ui.chatStarted && ui.phase == InventPhase.QUESTIONING) {
                 // Loading state
                 Surface(Modifier.fillMaxWidth(), color = colors.Surface, shadowElevation = 2.dp) {
@@ -569,7 +554,7 @@ fun InventScreen(
             }
         }
 
-        // ── Animated Dialogs ────────────────────────────────────────────
+        // ══ Animated dialogs ══
         AnimatedVisibility(
             visible = showSessions,
             enter = scaleIn(springFast) + fadeIn(tweenFast),
@@ -638,174 +623,151 @@ fun InventScreen(
     }
 }
 
-// ─── Staggered fade-in wrapper for list items ──────────────────────────────
+// ═══ Pulsing phase orb ═══
 @Composable
-private fun StaggeredFadeIn(
-    index: Int,
-    key: String,
-    content: @Composable () -> Unit
-) {
-    var visible by remember { mutableStateOf(false) }
-    LaunchedEffect(key) {
-        delay(index * 30L) // 30ms stagger per item
-        visible = true
-    }
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(tween(250)) + slideInVertically(
-            animationSpec = spring(dampingRatio = 0.7f, stiffness = 300f),
-            initialOffsetY = { it / 4 }
-        )
-    ) {
-        content()
+private fun PhaseOrb(color: Color) {
+    val t = rememberInfiniteTransition(label = "orb")
+    val ring by t.animateFloat(0.55f, 1f,
+        infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "orbRing")
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(24.dp)) {
+        Box(Modifier.size(20.dp * ring).clip(CircleShape).background(color.copy(alpha = 0.18f)))
+        Box(Modifier.size(11.dp).clip(CircleShape).background(color))
     }
 }
 
-// ─── Pipeline stepper (header wiring) ────────────────────────────────────────
+// ═══ Action chip (compact rail button) ═══
 @Composable
-private fun PipelineStepper(phase: InventPhase, animColor: Color, colors: ZcPalette) {
+private fun ActionChip(
+    icon: ImageVector, label: String, tint: Color,
+    active: Boolean = false, onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.height(24.dp).clip(RoundedCornerShape(7.dp)).clickable { onClick() },
+        color = if (active) tint.copy(alpha = 0.14f) else Color.Transparent,
+        border = BorderStroke(1.dp, if (active) tint.copy(0.5f) else tint.copy(0.28f))
+    ) {
+        Row(Modifier.padding(horizontal = 7.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, label, tint = tint, modifier = Modifier.size(11.dp))
+            Spacer(Modifier.width(3.dp))
+            Text(label, fontSize = 8.5.sp, fontWeight = FontWeight.SemiBold,
+                color = tint, fontFamily = FontFamily.Monospace)
+        }
+    }
+}
+
+// ═══ Flow ribbon — glowing node pipeline ═══
+@Composable
+private fun FlowRibbon(phase: InventPhase, animColor: Color, colors: ZcPalette) {
     val current = pipelineIndex(phase)
-    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
-        // Segmented track
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-            pipeline.forEachIndexed { i, _ ->
-                val done = i < current
-                val active = i == current
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        pipeline.forEachIndexed { i, _ ->
+            val done = i < current
+            val active = i == current
+            if (i > 0) {
                 Box(
-                    Modifier
-                        .weight(1f)
-                        .height(3.dp)
-                        .clip(RoundedCornerShape(2.dp))
+                    Modifier.weight(1f).height(2.dp).clip(RoundedCornerShape(1.dp))
                         .background(
                             when {
-                                active -> animColor
-                                done -> colors.Accent2.copy(alpha = 0.6f)
-                                else -> colors.Border.copy(alpha = 0.6f)
+                                i <= current -> animColor.copy(alpha = 0.75f)
+                                else -> colors.Border.copy(alpha = 0.5f)
                             }
                         )
                 )
             }
-        }
-        Spacer(Modifier.height(5.dp))
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            // Step dots + labels
-            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                pipeline.forEachIndexed { i, step ->
-                    val done = i < current
-                    val active = i == current
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier
-                                .size(if (active) 8.dp else 6.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(
-                                    when {
-                                        active -> animColor
-                                        done -> colors.Accent2.copy(alpha = 0.6f)
-                                        else -> colors.Border.copy(alpha = 0.6f)
-                                    }
-                                )
-                        )
-                        Spacer(Modifier.width(2.dp))
-                        Text(
-                            step.label,
-                            fontSize = 7.5.sp,
-                            fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-                            color = when {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(16.dp)) {
+                if (active) {
+                    val t = rememberInfiniteTransition(label = "node")
+                    val ring by t.animateFloat(0.5f, 1f,
+                        infiniteRepeatable(tween(800, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "nodeRing")
+                    Box(Modifier.size(13.dp * ring).clip(CircleShape).background(animColor.copy(alpha = 0.28f)))
+                }
+                Box(
+                    Modifier.size(if (active) 10.dp else 7.dp).clip(CircleShape)
+                        .background(
+                            when {
                                 active -> animColor
-                                done -> colors.Accent2.copy(alpha = 0.75f)
-                                else -> colors.Text3
-                            },
-                            fontFamily = FontFamily.Monospace
-                        )
+                                done -> colors.Accent2.copy(alpha = 0.8f)
+                                else -> colors.Border.copy(alpha = 0.9f)
+                            }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (done) Text("✓", fontSize = 6.sp, fontWeight = FontWeight.Black, color = colors.Bg)
+                }
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "${phaseLabel(phase)} · ${current + 1}/${pipeline.size}",
+            fontSize = 8.5.sp, fontWeight = FontWeight.SemiBold,
+            color = animColor, fontFamily = FontFamily.Monospace, maxLines = 1
+        )
+    }
+}
+
+// ═══ Model status monogram chips ═══
+@Composable
+private fun ModelPills(
+    modelMode: ModelMode,
+    plannerLoaded: Boolean, researcherLoaded: Boolean, coderLoaded: Boolean,
+    plannerName: String, researcherName: String, coderName: String,
+    phase: InventPhase, onTap: (Int) -> Unit, colors: ZcPalette
+) {
+    val pills = mutableListOf<Pair<Int, Triple<String, Boolean, String>>>()
+    pills.add(0 to Triple("PLANNER", plannerLoaded, plannerName))
+    if (modelMode != ModelMode.SINGLE) {
+        pills.add(1 to Triple("RESEARCH", researcherLoaded, researcherName))
+        pills.add(2 to Triple("CODER", coderLoaded, coderName))
+    }
+    val accents = listOf(Am, Pr, Cy)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        pills.forEachIndexed { idx, pair ->
+            val (_, info) = pair
+            val (label, loaded, name) = info
+            val accent = accents[idx]
+            val shortName = name.substringBeforeLast('.').take(12).ifEmpty { if (loaded) "ready" else "off" }
+            Surface(
+                modifier = Modifier
+                    .padding(vertical = 4.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { onTap(pair.first) },
+                color = if (loaded) accent.copy(alpha = 0.10f) else colors.Surface,
+                border = BorderStroke(1.dp, if (loaded) accent.copy(0.4f) else colors.Border.copy(0.25f))
+            ) {
+                Row(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Monogram avatar
+                    Box(
+                        Modifier.size(15.dp).clip(CircleShape)
+                            .background(if (loaded) accent else colors.Border),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(label.take(1), fontSize = 7.5.sp, fontWeight = FontWeight.Black,
+                            color = if (loaded) colors.Bg else colors.Text3, fontFamily = FontFamily.Monospace)
+                    }
+                    Spacer(Modifier.width(5.dp))
+                    Text(shortName, fontSize = 8.5.sp,
+                        color = if (loaded) accent else colors.Text3.copy(0.5f),
+                        fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (loaded) {
+                        Spacer(Modifier.width(4.dp))
+                        Box(Modifier.size(5.dp).clip(CircleShape).background(accent))
                     }
                 }
             }
-            Text(
-                "${phaseLabel(phase)} · ${current + 1}/${pipeline.size}",
-                fontSize = 9.sp, fontWeight = FontWeight.SemiBold,
-                color = animColor, fontFamily = FontFamily.Monospace,
-                maxLines = 1
-            )
         }
     }
 }
 
-// ─── Header button (pressable with scale feedback) ─────────────────────────────
-@Composable
-private fun HeaderBtn(icon: ImageVector, label: String, tint: Color, onClick: () -> Unit) {
-    var pressed by remember { mutableStateOf(false) }
-    IconButton(
-        onClick = {
-            pressed = true
-            onClick()
-        },
-        modifier = Modifier
-            .size(30.dp)
-            .scale(if (pressed) 0.85f else 1f)
-    ) {
-        Icon(icon, label, tint = tint, modifier = Modifier.size(16.dp))
-    }
-    if (pressed) {
-        LaunchedEffect(Unit) {
-            delay(100)
-            pressed = false
-        }
-    }
-}
-
-// ─── Empty state (animated, gradient orb) ───────────────────────────────────
-@Composable
-private fun EmptyState(phase: InventPhase, phaseColor: Color, colors: ZcPalette) {
-    val (title, subtitle) = when (phase) {
-        InventPhase.QUESTIONING -> "Tell me what to build" to "Describe your project idea below — I'll ask a few questions to shape it."
-        InventPhase.SEARCHING -> "Scanning the web" to "Looking up current best practices and APIs for your project…"
-        InventPhase.PLANNING -> "Drafting the blueprint" to "Building a file-by-file implementation plan…"
-        InventPhase.CONFIRMING -> "Plan ready for review" to "Review the plan and confirm before I start writing code."
-        InventPhase.GENERATING -> "Writing code files" to "Generating your project structure…"
-        InventPhase.REPLANNING -> "Adjusting the plan" to "Tuning the plan based on your feedback…"
-        InventPhase.FINALIZING -> "Wrapping up" to "Generating README and build instructions…"
-        InventPhase.DONE -> "Mission complete" to "Export your project zip or start a fresh one."
-        InventPhase.DEBUGGING -> "Debug session" to "Describe the issue and I'll fix it."
-    }
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(horizontal = 36.dp)
-        ) {
-            // Glowing layered orb
-            Box(contentAlignment = Alignment.Center) {
-                Box(
-                    Modifier.size(104.dp)
-                        .clip(RoundedCornerShape(30.dp))
-                        .background(phaseColor.copy(alpha = 0.06f))
-                )
-                Box(
-                    Modifier.size(80.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(phaseColor.copy(alpha = 0.10f))
-                )
-                val bounce by rememberInfiniteTransition(label = "bounce")
-                    .animateFloat(
-                        initialValue = 0f, targetValue = -8f,
-                        animationSpec = infiniteRepeatable(
-                            animation = tween(1200, easing = FastOutSlowInEasing),
-                            repeatMode = RepeatMode.Reverse
-                        ), label = "bounce"
-                    )
-                Text("🧠", fontSize = 34.sp, modifier = Modifier.offset(y = bounce.dp))
-            }
-            Spacer(Modifier.height(18.dp))
-            Text(title, fontSize = 17.sp, fontWeight = FontWeight.Bold,
-                color = colors.Text, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(6.dp))
-            Text(subtitle, fontSize = 11.5.sp,
-                color = colors.Text3, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
-        }
-    }
-}
-
-// ─── Phase hint ──────────────────────────────────────────────────────────────
+// ═══ Phase hint banner ═══
 @Composable
 private fun PhaseHint(phase: InventPhase, colors: ZcPalette) {
     Surface(
@@ -832,59 +794,83 @@ private fun PhaseHint(phase: InventPhase, colors: ZcPalette) {
     }
 }
 
-// ─── Model pills (role chips with status) ─────────────────────────────────────
+// ═══ Staggered fade-in wrapper ═══
 @Composable
-private fun ModelPills(
-    modelMode: ModelMode,
-    plannerLoaded: Boolean, researcherLoaded: Boolean, coderLoaded: Boolean,
-    plannerName: String, researcherName: String, coderName: String,
-    phase: InventPhase, onTap: (Int) -> Unit, colors: ZcPalette
+private fun StaggeredFadeIn(
+    index: Int,
+    key: String,
+    content: @Composable () -> Unit
 ) {
-    val pills = mutableListOf<Pair<Int, Triple<String, Boolean, String>>>()
-    pills.add(0 to Triple("PLANNER", plannerLoaded, plannerName))
-    if (modelMode != ModelMode.SINGLE) {
-        pills.add(1 to Triple("RESEARCH", researcherLoaded, researcherName))
-        pills.add(2 to Triple("CODER", coderLoaded, coderName))
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(key) {
+        delay(index * 30L)
+        visible = true
     }
-    val accents = listOf(Am, Pr, Cy)
-    val emojis = listOf("⚙", "🔍", "💻")
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(250)) + slideInVertically(
+            animationSpec = spring(dampingRatio = 0.7f, stiffness = 300f),
+            initialOffsetY = { it / 4 }
+        )
     ) {
-        pills.forEachIndexed { idx, pair ->
-            val (_, info) = pair
-            val (label, loaded, name) = info
-            val accent = accents[idx]
-            val shortName = name.substringBeforeLast('.').take(12).ifEmpty { if (loaded) "ready" else "off" }
-            Surface(
-                modifier = Modifier
-                    .padding(vertical = 4.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .clickable { onTap(pair.first) },
-                color = if (loaded) accent.copy(alpha = 0.10f) else colors.Surface,
-                border = BorderStroke(1.dp, if (loaded) accent.copy(0.4f) else colors.Border.copy(0.25f))
-            ) {
-                Row(Modifier.padding(horizontal = 9.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(6.dp).clip(RoundedCornerShape(3.dp))
-                        .background(if (loaded) accent else colors.Text3.copy(0.3f)))
-                    Spacer(Modifier.width(5.dp))
-                    Text("${emojis[idx]} ${label.take(8)}", fontSize = 9.sp, fontWeight = FontWeight.Bold,
-                        color = if (loaded) Color.White else colors.Text3, fontFamily = FontFamily.Monospace)
-                    Spacer(Modifier.width(5.dp))
-                    Text(shortName, fontSize = 8.5.sp,
-                        color = if (loaded) accent else colors.Text3.copy(0.5f),
-                        fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        content()
+    }
+}
+
+// ═══ Empty state — orbiting emblem ═══
+@Composable
+private fun EmptyState(phase: InventPhase, phaseColor: Color, colors: ZcPalette) {
+    val (title, subtitle) = when (phase) {
+        InventPhase.QUESTIONING -> "Tell me what to build" to "Describe your project idea below — I'll ask a few questions to shape it."
+        InventPhase.SEARCHING -> "Scanning the web" to "Looking up current best practices and APIs for your project…"
+        InventPhase.PLANNING -> "Drafting the blueprint" to "Building a file-by-file implementation plan…"
+        InventPhase.CONFIRMING -> "Plan ready for review" to "Review the plan and confirm before I start writing code."
+        InventPhase.GENERATING -> "Writing code files" to "Generating your project structure…"
+        InventPhase.REPLANNING -> "Adjusting the plan" to "Tuning the plan based on your feedback…"
+        InventPhase.FINALIZING -> "Wrapping up" to "Generating README and build instructions…"
+        InventPhase.DONE -> "Mission complete" to "Export your project zip or start a fresh one."
+        InventPhase.DEBUGGING -> "Debug session" to "Describe the issue and I'll fix it."
+    }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 36.dp)
+        ) {
+            // Orbiting emblem
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(96.dp)) {
+                val orbit = rememberInfiniteTransition(label = "orbit")
+                val rot by orbit.animateFloat(0f, 360f,
+                    infiniteRepeatable(tween(6000, easing = LinearEasing)), label = "orbitRot")
+                val spin by orbit.animateFloat(0f, 360f,
+                    infiniteRepeatable(tween(16000, easing = LinearEasing)), label = "orbitSpin")
+                Box(Modifier.size(88.dp).clip(CircleShape).border(1.dp, phaseColor.copy(alpha = 0.35f)))
+                Box(
+                    Modifier.size(88.dp).graphicsLayer { rotationZ = rot.value },
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    Box(Modifier.size(8.dp).offset(y = (-4).dp).clip(CircleShape).background(phaseColor))
+                }
+                Box(
+                    Modifier.size(50.dp).graphicsLayer { rotationZ = spin.value }
+                        .clip(RoundedCornerShape(15.dp))
+                        .background(Brush.linearGradient(listOf(colors.GradientStart, colors.GradientEnd))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Z", fontSize = 20.sp, fontWeight = FontWeight.Black,
+                        color = colors.Bg, fontFamily = FontFamily.Monospace)
                 }
             }
+            Spacer(Modifier.height(16.dp))
+            Text(title, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                color = colors.Text, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(6.dp))
+            Text(subtitle, fontSize = 11.5.sp,
+                color = colors.Text3, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
         }
     }
 }
 
-// ─── Status banner ────────────────────────────────────────────────────────────
+// ═══ Status banner ═══
 @Composable
 private fun StatusBanner(text: String, accent: Color, colors: ZcPalette) {
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp),
@@ -897,7 +883,7 @@ private fun StatusBanner(text: String, accent: Color, colors: ZcPalette) {
     }
 }
 
-// ─── Chat bubble (with smooth appearance) ─────────────────────────────────────
+// ═══ Chat bubble — monogram avatar + accent bar ═══
 @Composable
 private fun ChatBubbleCard(bubble: ChatBubble, colors: ZcPalette) {
     val roleColor = when (bubble.role) {
@@ -916,59 +902,78 @@ private fun ChatBubbleCard(bubble: ChatBubble, colors: ZcPalette) {
         "system" -> "SYS"
         else -> bubble.role.uppercase()
     }
-    Column(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-        // Role chip
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = roleColor.copy(alpha = 0.12f),
-                border = BorderStroke(1.dp, roleColor.copy(alpha = 0.3f))
-            ) {
-                Text(roleLabel, fontSize = 9.sp, fontWeight = FontWeight.Bold,
-                    color = roleColor, fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp))
-            }
+    val avatar = when (bubble.role) {
+        "user" -> "Y"; "model1" -> "P"; "model2" -> "C"; "researcher" -> "R"; "system" -> "S"; else -> "?"
+    }
+    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.Top) {
+        // Monogram avatar
+        Box(
+            Modifier.size(24.dp).clip(RoundedCornerShape(8.dp))
+                .background(roleColor.copy(alpha = 0.14f))
+                .border(1.dp, roleColor.copy(alpha = 0.3f), RoundedCornerShape(8.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(avatar, fontSize = 10.sp, fontWeight = FontWeight.Black,
+                color = roleColor, fontFamily = FontFamily.Monospace)
         }
-        // Thinking block
-        if (bubble.thinkingContent.isNotEmpty()) {
-            var expanded by remember { mutableStateOf(false) }
-            Spacer(Modifier.height(5.dp))
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = colors.Accent2.copy(alpha = 0.06f),
-                border = BorderStroke(1.dp, colors.Accent2.copy(0.18f)),
-                modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }
-            ) {
-                Column(Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("🧠  Reasoning", fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold, color = colors.Accent2,
-                            fontFamily = FontFamily.Monospace)
-                        Spacer(Modifier.weight(1f))
-                        Text(if (expanded) "▲" else "▼", fontSize = 8.sp, color = colors.Text3)
-                    }
-                    AnimatedVisibility(visible = expanded) {
-                        Text(bubble.thinkingContent, fontSize = 10.sp,
-                            color = colors.Text3, fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.padding(top = 4.dp))
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            // Role label row
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(roleLabel, fontSize = 8.5.sp, fontWeight = FontWeight.Bold,
+                    color = roleColor, fontFamily = FontFamily.Monospace, letterSpacing = 1.5.sp)
+                Spacer(Modifier.weight(1f))
+                if (bubble.isStreaming) {
+                    Text("thinking…", fontSize = 8.sp, color = roleColor.copy(alpha = 0.6f),
+                        fontFamily = FontFamily.Monospace)
+                }
+            }
+            // Thinking block (collapsible)
+            if (bubble.thinkingContent.isNotEmpty()) {
+                var expanded by remember { mutableStateOf(false) }
+                Spacer(Modifier.height(4.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = colors.Accent2.copy(alpha = 0.06f),
+                    border = BorderStroke(1.dp, colors.Accent2.copy(0.18f)),
+                    modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }
+                ) {
+                    Column(Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🧠  Reasoning", fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold, color = colors.Accent2,
+                                fontFamily = FontFamily.Monospace)
+                            Spacer(Modifier.weight(1f))
+                            Text(if (expanded) "▲" else "▼", fontSize = 8.sp, color = colors.Text3)
+                        }
+                        AnimatedVisibility(visible = expanded) {
+                            Text(bubble.thinkingContent, fontSize = 10.sp,
+                                color = colors.Text3, fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(top = 4.dp))
+                        }
                     }
                 }
             }
-        }
-        Spacer(Modifier.height(3.dp))
-        Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = if (bubble.isUser) Cy.copy(alpha = 0.04f) else colors.Surface,
-            border = BorderStroke(1.dp, if (bubble.isUser) Cy.copy(0.10f) else colors.Border.copy(0.25f)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(Modifier.padding(horizontal = 11.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.height(3.dp))
+            // Content card with accent bar
+            Row(
+                Modifier
+                    .height(IntrinsicSize.Min)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (bubble.isUser) Cy.copy(alpha = 0.05f) else colors.Surface)
+                    .border(1.dp, if (bubble.isUser) Cy.copy(0.12f) else colors.Border.copy(0.25f), RoundedCornerShape(10.dp)),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.width(3.dp).fillMaxHeight().background(roleColor))
                 Text(
                     bubble.content,
                     fontSize = 12.5.sp, color = if (bubble.isError) Rd else colors.Text,
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp)
                 )
                 if (bubble.isStreaming) {
+                    Spacer(Modifier.width(2.dp))
                     StreamingCursor(roleColor)
                 }
             }
@@ -986,10 +991,9 @@ private fun StreamingCursor(color: Color) {
         }
     }
     Box(Modifier.width(2.dp).height(13.dp).background(color.copy(alpha = alpha.value)))
-    {}
 }
 
-// ─── File progress ────────────────────────────────────────────────────────────
+// ═══ File progress ═══
 @Composable
 private fun FileProgress(index: Int, total: Int, name: String, accent: Color, colors: ZcPalette) {
     Surface(Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(8.dp),
@@ -1005,16 +1009,34 @@ private fun FileProgress(index: Int, total: Int, name: String, accent: Color, co
     }
 }
 
-// ─── Done stats ───────────────────────────────────────────────────────────────
+// ═══ Done stats — tile grid ═══
 @Composable
 private fun DoneStats(lines: Int, bytes: Long, debugCount: Int, colors: ZcPalette) {
-    HorizontalDivider(modifier = Modifier.padding(vertical = 5.dp), color = Cy.copy(0.15f))
-    Text("📦  Lines: $lines  ·  Size: ${bytes / 1024}KB  ·  Debug sessions: $debugCount",
-        fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace,
-        modifier = Modifier.padding(vertical = 5.dp))
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        StatTile("LINES", "$lines", Cy, colors)
+        StatTile("SIZE", "${bytes / 1024}KB", Pr, colors)
+        StatTile("DEBUG", "$debugCount", Am, colors)
+    }
 }
 
-// ─── Input area (with animated send button) ──────────────────────────────────
+@Composable
+private fun StatTile(label: String, value: String, accent: Color, colors: ZcPalette) {
+    Surface(
+        Modifier.weight(1f),
+        shape = RoundedCornerShape(10.dp),
+        color = accent.copy(alpha = 0.07f),
+        border = BorderStroke(1.dp, accent.copy(0.22f))
+    ) {
+        Column(Modifier.padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value, fontSize = 16.sp, fontWeight = FontWeight.Black,
+                color = accent, fontFamily = FontFamily.Monospace)
+            Text(label, fontSize = 7.5.sp, fontWeight = FontWeight.Bold,
+                color = colors.Text3, fontFamily = FontFamily.Monospace, letterSpacing = 1.sp)
+        }
+    }
+}
+
+// ═══ Input dock — glowing send orb ═══
 @Composable
 private fun InputArea(
     inputText: String, onTextChange: (String) -> Unit,
@@ -1024,7 +1046,7 @@ private fun InputArea(
     isGenerating: Boolean = false,
     colors: ZcPalette
 ) {
-    Surface(Modifier.fillMaxWidth().imePadding(), color = colors.Surface, shadowElevation = 2.dp) {
+    Surface(Modifier.fillMaxWidth().imePadding(), color = colors.Surface, shadowElevation = 3.dp) {
         Column {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                 MiniToggle(Icons.Outlined.AttachFile, "Attach", false, onFilePick, colors)
@@ -1056,7 +1078,7 @@ private fun InputArea(
                         )
                     },
                     textStyle = TextStyle(fontSize = 12.5.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(14.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Cy.copy(alpha = 0.5f),
                         unfocusedBorderColor = colors.Border,
@@ -1066,8 +1088,7 @@ private fun InputArea(
                     keyboardActions = KeyboardActions(onSend = { if (inputText.isNotBlank() && !isGenerating) onSend() }),
                     maxLines = 2
                 )
-                Spacer(Modifier.width(7.dp))
-                // Animated send / stop button
+                Spacer(Modifier.width(8.dp))
                 AnimatedContent(
                     targetState = isGenerating,
                     transitionSpec = {
@@ -1077,9 +1098,11 @@ private fun InputArea(
                     label = "sendStop"
                 ) { generating ->
                     if (generating) {
+                        // Stop orb
                         Box(
-                            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp))
-                                .background(Rd.copy(alpha = 0.2f))
+                            modifier = Modifier.size(40.dp).clip(CircleShape)
+                                .background(Rd.copy(alpha = 0.18f))
+                                .border(1.dp, Rd.copy(alpha = 0.4f), CircleShape)
                                 .clickable { onStop() },
                             contentAlignment = Alignment.Center
                         ) {
@@ -1088,13 +1111,17 @@ private fun InputArea(
                     } else {
                         val canSend = inputText.isNotBlank()
                         var sendPressed by remember { mutableStateOf(false) }
+                        // Idle pulse on the send orb
+                        val idle = rememberInfiniteTransition(label = "sendIdle")
+                        val idleScale by idle.animateFloat(1f, 1.08f,
+                            infiniteRepeatable(tween(1100, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "sendIdleVal")
                         Box(
                             modifier = Modifier
                                 .size(40.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .scale(if (sendPressed) 0.9f else 1f)
+                                .clip(CircleShape)
+                                .scale(if (sendPressed) 0.9f else if (canSend) idleScale.value else 1f)
                                 .let { m ->
-                                    if (canSend) m.background(Brush.linearGradient(listOf(Cy, Cy.copy(0.6f))))
+                                    if (canSend) m.background(Brush.linearGradient(listOf(Cy, Pr)))
                                     else m.background(colors.Border)
                                 }
                                 .clickable {
@@ -1135,7 +1162,7 @@ private fun MiniToggle(icon: ImageVector, label: String, active: Boolean, onClic
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// MODEL PICKER SHEET (animated)
+// MODEL PICKER SHEET
 // ═══════════════════════════════════════════════════════════════════════════════
 @Composable
 private fun ModelPickerSheet(
@@ -1158,15 +1185,18 @@ private fun ModelPickerSheet(
 
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center) {
-        Surface(Modifier.fillMaxWidth(0.88f).fillMaxHeight(0.72f).clickable {},
-            shape = RoundedCornerShape(18.dp), color = colors.Card,
+        Surface(Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.74f).clickable {},
+            shape = RoundedCornerShape(20.dp), color = colors.Card,
             border = BorderStroke(1.dp, colors.Border.copy(alpha = 0.4f))) {
             Column(Modifier.padding(14.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, "Close", tint = colors.Text3) }
+                    Box(Modifier.size(24.dp).clip(CircleShape).background(Cy.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center) {
+                        Text("M", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Cy, fontFamily = FontFamily.Monospace)
+                    }
                     Text("$roleLabel Model", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.Monospace)
-                    Spacer(Modifier.width(40.dp))
+                    IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, "Close", tint = colors.Text3) }
                 }
                 HorizontalDivider(color = colors.Border)
                 Spacer(Modifier.height(6.dp))
@@ -1184,9 +1214,14 @@ private fun ModelPickerSheet(
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         items(models) { m ->
                             Surface(Modifier.fillMaxWidth().clickable { onSelect(m.path, m.name, useForAll) },
-                                shape = RoundedCornerShape(10.dp), color = colors.Surface,
+                                shape = RoundedCornerShape(12.dp), color = colors.Surface,
                                 border = BorderStroke(1.dp, colors.Border.copy(0.35f))) {
                                 Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(26.dp).clip(RoundedCornerShape(8.dp))
+                                        .background(Cy.copy(alpha = 0.10f)), contentAlignment = Alignment.Center) {
+                                        Text("🧠", fontSize = 12.sp)
+                                    }
+                                    Spacer(Modifier.width(8.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(m.name, fontSize = 11.5.sp, color = colors.Text,
                                             fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold,
@@ -1209,7 +1244,7 @@ private fun ModelPickerSheet(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SESSION POPUP (animated)
+// SESSION POPUP
 // ═══════════════════════════════════════════════════════════════════════════════
 @Composable
 private fun SessionPopup(
@@ -1235,8 +1270,8 @@ private fun SessionPopup(
 
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center) {
-        Surface(Modifier.fillMaxWidth(0.88f).fillMaxHeight(0.72f).clickable {},
-            shape = RoundedCornerShape(18.dp), color = colors.Card,
+        Surface(Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.74f).clickable {},
+            shape = RoundedCornerShape(20.dp), color = colors.Card,
             border = BorderStroke(1.dp, colors.Border.copy(alpha = 0.4f))) {
             Column(Modifier.padding(14.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
@@ -1245,10 +1280,12 @@ private fun SessionPopup(
                         Icon(Icons.Filled.Close, "Close", tint = colors.Text3) }
                     Text(if (selectedSession != null) "Session Files" else "Sessions",
                         fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.Monospace)
-                    Spacer(Modifier.width(40.dp))
+                    Box(Modifier.size(24.dp).clip(CircleShape).background(Cy.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center) {
+                        Text("S", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Cy, fontFamily = FontFamily.Monospace)
+                    }
                 }
                 HorizontalDivider(color = colors.Border); Spacer(Modifier.height(8.dp))
-                // Animated content swap (session list ↔ file list)
                 AnimatedContent(
                     targetState = selectedSession,
                     transitionSpec = {
@@ -1258,7 +1295,6 @@ private fun SessionPopup(
                     label = "sessionFiles"
                 ) { sess ->
                     if (sess != null) {
-                        // Files view
                         Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp),
                             color = Cy.copy(alpha = 0.10f), border = BorderStroke(1.dp, Cy.copy(0.35f))) {
                             Row(Modifier.clickable { onSwitch(sess) }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1322,7 +1358,7 @@ private fun SessionPopup(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SETTINGS POPUP (animated)
+// SETTINGS POPUP
 // ═══════════════════════════════════════════════════════════════════════════════
 @Composable
 private fun SettingsPopup2(
@@ -1349,18 +1385,20 @@ private fun SettingsPopup2(
 
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center) {
-        Surface(Modifier.fillMaxWidth(0.88f).fillMaxHeight(0.72f).clickable {},
-            shape = RoundedCornerShape(18.dp), color = colors.Card,
+        Surface(Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.74f).clickable {},
+            shape = RoundedCornerShape(20.dp), color = colors.Card,
             border = BorderStroke(1.dp, colors.Border.copy(alpha = 0.4f))) {
             Column(Modifier.padding(14.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, "Close", tint = colors.Text3) }
+                    Box(Modifier.size(24.dp).clip(CircleShape).background(Am.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center) {
+                        Text("⚙", fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    }
                     Text("Model Settings", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.Monospace)
-                    Spacer(Modifier.width(40.dp))
+                    IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, "Close", tint = colors.Text3) }
                 }
                 HorizontalDivider(color = colors.Border); Spacer(Modifier.height(8.dp))
-                // Animated tab chips
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                     tabs.forEachIndexed { i, (label, _) ->
                         val isActive = settingsTab == i
@@ -1378,7 +1416,6 @@ private fun SettingsPopup2(
                     }
                 }
                 Spacer(Modifier.height(10.dp))
-                // Config area with animated content
                 AnimatedContent(
                     targetState = settingsTab,
                     transitionSpec = {
@@ -1397,7 +1434,6 @@ private fun SettingsPopup2(
                     ConfigSliders(role = roleKey, config = cfg, modelPath = path, colors)
                 }
                 Spacer(Modifier.height(6.dp))
-                // Thinking toggle
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("🧠 Reasoning", fontSize = 10.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
                     Spacer(Modifier.weight(1f))
@@ -1497,7 +1533,7 @@ private fun SliderRow(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// CODER CHAT (with slide-in animation on the parent)
+// CODER CHAT
 // ═══════════════════════════════════════════════════════════════════════════════
 @Composable
 private fun CoderChatView(
@@ -1513,13 +1549,11 @@ private fun CoderChatView(
     }
     val listState = rememberLazyListState()
 
-    // Auto-scroll on new coder messages
     LaunchedEffect(coderMessages.size) {
         if (coderMessages.isNotEmpty()) listState.animateScrollToItem(coderMessages.size - 1)
     }
 
     Column(Modifier.fillMaxSize()) {
-        // Header
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = colors.Card,
@@ -1529,7 +1563,10 @@ private fun CoderChatView(
                 Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.Chat, null, tint = Cy, modifier = Modifier.size(18.dp))
+                Box(Modifier.size(26.dp).clip(RoundedCornerShape(8.dp)).background(Cy.copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center) {
+                    Text("C", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Cy, fontFamily = FontFamily.Monospace)
+                }
                 Spacer(Modifier.width(7.dp))
                 Text("Chat with Coder", fontSize = 13.sp, fontWeight = FontWeight.Bold,
                     color = colors.Text, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
@@ -1543,7 +1580,6 @@ private fun CoderChatView(
         }
         HorizontalDivider(color = colors.Border.copy(alpha = 0.3f))
 
-        // Messages
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f),
@@ -1576,7 +1612,6 @@ private fun CoderChatView(
             }
         }
 
-        // Input
         HorizontalDivider(color = colors.Border.copy(alpha = 0.3f))
         Row(
             Modifier.fillMaxWidth().padding(10.dp),
@@ -1589,7 +1624,7 @@ private fun CoderChatView(
                 placeholder = { Text("Ask the coder about this file…", fontSize = 11.sp,
                     color = colors.Text3, fontFamily = FontFamily.Monospace) },
                 minLines = 1, maxLines = 3,
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(12.dp),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = {
                     if (coderInput.isNotBlank()) {
@@ -1608,16 +1643,17 @@ private fun CoderChatView(
                 textStyle = TextStyle(fontSize = 12.5.sp)
             )
             Spacer(Modifier.width(6.dp))
-            IconButton(
-                onClick = {
-                    if (coderInput.isNotBlank()) {
-                        vm.handleCoderChatMessage(coderInput, filePath)
-                        coderInput = ""
-                    }
-                },
-                modifier = Modifier.size(36.dp)
+            Box(
+                Modifier.size(34.dp).clip(CircleShape).background(Cy.copy(alpha = 0.14f))
+                    .clickable {
+                        if (coderInput.isNotBlank()) {
+                            vm.handleCoderChatMessage(coderInput, filePath)
+                            coderInput = ""
+                        }
+                    },
+                contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = Cy, modifier = Modifier.size(18.dp))
+                Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = Cy, modifier = Modifier.size(16.dp))
             }
         }
     }
