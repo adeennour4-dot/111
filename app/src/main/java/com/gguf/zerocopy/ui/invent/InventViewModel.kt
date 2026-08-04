@@ -423,6 +423,42 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    /**
+     * Lightweight local telemetry — appends one record per pipeline milestone to
+     * filesDir/invent_telemetry.json (capped at the 200 most recent records).
+     * Lets us measure real Invent success: sessions started vs. projects that
+     * reached DONE, files planned vs. generated, failures and sanity warnings.
+     */
+    private fun recordTelemetry(extra: JSONObject? = null) {
+        try {
+            val record = JSONObject().apply {
+                put("ts", System.currentTimeMillis())
+                put("sessionId", sessionId)
+                put("projectName", zcp.projectName.ifEmpty { "unknown" })
+                put("language", org.json.JSONArray(zcp.language))
+                put("framework", zcp.framework)
+                put("phase", _ui.value.phase.name)
+                put("filesPlanned", zcp.fileTree.count { !it.isDir })
+                put("filesGenerated", zcp.generatedFiles.size)
+                put("conversationDepth", _ui.value.conversationDepth)
+                put("sameModelMode", _ui.value.sameModelMode)
+            }
+            extra?.keys()?.forEach { key -> record.put(key, extra.get(key)) }
+            val file = File(ctx.filesDir, "invent_telemetry.json")
+            var arr = org.json.JSONArray()
+            if (file.exists()) {
+                try { arr = org.json.JSONArray(file.readText()) } catch (_: Exception) { arr = org.json.JSONArray() }
+            }
+            arr.put(record)
+            if (arr.length() > 200) {
+                val trimmed = org.json.JSONArray()
+                for (i in arr.length() - 200 until arr.length()) trimmed.put(arr.get(i))
+                arr = trimmed
+            }
+            file.writeText(arr.toString(2))
+        } catch (_: Exception) { /* telemetry must never crash the pipeline */ }
+    }
+
     private fun getProjectDir(): File {
         val sid = sessionId.ifEmpty { "_" }
         return InventStorage.getProjectDir(ctx, sid, zcp.projectName)
@@ -535,6 +571,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 sessionTransform = { newSession },
                 zcpTransform = { newZcp }
             )
+            recordTelemetry(JSONObject().apply { put("outcome", "session_start") })
             startModel1Questioning()
         }
     }
@@ -750,13 +787,33 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                     appendLine()
                     appendLine("Output ONLY blocks — no prose.")
                 }
-                val structure = runInference(
+                var structure = runInference(
                     systemPrompt = "You output machine-parseable project blocks only.",
                     userMessage = structPrompt
                 )
-
                 zcp = parseZcpFromModel1(structure, zcp)
-                val tree = parseFileTree(structure)
+                var tree = parseFileTree(structure)
+                if (tree.isEmpty()) {
+                    // Small models frequently drop the §TREE blocks on the first pass —
+                    // retry once with explicit feedback before giving up.
+                    addMessage("system", "⚠ No §TREE blocks parsed — retrying structure output once…", InventPhase.PLANNING)
+                    val retryPrompt = "Your previous output contained NO valid §TREE{path:...|type:file|desc:...} blocks. " +
+                        "You MUST output a §TREE block for every file, plus §PROMPT blocks. " +
+                        "Output ONLY machine-parseable blocks, no prose.\n\n$structPrompt"
+                    val retry = runInference(
+                        systemPrompt = "You output machine-parseable project blocks only.",
+                        userMessage = retryPrompt
+                    )
+                    val retryTree = parseFileTree(retry)
+                    if (retryTree.isNotEmpty()) {
+                        structure = retry
+                        tree = retryTree
+                        zcp = parseZcpFromModel1(retry, zcp)
+                        addMessage("system", "✓ Structure parsed on retry (${tree.count { !it.isDir }} files)", InventPhase.PLANNING)
+                    } else {
+                        addMessage("system", "⚠ Still no §TREE blocks — continuing with summary only (0 files)", InventPhase.PLANNING)
+                    }
+                }
                 zcp = zcp.copy(fileTree = tree, phase = InventPhase.PLANNING)
 
                 // ── Step 5: Create .txt placeholder files ──
@@ -819,6 +876,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 startFileGeneration()
             } catch (e: Exception) {
                 _ui.value = _ui.value.copy(isGenerating = false, error = "Pipeline: ${e.message}")
+                recordTelemetry(JSONObject().apply { put("outcome", "error"); put("error", e.message) })
             } finally {
                 _ui.value = _ui.value.copy(isGenerating = false)
             }
@@ -826,9 +884,37 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Shared file generation loop — used by both startFileGeneration and resumeGeneration. */
+    /** Order files topologically so dependencies are generated before their dependents.
+     *  Deterministic — stable across save/resume. Cycles are tolerated (visited guard). */
+    private fun topoSortFiles(files: List<FileNode>): List<FileNode> {
+        val pathSet = files.map { it.path }.toSet()
+        val result = mutableListOf<FileNode>()
+        val visited = mutableSetOf<String>()
+        val visiting = mutableSetOf<String>()
+
+        fun visit(node: FileNode) {
+            if (node.path in visited) return
+            if (node.path in visiting) return // cycle — keep first occurrence
+            visiting.add(node.path)
+            val deps = zcp.fileSpecs[node.path]?.dependencies?.filter { it in pathSet } ?: emptyList()
+            for (dep in deps) {
+                val depNode = files.firstOrNull { it.path == dep }
+                if (depNode != null) visit(depNode)
+            }
+            visiting.remove(node.path)
+            visited.add(node.path)
+            result.add(node)
+        }
+
+        files.forEach { visit(it) }
+        return result
+    }
+
     private suspend fun generateFiles(startFrom: Int = 0, skipExisting: Boolean = false) {
         val state = sessionState ?: return
-        val filesToGenerate = zcp.fileTree.filter { !it.isDir }
+        lastGenFailures = mutableListOf()
+        lastSanityWarnings = mutableMapOf()
+        val filesToGenerate = topoSortFiles(zcp.fileTree.filter { !it.isDir })
         if (filesToGenerate.isEmpty()) { finishGeneration(); return }
 
         val startIdx = startFrom.coerceAtLeast(0)
@@ -846,7 +932,9 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
         setSwap("Loading $targetName…")
         if (!loadOrKeepModel(targetPath)) {
-            setSwap(""); _ui.value = _ui.value.copy(isGenerating = false, error = "Failed to load $targetName"); return
+            setSwap(""); _ui.value = _ui.value.copy(isGenerating = false, error = "Failed to load $targetName")
+            recordTelemetry(JSONObject().apply { put("outcome", "error"); put("error", "Failed to load $targetName") })
+            return
         }
         enableSearchOnEngine()
         setSwap("")
@@ -870,13 +958,23 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             )
 
             val preSearchResults = checkAndRunPreSearch(fileSpec)
-            val code = generateCodeWithPreSearch(fileSpec, projectDir, preSearchResults)
+            var code = generateCodeWithPreSearch(fileSpec, projectDir, preSearchResults)
             if (code == null) {
-                setSwap(""); _ui.value = _ui.value.copy(isGenerating = false, error = "Failed to generate ${fileNode.path}"); return
+                // Retry once — a single glitch shouldn't abort the whole run.
+                setSwap("Retrying ${fileNode.path}…")
+                code = generateCodeWithPreSearch(fileSpec, projectDir, preSearchResults, retry = true)
+                setSwap("")
+            }
+            if (code == null) {
+                // Skip-and-continue: record the failure and keep generating the rest.
+                lastGenFailures.add(fileNode.path)
+                addMessage("system", "⚠ Skipped ${fileNode.path} — generation failed after 2 attempts", InventPhase.GENERATING)
+                continue
             }
 
             InventStorage.writeGeneratedFile(projectDir, fileNode.path, code)
             withTransaction(zcpTransform = { it.copy(generatedFiles = it.generatedFiles + fileNode.path) })
+            sanityCheckFile(fileNode.path, code)?.let { lastSanityWarnings[fileNode.path] = it }
             addMessage("system", "✓ Generated ${fileNode.path} (${code.count { it == '\n' } + 1} lines)", InventPhase.GENERATING)
         }
 
@@ -915,11 +1013,15 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Generate code with pre-fetched search results plus dependency code context. */
-    private suspend fun generateCodeWithPreSearch(spec: FileSpec, projectDir: File, preSearchResults: String?): String? {
+    private suspend fun generateCodeWithPreSearch(
+        spec: FileSpec, projectDir: File, preSearchResults: String?, retry: Boolean = false
+    ): String? {
         val codeGenPrompt = buildCodeGenPrompt(spec, zcp, projectDir)
-        val fullPrompt = if (preSearchResults != null) {
-            "Web research for this file:\n$preSearchResults\n\n---\n\n$codeGenPrompt"
-        } else codeGenPrompt
+        val fullPrompt = buildString {
+            if (preSearchResults != null) append("Web research for this file:\n$preSearchResults\n\n---\n\n")
+            append(codeGenPrompt)
+            if (retry) append("\n\nYour previous response was empty or invalid. Output ONLY the code for this file. No explanations, no markdown fences.")
+        }
 
         return runInference(
             systemPrompt = "You are a senior software engineer. Output ONLY the code for this file. No explanations, no markdown.",
@@ -928,6 +1030,66 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             val cleaned = result.replace(Regex("""\[SEARCH:\s*(.+?)]""", RegexOption.IGNORE_CASE), "").trim()
             cleaned.ifEmpty { null }
         }
+    }
+
+    /** Lightweight post-generation sanity checks — heuristic, informational only.
+     *  Returns a short warning string, or null when the file looks plausible. */
+    private fun sanityCheckFile(path: String, code: String): String? {
+        if (code.isBlank()) return "empty file"
+        val issues = mutableListOf<String>()
+
+        // 1. Delimiter balance, skipping strings and comments
+        val pairs = mapOf('{' to '}', '(' to ')', '[' to ']')
+        val count = mutableMapOf<Char, Int>()
+        var inString = false; var stringQuote = ' '; var escaped = false
+        var inLineComment = false; var inBlockComment = false
+        var i = 0
+        val n = code.length
+        while (i < n) {
+            val ch = code[i]
+            when {
+                inLineComment -> { if (ch == '\n') inLineComment = false }
+                inBlockComment -> { if (ch == '*' && i + 1 < n && code[i + 1] == '/') { inBlockComment = false; i++ } }
+                inString -> {
+                    if (escaped) escaped = false
+                    else if (ch == '\\') escaped = true
+                    else if (ch == stringQuote) inString = false
+                }
+                ch == '"' || ch == '\'' || ch == '`' -> { inString = true; stringQuote = ch }
+                ch == '/' && i + 1 < n && code[i + 1] == '/' -> { inLineComment = true; i++ }
+                ch == '/' && i + 1 < n && code[i + 1] == '*' -> { inBlockComment = true; i++ }
+                pairs.containsKey(ch) -> count[ch] = (count[ch] ?: 0) + 1
+                pairs.containsValue(ch) -> {
+                    val opener = pairs.entries.firstOrNull { it.value == ch }?.key
+                    if (opener != null) count[opener] = (count[opener] ?: 0) - 1
+                }
+            }
+            i++
+        }
+        count.forEach { (opener, c) -> if (c != 0) issues.add("unbalanced '$opener' (delta $c)") }
+
+        // 2. Relative imports pointing at files that were never generated
+        val generatedBases = (zcp.generatedFiles + zcp.fileTree.filter { !it.isDir }.map { it.path })
+            .map { it.substringAfterLast('/').lowercase() }.toSet()
+        val relativeImport = Regex("""(?:from|import|require)\s*\(?\s*['"](\.\.?/[^'"]+)['"]""")
+        val missing = relativeImport.findAll(code).mapNotNull { m ->
+            val imp = m.groupValues[1]
+            val base = imp.substringAfterLast('/')
+                .removeSuffix(".kt").removeSuffix(".java").removeSuffix(".py")
+                .removeSuffix(".dart").removeSuffix(".ts").removeSuffix(".js")
+                .removeSuffix(".tsx").removeSuffix(".jsx").removeSuffix(".go")
+                .lowercase()
+            if (base.isNotEmpty() && !generatedBases.any { it.startsWith(base) || base.startsWith(it) }) base else null
+        }.distinct().toList()
+        if (missing.isNotEmpty()) issues.add("imports never generated: ${missing.take(3).joinToString(", ")}")
+
+        // 3. Truncation heuristic — ending on an operator suggests the model was cut off
+        val lastChar = code.trimEnd().lastOrNull()
+        if (lastChar != null && (lastChar == ',' || lastChar == '&' || lastChar == '|' || lastChar == '=' || lastChar == '+' || lastChar == '-' || lastChar == ':')) {
+            issues.add("may be truncated (ends with '$lastChar')")
+        }
+
+        return if (issues.isEmpty()) null else issues.joinToString("; ")
     }
 
     private suspend fun resumeGeneration() {
@@ -942,7 +1104,22 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         updatePhase(InventPhase.DONE)
         computeStats()
         _ui.value = _ui.value.copy(zipReady = true)
-        addMessage("system", "✓ All ${zcp.generatedFiles.size} files generated. Ready to export!", InventPhase.DONE)
+        val failed = lastGenFailures
+        val warnings = lastSanityWarnings
+        val planned = zcp.fileTree.count { !it.isDir }
+        if (failed.isNotEmpty()) {
+            addMessage("system", "⚠ ${failed.size} file(s) skipped after 2 attempts: ${failed.take(5).joinToString(", ")}${if (failed.size > 5) ", …" else ""}", InventPhase.DONE)
+        }
+        if (warnings.isNotEmpty()) {
+            val names = warnings.keys.take(5).joinToString(", ")
+            addMessage("system", "⚠ ${warnings.size} file(s) may not compile — ${names}${if (warnings.size > 5) ", …" else ""}. Review before export.", InventPhase.DONE)
+        }
+        addMessage("system", "✓ ${zcp.generatedFiles.size}/$planned files generated. Ready to export!", InventPhase.DONE)
+        recordTelemetry(JSONObject().apply {
+            put("outcome", "done")
+            put("filesFailed", failed.size)
+            put("sanityWarnings", warnings.size)
+        })
     }
 
     /** Generate README from file content on disk — no model context juggling. */
@@ -1443,6 +1620,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Cancellation flag for mid-generation interrupt. */
     private var _cancelGeneration = false
+
+    /** Outcome tracking for the last generation run — used for retry/skip reporting and telemetry. */
+    private var lastGenFailures = mutableListOf<String>()
+    private var lastSanityWarnings = mutableMapOf<String, String>()
 
     private var lastCompactionNotified: Long = 0
 
