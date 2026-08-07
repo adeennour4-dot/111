@@ -396,6 +396,13 @@ fun InventScreen(
                                 colors = colors,
                                 onClose = { coderChatActive = false }
                             )
+                        } else if (ui.phase == InventPhase.CONFIRMING && ui.fileTree.isNotEmpty()) {
+                            // PLAN REVIEW — tree preview; approve/regenerate via the footer
+                            PlanReviewPanel(
+                                fileTree = ui.fileTree,
+                                projectName = ui.projectName,
+                                colors = colors
+                            )
                         } else {
                             AnimatedContent(
                                 targetState = chats.isEmpty() && ui.streamingResponse.isEmpty() && ui.swapInfo.isEmpty() && ui.error.isEmpty(),
@@ -509,11 +516,56 @@ fun InventScreen(
                             color = colors.Text3, fontFamily = FontFamily.Monospace)
                     }
                 }
+            } else if (ui.phase == InventPhase.CONFIRMING) {
+                // Plan review footer: Approve / Regenerate / Cancel
+                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Surface(
+                        onClick = { vm.approvePlan() },
+                        shape = RoundedCornerShape(10.dp),
+                        color = Cy.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, Cy),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(Modifier.padding(vertical = 9.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Check, null, tint = Cy, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text("Approve & Generate", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                    Surface(
+                        onClick = { vm.regeneratePlan() },
+                        shape = RoundedCornerShape(10.dp),
+                        color = Am.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, Am.copy(alpha = 0.7f)),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(Modifier.padding(vertical = 9.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Refresh, null, tint = Am, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text("Regenerate", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Am, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                    Surface(
+                        onClick = { vm.cancelPlanReview() },
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color.Transparent,
+                        border = BorderStroke(1.dp, colors.Border),
+                        modifier = Modifier.weight(0.7f)
+                    ) {
+                        Row(Modifier.padding(vertical = 9.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Close, null, tint = colors.Text3, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text("Cancel", fontSize = 11.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
             } else {
                 // Done button (animated)
                 AnimatedVisibility(
-                    visible = ui.phase == InventPhase.QUESTIONING && ui.chatStarted && !ui.isGenerating
-                        && ui.conversationDepth >= 400,
+                    // Always available during questioning — the 400-char gate was
+                    // removed so users can finish early or unstick a chatty model.
+                    visible = ui.phase == InventPhase.QUESTIONING && ui.chatStarted && !ui.isGenerating,
                     enter = fadeIn(tweenFast) + scaleIn(initialScale = 0.8f),
                     exit = fadeOut(tweenFast) + scaleOut(targetScale = 0.8f)
                 ) {
@@ -1245,6 +1297,71 @@ private fun ModelPickerSheet(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// PLAN REVIEW PANEL — shown during CONFIRMING: the proposed file tree, with
+// Approve/Regenerate/Cancel handled by the footer dock below.
+// ═══════════════════════════════════════════════════════════════════════════════
+@Composable
+private fun PlanReviewPanel(
+    fileTree: List<FileNode>,
+    projectName: String,
+    colors: ZcPalette
+) {
+    val files = fileTree.filter { !it.isDir }
+    val dirs = fileTree.filter { it.isDir }
+    Column(Modifier.fillMaxSize().padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = colors.Card,
+            border = BorderStroke(1.dp, Cy.copy(alpha = 0.35f))
+        ) {
+            Column(Modifier.padding(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.FactCheck, null, tint = Cy, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Plan Review — ${projectName.ifEmpty { "New Project" }}",
+                        fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colors.Text, fontFamily = FontFamily.Monospace)
+                }
+                Spacer(Modifier.height(4.dp))
+                Text("${files.size} files · ${dirs.size} folders — approve to generate code, or regenerate for a different breakdown.",
+                    fontSize = 9.5.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+            }
+        }
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = colors.Surface,
+            border = BorderStroke(1.dp, colors.Border.copy(alpha = 0.3f)),
+            modifier = Modifier.weight(1f)
+        ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                items(fileTree) { node ->
+                    Row(Modifier.padding(horizontal = 6.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            if (node.isDir) Icons.Filled.Folder else Icons.Filled.Description,
+                            null,
+                            tint = if (node.isDir) Am else Cy,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(Modifier.width(7.dp))
+                        Column {
+                            Text(node.path, fontSize = 10.5.sp, color = colors.Text, fontFamily = FontFamily.Monospace,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (node.description.isNotEmpty()) {
+                                Text(node.description.take(60), fontSize = 8.5.sp, color = colors.Text3, fontFamily = FontFamily.Monospace,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // SESSION POPUP
 // ═══════════════════════════════════════════════════════════════════════════════
 @Composable
@@ -1258,6 +1375,7 @@ private fun SessionPopup(
     var selectedFiles by remember { mutableStateOf<List<FileNode>>(emptyList()) }
     var selectedProjectName by remember { mutableStateOf("") }
     var selectedPhase by remember { mutableStateOf<InventPhase?>(null) }
+    var pendingDelete by remember { mutableStateOf<SessionInfo?>(null) }
 
     LaunchedEffect(selectedSession) {
         if (selectedSession != null) {
@@ -1343,13 +1461,42 @@ private fun SessionPopup(
                                         IconButton(onClick = { onSwitch(s.id) }, modifier = Modifier.size(26.dp)) {
                                             Icon(Icons.Filled.PlayArrow, "Switch", tint = Cy, modifier = Modifier.size(14.dp))
                                         }
-                                        IconButton(onClick = { onDelete(s.id) }, modifier = Modifier.size(24.dp)) {
+                                        IconButton(onClick = { pendingDelete = s }, modifier = Modifier.size(24.dp)) {
                                             Icon(Icons.Outlined.DeleteOutline, "Delete", tint = Rd.copy(0.5f), modifier = Modifier.size(12.dp))
                                         }
                                     }
                                 }
                             }
                             if (sessions.isEmpty()) item { Text("No saved sessions", fontSize = 11.sp, color = colors.Text3, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(10.dp)) }
+                        }
+                    }
+                }
+            }
+        }
+        // Delete confirmation overlay — never delete a session with one tap
+        pendingDelete?.let { target ->
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)).clickable { pendingDelete = null },
+                contentAlignment = Alignment.Center) {
+                Surface(Modifier.fillMaxWidth(0.82f).clickable {}, shape = RoundedCornerShape(16.dp), color = colors.Card,
+                    border = BorderStroke(1.dp, Rd.copy(0.4f))) {
+                    Column(Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Warning, null, tint = Rd, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Delete Session?", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.Text, fontFamily = FontFamily.Monospace)
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text("${target.projectName} — ${target.fileCount} file(s) and all conversation history will be permanently removed.",
+                            fontSize = 10.5.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+                        Spacer(Modifier.height(10.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            TextButton(onClick = { pendingDelete = null }) {
+                                Text("Cancel", color = colors.Text3, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                            }
+                            Spacer(Modifier.width(6.dp))
+                            TextButton(onClick = { onDelete(target.id); pendingDelete = null }) {
+                                Text("Delete", color = Rd, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            }
                         }
                     }
                 }

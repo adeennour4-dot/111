@@ -80,7 +80,7 @@ fun FilePanel(
             if (!node.isDir) {
                 selectedFileContent = fileContents[node.path]
                     ?: vm.getFileContent(node.path)
-                    ?: "// Loading..."
+                    ?: "// Not generated yet"
             }
         }
     }
@@ -220,7 +220,7 @@ fun FilePanel(
                         }
                     } else {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("Loading...", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                            Text("Not generated yet", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
                         }
                     }
                 }

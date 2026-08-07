@@ -119,37 +119,9 @@ data class InventMessage(
     val thinkingContent: String = ""
 )
 
-// ─── Domain Registry ────────────────────────────────────────────────────────
-data class DomainEntry(
-    val category: String,
-    val domain: String,
-    val lastUpdated: String = ""
-)
-
-val DEFAULT_DOMAIN_REGISTRY = listOf(
-    DomainEntry("android", "developer.android.com", "2025-01"),
-    DomainEntry("android", "kotlinlang.org", "2025-01"),
-    DomainEntry("python", "docs.python.org", "2025-01"),
-    DomainEntry("python", "pypi.org", "2025-01"),
-    DomainEntry("flutter", "pub.dev", "2025-01"),
-    DomainEntry("flutter", "flutter.dev", "2025-01"),
-    DomainEntry("web", "developer.mozilla.org", "2025-01"),
-    DomainEntry("web", "npmjs.com", "2025-01"),
-    DomainEntry("ios", "developer.apple.com", "2025-01"),
-    DomainEntry("linux", "man7.org", "2025-01"),
-    DomainEntry("linux", "archlinux.org", "2025-01"),
-    DomainEntry("rust", "crates.io", "2025-01"),
-    DomainEntry("rust", "docs.rs", "2025-01"),
-    DomainEntry("database", "sqlite.org", "2025-01"),
-    DomainEntry("database", "postgresql.org", "2025-01"),
-    DomainEntry("ai", "huggingface.co", "2025-01"),
-    DomainEntry("ai", "github.com/ggerganov/llama.cpp", "2025-01")
-)
-
 // ─── ZCP File Manager ───────────────────────────────────────────────────────
 object InventStorage {
     private const val DIR = "invent_sessions"
-    private const val DOMAIN_FILE = "domain_registry.json"
 
     fun getDir(ctx: Context): File {
         val dir = File(ctx.filesDir, DIR)
@@ -294,50 +266,12 @@ object InventStorage {
             ?: emptyList()
     }
 
-    fun saveSearchLog(ctx: Context, sessionId: String, log: String) {
-        File(getDir(ctx), "searchlog_${sessionId}.json").writeText(log)
-    }
-
-    fun deleteSearchLog(ctx: Context, sessionId: String) {
-        File(getDir(ctx), "searchlog_${sessionId}.json").delete()
-    }
-
-    fun saveDomainRegistry(ctx: Context, entries: List<DomainEntry>) {
-        val arr = JSONArray()
-        entries.forEach { e ->
-            arr.put(JSONObject().apply {
-                put("category", e.category)
-                put("domain", e.domain)
-                put("lastUpdated", e.lastUpdated)
-            })
-        }
-        File(ctx.filesDir, DOMAIN_FILE).writeText(arr.toString(2))
-    }
-
-    fun loadDomainRegistry(ctx: Context): List<DomainEntry> {
-        val f = File(ctx.filesDir, DOMAIN_FILE)
-        if (!f.exists()) return DEFAULT_DOMAIN_REGISTRY
-        return try {
-            val arr = JSONArray(f.readText())
-            (0 until arr.length()).map { i ->
-                val o = arr.getJSONObject(i)
-                DomainEntry(o.getString("category"), o.getString("domain"), o.optString("lastUpdated", ""))
-            }
-        } catch (e: Exception) { DEFAULT_DOMAIN_REGISTRY }
-    }
-
-    fun resolveDomainsForCategory(ctx: Context, category: String): List<String> {
-        return loadDomainRegistry(ctx)
-            .filter { it.category.equals(category, ignoreCase = true) }
-            .map { it.domain }
-            .take(2)
-    }
-
     /**
      * Compresses conversation history when the context limit is near.
-     * Removes older messages beyond a threshold and replaces them with
-     * a compact summary, keeping only the most recent [keepRecent] messages
-     * intact.  This prevents runaway context growth in single-model mode.
+     * Older messages beyond a threshold are replaced by a compact EXCERPT that
+     * retains the ACTUAL last exchange verbatim (the most recent statement of
+     * requirements + the architect's latest reply) — never a fake placeholder.
+     * The most recent [keepRecent] messages are kept intact.
      */
     fun compressMessages(
         messages: List<InventMessage>,
@@ -349,14 +283,18 @@ object InventStorage {
         val recent = messages.takeLast(keepRecent)
         val toCompress = messages.dropLast(keepRecent)
 
-        // Count roles in the compressed segment
-        val userCount = toCompress.count { it.role == "user" }
-        val asstCount = toCompress.count { it.role == "assistant" }
+        val sb = StringBuilder("[Earlier conversation compacted — the last exchange retained verbatim:]\n")
+        val lastUser = toCompress.lastOrNull { it.role == "user" }
+        val lastAsst = toCompress.lastOrNull {
+            it.role == "model1" || it.role == "model2" || it.role == "researcher" || it.role == "coder"
+        }
+        if (lastUser != null) sb.append("Client: ${lastUser.content.take(600)}\n")
+        if (lastAsst != null) sb.append("Architect: ${lastAsst.content.take(600)}")
+        if (lastUser == null && lastAsst == null) sb.append("(no earlier text retained)")
 
         val summary = InventMessage(
             role = "system",
-            content = "[Earlier conversation compressed: $userCount user turns, " +
-                "$asstCount assistant turns — key decisions preserved above.]",
+            content = sb.toString().trim(),
             phase = toCompress.lastOrNull()?.phase ?: InventPhase.DONE,
             thinkingContent = ""
         )
@@ -382,10 +320,29 @@ object InventStorage {
 
     // ── Project directory helpers ─────────────────────────────────────────────
 
-    fun getProjectDir(ctx: Context, sessionId: String, projectName: String): File {
-        val dir = resolveSafe(ctx.filesDir, "invent_projects/${projectName.ifEmpty { sessionId }}")
+    /**
+     * Project files are stored under invent_projects/<sessionId> — keyed by
+     * SESSION, never by project name, so two sessions can't overwrite each
+     * other's files and deleting a session removes exactly its own files.
+     */
+    fun getProjectDir(ctx: Context, sessionId: String): File {
+        val dir = resolveSafe(ctx.filesDir, "invent_projects/${sessionId.ifEmpty { "_" }}")
         dir.mkdirs()
         return dir
+    }
+
+    /**
+     * One-time migration: pre-v1002 sessions stored projects under
+     * invent_projects/<projectName>. Move those files into the session-keyed
+     * directory so old sessions keep their generated code. No-op when the
+     * legacy dir doesn't exist or the new dir already has files.
+     */
+    fun migrateLegacyProjectDir(ctx: Context, sessionId: String, legacyProjectName: String) {
+        if (sessionId.isEmpty() || legacyProjectName.isEmpty()) return
+        val newDir = File(ctx.filesDir, "invent_projects/$sessionId")
+        val legacyDir = File(ctx.filesDir, "invent_projects/$legacyProjectName")
+        if (!legacyDir.exists() || newDir.exists()) return
+        try { legacyDir.renameTo(newDir) } catch (_: Exception) { }
     }
 
     fun writeGeneratedFile(projectDir: File, filePath: String, content: String) {
