@@ -74,7 +74,10 @@ data class InventUiState(
     val reasoningEnabled: Boolean = false,
     val thinkingContent: String = "",
     val questioningProgress: Float = 0f, // 0..1 akinator-style progress during QUESTIONING
-    val projectCompleted: Boolean = false
+    val projectCompleted: Boolean = false,
+    val plannerSummary: String = "", // planner's project summary (shown with the Research button)
+    val awaitingResearch: Boolean = false, // summary ready → user taps Research libraries
+    val researching: Boolean = false // blue researching overlay active
 )
 
 data class SessionInfo(
@@ -715,19 +718,47 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val state = sessionState ?: return@launch
                 setSwap("Planner summarizing project…")
-                addMessage("system", "▶ Pipeline started: planner → research → structure → ready", InventPhase.PLANNING)
+                addMessage("system", "▶ Pipeline started: planner summarizes → research → structure → ready", InventPhase.PLANNING)
 
                 // ── Step 1: Comprehensive project summary ──
+                // The pipeline pauses here: the summary is shown in chat with a
+                // "Research libraries" button, so the user decides when the
+                // online research + structure phase runs.
                 val summary = runInference(
                     systemPrompt = "You are a senior project architect. Summarize everything known about this project from the Q&A.\n\nOutput exactly:\n§PROJECT{name:X|desc:X|platform:Y|lang:Z|framework:W}\n§FEATURES{list:f1,f2,f3}\n§ARCH{style:X|pattern:Y|notes:Z}\n§VERSIONS{known:p3.10,k1.9,f3.16}\n§SEARCH_NEEDS{list:topic1,topic2}",
                     userMessage = "Write the complete project summary using § blocks. Cover all requirements, tech stack, architecture, and what needs online research.",
                     history = buildConversationHistory(),
                     onStream = { partial -> _ui.value = _ui.value.copy(streamingResponse = partial) }
                 )
-                _ui.value = _ui.value.copy(streamingResponse = "")
-                addMessage("system", "✓ Project summary ready", InventPhase.PLANNING)
+                _ui.value = _ui.value.copy(streamingResponse = "", plannerSummary = summary)
+                addMessage("model1", summary, InventPhase.PLANNING)
+                addMessage("system", "✓ Project summary ready — tap Research libraries to continue", InventPhase.PLANNING)
+                _ui.value = _ui.value.copy(awaitingResearch = true)
+            } catch (e: Exception) {
+                _ui.value = _ui.value.copy(isGenerating = false, error = "Pipeline: ${e.message}")
+                recordTelemetry(JSONObject().apply { put("outcome", "error"); put("error", e.message) })
+            } finally {
+                _ui.value = _ui.value.copy(isGenerating = false, swapInfo = "")
+            }
+        }
+    }
 
-                // ── Step 2: Research prompt ──
+    /**
+     * Runs the online research phase (blue "researching" overlay) after the
+     * planner's summary: research prompt → official changelog fetch → extracted
+     * results (saved to search.txt) → structure phase → plan-review gate.
+     */
+    fun researchLibraries() {
+        if (_ui.value.isGenerating || !_ui.value.awaitingResearch) return
+        _cancelGeneration = false
+        InventStopSignal.requested = false
+        _ui.value = _ui.value.copy(isGenerating = true, researching = true, awaitingResearch = false)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val state = sessionState ?: return@launch
+                val summary = _ui.value.plannerSummary
+
+                // ── Step 2: Research prompt (which official URLs to fetch) ──
                 setSwap("Creating research prompt…")
                 val researchPrompt = runInference(
                     systemPrompt = "List exactly which official URLs to fetch changelogs from. " +
@@ -742,11 +773,9 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 addMessage("system", "✓ Research URLs ready", InventPhase.PLANNING)
 
-                // ── Step 3: Research phase — the planner searches only when required ──
+                // ── Step 3: Research phase (the blue overlay is showing) ──
                 updatePhase(InventPhase.SEARCHING)
-                setSwap("Planner is researching (only when needed)…")
-                // No separate researcher model: the planner stays loaded and does the
-                // search itself, so no unload/reload churn.
+                setSwap("Planner is researching…")
                 if (!loadOrKeepModel(state.model1Path)) {
                     setSwap(""); _ui.value = _ui.value.copy(error = "Planner load failed"); return@launch
                 }
@@ -771,10 +800,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 addMessage("system", "📋 Plan ready — review the structure, then Approve to generate code or Regenerate to revise.", InventPhase.CONFIRMING)
                 updatePhase(InventPhase.CONFIRMING)
             } catch (e: Exception) {
-                _ui.value = _ui.value.copy(isGenerating = false, error = "Pipeline: ${e.message}")
+                _ui.value = _ui.value.copy(isGenerating = false, error = "Research: ${e.message}")
                 recordTelemetry(JSONObject().apply { put("outcome", "error"); put("error", e.message) })
             } finally {
-                _ui.value = _ui.value.copy(isGenerating = false)
+                _ui.value = _ui.value.copy(isGenerating = false, researching = false, swapInfo = "")
             }
         }
     }
@@ -2296,7 +2325,7 @@ Example:
     fun cancelGeneration() {
         _cancelGeneration = true
         InventStopSignal.requested = false
-        _ui.value = _ui.value.copy(isGenerating = false)
+        _ui.value = _ui.value.copy(isGenerating = false, researching = false)
         updatePhase(InventPhase.QUESTIONING)
     }
 

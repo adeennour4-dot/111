@@ -378,6 +378,10 @@ fun AppRoot() {
                   InventProjectStore.clearProjectContents(inventContext, id)
                   inventProjects = InventProjectStore.listProjects(inventContext)
                 },
+                onDeleteProject = { id ->
+                  InventProjectStore.deleteProject(inventContext, id)
+                  inventProjects = InventProjectStore.listProjects(inventContext)
+                },
                 onStartSession = { project ->
                   inventProjectId = project.id
                   inventSessionId = ""

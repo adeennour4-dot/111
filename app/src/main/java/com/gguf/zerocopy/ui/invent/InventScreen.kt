@@ -473,6 +473,12 @@ fun InventScreen(
                                                 ChatBubbleCard(bubble, colors)
                                             }
                                         }
+                                        // Research libraries button (under the planner summary)
+                                        if (ui.awaitingResearch && !ui.isGenerating) {
+                                            item(key = "research") {
+                                                ResearchLibrariesCard(colors, onResearch = { vm.researchLibraries() })
+                                            }
+                                        }
                                         // Live streaming response
                                         if (ui.streamingResponse.isNotEmpty()) {
                                             val streamThink = Regex("<think>([\\s\\S]*?)(<\\/think>|$)").find(ui.streamingResponse)
@@ -496,6 +502,12 @@ fun InventScreen(
                                         if (ui.phase == InventPhase.GENERATING && ui.totalFiles > 0) {
                                             item(key = "fprog") {
                                                 FileProgress(ui.currentFileIndex, ui.totalFiles, ui.currentFileName, Cy, colors)
+                                            }
+                                        }
+                                        // Session success card
+                                        if (ui.phase == InventPhase.DONE) {
+                                            item(key = "success") {
+                                                SessionSuccessCard(ui, colors)
                                             }
                                         }
                                         // Done stats
@@ -639,6 +651,15 @@ fun InventScreen(
                     colors = colors
                 )
             }
+        }
+
+        // ══ Blue researching overlay (research libraries in progress) ══
+        AnimatedVisibility(
+            visible = ui.researching,
+            enter = fadeIn(tweenFast),
+            exit = fadeOut(tweenFast)
+        ) {
+            ResearchingOverlay(onCancel = { vm.cancelGeneration() })
         }
 
         // ══ Animated dialogs ══
@@ -1836,6 +1857,105 @@ private fun CoderChatView(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.AutoMirrored.Filled.Send, "Send", tint = Cy, modifier = Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
+// ── Research libraries card (shown under the planner summary) ──
+@Composable
+private fun ResearchLibrariesCard(colors: ZcPalette, onResearch: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Pr.copy(alpha = 0.10f),
+        border = BorderStroke(1.dp, Pr.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Text("🔍 Summary ready — research libraries?", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.height(4.dp))
+            Text("The planner will search each library's official docs for the latest versions and changelogs, then build the file plan.",
+                fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.height(8.dp))
+            Surface(
+                onClick = onResearch,
+                shape = RoundedCornerShape(8.dp),
+                color = Pr.copy(alpha = 0.2f),
+                border = BorderStroke(1.dp, Pr)
+            ) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Search, null, tint = Pr, modifier = Modifier.size(12.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Research libraries", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
+                }
+            }
+        }
+    }
+}
+
+// ── Session-complete success card ──
+@Composable
+private fun SessionSuccessCard(ui: InventUiState, colors: ZcPalette) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Cy.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, Cy.copy(alpha = 0.6f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.CheckCircle, null, tint = Cy, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Session complete", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.Monospace)
+            }
+            Spacer(Modifier.height(5.dp))
+            Text("All files are generated. Open this project's window (⤢) on the dashboard to edit them.",
+                fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.height(4.dp))
+            Text("${ui.totalFiles} files · ${ui.totalLines} lines · ${ui.totalTokensUsed} tokens · debug rounds ${ui.debugSessionCount}",
+                fontSize = 8.5.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace)
+        }
+    }
+}
+
+// ── Blue researching overlay: rotating square + orbiting circle + "researching" ──
+@Composable
+private fun ResearchingOverlay(onCancel: () -> Unit) {
+    val transition = rememberInfiniteTransition(label = "research")
+    val angle by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing)),
+        label = "researchAngle"
+    )
+    Box(
+        Modifier.fillMaxSize()
+            .background(Brush.linearGradient(listOf(Color(0xFF0A2A55), Color(0xFF0E3F7A)))),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // Rotating square with an orbiting circle around it.
+            Box(Modifier.size(110.dp).graphicsLayer { rotationZ = angle }) {
+                Box(Modifier.fillMaxSize().border(2.5.dp, Color(0xFF5FB0FF), RoundedCornerShape(20.dp)))
+                Box(
+                    Modifier.offset(x = 106.dp, y = 46.dp).size(16.dp)
+                        .clip(CircleShape).background(Color(0xFF9BD4FF))
+                )
+            }
+            Spacer(Modifier.height(26.dp))
+            Text("researching", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB9E2FF), fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.height(6.dp))
+            Text("searching official docs · latest versions · changelogs",
+                fontSize = 9.sp, color = Color(0xFF7FB8E8), fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(18.dp))
+            Surface(
+                onClick = onCancel,
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0x22FFFFFF),
+                border = BorderStroke(1.dp, Color(0x66FFFFFF))
+            ) {
+                Text("✕ cancel", fontSize = 9.sp, color = Color(0xFFCFE8FF), fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
             }
         }
     }
