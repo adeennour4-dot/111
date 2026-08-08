@@ -373,6 +373,39 @@ object InventStorage {
         return bytes.joinToString("") { "%02x".format(it) }
     }
 
+    /**
+     * JSONL transcript of a session: one header line (metadata) then one line
+     * per message with role/phase/content/thinking. Written to the cache dir
+     * so it can be shared without touching app storage.
+     */
+    fun exportTranscript(ctx: Context, sessionId: String): File? {
+        val saved = loadSession(ctx, sessionId) ?: return null
+        val z = loadZcp(ctx, sessionId)
+        val dir = File(ctx.cacheDir, "invent_exports").also { it.mkdirs() }
+        val out = File(dir, "transcript_$sessionId.jsonl")
+        val sb = StringBuilder()
+        sb.append(JSONObject().apply {
+            put("type", "session")
+            put("sessionId", sessionId)
+            put("phase", saved.phase.name)
+            put("model1", saved.model1Name)
+            put("model2", saved.model2Name)
+            put("project", z?.projectName ?: "")
+            put("generatedFiles", z?.generatedFiles?.size ?: 0)
+            put("exportedAt", System.currentTimeMillis())
+        }.toString()).append('\n')
+        saved.messages.forEach { m ->
+            sb.append(JSONObject().apply {
+                put("role", m.role)
+                put("phase", m.phase.name)
+                put("content", m.content)
+                if (m.thinkingContent.isNotEmpty()) put("thinking", m.thinkingContent)
+            }.toString()).append('\n')
+        }
+        out.writeText(sb.toString())
+        return out
+    }
+
     private fun zcpToJson(zcp: ZcpProtocol): String {
         val obj = JSONObject().apply {
             put("version", zcp.version)
@@ -546,5 +579,23 @@ object InventStorage {
             generatedFiles = generatedFiles,
             debugSessions = debugSessions
         )
+    }
+}
+
+// ─── Cross-screen stop signal ────────────────────────────────────────────────
+
+/**
+ * Set by the dashboard's live-session STOP button and consumed by the running
+ * session VM, so a generation can be cancelled without holding a VM reference
+ * from another screen.
+ */
+object InventStopSignal {
+    @Volatile var requested: Boolean = false
+
+    /** Read-and-reset; returns true when a stop was requested. */
+    fun consume(): Boolean {
+        val r = requested
+        requested = false
+        return r
     }
 }

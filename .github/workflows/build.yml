@@ -157,3 +157,26 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Auto-release: every green master build gets a rolling v<versionName>
+      # release with both APKs, so the captain can grab the APK from Releases
+      # instead of digging through workflow artifacts. Idempotent (creates or
+      # updates the same tag/assets).
+      - name: Auto-release rolling build
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          VERSION=$(sed -n 's/.*versionName[[:space:]]*=[[:space:]]*"\([0-9]*\)".*/\1/p' app/build.gradle.kts | head -1)
+          TAG="v${VERSION}"
+          echo "Releasing tag $TAG"
+          gh release create "$TAG" \
+            app/build/outputs/apk/standard/debug/app-standard-debug.apk \
+            app/build/outputs/apk/compatibility/debug/app-compatibility-debug.apk \
+            --title "ZeroCopy v${VERSION}" \
+            --notes "Auto-built from master by CI. Install the standard APK first; use compatibility on older devices." \
+            --repo "$GITHUB_REPOSITORY" 2>/dev/null \
+          || gh release upload "$TAG" \
+            app/build/outputs/apk/standard/debug/app-standard-debug.apk \
+            app/build/outputs/apk/compatibility/debug/app-compatibility-debug.apk \
+            --clobber --repo "$GITHUB_REPOSITORY"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -324,41 +324,52 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             // Save current session before switching
             flushSave()
-            val saved = InventStorage.loadSession(ctx, targetId)
-            val savedZcp = InventStorage.loadZcp(ctx, targetId)
-            if (saved != null && savedZcp != null) {
-                // Migrate pre-v1002 projects (stored under the project name) into
-                // the session-keyed directory before switching to the session.
-                InventStorage.migrateLegacyProjectDir(ctx, targetId, savedZcp.projectName)
+            var saved = InventStorage.loadSession(ctx, targetId)
+            var savedZcp = InventStorage.loadZcp(ctx, targetId)
+            if (saved == null) {
+                // State file missing (e.g., session was Reset) — open it fresh
+                // instead of silently no-oping into a stale/blank chat.
                 engineManager.unloadAll()
+                sessionState = null
+                zcp = ZcpProtocol()
                 sessionId = targetId
-                withTransaction(
-                    uiTransform = {
-                        it.copy(
-                            phase = saved.phase,
-                            messages = saved.messages,
-                            sessionId = targetId,
-                            model1Name = saved.model1Name, model2Name = saved.model2Name,
-                            debuggerName = saved.researcherName,
-                            offlineMode = saved.offlineMode, sameModelMode = saved.sameModelMode,
-                            modelMode = when {
-                                saved.sameModelMode && saved.researcherPath == saved.model1Path -> ModelMode.SINGLE
-                                saved.sameModelMode -> ModelMode.DUAL
-                                else -> ModelMode.TRIPLE
-                            },
-                            fileTree = savedZcp.fileTree,
-                            searchRound = saved.searchRound, mergeCount = saved.mergeCount,
-                            currentFileIndex = saved.currentFileIndex, totalFiles = saved.totalFiles,
-                            debugMode = saved.phase == InventPhase.DEBUGGING,
-                            showSessionList = false,
-                            zipReady = saved.phase == InventPhase.DONE || saved.phase == InventPhase.DEBUGGING
-                        )
-                    },
-                    sessionTransform = { saved },
-                    zcpTransform = { savedZcp }
-                )
-                computeStats()
+                _ui.value = InventUiState().copy(sessionId = targetId, showSessionList = false)
+                return@launch
             }
+            if (savedZcp == null) savedZcp = ZcpProtocol(projectName = saved.model1Name)
+            val loadedState = saved
+            val loadedZcp = savedZcp
+            // Migrate pre-v1002 projects (stored under the project name) into
+            // the session-keyed directory before switching to the session.
+            InventStorage.migrateLegacyProjectDir(ctx, targetId, loadedZcp.projectName)
+            engineManager.unloadAll()
+            sessionId = targetId
+            withTransaction(
+                uiTransform = {
+                    it.copy(
+                        phase = loadedState.phase,
+                        messages = loadedState.messages,
+                        sessionId = targetId,
+                        model1Name = loadedState.model1Name, model2Name = loadedState.model2Name,
+                        debuggerName = loadedState.researcherName,
+                        offlineMode = loadedState.offlineMode, sameModelMode = loadedState.sameModelMode,
+                        modelMode = when {
+                            loadedState.sameModelMode && loadedState.researcherPath == loadedState.model1Path -> ModelMode.SINGLE
+                            loadedState.sameModelMode -> ModelMode.DUAL
+                            else -> ModelMode.TRIPLE
+                        },
+                        fileTree = loadedZcp.fileTree,
+                        searchRound = loadedState.searchRound, mergeCount = loadedState.mergeCount,
+                        currentFileIndex = loadedState.currentFileIndex, totalFiles = loadedState.totalFiles,
+                        debugMode = loadedState.phase == InventPhase.DEBUGGING,
+                        showSessionList = false,
+                        zipReady = loadedState.phase == InventPhase.DONE || loadedState.phase == InventPhase.DEBUGGING
+                    )
+                },
+                sessionTransform = { loadedState },
+                zcpTransform = { loadedZcp }
+            )
+            computeStats()
         }
     }
 
@@ -698,6 +709,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     fun onDonePressed() {
         if (_ui.value.isGenerating) return
         _cancelGeneration = false
+        InventStopSignal.requested = false
         _ui.value = _ui.value.copy(isGenerating = true)
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -1026,7 +1038,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         for (idx in startIdx until filesToGenerate.size) {
             val fileNode = filesToGenerate[idx]
             if (_ui.value.phase != InventPhase.GENERATING) break
-            if (_cancelGeneration) {
+            if (_cancelGeneration || InventStopSignal.consume()) {
                 _cancelGeneration = false
                 addMessage("system", "⏸ Generation cancelled by user", InventPhase.QUESTIONING)
                 updatePhase(InventPhase.QUESTIONING)
@@ -2283,6 +2295,7 @@ Example:
 
     fun cancelGeneration() {
         _cancelGeneration = true
+        InventStopSignal.requested = false
         _ui.value = _ui.value.copy(isGenerating = false)
         updatePhase(InventPhase.QUESTIONING)
     }

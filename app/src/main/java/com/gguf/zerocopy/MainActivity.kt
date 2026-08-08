@@ -89,6 +89,7 @@ import com.gguf.zerocopy.ui.theme.ZeroCopyTheme
 import com.gguf.zerocopy.ui.theme.ZcPalette
 import com.gguf.zerocopy.ui.theme.currentPalette
 import com.gguf.zerocopy.data.invent.InventProjectStore
+import com.gguf.zerocopy.ui.invent.DiagnosticsScreen
 import com.gguf.zerocopy.ui.invent.InventDashboardScreen
 import com.gguf.zerocopy.ui.invent.InventScreen
 import kotlinx.coroutines.delay
@@ -143,6 +144,7 @@ fun AppRoot() {
   var inventScreen by rememberSaveable { mutableStateOf("dashboard") }
   var inventProjectId by rememberSaveable { mutableStateOf("") }
   var inventSessionId by rememberSaveable { mutableStateOf("") } // "" = start a fresh session
+  var showDiagnostics by rememberSaveable { mutableStateOf(false) }
 
   val inventContext = LocalContext.current
   var inventProjects by remember { mutableStateOf(InventProjectStore.listProjects(inventContext)) }
@@ -312,6 +314,12 @@ fun AppRoot() {
           if (selectedTab != 4) { scaleX = 0.001f; scaleY = 0.001f }
         }
       ) {
+        if (showDiagnostics) {
+          DiagnosticsScreen(
+            models = inventModels,
+            onBack = { showDiagnostics = false }
+          )
+        } else {
         when (inventScreen) {
           "chat" -> {
             val project = inventProjects.find { it.id == inventProjectId }
@@ -361,6 +369,11 @@ fun AppRoot() {
                   InventProjectStore.saveProject(inventContext, p)
                   inventProjects = InventProjectStore.listProjects(inventContext)
                 },
+                onNewProject = { name, templateId ->
+                  com.gguf.zerocopy.data.invent.InventTemplates.createProject(inventContext, name, templateId)
+                  inventProjects = InventProjectStore.listProjects(inventContext)
+                },
+                onDiagnostics = { showDiagnostics = true },
                 onClearProject = { id ->
                   InventProjectStore.clearProjectContents(inventContext, id)
                   inventProjects = InventProjectStore.listProjects(inventContext)
@@ -378,6 +391,7 @@ fun AppRoot() {
                 onBack = { selectedTab = 0 }
             )
           }
+        }
         }
       }
     }

@@ -32,11 +32,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.FileProvider
+import com.gguf.zerocopy.data.invent.InventPhase
 import com.gguf.zerocopy.data.invent.InventProject
 import com.gguf.zerocopy.data.invent.InventProjectStore
 import com.gguf.zerocopy.data.invent.InventRoleConfig
+import com.gguf.zerocopy.data.invent.InventStopSignal
 import com.gguf.zerocopy.data.invent.InventStorage
+import com.gguf.zerocopy.data.invent.InventTemplates
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -87,12 +91,26 @@ fun shareProjectZip(context: Context, project: InventProject) {
         val zipDir = File(context.cacheDir, "invent_exports").also { it.mkdirs() }
         val zipFile = File(zipDir, "${project.name.replace(Regex("[^A-Za-z0-9_-]"), "_")}.zip")
         ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
+            // Project files dir first.
             src.walkTopDown().forEach { f ->
                 val rel = f.relativeTo(src).path.replace(File.separatorChar, '/')
                 if (f.isDirectory) return@forEach
                 zos.putNextEntry(ZipEntry(rel))
                 f.inputStream().use { it.copyTo(zos) }
                 zos.closeEntry()
+            }
+            // Then each session's generated files under sessions/S#N/… so the
+            // ZIP contains the coder's real output, not just the project dir.
+            project.sessionIds.forEachIndexed { i, sid ->
+                val sdir = InventStorage.getProjectDir(context, sid)
+                if (!sdir.exists()) return@forEachIndexed
+                sdir.walkTopDown().forEach { f ->
+                    val rel = "sessions/S${i + 1}/" + f.relativeTo(sdir).path.replace(File.separatorChar, '/')
+                    if (f.isDirectory) return@forEach
+                    zos.putNextEntry(ZipEntry(rel))
+                    f.inputStream().use { it.copyTo(zos) }
+                    zos.closeEntry()
+                }
             }
         }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", zipFile)
@@ -109,6 +127,24 @@ private fun formatSize(bytes: Long): String = when {
     bytes >= 1L shl 20 -> "%.1f MB".format(bytes.toDouble() / (1 shl 20))
     bytes >= 1L shl 10 -> "%.1f KB".format(bytes.toDouble() / (1 shl 10))
     else -> "$bytes B"
+}
+
+/** Save the current content of [file] into its hidden .history folder (max 5 versions). */
+private fun pushHistory(file: File) {
+    try {
+        if (!file.exists()) return
+        val hDir = File(file.parentFile, ".history/${file.name}")
+        hDir.mkdirs()
+        File(hDir, System.currentTimeMillis().toString()).writeText(file.readText())
+        val all = hDir.listFiles()?.sortedBy { it.name } ?: emptyList()
+        while (all.size > 5) all.first().delete()
+    } catch (_: Exception) {}
+}
+
+/** Timestamped versions of [file] from its .history folder, newest first. */
+private fun listHistory(file: File): List<File> {
+    val hDir = File(file.parentFile, ".history/${file.name}")
+    return hDir.listFiles()?.sortedByDescending { it.name } ?: emptyList()
 }
 
 /** One entry in the file manager list: name + what to open + metadata. */
@@ -132,6 +168,8 @@ fun InventDashboardScreen(
     models: List<com.gguf.zerocopy.data.repository.LocalModel>,
     onSaveProject: (InventProject) -> Unit,
     onClearProject: (String) -> Unit,
+    onNewProject: (String, String) -> Unit,
+    onDiagnostics: () -> Unit,
     onStartSession: (InventProject) -> Unit,
     onOpenSession: (InventProject, String) -> Unit,
     onBack: () -> Unit
@@ -154,7 +192,18 @@ fun InventDashboardScreen(
     var editorState by remember { mutableStateOf<Triple<String, File, String>?>(null) }
     var newFileFor by remember { mutableStateOf<String?>(null) }
     var newFolderFor by remember { mutableStateOf<String?>(null) }
+    var projectMenuFor by remember { mutableStateOf<String?>(null) } // long-press a square
+    var renameFor by remember { mutableStateOf<String?>(null) }
+    var newProjectDialog by remember { mutableStateOf(false) } // empty slot → new project
+    var historyFor by remember { mutableStateOf<Pair<String, File>?>(null) } // projectId, file
     var showZipInfo by remember { mutableStateOf(false) }
+    // First-run tour (dismissed permanently)
+    val prefs = remember { context.getSharedPreferences("invent", Context.MODE_PRIVATE) }
+    var showTour by remember { mutableStateOf(!prefs.getBoolean("tour_done_v1", false)) }
+    fun dismissTour() {
+        prefs.edit().putBoolean("tour_done_v1", true).apply()
+        showTour = false
+    }
 
     Column(Modifier.fillMaxSize().background(Bg)) {
         // ── Title bar ──
@@ -167,8 +216,21 @@ fun InventDashboardScreen(
             }
             Column(Modifier.weight(1f)) {
                 Text("INVENT", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace)
-                Text("tap ⤢ to maximize a project window", fontSize = 9.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                Text("⤢ maximize · hold a square for menu · RAM ${freeRamMb(context)} MB", fontSize = 9.sp, color = Gy, fontFamily = FontFamily.Monospace)
             }
+            Surface(
+                onClick = { onDiagnostics() },
+                shape = RoundedCornerShape(8.dp),
+                color = CardLight,
+                border = BorderStroke(1.dp, Line)
+            ) {
+                Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.BugReport, null, tint = Cy, modifier = Modifier.size(13.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Diag", fontSize = 10.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace)
+                }
+            }
+            Spacer(Modifier.width(6.dp))
             Surface(
                 onClick = { showZipInfo = true },
                 shape = RoundedCornerShape(8.dp),
@@ -212,6 +274,7 @@ fun InventDashboardScreen(
             )
         } else {
             // ── 2×2 grid of equal squares ──
+            Box(Modifier.fillMaxSize()) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val canvas = (minOf(maxWidth, maxHeight) - 12.dp).coerceAtLeast(280.dp)
                 Column(
@@ -232,17 +295,24 @@ fun InventDashboardScreen(
                                             project = project,
                                             knownPaths = knownPaths,
                                             fileRefresh = fileRefresh,
-                                            onMaximize = { maximized = project.id }
+                                            onMaximize = { maximized = project.id },
+                                            onMenu = { projectMenuFor = project.id }
                                         )
                                     } else {
+                                        // Empty slot → new project
                                         Surface(
+                                            onClick = { newProjectDialog = true },
                                             shape = RoundedCornerShape(14.dp),
                                             color = Card.copy(alpha = 0.5f),
                                             border = BorderStroke(1.dp, Line),
                                             modifier = Modifier.fillMaxSize()
                                         ) {
                                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                                Text("—", fontSize = 22.sp, color = Line.copy(alpha = 0.9f), fontFamily = FontFamily.Monospace)
+                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                    Icon(Icons.Filled.Add, null, tint = Am.copy(alpha = 0.7f), modifier = Modifier.size(24.dp))
+                                                    Spacer(Modifier.height(4.dp))
+                                                    Text("New project", fontSize = 7.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                                                }
                                             }
                                         }
                                     }
@@ -252,7 +322,39 @@ fun InventDashboardScreen(
                     }
                 }
             }
+            // ── First-run tour overlay ──
+            if (showTour) {
+                Surface(
+                    onClick = { dismissTour() },
+                    color = Color(0xB30B0D12),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Column(Modifier.align(Alignment.Center).padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("INVENT TOUR", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace)
+                        Spacer(Modifier.height(12.dp))
+                        Text("• Tap a square (or ⤢ top-right) to maximize it into a full window", fontSize = 11.sp, color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(6.dp))
+                        Text("• MODELS · SESSIONS · FILES sections live inside the window", fontSize = 11.sp, color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(6.dp))
+                        Text("• — minimizes · ✕ clears · hold a square for rename / export", fontSize = 11.sp, color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(6.dp))
+                        Text("• Tap + on an empty slot to create a project from a template", fontSize = 11.sp, color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(16.dp))
+                        Surface(
+                            onClick = { dismissTour() },
+                            shape = RoundedCornerShape(10.dp),
+                            color = Cy.copy(alpha = 0.18f),
+                            border = BorderStroke(1.dp, Cy.copy(alpha = 0.6f))
+                        ) {
+                            Text("Got it — start building", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp))
+                        }
+                    }
+                }
+            }
+
         }
+            }
     }
 
     // ── Model picker dialog (sliders + toggles + RAM) ──
@@ -323,6 +425,25 @@ fun InventDashboardScreen(
                     sessionMenuFor = null
                 }
             },
+            onExport = {
+                scope.launch(Dispatchers.IO) {
+                    val f = InventStorage.exportTranscript(context, sid)
+                    withContext(Dispatchers.Main) {
+                        if (f != null) {
+                            try {
+                                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f)
+                                val share = Intent(Intent.ACTION_SEND).apply {
+                                    type = "application/jsonl"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(share, "Export transcript"))
+                            } catch (_: Exception) {}
+                        }
+                    }
+                }
+                sessionMenuFor = null
+            },
             onDelete = {
                 val p = projects.find { it.id == pid }
                 if (p != null) {
@@ -342,7 +463,7 @@ fun InventDashboardScreen(
         )
     }
 
-    // ── File action window (open / copy / delete) ──
+    // ── File action window (open / copy / history / delete) ──
     fileActionsFor?.let { (pid, file) ->
         FileActionsDialog(
             fileName = file.name,
@@ -363,6 +484,10 @@ fun InventDashboardScreen(
                     }
                     clip.setPrimaryClip(android.content.ClipData.newPlainText("file", content))
                 }
+                fileActionsFor = null
+            },
+            onHistory = {
+                historyFor = pid to file
                 fileActionsFor = null
             },
             onDelete = {
@@ -386,7 +511,11 @@ fun InventDashboardScreen(
                     try {
                         val dir = file.parentFile ?: InventProjectStore.filesDir(context, pid)
                         val target = File(dir, fileName)
-                        if (file.absolutePath != target.absolutePath) file.delete()
+                        if (file.absolutePath != target.absolutePath) {
+                            file.delete()
+                        } else {
+                            pushHistory(target)
+                        }
                         target.writeText(newContent)
                         fileRefresh++
                     } catch (_: Exception) {}
@@ -431,6 +560,83 @@ fun InventDashboardScreen(
         )
     }
 
+    // ── Project menu (long-press a square) ──
+    projectMenuFor?.let { pid ->
+        val p = projects.find { it.id == pid }
+        if (p != null) {
+            ProjectMenuDialog(
+                project = p,
+                onRename = {
+                    renameFor = pid
+                    projectMenuFor = null
+                },
+                onExportZip = {
+                    shareProjectZip(context, p)
+                    projectMenuFor = null
+                },
+                onClear = {
+                    onClearProject(pid)
+                    currentDir.remove(pid)
+                    fileRefresh++
+                    projectMenuFor = null
+                },
+                onDismiss = { projectMenuFor = null }
+            )
+        } else projectMenuFor = null
+    }
+
+    // ── Rename project ──
+    renameFor?.let { pid ->
+        val p = projects.find { it.id == pid }
+        if (p != null) {
+            RenameDialog(
+                initialName = p.name,
+                onRename = { newName ->
+                    onSaveProject(p.copy(name = newName))
+                    renameFor = null
+                },
+                onDismiss = { renameFor = null }
+            )
+        } else renameFor = null
+    }
+
+    // ── New project (empty slot) ──
+    if (newProjectDialog) {
+        NewProjectDialog(
+            onCreate = { name, templateId ->
+                onNewProject(name, templateId)
+                newProjectDialog = false
+            },
+            onDismiss = { newProjectDialog = false }
+        )
+    }
+
+    // ── File history ──
+    historyFor?.let { (pid, file) ->
+        HistoryDialog(
+            versions = remember(file) { listHistory(file) },
+            onRestore = { versionFile ->
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        file.writeText(versionFile.readText())
+                        fileRefresh++
+                    } catch (_: Exception) {}
+                }
+                historyFor = null
+            },
+            onView = { versionFile ->
+                scope.launch {
+                    val content = withContext(Dispatchers.IO) {
+                        try { versionFile.readText() } catch (_: Exception) { "" }
+                    }
+                    editorState = Triple(pid, file, content)
+                }
+                historyFor = null
+            },
+            onDismiss = { historyFor = null }
+        )
+    }
+
     // ── Help dialog ──
     if (showZipInfo) {
         AlertDialog(
@@ -466,7 +672,8 @@ private fun ProjectSquare(
     project: InventProject,
     knownPaths: Set<String>,
     fileRefresh: Int,
-    onMaximize: () -> Unit
+    onMaximize: () -> Unit,
+    onMenu: () -> Unit
 ) {
     val context = LocalContext.current
     val fileCount = remember(project.id, fileRefresh) {
@@ -479,7 +686,7 @@ private fun ProjectSquare(
             .clip(RoundedCornerShape(14.dp))
             .background(Brush.verticalGradient(listOf(CardLight.copy(alpha = 0.7f), Card)))
             .border(1.dp, Line, RoundedCornerShape(14.dp))
-            .combinedClickable(onClick = onMaximize, onLongClick = onMaximize)
+            .combinedClickable(onClick = onMaximize, onLongClick = onMenu)
     ) {
         // Maximize (top-right)
         Surface(
@@ -573,21 +780,21 @@ private fun ProjectWindow(
     val sessionDirs = sessionRows.map { it.first }.toSet()
 
     val files = remember(dir, fileRefresh) {
+        val visible: (File) -> Boolean = { !it.name.startsWith(".") } // hide .history etc.
         if (dir == root) {
             val rows = mutableListOf<FileRow>()
-            dir.listFiles()?.sortedBy { it.name }?.forEach { f ->
+            dir.listFiles()?.filter(visible)?.sortedBy { it.name }?.forEach { f ->
                 rows.add(if (f.isDirectory) FileRow(f.name, f, true) else FileRow(f.name, f, false, sizeBytes = f.length()))
             }
             sessionRows.forEachIndexed { i, (d, _) -> rows.add(FileRow("Session ${i + 1}", d, true, isSession = true)) }
             rows.sortedBy { it.name }
         } else {
-            dir.listFiles()?.sortedBy { it.name }?.map { f ->
+            dir.listFiles()?.filter(visible)?.sortedBy { it.name }?.map { f ->
                 if (f.isDirectory) FileRow(f.name, f, true) else FileRow(f.name, f, false, sizeBytes = f.length())
             } ?: emptyList()
         }
     }
 
-    val hasSession = project.sessionIds.isNotEmpty()
     val canStart = project.roles.any { it.isPlanner && it.modelPath.isNotEmpty() } &&
                    project.roles.any { it.isCoder && it.modelPath.isNotEmpty() }
     var sector by remember(project.id) { mutableStateOf("models") }
@@ -706,6 +913,14 @@ private fun ProjectWindow(
                     }
                 }
                 "sessions" -> {
+                    // Live preview: refresh session states every 2s while the tab is open.
+                    var liveTick by remember { mutableIntStateOf(0) }
+                    LaunchedEffect(liveTick) { delay(2000); liveTick++ }
+                    val sessionInfos = remember(project.sessionIds, fileRefresh, liveTick) {
+                        project.sessionIds.mapNotNull { sid ->
+                            runCatching { InventStorage.loadSession(context, sid) }.getOrNull()?.let { s -> sid to s }
+                        }
+                    }
                     Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("${project.sessionIds.size} sessions", fontSize = 9.5.sp, color = Pr, fontFamily = FontFamily.Monospace)
                         Spacer(Modifier.weight(1f))
@@ -722,25 +937,26 @@ private fun ProjectWindow(
                             }
                         }
                     }
-                    if (!hasSession) {
+                    if (sessionInfos.isEmpty()) {
                         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                             Text(if (canStart) "no sessions yet — tap + new session" else "assign models in MODELS first",
                                 fontSize = 10.sp, color = Gy, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
                         }
                     } else {
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
-                            itemsIndexed(project.sessionIds) { i, sid ->
-                                val names = remember(sid, fileRefresh) {
-                                    runCatching {
-                                        InventStorage.loadSession(context, sid)?.let { s ->
-                                            listOf(s.model1Name, s.model2Name).filter { it.isNotEmpty() }.joinToString(" · ")
-                                        } ?: ""
-                                    }.getOrDefault("")
+                            itemsIndexed(sessionInfos) { i, (sid, s) ->
+                                val phase = s.phase
+                                val active = phase != InventPhase.DONE && phase != InventPhase.QUESTIONING
+                                val phaseColor = when {
+                                    phase == InventPhase.DEBUGGING -> Rd
+                                    phase == InventPhase.GENERATING -> Cy
+                                    else -> Pr
                                 }
+                                val names = listOf(s.model1Name, s.model2Name).filter { it.isNotEmpty() }.joinToString(" · ")
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
                                     color = CardLight,
-                                    border = BorderStroke(1.dp, Pr.copy(alpha = 0.3f)),
+                                    border = BorderStroke(1.dp, if (active) phaseColor.copy(alpha = 0.55f) else Pr.copy(alpha = 0.3f)),
                                     modifier = Modifier.fillMaxWidth()
                                         .combinedClickable(
                                             onClick = { onOpenSession(sid) },
@@ -750,8 +966,32 @@ private fun ProjectWindow(
                                     Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text("S#${i + 1}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(phase.name, fontSize = 8.sp, fontWeight = FontWeight.Bold, color = phaseColor, fontFamily = FontFamily.Monospace)
+                                            if (s.totalFiles > 0) {
+                                                Spacer(Modifier.width(5.dp))
+                                                Text("file ${s.currentFileIndex}/${s.totalFiles}", fontSize = 8.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                                            }
                                             Spacer(Modifier.weight(1f))
-                                            Text("hold: menu", fontSize = 8.sp, color = Line, fontFamily = FontFamily.Monospace)
+                                            if (active) {
+                                                Surface(
+                                                    onClick = {
+                                                        InventStopSignal.requested = true
+                                                        liveTick++
+                                                    },
+                                                    shape = RoundedCornerShape(5.dp),
+                                                    color = Rd.copy(alpha = 0.15f),
+                                                    border = BorderStroke(1.dp, Rd.copy(alpha = 0.6f))
+                                                ) {
+                                                    Row(Modifier.padding(horizontal = 7.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                        Icon(Icons.Filled.Stop, null, tint = Rd, modifier = Modifier.size(9.dp))
+                                                        Spacer(Modifier.width(3.dp))
+                                                        Text("stop", fontSize = 8.sp, color = Rd, fontFamily = FontFamily.Monospace)
+                                                    }
+                                                }
+                                            } else {
+                                                Text("hold: menu", fontSize = 8.sp, color = Line, fontFamily = FontFamily.Monospace)
+                                            }
                                         }
                                         if (names.isNotEmpty()) {
                                             Text(names, fontSize = 9.5.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1142,11 +1382,12 @@ private fun RoleActionsDialog(
     )
 }
 
-/** Hold-click on a session: open / delete / reset (keep files). */
+/** Hold-click on a session: open / export / delete / reset (keep files). */
 @Composable
 private fun SessionActionsDialog(
     sessionName: String,
     onOpen: () -> Unit,
+    onExport: () -> Unit,
     onDelete: () -> Unit,
     onReset: () -> Unit,
     onDismiss: () -> Unit
@@ -1161,20 +1402,22 @@ private fun SessionActionsDialog(
         },
         dismissButton = {
             Row {
-                TextButton(onClick = { onReset(); onDismiss() }) { Text("Reset", color = Am, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
-                TextButton(onClick = { onDelete(); onDismiss() }) { Text("Delete", color = Rd, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
-                TextButton(onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
+                TextButton(onClick = { onExport(); onDismiss() }) { Text("Export transcript", color = Am, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
+                TextButton(onClick = { onReset(); onDismiss() }) { Text("Reset", color = Am, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
+                TextButton(onClick = { onDelete(); onDismiss() }) { Text("Delete", color = Rd, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
+                TextButton(onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
             }
         }
     )
 }
 
-/** Floating window behind a clicked file: open / copy / delete. */
+/** Floating window behind a clicked file: open / copy / history / delete. */
 @Composable
 private fun FileActionsDialog(
     fileName: String,
     onOpen: () -> Unit,
     onCopy: () -> Unit,
+    onHistory: () -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -1188,10 +1431,176 @@ private fun FileActionsDialog(
         },
         dismissButton = {
             Row {
-                TextButton(onClick = { onCopy(); onDismiss() }) { Text("Copy code", color = Am, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
-                TextButton(onClick = { onDelete(); onDismiss() }) { Text("Delete", color = Rd, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
+                TextButton(onClick = { onCopy(); onDismiss() }) { Text("Copy code", color = Am, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
+                TextButton(onClick = { onHistory(); onDismiss() }) { Text("History", color = Bulb, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
+                TextButton(onClick = { onDelete(); onDismiss() }) { Text("Delete", color = Rd, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
+                TextButton(onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
+            }
+        }
+    )
+}
+
+/** Long-press on a square: rename / export zip / clear contents. */
+@Composable
+private fun ProjectMenuDialog(
+    project: InventProject,
+    onRename: () -> Unit,
+    onExportZip: () -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Card,
+        title = { Text(project.name, color = Bulb, fontFamily = FontFamily.Monospace, fontSize = 14.sp) },
+        text = {
+            Text("${project.roles.size} roles · ${project.sessionIds.size} sessions", color = Color(0xFF9AA3B5), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+        },
+        confirmButton = {
+            TextButton(onClick = { onRename(); onDismiss() }) { Text("Rename", color = Am, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = { onExportZip(); onDismiss() }) { Text("Export .zip", color = Cy, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
+                TextButton(onClick = { onClear(); onDismiss() }) { Text("Clear", color = Rd, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
                 TextButton(onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
             }
+        }
+    )
+}
+
+/** Rename a project. */
+@Composable
+private fun RenameDialog(
+    initialName: String,
+    onRename: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by remember { mutableStateOf(initialName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Card,
+        title = { Text("Rename project", color = Bulb, fontFamily = FontFamily.Monospace, fontSize = 14.sp) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Project name", fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
+                singleLine = true,
+                textStyle = LocalTextStyle.current.copy(color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, fontSize = 13.sp),
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { if (name.isNotBlank()) { onRename(name.trim()); onDismiss() } }, enabled = name.isNotBlank()) {
+                Text("Save", color = Cy, fontFamily = FontFamily.Monospace)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
+        }
+    )
+}
+
+/** Empty slot → new project with a template (roles pre-seeded + skeleton files). */
+@Composable
+private fun NewProjectDialog(
+    onCreate: (String, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var selected by remember { mutableStateOf("blank") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Card,
+        title = { Text("New project", color = Bulb, fontFamily = FontFamily.Monospace, fontSize = 14.sp) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Project name", fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
+                    singleLine = true,
+                    textStyle = LocalTextStyle.current.copy(color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, fontSize = 13.sp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(10.dp))
+                Text("Template", fontSize = 10.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.height(5.dp))
+                InventTemplates.ALL.forEach { t ->
+                    val active = selected == t.id
+                    Surface(
+                        onClick = { selected = t.id },
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (active) Cy.copy(alpha = 0.12f) else CardLight,
+                        border = BorderStroke(1.dp, if (active) Cy.copy(alpha = 0.6f) else Line),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                    ) {
+                        Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("${t.label} — ${t.tagline}", fontSize = 11.sp, color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace)
+                                Text(t.description, fontSize = 8.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                            }
+                            if (active) Icon(Icons.Filled.Check, null, tint = Cy, modifier = Modifier.size(14.dp))
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onCreate(name.trim().ifEmpty { "Project" }, selected); onDismiss() },
+                enabled = true
+            ) { Text("Create", color = Cy, fontFamily = FontFamily.Monospace) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
+        }
+    )
+}
+
+/** File version history: tap a version to view, Restore writes it back. */
+@Composable
+private fun HistoryDialog(
+    versions: List<File>,
+    onRestore: (File) -> Unit,
+    onView: (File) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Card,
+        title = { Text("History", color = Bulb, fontFamily = FontFamily.Monospace, fontSize = 14.sp) },
+        text = {
+            if (versions.isEmpty()) {
+                Text("No saved versions yet — edit the file once and it will be kept here.",
+                    color = Color(0xFF9AA3B5), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            } else {
+                LazyColumn(Modifier.heightIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    itemsIndexed(versions) { i, v ->
+                        val stamp = runCatching { java.text.SimpleDateFormat("MMM d, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(v.name.toLong())) }
+                            .getOrDefault(v.name)
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = CardLight,
+                            border = BorderStroke(1.dp, Line),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("v${versions.size - i}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
+                                Spacer(Modifier.width(8.dp))
+                                Text(stamp, fontSize = 9.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace)
+                                Spacer(Modifier.weight(1f))
+                                TextButton(onClick = { onView(v); onDismiss() }) { Text("View", fontSize = 9.sp, color = Cy, fontFamily = FontFamily.Monospace) }
+                                TextButton(onClick = { onRestore(v); onDismiss() }) { Text("Restore", fontSize = 9.sp, color = Am, fontFamily = FontFamily.Monospace) }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close", color = Gy, fontFamily = FontFamily.Monospace) }
         }
     )
 }

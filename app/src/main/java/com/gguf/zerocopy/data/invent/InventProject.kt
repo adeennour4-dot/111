@@ -179,3 +179,78 @@ object InventProjectStore {
     fun modelExists(role: InventRoleConfig, knownPaths: Set<String>): Boolean =
         role.modelPath.isEmpty() || knownPaths.contains(role.modelPath)
 }
+
+// ─── Project templates (empty-slot "+ New Project") ─────────────────────────
+
+object InventTemplates {
+    data class Template(
+        val id: String,
+        val label: String,
+        val tagline: String,
+        val description: String,
+        val seedFiles: Map<String, String> = emptyMap()
+    )
+
+    val ALL: List<Template> = listOf(
+        Template(
+            id = "blank", label = "Blank", tagline = "From scratch",
+            description = "The three roles and an empty folder. Best for custom ideas."
+        ),
+        Template(
+            id = "android", label = "Android app", tagline = "Kotlin + Compose",
+            description = "Kotlin / Jetpack Compose app skeleton with build files.",
+            seedFiles = mapOf(
+                "readme.txt" to "Android app project\nBuild the complete app described by the planner.\n",
+                "app/src/main/java/MainActivity.kt" to "package com.example.app\n\nimport android.os.Bundle\nimport androidx.activity.ComponentActivity\n\nclass MainActivity : ComponentActivity() {\n    override fun onCreate(savedInstanceState: Bundle?) {\n        super.onCreate(savedInstanceState)\n    }\n}\n",
+                "app/build.gradle.kts" to "plugins { id(\"com.android.application\") }\nandroid { namespace = \"com.example.app\" }\n"
+            )
+        ),
+        Template(
+            id = "python", label = "Python tool", tagline = "CLI / script",
+            description = "A Python command-line tool with entry point and README.",
+            seedFiles = mapOf(
+                "readme.txt" to "Python CLI tool project\nBuild the tool described by the planner.\n",
+                "main.py" to "#!/usr/bin/env python3\n\"\"\"Entry point for the tool.\"\"\"\n\n\ndef main() -> None:\n    print(\"TODO: implement\")\n\n\nif __name__ == \"__main__\":\n    main()\n"
+            )
+        ),
+        Template(
+            id = "cpp", label = "C++ tool", tagline = "Native console",
+            description = "A C++17 console application with CMake build.",
+            seedFiles = mapOf(
+                "readme.txt" to "C++ tool project\nBuild the tool described by the planner.\n",
+                "src/main.cpp" to "#include <iostream>\n\nint main() {\n    std::cout << \"TODO: implement\" << std::endl;\n    return 0;\n}\n",
+                "CMakeLists.txt" to "cmake_minimum_required(VERSION 3.16)\nproject(app)\nadd_executable(app src/main.cpp)\n"
+            )
+        ),
+        Template(
+            id = "web", label = "Web page", tagline = "HTML / CSS / JS",
+            description = "A static website with index, styles and script.",
+            seedFiles = mapOf(
+                "readme.txt" to "Static website project\nBuild the site described by the planner.\n",
+                "index.html" to "<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <title>App</title>\n  <link rel=\"stylesheet\" href=\"style.css\">\n</head>\n<body>\n  <h1>TODO: implement</h1>\n  <script src=\"script.js\"></script>\n</body>\n</html>\n",
+                "style.css" to "body { font-family: sans-serif; }\n",
+                "script.js" to "// TODO: implement\n"
+            )
+        )
+    )
+
+    /** Create a project with the template's seed files already in its folder. */
+    fun createProject(ctx: Context, name: String, templateId: String): InventProject {
+        val template = ALL.find { it.id == templateId } ?: ALL.first()
+        val p = InventProject(
+            id = UUID.randomUUID().toString().take(8),
+            name = name.ifBlank { template.label },
+            roles = InventProject.defaultRoles(),
+            createdAt = System.currentTimeMillis()
+        )
+        saveProject(ctx, p)
+        val dir = filesDir(ctx, p.id)
+        template.seedFiles.forEach { (rel, content) ->
+            val f = File(dir, rel)
+            f.parentFile?.mkdirs()
+            f.writeText(content)
+        }
+        return p
+    }
+}
+
