@@ -7,7 +7,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Android-3DDC84.svg?logo=android)]
 [![Min SDK](https://img.shields.io/badge/Min%20SDK-29%20(Android%2010)-orange.svg)]
-[![Build](https://img.shields.io/github/actions/workflow/status/adeennour4-dot/111/build.yml?label=CI%20Build)]
+[![Build](https://img.shields.io/github/actions/workflow/status/adeennour4-dot/zerocopy-llm/build.yml?label=CI%20Build)]
 
 **ZeroCopy** is a fully on-device LLM assistant for Android: streaming chat, RAG document Q&A, vision, voice, web search, a local OpenAI-compatible server — and **Invent**, a multi-agent project generator that plans and writes real projects from a spoken idea, using only local models.
 
@@ -121,7 +121,7 @@ The engine is selected automatically from the file you load. On top of the JNI b
 
 ## 🚀 Getting started
 
-1. **Build the app** (see [Building from source](#building-from-source)) or grab the latest APK from [Releases](https://github.com/adeennour4-dot/111/releases).
+1. **Build the app** (see [Building from source](#building-from-source)) or grab the latest APK from [Releases](https://github.com/adeennour4-dot/zerocopy-llm/releases).
 2. **Get a model** — a `.gguf` from HuggingFace is the easiest start (Q4_K_M quantization is the sweet spot).
 3. **Copy it to your phone**, open ZeroCopy, tap the model name in the header, and pick the file.
 4. Wait for the load (a few seconds for KV-cache warm-up), then chat.
@@ -171,7 +171,7 @@ ZeroCopy targets **Android 10+ (API 29), arm64-v8a**, with specific fixes for lo
 ## 🛠️ Building from source
 
 ```bash
-git clone https://github.com/adeennour4-dot/111
+git clone https://github.com/adeennour4-dot/zerocopy-llm
 cd 111
 ./gradlew assembleDebug
 adb install app/build/outputs/apk/debug/app-debug.apk
