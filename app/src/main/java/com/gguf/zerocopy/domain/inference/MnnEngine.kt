@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 
 class MnnEngine : InferenceEngine {
@@ -58,6 +59,7 @@ class MnnEngine : InferenceEngine {
   private external fun mnnBenchmark(ppTokens: Int, tgTokens: Int): String
   private external fun mnnSetConfigNative(nCtx: Int, maxNewTokens: Int, temperature: Float, repeatPenalty: Float)
   private external fun mnnSetSystemPromptNative(prompt: String)
+  private external fun mnnRestoreHistoryNative(messagesJson: String)
   private external fun mnnGetKvCacheUsage(): Int
   private external fun mnnGetTokensGenerated(): Int
   private external fun mnnIsInferenceDone(): Boolean
@@ -157,6 +159,20 @@ class MnnEngine : InferenceEngine {
         callback.onDone()
       }
     }
+  }
+
+  override fun restoreHistory(messages: List<Pair<String, String>>) {
+    // Re-seed the native MNN history so restored sessions keep their context.
+    // Combined with the bounded prompt build in mnn-bridge.cpp, this gives MNN
+    // the same "keep the newest turns within n_ctx" behavior as llama.cpp.
+    if (!nativeLibLoaded) return
+    try {
+      val arr = JSONArray()
+      messages.forEach { (role, content) ->
+        arr.put(JSONObject().apply { put("role", role); put("content", content) })
+      }
+      mnnRestoreHistoryNative(arr.toString())
+    } catch (_: Exception) {}
   }
 
   override fun abortInference() {

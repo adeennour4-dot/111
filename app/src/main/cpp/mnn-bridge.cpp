@@ -152,6 +152,80 @@ Java_com_gguf_zerocopy_domain_inference_MnnEngine_mnnSetSystemPromptNative(
     if (s) { g_system_prompt = s; env->ReleaseStringUTFChars(prompt, s); }
 }
 
+// Parse a JSON array of {role, content} messages (robust against braces and
+// escapes inside content) and replace g_history with them, keeping the system
+// prompt in place. Mirrors LlamaCppEngine.restoreHistory so a session restored
+// from disk re-seeds the MNN context instead of starting blank.
+static void mnn_restore_history_from_json(const std::string& input) {
+    g_history.clear();
+    g_history.emplace_back("system", g_system_prompt);
+
+    size_t pos = 0;
+    size_t len = input.size();
+    while (pos < len) {
+        pos = input.find('{', pos);
+        if (pos == std::string::npos) break;
+
+        int depth = 0;
+        bool in_string = false;
+        bool escaped = false;
+        size_t obj_end = std::string::npos;
+        for (size_t i = pos; i < len; i++) {
+            char c = input[i];
+            if (escaped) { escaped = false; continue; }
+            if (c == '\\' && in_string) { escaped = true; continue; }
+            if (c == '"') { in_string = !in_string; continue; }
+            if (in_string) continue;
+            if (c == '{') depth++;
+            else if (c == '}') { depth--; if (depth == 0) { obj_end = i; break; } }
+        }
+        if (obj_end == std::string::npos) break;
+        std::string obj = input.substr(pos, obj_end - pos + 1);
+        pos = obj_end + 1;
+
+        auto extract_str = [&](const std::string& key) -> std::string {
+            std::string needle = "\"" + key + "\":\"";
+            size_t k = obj.find(needle);
+            if (k == std::string::npos) return "";
+            size_t vs = k + needle.size();
+            std::string val;
+            bool esc = false;
+            for (size_t i = vs; i < obj.size(); i++) {
+                char c = obj[i];
+                if (esc) {
+                    if (c == 'n') val += '\n';
+                    else if (c == 'r') val += '\r';
+                    else if (c == 't') val += '\t';
+                    else val += c;
+                    esc = false; continue;
+                }
+                if (c == '\\') { esc = true; continue; }
+                if (c == '"') break;
+                val += c;
+            }
+            return val;
+        };
+
+        std::string role    = extract_str("role");
+        std::string content = extract_str("content");
+        if (!role.empty() && !content.empty()) {
+            g_history.emplace_back(role, content);
+        }
+    }
+    LOGI("MNN restored %zu history messages", g_history.size());
+}
+
+JNIEXPORT void JNICALL
+Java_com_gguf_zerocopy_domain_inference_MnnEngine_mnnRestoreHistoryNative(
+    JNIEnv* env, jobject, jstring messagesJson) {
+    const char* json = env->GetStringUTFChars(messagesJson, nullptr);
+    if (!json) return;
+    std::string input(json);
+    env->ReleaseStringUTFChars(messagesJson, json);
+    std::lock_guard<std::mutex> lock(g_mutex);
+    mnn_restore_history_from_json(input);
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_gguf_zerocopy_domain_inference_MnnEngine_mnnLoadModel(
     JNIEnv* env, jobject, jstring path) {
@@ -228,11 +302,36 @@ Java_com_gguf_zerocopy_domain_inference_MnnEngine_mnnExecuteInference(
     g_history.emplace_back("user", std::string(prompt_str));
     env->ReleaseStringUTFChars(jprompt, prompt_str);
 
-    // Build the full prompt from system + user message
+    // Build the full prompt from history, BOUNDED to the configured context
+    // window. MNN manages no context of its own: an unbounded history grows
+    // every turn until the prompt exceeds the model's max sequence length,
+    // which crashes the native side (MNN_ASSERT inside Llm::response()) —
+    // observed around the 6th-7th message on 2048-token-context models.
+    // Keep the newest turns and drop the oldest, mirroring llama.cpp's
+    // truncation. ~3.5 chars per token leaves generous headroom, and the
+    // max_new_tokens + 128 reserve guarantees room for the response.
+    const int ctx      = (g_cfg.n_ctx > 0) ? g_cfg.n_ctx : 2048;
+    const int max_new  = (g_cfg.max_new_tokens > 0) ? g_cfg.max_new_tokens : 512;
+    const int budget_chars = std::max(512, (int)((ctx - max_new - 128) * 3.5));
+
+    std::vector<std::string> newest_first;
+    int used = 0;
+    for (size_t i = g_history.size(); i-- > 0; ) {
+        std::string line = g_history[i].first + ": " + g_history[i].second;
+        if ((int)line.size() > budget_chars && !newest_first.empty()) break;
+        if ((int)line.size() > budget_chars) {
+            // The current user message alone exceeds the budget — hard-trim it.
+            line = line.substr(line.size() - budget_chars);
+        }
+        int need = (int)line.size() + (newest_first.empty() ? 0 : 1);
+        if (used + need > budget_chars) break;
+        used += need;
+        newest_first.push_back(line);
+    }
     std::string full_prompt;
-    for (auto& msg : g_history) {
+    for (auto it = newest_first.rbegin(); it != newest_first.rend(); ++it) {
         if (!full_prompt.empty()) full_prompt += "\n";
-        full_prompt += msg.first + ": " + msg.second;
+        full_prompt += *it;
     }
 
     LOGI("MNN prompt: %s", full_prompt.c_str());
