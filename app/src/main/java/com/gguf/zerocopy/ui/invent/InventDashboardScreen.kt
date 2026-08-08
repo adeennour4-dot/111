@@ -199,7 +199,7 @@ fun InventDashboardScreen(
     var historyFor by remember { mutableStateOf<Pair<String, File>?>(null) } // projectId, file
     var showZipInfo by remember { mutableStateOf(false) }
     var squarePanelFor by remember { mutableStateOf<String?>(null) } // tap a square → in-place models/sessions panel
-    var modelInfoFor by remember { mutableStateOf<Triple<String, InventRoleConfig, LocalModel>?>(null) } // pid, role, model → info + RAM window
+    var modelInfoFor by remember { mutableStateOf<Triple<String, InventRoleConfig, com.gguf.zerocopy.data.repository.LocalModel>?>(null) } // pid, role, model → info + RAM window
     var deleteProjectFor by remember { mutableStateOf<String?>(null) } // delete-project confirm (window ✕)
     // First-run tour (dismissed permanently)
     val prefs = remember { context.getSharedPreferences("invent", Context.MODE_PRIVATE) }
@@ -1871,7 +1871,7 @@ private fun MiniToggle(checked: Boolean, onToggle: () -> Unit) {
 private fun ModelInfoDialog(
     role: InventRoleConfig,
     model: com.gguf.zerocopy.data.repository.LocalModel,
-    freeRamMb: Int,
+    freeRamMb: Long,
     onChangeModel: () -> Unit,
     onClose: () -> Unit
 ) {
@@ -1879,7 +1879,7 @@ private fun ModelInfoDialog(
     val kvMb = estimateKvMb(role.contextWindow, modelMb)
     val activMb = modelMb * 0.08
     val totalMb = modelMb + kvMb + activMb + 280.0 // weights + KV + activations + app floor
-    val fits = totalMb < freeRamMb
+    val fits = totalMb < freeRamMb.toDouble()
 
     Surface(
         shape = RoundedCornerShape(16.dp),
