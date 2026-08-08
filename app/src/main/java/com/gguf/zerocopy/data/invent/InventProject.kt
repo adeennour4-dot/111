@@ -243,8 +243,8 @@ object InventTemplates {
             roles = InventProject.defaultRoles(),
             createdAt = System.currentTimeMillis()
         )
-        saveProject(ctx, p)
-        val dir = filesDir(ctx, p.id)
+        InventProjectStore.saveProject(ctx, p)
+        val dir = InventProjectStore.filesDir(ctx, p.id)
         template.seedFiles.forEach { (rel, content) ->
             val f = File(dir, rel)
             f.parentFile?.mkdirs()
