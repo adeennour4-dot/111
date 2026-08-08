@@ -254,6 +254,7 @@ fun InventDashboardScreen(
             // Fit the big square to the screen (perfectly square), zoom scales from there.
             val canvas = (minOf(maxWidth, maxHeight) - 12.dp).coerceAtLeast(280.dp)
             val sw = (canvas - 20.dp - 12.dp) / 2 // one small square's size
+            val density = LocalDensity.current
             val infoLevel = when {
                 zoom >= FULL_ZOOM -> "full"
                 zoom >= DETAIL_ZOOM -> "detail"
@@ -293,7 +294,6 @@ fun InventDashboardScreen(
                                             if (focused == idx) resetView()
                                         },
                                         onFocus = {
-                                            val density = LocalDensity.current
                                             val pad = with(density) { 10.dp.toPx() }
                                             val gap = with(density) { 12.dp.toPx() }
                                             val C = with(density) { canvas.toPx() }
