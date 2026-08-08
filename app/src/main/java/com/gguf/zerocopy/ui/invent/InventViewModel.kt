@@ -486,7 +486,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                     it.copy(
                         phase = InventPhase.QUESTIONING, sessionId = newSessionId,
                         model1Name = m1n, model2Name = if (sameModelMode) m1n else m2n,
-                        researcherName = rn, offlineMode = offlineMode, sameModelMode = sameModelMode,
+                        debuggerName = rn, offlineMode = offlineMode, sameModelMode = sameModelMode,
                         reasoningEnabled = reasoningEnabled,
                         modelMode = when { sameModelMode && rp == m1p -> ModelMode.SINGLE
                             sameModelMode -> ModelMode.DUAL; else -> ModelMode.TRIPLE }
