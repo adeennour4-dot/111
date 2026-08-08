@@ -3,9 +3,6 @@ package com.gguf.zerocopy.ui.invent
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -26,7 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -70,6 +66,12 @@ private fun roleColor(role: String): Color = when (role.lowercase()) {
     else -> Bulb
 }
 
+private fun sectorColor(sector: String): Color = when (sector) {
+    "sessions" -> Pr
+    "files" -> Cy
+    else -> Am
+}
+
 /** Current free RAM (MB). */
 private fun freeRamMb(context: Context): Long {
     return try {
@@ -106,10 +108,25 @@ fun shareProjectZip(context: Context, project: InventProject) {
     } catch (_: Exception) {}
 }
 
+private fun formatSize(bytes: Long): String = when {
+    bytes >= 1L shl 20 -> "%.1f MB".format(bytes.toDouble() / (1 shl 20))
+    bytes >= 1L shl 10 -> "%.1f KB".format(bytes.toDouble() / (1 shl 10))
+    else -> "$bytes B"
+}
+
+/** One entry in the file manager list: name + what to open + metadata. */
+private data class FileRow(
+    val name: String,
+    val target: File,
+    val isDir: Boolean,
+    val isSession: Boolean = false,
+    val sizeBytes: Long = 0
+)
+
 /**
  * The Invent front door: one big square holding 4 small squares (2×2).
  * Pinch to zoom / pan. Each square starts with a +; pressing it reveals the
- * three sectors: MODELS (left), SESSIONS (middle), FILES (right).
+ * three sectors as tabs: MODELS, SESSIONS, FILES.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -134,6 +151,9 @@ fun InventDashboardScreen(
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
     val currentDir = remember { mutableStateMapOf<String, File>() }
 
+    // Bumped after any file write/delete/mkdir so the file lists refresh.
+    var fileRefresh by remember { mutableIntStateOf(0) }
+
     // Dialogs
     var modelPickerFor by remember { mutableStateOf<Pair<String, InventRoleConfig>?>(null) }
     var addRoleFor by remember { mutableStateOf<String?>(null) }
@@ -142,6 +162,7 @@ fun InventDashboardScreen(
     var fileActionsFor by remember { mutableStateOf<Pair<String, File>?>(null) } // projectId, file
     var editorState by remember { mutableStateOf<Triple<String, File, String>?>(null) } // projectId, file, content
     var newFileFor by remember { mutableStateOf<String?>(null) } // projectId
+    var newFolderFor by remember { mutableStateOf<String?>(null) } // projectId
     var showZipInfo by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize().background(Bg)) {
@@ -155,7 +176,7 @@ fun InventDashboardScreen(
             }
             Column(Modifier.weight(1f)) {
                 Text("INVENT", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace)
-                Text("4 projects · pinch to zoom · hold for menus", fontSize = 9.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                Text("4 projects · pinch to zoom · tap + to open", fontSize = 9.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
             }
             Surface(
                 onClick = { showZipInfo = true },
@@ -172,7 +193,7 @@ fun InventDashboardScreen(
         }
 
         // ── Zoomable canvas: the big square with 4 squares ──
-        Box(
+        BoxWithConstraints(
             Modifier
                 .fillMaxSize()
                 .clipToBounds()
@@ -183,22 +204,24 @@ fun InventDashboardScreen(
                     }
                 }
         ) {
+            // Fit the big square to the screen (perfectly square), zoom scales from there.
+            val canvas = (minOf(maxWidth, maxHeight) - 12.dp).coerceAtLeast(280.dp)
             Column(
                 Modifier
                     .align(Alignment.Center)
-                    .size(width = 760.dp, height = 860.dp)
+                    .size(canvas)
                     .graphicsLayer {
                         scaleX = zoom; scaleY = zoom
                         translationX = offset.x; translationY = offset.y
                     }
                     .padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 val slots = List(4) { i -> projects.getOrNull(i) }
                 for (row in 0..1) {
                     Row(
                         Modifier.weight(1f).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         for (col in 0..1) {
                             val idx = row * 2 + col
@@ -210,8 +233,10 @@ fun InventDashboardScreen(
                                         knownPaths = knownPaths,
                                         isExpanded = expanded[project.id] == true,
                                         onExpand = { expanded[project.id] = true },
+                                        onCollapse = { expanded[project.id] = false },
                                         currentDir = currentDir[project.id],
                                         onSetDir = { currentDir[project.id] = it },
+                                        fileRefresh = fileRefresh,
                                         onPickModel = { role -> modelPickerFor = project.id to role },
                                         onAddRole = { addRoleFor = project.id },
                                         onRoleMenu = { role -> roleMenuFor = Triple(project.id, role, true) },
@@ -220,18 +245,13 @@ fun InventDashboardScreen(
                                         onSessionMenu = { sid -> sessionMenuFor = project.id to sid },
                                         onFileClick = { f -> fileActionsFor = project.id to f },
                                         onAddFile = { newFileFor = project.id },
-                                        onUp = {
-                                            val d = currentDir[project.id]
-                                            if (d != null) {
-                                                val rootDir = InventProjectStore.filesDir(context, project.id)
-                                                if (d != rootDir) currentDir[project.id] = d.parentFile ?: rootDir
-                                            }
-                                        },
+                                        onAddFolder = { newFolderFor = project.id },
                                         onShareZip = { shareProjectZip(context, project) },
                                         onClear = {
                                             onClearProject(project.id)
                                             expanded.remove(project.id)
                                             currentDir.remove(project.id)
+                                            fileRefresh++
                                         }
                                     )
                                 } else {
@@ -366,7 +386,10 @@ fun InventDashboardScreen(
                 fileActionsFor = null
             },
             onDelete = {
-                scope.launch(Dispatchers.IO) { file.delete() }
+                scope.launch(Dispatchers.IO) {
+                    file.delete()
+                    fileRefresh++
+                }
                 fileActionsFor = null
             },
             onDismiss = { fileActionsFor = null }
@@ -385,6 +408,7 @@ fun InventDashboardScreen(
                         val target = File(dir, fileName)
                         if (file.absolutePath != target.absolutePath) file.delete()
                         target.writeText(newContent)
+                        fileRefresh++
                     } catch (_: Exception) {}
                 }
                 editorState = null
@@ -401,11 +425,29 @@ fun InventDashboardScreen(
                     try {
                         val dir = currentDir[pid] ?: InventProjectStore.filesDir(context, pid)
                         File(dir, fileName).writeText(newContent)
+                        fileRefresh++
                     } catch (_: Exception) {}
                 }
                 newFileFor = null
             },
             onDismiss = { newFileFor = null }
+        )
+    }
+
+    // ── New folder dialog ──
+    newFolderFor?.let { pid ->
+        NewFolderDialog(
+            onAdd = { folderName ->
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        val dir = currentDir[pid] ?: InventProjectStore.filesDir(context, pid)
+                        File(dir, folderName).mkdirs()
+                        fileRefresh++
+                    } catch (_: Exception) {}
+                }
+                newFolderFor = null
+            },
+            onDismiss = { newFolderFor = null }
         )
     }
 
@@ -418,10 +460,10 @@ fun InventDashboardScreen(
             text = {
                 Text(
                     "• Pinch to zoom the 4 squares in and out.\n" +
-                    "• Tap + in a square to open its 3 sectors: MODELS (left), SESSIONS (middle), FILES (right).\n" +
-                    "• Tap a role to pick its model (sliders: context, max tokens, RAM).\n" +
-                    "• HOLD a role / session / file for actions (edit, delete, reset, open…).\n" +
-                    "• Files sector: read-only browser, + creates a file, share icon exports the project as .zip.\n" +
+                    "• Tap + in a square to open it: MODELS, SESSIONS and FILES tabs.\n" +
+                    "• MODELS: tap a role to pick its model (sliders: context, max tokens, RAM). Hold for rename/delete.\n" +
+                    "• SESSIONS: tap + to start a session, hold a session for open/reset/delete.\n" +
+                    "• FILES: file manager — up, new folder, new file, share .zip. Tap a file to open/copy/delete.\n" +
                     "• X clears the square's contents (the square stays).",
                     color = Color(0xFFB9C1D0), fontSize = 12.sp, fontFamily = FontFamily.Monospace
                 )
@@ -444,8 +486,10 @@ private fun ProjectSquare(
     knownPaths: Set<String>,
     isExpanded: Boolean,
     onExpand: () -> Unit,
+    onCollapse: () -> Unit,
     currentDir: File?,
     onSetDir: (File) -> Unit,
+    fileRefresh: Int,
     onPickModel: (InventRoleConfig) -> Unit,
     onAddRole: () -> Unit,
     onRoleMenu: (InventRoleConfig) -> Unit,
@@ -454,17 +498,50 @@ private fun ProjectSquare(
     onSessionMenu: (String) -> Unit,
     onFileClick: (File) -> Unit,
     onAddFile: () -> Unit,
-    onUp: () -> Unit,
+    onAddFolder: () -> Unit,
     onShareZip: () -> Unit,
     onClear: () -> Unit
 ) {
     val context = LocalContext.current
     val root = remember(project.id) { InventProjectStore.filesDir(context, project.id) }
     val dir = currentDir ?: root
-    val files = remember(dir) { dir.listFiles()?.sortedBy { it.name } ?: emptyList() }
+
+    // Each session with generated files appears as a folder at the root level.
+    val sessionRows = remember(project.sessionIds, fileRefresh) {
+        project.sessionIds.mapNotNull { sid ->
+            val d = InventStorage.getProjectDir(context, sid)
+            if (d.exists() && (d.listFiles()?.isNotEmpty() == true)) d to sid else null
+        }
+    }
+    val sessionDirs = sessionRows.map { it.first }.toSet()
+
+    val files = remember(dir, fileRefresh) {
+        if (dir == root) {
+            val rows = mutableListOf<FileRow>()
+            dir.listFiles()?.sortedBy { it.name }?.forEach { f ->
+                rows.add(
+                    if (f.isDirectory) FileRow(f.name, f, true)
+                    else FileRow(f.name, f, false, sizeBytes = f.length())
+                )
+            }
+            sessionRows.forEachIndexed { i, (d, _) ->
+                rows.add(FileRow("Session ${i + 1}", d, true, isSession = true))
+            }
+            rows.sortedBy { it.name }
+        } else {
+            dir.listFiles()?.sortedBy { it.name }?.map { f ->
+                if (f.isDirectory) FileRow(f.name, f, true)
+                else FileRow(f.name, f, false, sizeBytes = f.length())
+            } ?: emptyList()
+        }
+    }
+
     val hasSession = project.sessionIds.isNotEmpty()
     val canStart = project.roles.any { it.isPlanner && it.modelPath.isNotEmpty() } &&
                    project.roles.any { it.isCoder && it.modelPath.isNotEmpty() }
+
+    // Active tab inside an expanded square.
+    var sector by remember(project.id) { mutableStateOf("models") } // models | sessions | files
 
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -473,26 +550,71 @@ private fun ProjectSquare(
     ) {
         Box(Modifier.fillMaxSize()) {
             if (!isExpanded) {
-                // ── Empty: big + ──
-                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                // ── Collapsed: big + with a mini role preview ──
+                Column(
+                    Modifier.fillMaxSize().padding(6.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Surface(
                         onClick = onExpand,
                         shape = CircleShape,
                         color = Bulb.copy(alpha = 0.14f),
                         border = BorderStroke(1.5.dp, Bulb.copy(alpha = 0.6f)),
-                        modifier = Modifier.size(64.dp)
+                        modifier = Modifier.size(52.dp)
                     ) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Filled.Add, null, tint = Bulb, modifier = Modifier.size(30.dp))
+                            Icon(Icons.Filled.Add, null, tint = Bulb, modifier = Modifier.size(26.dp))
                         }
                     }
-                    Spacer(Modifier.height(10.dp))
-                    Text(project.name, fontSize = 12.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace)
+                    Spacer(Modifier.height(8.dp))
+                    Text(project.name, fontSize = 11.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                    // Mini preview: configured roles
+                    val previewRoles = project.roles.filter { it.isPlanner || it.isDebugger || it.isCoder }
+                    if (previewRoles.any { it.modelPath.isNotEmpty() }) {
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                            previewRoles.forEach { role ->
+                                val missing = role.modelPath.isNotEmpty() && !knownPaths.contains(role.modelPath)
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = roleColor(role.role).copy(alpha = if (missing) 0.05f else 0.14f),
+                                    border = BorderStroke(1.dp, roleColor(role.role).copy(alpha = if (missing) 0.3f else 0.55f))
+                                ) {
+                                    Text(
+                                        when {
+                                            role.modelPath.isEmpty() -> role.role.take(1).uppercase()
+                                            missing -> "?"
+                                            else -> role.modelName.take(6)
+                                        },
+                                        fontSize = 6.5.sp, fontWeight = FontWeight.Bold,
+                                        color = if (missing) Rd else roleColor(role.role),
+                                        fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             } else {
-                // ── Three sectors: models | sessions | files ──
+                // ── Expanded: header + 3 sector tabs ──
                 Column(Modifier.fillMaxSize().padding(6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Collapse back
+                        Surface(
+                            onClick = onCollapse,
+                            shape = CircleShape,
+                            color = CardLight,
+                            border = BorderStroke(1.dp, Line),
+                            modifier = Modifier.size(20.dp)
+                        ) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Filled.ArrowBack, null, tint = Gy, modifier = Modifier.size(11.dp))
+                            }
+                        }
+                        Spacer(Modifier.width(5.dp))
                         Text(project.name.uppercase(), fontSize = 9.sp, fontWeight = FontWeight.Bold,
                             color = Bulb, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Spacer(Modifier.weight(1f))
@@ -510,10 +632,30 @@ private fun ProjectSquare(
                         }
                     }
                     Spacer(Modifier.height(5.dp))
-                    Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        // ── LEFT: models/roles ──
-                        Column(Modifier.weight(1f).fillMaxHeight()) {
-                            SectorHeader("MODELS", Am, Modifier.weight(1f))
+
+                    // ── Sector tabs ──
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf("models" to "MODELS", "sessions" to "SESSIONS", "files" to "FILES").forEach { (key, label) ->
+                            val active = sector == key
+                            Surface(
+                                onClick = { sector = key },
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (active) sectorColor(key).copy(alpha = 0.16f) else CardLight,
+                                border = BorderStroke(1.dp, if (active) sectorColor(key).copy(alpha = 0.8f) else Line),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(Modifier.fillMaxWidth().padding(vertical = 5.dp), contentAlignment = Alignment.Center) {
+                                    Text(label, fontSize = 8.sp, fontWeight = FontWeight.Bold,
+                                        color = if (active) sectorColor(key) else Color(0xFF8A93A8), fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(5.dp))
+
+                    // ── Tab content ──
+                    when (sector) {
+                        "models" -> {
                             LazyColumn(
                                 verticalArrangement = Arrangement.spacedBy(3.dp),
                                 modifier = Modifier.weight(1f)
@@ -530,24 +672,28 @@ private fun ProjectSquare(
                                                 onLongClick = { onRoleMenu(role) }
                                             )
                                     ) {
-                                        Column(Modifier.padding(horizontal = 5.dp, vertical = 3.dp)) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(role.role.uppercase(), fontSize = 7.5.sp, fontWeight = FontWeight.Bold,
-                                                    color = roleColor(role.role), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                                if (role.isCoder) {
-                                                    Spacer(Modifier.width(3.dp))
-                                                    Text("🔒", fontSize = 7.sp)
+                                        Row(Modifier.padding(horizontal = 6.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Box(Modifier.size(6.dp).clip(CircleShape).background(roleColor(role.role)))
+                                            Spacer(Modifier.width(5.dp))
+                                            Column(Modifier.weight(1f)) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(role.role.uppercase(), fontSize = 8.sp, fontWeight = FontWeight.Bold,
+                                                        color = roleColor(role.role), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                    if (role.isCoder) {
+                                                        Spacer(Modifier.width(3.dp))
+                                                        Text("🔒", fontSize = 6.sp)
+                                                    }
                                                 }
+                                                Text(
+                                                    text = when {
+                                                        role.modelPath.isEmpty() -> "no model"
+                                                        missing -> "Unknown"
+                                                        else -> role.modelName
+                                                    },
+                                                    fontSize = 7.sp, color = if (missing) Rd else Color(0xFF9AA3B5),
+                                                    fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis
+                                                )
                                             }
-                                            Text(
-                                                text = when {
-                                                    role.modelPath.isEmpty() -> "no model"
-                                                    missing -> "Unknown"
-                                                    else -> role.modelName
-                                                },
-                                                fontSize = 8.sp, color = if (missing) Rd else Color(0xFFB9C1D0),
-                                                fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis
-                                            )
                                         }
                                     }
                                 }
@@ -559,40 +705,42 @@ private fun ProjectSquare(
                                         border = BorderStroke(1.dp, Am.copy(alpha = 0.5f)),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Row(Modifier.padding(vertical = 3.dp), horizontalArrangement = Arrangement.Center) {
+                                        Row(Modifier.padding(vertical = 4.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                                             Icon(Icons.Filled.Add, null, tint = Am, modifier = Modifier.size(10.dp))
                                             Spacer(Modifier.width(3.dp))
-                                            Text("role", fontSize = 8.sp, color = Am, fontFamily = FontFamily.Monospace)
+                                            Text("add role", fontSize = 8.sp, color = Am, fontFamily = FontFamily.Monospace)
                                         }
                                     }
                                 }
                             }
                         }
-                        // ── MIDDLE: sessions ──
-                        Column(Modifier.weight(1f).fillMaxHeight()) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                SectorHeader("SESSIONS", Pr, Modifier.weight(1f))
+                        "sessions" -> {
+                            Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("${project.sessionIds.size} sessions", fontSize = 7.5.sp, color = Pr, fontFamily = FontFamily.Monospace)
+                                Spacer(Modifier.weight(1f))
                                 Surface(
                                     onClick = { if (canStart) onStartSession() },
-                                    shape = CircleShape,
+                                    shape = RoundedCornerShape(6.dp),
                                     color = if (canStart) Pr.copy(alpha = 0.15f) else CardLight,
-                                    border = BorderStroke(1.dp, if (canStart) Pr.copy(alpha = 0.6f) else Line),
-                                    modifier = Modifier.size(16.dp)
+                                    border = BorderStroke(1.dp, if (canStart) Pr.copy(alpha = 0.6f) else Line)
                                 ) {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Row(Modifier.padding(horizontal = 7.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Icon(Icons.Filled.Add, null, tint = if (canStart) Pr else Gy, modifier = Modifier.size(9.dp))
+                                        Spacer(Modifier.width(3.dp))
+                                        Text(if (canStart) "new session" else "pick models first", fontSize = 7.5.sp,
+                                            color = if (canStart) Pr else Gy, fontFamily = FontFamily.Monospace)
                                     }
                                 }
                             }
                             if (!hasSession) {
                                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                    Text(if (canStart) "tap + to start" else "pick models first",
+                                    Text(if (canStart) "no sessions yet — tap + new session" else "assign models in MODELS first",
                                         fontSize = 7.5.sp, color = Gy, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
                                 }
                             } else {
                                 LazyColumn(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.weight(1f)) {
                                     itemsIndexed(project.sessionIds) { i, sid ->
-                                        val names = remember(sid) {
+                                        val names = remember(sid, fileRefresh) {
                                             runCatching {
                                                 InventStorage.loadSession(context, sid)?.let { s ->
                                                     listOf(s.model1Name, s.model2Name).filter { it.isNotEmpty() }.joinToString(" · ")
@@ -609,8 +757,12 @@ private fun ProjectSquare(
                                                     onLongClick = { onSessionMenu(sid) }
                                                 )
                                         ) {
-                                            Column(Modifier.padding(horizontal = 5.dp, vertical = 3.dp)) {
-                                                Text("S#${i + 1}", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
+                                            Column(Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text("S#${i + 1}", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
+                                                    Spacer(Modifier.weight(1f))
+                                                    Text("hold: menu", fontSize = 6.sp, color = Line, fontFamily = FontFamily.Monospace)
+                                                }
                                                 if (names.isNotEmpty()) {
                                                     Text(names, fontSize = 7.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                                 }
@@ -620,72 +772,101 @@ private fun ProjectSquare(
                                 }
                             }
                         }
-                        // ── RIGHT: files ──
-                        Column(Modifier.weight(1f).fillMaxHeight()) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                SectorHeader("FILES", Cy, Modifier.weight(1f))
+                        "files" -> {
+                            // Toolbar: up / new folder / new file / share
+                            Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                 if (dir != root) {
                                     Surface(
-                                        onClick = onUp,
-                                        shape = CircleShape,
+                                        onClick = {
+                                            val parent = if (sessionDirs.contains(dir)) root else dir.parentFile ?: root
+                                            onSetDir(parent)
+                                        },
+                                        shape = RoundedCornerShape(5.dp),
                                         color = CardLight,
-                                        border = BorderStroke(1.dp, Line),
-                                        modifier = Modifier.size(16.dp)
+                                        border = BorderStroke(1.dp, Line)
                                     ) {
-                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Row(Modifier.padding(horizontal = 5.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                                             Icon(Icons.Filled.ArrowUpward, null, tint = Cy, modifier = Modifier.size(9.dp))
+                                            Spacer(Modifier.width(3.dp))
+                                            Text("up", fontSize = 7.sp, color = Cy, fontFamily = FontFamily.Monospace)
                                         }
                                     }
                                 } else {
                                     Surface(
                                         onClick = onShareZip,
-                                        shape = CircleShape,
+                                        shape = RoundedCornerShape(5.dp),
                                         color = Cy.copy(alpha = 0.12f),
-                                        border = BorderStroke(1.dp, Cy.copy(alpha = 0.5f)),
-                                        modifier = Modifier.size(16.dp)
+                                        border = BorderStroke(1.dp, Cy.copy(alpha = 0.5f))
                                     ) {
-                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Row(Modifier.padding(horizontal = 5.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                                             Icon(Icons.Filled.Share, null, tint = Cy, modifier = Modifier.size(9.dp))
+                                            Spacer(Modifier.width(3.dp))
+                                            Text("zip", fontSize = 7.sp, color = Cy, fontFamily = FontFamily.Monospace)
                                         }
                                     }
                                 }
-                                Spacer(Modifier.width(2.dp))
+                                Spacer(Modifier.weight(1f))
+                                Surface(
+                                    onClick = onAddFolder,
+                                    shape = RoundedCornerShape(5.dp),
+                                    color = Bulb.copy(alpha = 0.1f),
+                                    border = BorderStroke(1.dp, Bulb.copy(alpha = 0.4f))
+                                ) {
+                                    Row(Modifier.padding(horizontal = 5.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Filled.CreateNewFolder, null, tint = Bulb, modifier = Modifier.size(9.dp))
+                                        Spacer(Modifier.width(3.dp))
+                                        Text("folder", fontSize = 7.sp, color = Bulb, fontFamily = FontFamily.Monospace)
+                                    }
+                                }
+                                Spacer(Modifier.width(4.dp))
                                 Surface(
                                     onClick = onAddFile,
-                                    shape = CircleShape,
+                                    shape = RoundedCornerShape(5.dp),
                                     color = Cy.copy(alpha = 0.12f),
-                                    border = BorderStroke(1.dp, Cy.copy(alpha = 0.5f)),
-                                    modifier = Modifier.size(16.dp)
+                                    border = BorderStroke(1.dp, Cy.copy(alpha = 0.5f))
                                 ) {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Row(Modifier.padding(horizontal = 5.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Icon(Icons.Filled.Add, null, tint = Cy, modifier = Modifier.size(9.dp))
+                                        Spacer(Modifier.width(3.dp))
+                                        Text("file", fontSize = 7.sp, color = Cy, fontFamily = FontFamily.Monospace)
                                     }
                                 }
                             }
+                            // Current path
+                            Text(
+                                if (dir == root) project.name else dir.name,
+                                fontSize = 7.sp, color = Gy, fontFamily = FontFamily.Monospace,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(bottom = 3.dp)
+                            )
                             if (files.isEmpty()) {
                                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                    Text("no files yet", fontSize = 7.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                                    Text("empty — add a file or folder", fontSize = 7.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
                                 }
                             } else {
                                 LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
-                                    itemsIndexed(files) { _, f ->
-                                        val isDir = f.isDirectory
+                                    itemsIndexed(files) { _, row ->
                                         Surface(
                                             shape = RoundedCornerShape(5.dp),
                                             color = CardLight,
                                             modifier = Modifier.fillMaxWidth()
                                                 .combinedClickable(
-                                                    onClick = { if (isDir) onSetDir(f) else onFileClick(f) },
-                                                    onLongClick = { if (!isDir) onFileClick(f) }
+                                                    onClick = { if (row.isDir) onSetDir(row.target) else onFileClick(row.target) },
+                                                    onLongClick = { if (!row.isDir) onFileClick(row.target) }
                                                 )
                                         ) {
-                                            Row(Modifier.padding(horizontal = 4.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Row(Modifier.padding(horizontal = 5.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                                 Icon(
-                                                    if (isDir) Icons.Filled.Folder else Icons.Outlined.Description,
-                                                    null, tint = if (isDir) Bulb else Cy, modifier = Modifier.size(10.dp)
+                                                    if (row.isDir) Icons.Filled.Folder else Icons.Outlined.Description,
+                                                    null,
+                                                    tint = if (row.isSession) Pr else if (row.isDir) Bulb else Cy,
+                                                    modifier = Modifier.size(10.dp)
                                                 )
-                                                Spacer(Modifier.width(3.dp))
-                                                Text(f.name, fontSize = 7.5.sp, color = Color(0xFFB9C1D0), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                Spacer(Modifier.width(4.dp))
+                                                Text(row.name, fontSize = 7.5.sp, color = Color(0xFFB9C1D0), fontFamily = FontFamily.Monospace,
+                                                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                                if (!row.isDir && row.sizeBytes > 0) {
+                                                    Text(formatSize(row.sizeBytes), fontSize = 6.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                                                }
                                             }
                                         }
                                     }
@@ -697,12 +878,6 @@ private fun ProjectSquare(
             }
         }
     }
-}
-
-@Composable
-private fun SectorHeader(label: String, color: Color, modifier: Modifier = Modifier) {
-    Text(label, fontSize = 8.sp, fontWeight = FontWeight.Bold, color = color, fontFamily = FontFamily.Monospace,
-        modifier = modifier)
 }
 
 // ═══ Dialogs ════════════════════════════════════════════════════════════════
@@ -886,6 +1061,41 @@ private fun AddRoleDialog(
                 enabled = name.isNotBlank()
             ) {
                 Text("Add", color = Cy, fontFamily = FontFamily.Monospace)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
+        }
+    )
+}
+
+/** New folder dialog (file manager). */
+@Composable
+private fun NewFolderDialog(
+    onAdd: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Card,
+        title = { Text("New folder", color = Bulb, fontFamily = FontFamily.Monospace, fontSize = 14.sp) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Folder name", fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
+                singleLine = true,
+                textStyle = LocalTextStyle.current.copy(color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, fontSize = 13.sp),
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (name.isNotBlank()) { onAdd(name.trim()); onDismiss() } },
+                enabled = name.isNotBlank()
+            ) {
+                Text("Create", color = Cy, fontFamily = FontFamily.Monospace)
             }
         },
         dismissButton = {
