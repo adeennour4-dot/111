@@ -144,6 +144,7 @@ fun InventScreen(
     startFresh: Boolean = false,
     sessionToOpen: String? = null,
     onSessionCreated: (String) -> Unit = {},
+    onDeleteProject: (() -> Unit)? = null,
     vm: InventViewModel = viewModel()
 ) {
     val ui by vm.ui.collectAsState()
@@ -558,7 +559,7 @@ fun InventScreen(
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 1.5.dp, color = Cy)
                         Spacer(Modifier.width(8.dp))
-                        Text("Planner is thinking of a first question…", fontSize = 11.sp,
+                        Text("Setting up session…", fontSize = 11.sp,
                             color = colors.Text3, fontFamily = FontFamily.Monospace)
                     }
                 }
@@ -671,7 +672,7 @@ fun InventScreen(
             SessionPopup(
                 sessions = ui.sessions, sessionId = ui.sessionId,
                 onSwitch = { vm.switchToSession(it); showSessions = false },
-                onDelete = { vm.deleteSessionById(it) },
+                onDeleteProject = onDeleteProject,
                 onDismiss = { showSessions = false },
                 colors = colors, vm = vm
             )
@@ -886,7 +887,7 @@ private fun PhaseHint(phase: InventPhase, colors: ZcPalette) {
     ) {
         Text(
             when (phase) {
-                InventPhase.QUESTIONING -> "💬  Tell me what you want to build and I'll ask questions to refine the idea."
+                InventPhase.QUESTIONING -> "💬  You start the session — type your project idea and I'll ask questions to refine it."
                 InventPhase.SEARCHING -> "🔍  Looking up current best practices and APIs for your project."
                 InventPhase.PLANNING -> "📋  Drafting a file-by-file implementation plan."
                 InventPhase.CONFIRMING -> "✅  Review the plan. Tap 'Sure' to proceed or 'Not Sure' to adjust."
@@ -1422,7 +1423,7 @@ private fun PlanReviewPanel(
 @Composable
 private fun SessionPopup(
     sessions: List<SessionInfo>, sessionId: String,
-    onSwitch: (String) -> Unit, onDelete: (String) -> Unit,
+    onSwitch: (String) -> Unit, onDeleteProject: (() -> Unit)?,
     onDismiss: () -> Unit, colors: ZcPalette, vm: InventViewModel
 ) {
     val context = LocalContext.current
@@ -1538,10 +1539,10 @@ private fun SessionPopup(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Filled.Warning, null, tint = Rd, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("Delete Session?", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.Text, fontFamily = FontFamily.Monospace)
+                            Text("Delete Project?", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = colors.Text, fontFamily = FontFamily.Monospace)
                         }
                         Spacer(Modifier.height(6.dp))
-                        Text("${target.projectName} — ${target.fileCount} file(s) and all conversation history will be permanently removed.",
+                        Text("${target.projectName} — the whole project, all its sessions and files will be permanently removed.",
                             fontSize = 10.5.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
                         Spacer(Modifier.height(10.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -1549,8 +1550,8 @@ private fun SessionPopup(
                                 Text("Cancel", color = colors.Text3, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                             }
                             Spacer(Modifier.width(6.dp))
-                            TextButton(onClick = { onDelete(target.id); pendingDelete = null }) {
-                                Text("Delete", color = Rd, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            TextButton(onClick = { onDeleteProject?.invoke(); pendingDelete = null }) {
+                                Text("Delete project", color = Rd, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                             }
                         }
                     }

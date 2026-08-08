@@ -1097,7 +1097,11 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
     // the template already ends with an assistant header that means "start
     // generating"; appending EOS here would make the model emit nothing.
     // parse_special=true tokenizes <|im_start|> etc. as single token IDs.
+    // Some GGUFs advertise a 1M+ context in metadata — clamp the tokenize
+    // buffer so we never allocate a giant vector for a long chat.
     int n_max = (int)llama_model_n_ctx_train(g_model);
+    if (n_max <= 0) n_max = 2048;
+    if (n_max > 262144) n_max = 262144;
     std::vector<llama_token> tokens(n_max + 64);
     int n_toks = llama_tokenize(llama_model_get_vocab(g_model), prompt.c_str(), prompt.size(),
                                 tokens.data(), (int)tokens.size(), false, true);
@@ -1181,6 +1185,8 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
     LOGI("Image-prompt len=%zu image=%s", prompt.size(), image_copy.c_str());
 
     int n_max = (int)llama_model_n_ctx_train(g_model);
+    if (n_max <= 0) n_max = 2048;
+    if (n_max > 262144) n_max = 262144;
     std::vector<llama_token> tokens(n_max + 64);
     int n_toks = llama_tokenize(llama_model_get_vocab(g_model), prompt.c_str(), prompt.size(),
                                 tokens.data(), (int)tokens.size(), false, true);

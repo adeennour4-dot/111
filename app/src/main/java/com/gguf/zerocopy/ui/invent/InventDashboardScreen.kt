@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -292,14 +293,49 @@ fun InventDashboardScreen(
                                 val project = projects.getOrNull(idx)
                                 Box(Modifier.weight(1f).fillMaxHeight()) {
                                     if (project != null) {
-                                        ProjectSquare(
-                                            project = project,
-                                            knownPaths = knownPaths,
-                                            fileRefresh = fileRefresh,
-                                            onPanel = { squarePanelFor = project.id },
-                                            onMaximize = { maximized = project.id },
-                                            onMenu = { projectMenuFor = project.id }
-                                        )
+                                        if (squarePanelFor == project.id) {
+                                            // The minimized square (panel) lives INSIDE the square.
+                                            SquarePanel(
+                                                project = project,
+                                                knownPaths = knownPaths,
+                                                models = models,
+                                                fileRefresh = fileRefresh,
+                                                onMaximize = { squarePanelFor = null; maximized = project.id },
+                                                onClose = { squarePanelFor = null },
+                                                onPickModel = { role -> modelPickerFor = project.id to role },
+                                                onModelInfo = { role, model -> modelInfoFor = Triple(project.id, role, model) },
+                                                onAddRole = { addRoleFor = project.id },
+                                                onRoleMenu = { role -> roleMenuFor = Triple(project.id, role, true) },
+                                                onStartSession = { onStartSession(project) },
+                                                onOpenSession = { sid -> onOpenSession(project, sid) },
+                                                onSessionMenu = { sid -> sessionMenuFor = project.id to sid },
+                                                onToggleThinking = { role ->
+                                                    val p = projects.find { it.id == project.id }
+                                                    if (p != null) {
+                                                        onSaveProject(p.withRoles(p.roles.map {
+                                                            if (it.role == role.role) it.copy(thinkingEnabled = !it.thinkingEnabled) else it
+                                                        }))
+                                                    }
+                                                },
+                                                onToggleBackground = { role ->
+                                                    val p = projects.find { it.id == project.id }
+                                                    if (p != null) {
+                                                        onSaveProject(p.withRoles(p.roles.map {
+                                                            if (it.role == role.role) it.copy(backgroundWork = !it.backgroundWork) else it
+                                                        }))
+                                                    }
+                                                }
+                                            )
+                                        } else {
+                                            ProjectSquare(
+                                                project = project,
+                                                knownPaths = knownPaths,
+                                                fileRefresh = fileRefresh,
+                                                onPanel = { squarePanelFor = project.id },
+                                                onMaximize = { maximized = project.id },
+                                                onMenu = { projectMenuFor = project.id }
+                                            )
+                                        }
                                     } else {
                                         // Empty slot → new project
                                         Surface(
@@ -357,51 +393,14 @@ fun InventDashboardScreen(
                 }
             }
 
-            // ── In-square panel: models + sessions + roles ──
-            val panelProject = projects.find { it.id == squarePanelFor }
-            if (panelProject != null && maximized == null) {
-                Box(Modifier.fillMaxSize().background(Color(0x990B0D12)), contentAlignment = Alignment.Center) {
-                    SquarePanel(
-                        project = panelProject,
-                        knownPaths = knownPaths,
-                        models = models,
-                        fileRefresh = fileRefresh,
-                        onMaximize = { squarePanelFor = null; maximized = panelProject.id },
-                        onClose = { squarePanelFor = null },
-                        onPickModel = { role -> modelPickerFor = panelProject.id to role },
-                        onModelInfo = { role, model -> modelInfoFor = Triple(panelProject.id, role, model) },
-                        onAddRole = { addRoleFor = panelProject.id },
-                        onRoleMenu = { role -> roleMenuFor = Triple(panelProject.id, role, true) },
-                        onStartSession = { onStartSession(panelProject) },
-                        onOpenSession = { sid -> onOpenSession(panelProject, sid) },
-                        onToggleThinking = { role ->
-                            val p = projects.find { it.id == panelProject.id }
-                            if (p != null) {
-                                onSaveProject(p.withRoles(p.roles.map {
-                                    if (it.role == role.role) it.copy(thinkingEnabled = !it.thinkingEnabled) else it
-                                }))
-                            }
-                        },
-                        onToggleBackground = { role ->
-                            val p = projects.find { it.id == panelProject.id }
-                            if (p != null) {
-                                onSaveProject(p.withRoles(p.roles.map {
-                                    if (it.role == role.role) it.copy(backgroundWork = !it.backgroundWork) else it
-                                }))
-                            }
-                        }
-                    )
-                }
-            }
-
-            // ── Delete-project confirm (window title bar 🗑) ──
+            // ── Delete-project confirm (window title bar 🗑 / session delete) ──
             deleteProjectFor?.let { pid ->
                 val p = projects.find { it.id == pid }
                 AlertDialog(
                     onDismissRequest = { deleteProjectFor = null },
                     containerColor = Card,
                     title = { Text("Delete project?", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace) },
-                    text = { Text("'${p?.name ?: ""}' and its files will be removed. Sessions stay on disk. This cannot be undone.", fontSize = 11.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace) },
+                    text = { Text("'${p?.name ?: ""}' and all its sessions + files will be permanently removed. This cannot be undone.", fontSize = 11.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace) },
                     confirmButton = {
                         TextButton(onClick = {
                             onDeleteProject(pid)
@@ -529,12 +528,9 @@ fun InventDashboardScreen(
                 sessionMenuFor = null
             },
             onDelete = {
-                val p = projects.find { it.id == pid }
-                if (p != null) {
-                    InventStorage.deleteSession(context, sid)
-                    onSaveProject(p.withSessionIds(p.sessionIds.filter { it != sid }))
-                    sessionMenuFor = null
-                }
+                // The captain's rule: "delete session" = delete the PROJECT.
+                deleteProjectFor = pid
+                sessionMenuFor = null
             },
             onReset = {
                 // Reset session: wipe messages/zcp content, keep files.
@@ -801,7 +797,7 @@ private fun ProjectSquare(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Surface(
-                onClick = onMaximize,
+                onClick = onPanel,
                 shape = CircleShape,
                 color = Bulb.copy(alpha = 0.14f),
                 border = BorderStroke(1.5.dp, Bulb.copy(alpha = 0.6f)),
@@ -824,7 +820,7 @@ private fun ProjectSquare(
                 }
             }
             Spacer(Modifier.height(4.dp))
-            Text("tap: panel · ⤢: window", fontSize = 5.5.sp, color = Color(0xFF3A4152), fontFamily = FontFamily.Monospace)
+            Text("tap or + : panel · ⤢: window", fontSize = 5.5.sp, color = Color(0xFF3A4152), fontFamily = FontFamily.Monospace)
         }
     }
 }
@@ -1203,6 +1199,11 @@ private fun ModelPickerDialog(
     var background by remember { mutableStateOf(role.backgroundWork) }
     var selectedPath by remember { mutableStateOf(role.modelPath) }
     var selectedName by remember { mutableStateOf(role.modelName) }
+    var search by remember { mutableStateOf("") }
+    val filteredModels = remember(models, search) {
+        if (search.isBlank()) models
+        else models.filter { it.name.contains(search, ignoreCase = true) || it.format.contains(search, ignoreCase = true) }
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -1222,7 +1223,28 @@ private fun ModelPickerDialog(
                 item {
                     Text("Model", fontSize = 10.sp, color = Gy, fontFamily = FontFamily.Monospace)
                 }
-                itemsIndexed(models) { _, m ->
+                item {
+                    OutlinedTextField(
+                        value = search,
+                        onValueChange = { search = it },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp),
+                        singleLine = true,
+                        placeholder = { Text("🔍  search ${models.size} models…", fontSize = 11.sp, color = Gy, fontFamily = FontFamily.Monospace) },
+                        textStyle = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = Color(0xFFE4E9F5)),
+                        shape = RoundedCornerShape(9.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = roleColor(role.role),
+                            unfocusedBorderColor = Line,
+                            cursorColor = roleColor(role.role)
+                        )
+                    )
+                }
+                if (filteredModels.isEmpty()) {
+                    item {
+                        Text("no models match '${search.trim()}'", fontSize = 10.sp, color = Gy, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(4.dp))
+                    }
+                }
+                itemsIndexed(filteredModels) { _, m ->
                     val isSel = m.path == selectedPath
                     Surface(
                         onClick = { selectedPath = m.path; selectedName = m.name },
@@ -1489,7 +1511,7 @@ private fun SessionActionsDialog(
             Row {
                 TextButton(onClick = { onExport(); onDismiss() }) { Text("Export transcript", color = Am, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
                 TextButton(onClick = { onReset(); onDismiss() }) { Text("Reset", color = Am, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
-                TextButton(onClick = { onDelete(); onDismiss() }) { Text("Delete", color = Rd, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
+                TextButton(onClick = { onDelete(); onDismiss() }) { Text("Delete project", color = Rd, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
                 TextButton(onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
             }
         }
@@ -1707,6 +1729,7 @@ private fun SquarePanel(
     onRoleMenu: (InventRoleConfig) -> Unit,
     onStartSession: () -> Unit,
     onOpenSession: (String) -> Unit,
+    onSessionMenu: (String) -> Unit,
     onToggleThinking: (InventRoleConfig) -> Unit,
     onToggleBackground: (InventRoleConfig) -> Unit
 ) {
@@ -1715,14 +1738,14 @@ private fun SquarePanel(
         shape = RoundedCornerShape(16.dp),
         color = Card,
         border = BorderStroke(1.dp, Line),
-        modifier = Modifier.fillMaxWidth(0.94f).fillMaxHeight(0.88f)
+        modifier = Modifier.fillMaxSize()
     ) {
-        Column(Modifier.fillMaxSize().padding(12.dp)) {
+        Column(Modifier.fillMaxSize().padding(10.dp)) {
             // ── Panel title bar ──
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(project.name.uppercase(), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("RAM ${freeRamMb(context)} MB free", fontSize = 8.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                    Text(project.name.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("RAM ${freeRamMb(context)} MB free", fontSize = 7.sp, color = Gy, fontFamily = FontFamily.Monospace)
                 }
                 Surface(onClick = onMaximize, shape = CircleShape, color = Cy.copy(alpha = 0.12f), border = BorderStroke(1.dp, Cy.copy(alpha = 0.5f)), modifier = Modifier.size(22.dp)) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.OpenInFull, null, tint = Cy, modifier = Modifier.size(12.dp)) }
@@ -1817,15 +1840,17 @@ private fun SquarePanel(
                             val s = remember(sid, fileRefresh) { runCatching { InventStorage.loadSession(context, sid) }.getOrNull() }
                             val title = s?.model1Name?.takeIf { it.isNotBlank() } ?: "Session ${i + 1}"
                             Surface(
-                                onClick = { onOpenSession(sid) },
                                 shape = RoundedCornerShape(7.dp),
                                 color = CardLight,
                                 border = BorderStroke(1.dp, Pr.copy(alpha = 0.35f)),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().combinedClickable(
+                                    onClick = { onOpenSession(sid) },
+                                    onLongClick = { onSessionMenu(sid) }
+                                )
                             ) {
                                 Column(Modifier.padding(horizontal = 8.dp, vertical = 7.dp)) {
                                     Text("S#${i + 1} — $title", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text("phase: ${s?.phase?.name ?: "?"}", fontSize = 7.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                                    Text("phase: ${s?.phase?.name ?: "?"} · hold: menu", fontSize = 7.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
                                 }
                             }
                         }
@@ -1881,58 +1906,62 @@ private fun ModelInfoDialog(
     val totalMb = modelMb + kvMb + activMb + 280.0 // weights + KV + activations + app floor
     val fits = totalMb < freeRamMb.toDouble()
 
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = Card,
-        border = BorderStroke(1.dp, if (fits) Cy.copy(alpha = 0.5f) else Rd.copy(alpha = 0.5f)),
-        modifier = Modifier.fillMaxWidth(0.9f)
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Text("MODEL INFO", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace)
-            Spacer(Modifier.height(10.dp))
-            InfoRow("model", model.name)
-            InfoRow("size", model.sizeFormatted)
-            InfoRow("format", model.format)
-            InfoRow("role", role.role)
-            InfoRow("context", "${role.contextWindow} tokens")
-            InfoRow("max tokens", "${role.maxTokens}")
-            Spacer(Modifier.height(10.dp))
-            HorizontalDivider(color = Line, thickness = 0.5.dp)
-            Spacer(Modifier.height(8.dp))
-            Text("CONVERSATION RAM (estimate)", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.Monospace)
-            Spacer(Modifier.height(6.dp))
-            InfoRow("weights", "%.0f MB".format(modelMb))
-            InfoRow("kv cache (${role.contextWindow} ctx)", "%.0f MB".format(kvMb))
-            InfoRow("activations", "%.0f MB".format(activMb))
-            InfoRow("app overhead", "280 MB")
-            Spacer(Modifier.height(6.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("≈ total %.0f MB".format(totalMb), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (fits) Cy else Rd, fontFamily = FontFamily.Monospace)
-                Spacer(Modifier.weight(1f))
-                Text("free: $freeRamMb MB", fontSize = 9.sp, color = if (fits) Gy else Rd, fontFamily = FontFamily.Monospace)
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Surface(
-                    onClick = onChangeModel,
-                    shape = RoundedCornerShape(9.dp),
-                    color = Pr.copy(alpha = 0.15f),
-                    border = BorderStroke(1.dp, Pr.copy(alpha = 0.6f)),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-                        Text("Change model", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
-                    }
+    // Small, centered window (the captain: model settings + RAM calc should
+    // be compact and in the middle of the screen).
+    Dialog(onDismissRequest = onClose) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = Card,
+            border = BorderStroke(1.dp, if (fits) Cy.copy(alpha = 0.5f) else Rd.copy(alpha = 0.5f)),
+            modifier = Modifier.widthIn(max = 320.dp).fillMaxWidth(0.85f)
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Text("MODEL INFO", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.height(8.dp))
+                InfoRow("model", model.name)
+                InfoRow("size", model.sizeFormatted)
+                InfoRow("format", model.format)
+                InfoRow("role", role.role)
+                InfoRow("context", "${role.contextWindow} tokens")
+                InfoRow("max tokens", "${role.maxTokens}")
+                Spacer(Modifier.height(8.dp))
+                HorizontalDivider(color = Line, thickness = 0.5.dp)
+                Spacer(Modifier.height(6.dp))
+                Text("CONVERSATION RAM (estimate)", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.height(5.dp))
+                InfoRow("weights", "%.0f MB".format(modelMb))
+                InfoRow("kv cache (${role.contextWindow} ctx)", "%.0f MB".format(kvMb))
+                InfoRow("activations", "%.0f MB".format(activMb))
+                InfoRow("app overhead", "280 MB")
+                Spacer(Modifier.height(5.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("≈ total %.0f MB".format(totalMb), fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = if (fits) Cy else Rd, fontFamily = FontFamily.Monospace)
+                    Spacer(Modifier.weight(1f))
+                    Text("free: $freeRamMb MB", fontSize = 8.5.sp, color = if (fits) Gy else Rd, fontFamily = FontFamily.Monospace)
                 }
-                Surface(
-                    onClick = onClose,
-                    shape = RoundedCornerShape(9.dp),
-                    color = Cy.copy(alpha = 0.15f),
-                    border = BorderStroke(1.dp, Cy.copy(alpha = 0.6f)),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-                        Text("Close", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Surface(
+                        onClick = onChangeModel,
+                        shape = RoundedCornerShape(9.dp),
+                        color = Pr.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, Pr.copy(alpha = 0.6f)),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(Modifier.fillMaxWidth().padding(vertical = 7.dp), contentAlignment = Alignment.Center) {
+                            Text("Change model", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                    Surface(
+                        onClick = onClose,
+                        shape = RoundedCornerShape(9.dp),
+                        color = Cy.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, Cy.copy(alpha = 0.6f)),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(Modifier.fillMaxWidth().padding(vertical = 7.dp), contentAlignment = Alignment.Center) {
+                            Text("Close", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.Monospace)
+                        }
                     }
                 }
             }

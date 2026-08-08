@@ -353,6 +353,18 @@ fun AppRoot() {
                     }
                     // Remember the live session so a process-death restore reopens it.
                     if (newSid.isNotEmpty()) inventSessionId = newSid
+                  },
+                  onDeleteProject = {
+                    // "Delete session" = delete the whole project (captain's rule).
+                    val proj = inventProjects.find { it.id == inventProjectId }
+                    proj?.sessionIds?.forEach { sid ->
+                      runCatching { com.gguf.zerocopy.data.invent.InventStorage.deleteSession(inventContext, sid) }
+                    }
+                    InventProjectStore.deleteProject(inventContext, inventProjectId)
+                    inventProjects = InventProjectStore.listProjects(inventContext)
+                    inventSessionId = ""
+                    inventScreen = "dashboard"
+                    inventProjectRefresh++
                   }
               )
             } else {
@@ -379,6 +391,11 @@ fun AppRoot() {
                   inventProjects = InventProjectStore.listProjects(inventContext)
                 },
                 onDeleteProject = { id ->
+                  // Wipe the project AND its session dirs ("delete session" = delete project).
+                  val proj = inventProjects.find { it.id == id }
+                  proj?.sessionIds?.forEach { sid ->
+                    runCatching { com.gguf.zerocopy.data.invent.InventStorage.deleteSession(inventContext, sid) }
+                  }
                   InventProjectStore.deleteProject(inventContext, id)
                   inventProjects = InventProjectStore.listProjects(inventContext)
                 },

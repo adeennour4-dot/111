@@ -516,24 +516,30 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── Phase 1: Questioning ───────────────────────────────────────────────
 
+    /**
+     * Phase 1 setup: load the planner model and hand the floor to the USER.
+     * The captain is the STARTER of the session — there is no auto-generated
+     * first question anymore. The chat opens empty with the input bar ready;
+     * the first user message triggers handleQuestioningReply(), which reloads
+     * the model if it failed to load here.
+     */
     private suspend fun startModel1Questioning() {
         val state = sessionState ?: return
-        setSwap("Loading ${state.model1Name}…")
-        if (!loadOrKeepModel(state.model1Path)) {
-            setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name}", chatStarted = true); return
-        }
-        _ui.value = _ui.value.copy(plannerLoaded = true)
-        setSwap("")
-        // runInference resets context internally before inference
-        val opening = runInference(
-            systemPrompt = buildQuestioningPrompt(),
-            userMessage = "Hi! I want to build a software project. Please help me plan it by asking about my requirements — one question at a time.",
-            onStream = { partial ->
-                _ui.value = _ui.value.copy(streamingResponse = partial)
+        try {
+            setSwap("Loading ${state.model1Name}…")
+            if (!loadOrKeepModel(state.model1Path)) {
+                _ui.value = _ui.value.copy(
+                    error = "Could not load ${state.model1Name} — pick another model in Settings",
+                    chatStarted = true
+                )
+            } else {
+                _ui.value = _ui.value.copy(plannerLoaded = true, chatStarted = true)
             }
-        )
-        _ui.value = _ui.value.copy(streamingResponse = "")
-        addMessage("model1", opening, InventPhase.QUESTIONING)
+            setSwap("")
+        } catch (e: Exception) {
+            setSwap("")
+            _ui.value = _ui.value.copy(error = "Session start failed: ${e.message}", chatStarted = true)
+        }
     }
 
     fun setChatRole(role: String) {
@@ -650,35 +656,36 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun handleQuestioningReply(userText: String) {
-        // Make sure the engine is still loaded and ready
-        val state = sessionState ?: return
-        val active = engineManager.getActiveEngine()
-        if (active == null || !active.isModelLoaded) {
-            addMessage("model1", "Reloading planner…", InventPhase.QUESTIONING)
-            if (!loadOrKeepModel(state.model1Path)) {
-                addMessage("model1", "Failed to reload planner model after unload.", InventPhase.QUESTIONING)
-                _ui.value = _ui.value.copy(error = "Model load failed — check Settings or pick another model")
-                return
+        try {
+            // Make sure the engine is still loaded and ready
+            val state = sessionState ?: return
+            val active = engineManager.getActiveEngine()
+            if (active == null || !active.isModelLoaded) {
+                addMessage("model1", "Reloading planner…", InventPhase.QUESTIONING)
+                if (!loadOrKeepModel(state.model1Path)) {
+                    addMessage("model1", "Failed to reload planner model after unload.", InventPhase.QUESTIONING)
+                    _ui.value = _ui.value.copy(error = "Model load failed — check Settings or pick another model")
+                    return
+                }
             }
-        }
 
-        // Update questioning progress based on conversation depth
-        // The more the user tells us, the closer we get to 100%
-        val currentMsgs = _ui.value.messages.count { it.role == "user" || it.role == "model1" }
-        // Progress: 0 at 0 turns, ~85% at 12 turns, 100% when user hits Done
-        val newProgress = (1f - kotlin.math.exp(-currentMsgs.toFloat() / 5f)).coerceIn(0f, 0.95f)
-        _ui.value = _ui.value.copy(questioningProgress = newProgress)
-        // Full prompt with entire conversation — no cache dependency
-        val response = runInference(
-            systemPrompt = buildQuestioningPrompt(),
-            userMessage = userText,
-            history = buildConversationHistory(excludeLast = 1),
-            onStream = { partial ->
-                _ui.value = _ui.value.copy(streamingResponse = partial)
-            }
-        )
-        _ui.value = _ui.value.copy(streamingResponse = "")
-        val trimmed = response.trim()
+            // Update questioning progress based on conversation depth
+            // The more the user tells us, the closer we get to 100%
+            val currentMsgs = _ui.value.messages.count { it.role == "user" || it.role == "model1" }
+            // Progress: 0 at 0 turns, ~85% at 12 turns, 100% when user hits Done
+            val newProgress = (1f - kotlin.math.exp(-currentMsgs.toFloat() / 5f)).coerceIn(0f, 0.95f)
+            _ui.value = _ui.value.copy(questioningProgress = newProgress)
+            // Full prompt with entire conversation — no cache dependency
+            val response = runInference(
+                systemPrompt = buildQuestioningPrompt(),
+                userMessage = userText,
+                history = buildConversationHistory(excludeLast = 1),
+                onStream = { partial ->
+                    _ui.value = _ui.value.copy(streamingResponse = partial)
+                }
+            )
+            _ui.value = _ui.value.copy(streamingResponse = "")
+            val trimmed = response.trim()
         if (trimmed.isNotEmpty()) {
             // Extract thinking content and strip <think> tags
             val thinkMatch = Regex("<think>([\\s\\S]*?)<\\/think>").find(trimmed)
@@ -699,6 +706,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             }
         } else {
             addMessage("model1", "I see! What else can you tell me about this project?", InventPhase.QUESTIONING)
+        }
+        } catch (e: Exception) {
+            _ui.value = _ui.value.copy(streamingResponse = "", error = "Planner error: ${e.message}")
+            addMessage("model1", "Something went wrong — try again (${e.message})", InventPhase.QUESTIONING)
         }
     }
 
@@ -1719,11 +1730,14 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         val inventCfg = SettingsManager.getInventModelConfig(role) ?: return
         val engine = engineManager.getActiveEngine() ?: return
         engine.config = InferenceConfig(
-            nCtx = inventCfg.ctx, maxNewTokens = inventCfg.maxNew,
+            nCtx = inventCfg.ctx.coerceAtMost(8192), maxNewTokens = inventCfg.maxNew,
             nGpuLayers = inventCfg.gpuLayers, temperature = inventCfg.temperature ?: 0.7f,
             topP = inventCfg.topP ?: 0.9f, minP = inventCfg.minP ?: 0f,
             topK = inventCfg.topK ?: 40, seed = inventCfg.seed ?: -1,
-            flashAttention = inventCfg.flashAttention ?: false, lowRamMode = inventCfg.lowRamMode ?: false,
+            // Flash attention stays OFF for Invent sessions unless explicitly
+            // enabled — it is the #1 native-crash vector on mixed devices.
+            flashAttention = inventCfg.flashAttention == true,
+            lowRamMode = inventCfg.lowRamMode ?: false,
             nThreads = inventCfg.threads ?: 4, nBatch = inventCfg.nBatch ?: 512
         )
         engine.repeatPenalty = RepeatPenaltyConfig(
@@ -1742,7 +1756,11 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 engineManager.unloadAll()
                 val engine = engineManager.selectEngineForFormat(path)
-                engine.config = SettingsManager.toConfig(path)
+                val cfg = SettingsManager.toConfig(path)
+                engine.config = cfg.copy(
+                    nCtx = cfg.nCtx.coerceAtMost(8192),
+                    flashAttention = false // Invent: FA stays off (native crash guard)
+                )
                 engine.repeatPenalty = SettingsManager.toRepeatPenalty()
                 engine.loadModel(path)?.isSuccess == true
             } catch (e: Exception) { false }
@@ -1765,11 +1783,11 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 engineManager.unloadAll()
                 val engine = engineManager.selectEngineForFormat(path)
                 engine.config = InferenceConfig(
-                    nCtx = inventCfg.ctx, maxNewTokens = inventCfg.maxNew,
+                    nCtx = inventCfg.ctx.coerceAtMost(8192), maxNewTokens = inventCfg.maxNew,
                     nGpuLayers = inventCfg.gpuLayers, temperature = inventCfg.temperature ?: 0.7f,
                     topP = inventCfg.topP ?: 0.9f, minP = inventCfg.minP ?: 0f,
                     topK = inventCfg.topK ?: 40, seed = inventCfg.seed ?: -1,
-                    flashAttention = inventCfg.flashAttention ?: false, lowRamMode = inventCfg.lowRamMode ?: false,
+                    flashAttention = false, lowRamMode = inventCfg.lowRamMode ?: false,
                     nThreads = inventCfg.threads ?: 4, nBatch = inventCfg.nBatch ?: 512
                 )
                 engine.repeatPenalty = RepeatPenaltyConfig(
@@ -1820,7 +1838,16 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         // Prepend think instruction when reasoning toggle is on
         val thinkPrefix = if (_ui.value.reasoningEnabled)
             "Use <think> tags for step-by-step reasoning before answering.\n\n" else ""
-        val (fullPrompt, compacted) = buildPromptWithInfo(systemPrompt, history, "$thinkPrefix$userMessage")
+        // Prompt construction is fallible (huge history, template edge cases) —
+        // never let it crash the session; degrade to the raw message instead.
+        val built: Pair<String, Int> = try {
+            buildPromptWithInfo(systemPrompt, history, "$thinkPrefix$userMessage")
+        } catch (e: Exception) {
+            _ui.value = _ui.value.copy(error = "Prompt build failed: ${e.message}")
+            ("$thinkPrefix$userMessage") to 0
+        }
+        val fullPrompt = built.first
+        val compacted = built.second
         checkCompactionAndNotify(history.size, compacted, _ui.value.phase)
         val engine = engineManager.getActiveEngine()
 
