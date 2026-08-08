@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.BuildConfig
 import com.gguf.zerocopy.data.repository.LocalModel
 import java.io.File
+import org.json.JSONObject
 
 private val DbgBg = Color(0xFF0B0D12)
 private val DbgCard = Color(0xFF14171F)
@@ -111,6 +112,29 @@ private fun buildDiagnostics(context: Context, models: List<LocalModel>): String
         File(context.applicationInfo.nativeLibraryDir).listFiles()?.map { it.name }?.sorted()
     }.getOrNull()
     sb.appendLine("native libs: ${libs?.joinToString(", ") ?: "none"}")
+    sb.appendLine()
+    try {
+        if (com.gguf.zerocopy.domain.inference.NativeBridge.nativeLibLoaded) {
+            val nd = JSONObject(com.gguf.zerocopy.domain.inference.NativeBridge.getNativeDiagnosticsNative())
+            sb.appendLine("llama bridge: ${nd.optString("bridge", "?")} (${nd.optString("arch_profile", "?")})")
+            val feats = nd.optString("cpu_features", "?").trim()
+            sb.appendLine("cpu: ${if (feats.isBlank()) "(no features line)" else feats}")
+            val cores = nd.optInt("cores", 0)
+            val big = if (nd.has("big_cores")) nd.optInt("big_cores", 0) else -1
+            sb.appendLine("cores: $cores" + if (big >= 0) " (big: $big)" else "")
+            sb.appendLine("device RAM: ${nd.optLong("ram_mb", 0)} MB")
+            if (nd.optBoolean("model_loaded", false)) {
+                sb.appendLine("model: ${nd.optString("model_path", "?")}")
+                sb.appendLine("  n_params=${nd.optLong("n_params", 0)} ctx=${nd.optInt("n_ctx", 0)} flash_attn=${nd.optBoolean("flash_attn", false)}")
+            } else {
+                sb.appendLine("model: not loaded")
+            }
+        } else {
+            sb.appendLine("llama bridge: not loaded")
+        }
+    } catch (_: Exception) {
+        sb.appendLine("llama bridge: (unavailable)")
+    }
     sb.appendLine()
     sb.appendLine("models on device: ${models.size}")
     models.take(12).forEach { m ->

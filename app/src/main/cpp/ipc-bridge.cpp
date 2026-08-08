@@ -1,11 +1,49 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// ZeroCopy IPC bridge — v9 rewrite
+//
+// Why this rewrite exists (the "GGUF problems"):
+//   1. UTF-8 correctness  — llama_token_to_piece() can split one multi-byte
+//      code point across two pieces. The old bridge forwarded each raw piece
+//      to NewStringUTF() independently, which produced mojibake for any
+//      non-ASCII output on every GGUF model. v9 assembles byte fragments and
+//      only ever forwards COMPLETE UTF-8 sequences to Java.
+//   2. JNI performance    — the old bridge did GetObjectClass() + GetMethodID()
+//      + Attach/DetachCurrentThread() on EVERY single token. v9 resolves the
+//      callback class + method IDs ONCE per inference and attaches the thread
+//      at most once.
+//   3. Config actually applies — temperature/top-p/min-p/top-k changes now
+//      rebuild the sampler immediately (previously only repeat-penalty did, so
+//      users saw "the model ignores my settings").
+//   4. Thread safety       — model/context/sampler/history are guarded by a
+//      mutex; unload during inference can no longer use-after-free, and
+//      concurrent execute calls are serialized instead of corrupting state.
+//   5. Context keeps the system prompt — when a long chat overflows n_ctx the
+//      old code kept only the LAST tokens (system prompt destroyed → model
+//      loses its instructions). v9 keeps the HEAD (system + template opening)
+//      plus the TAIL (recent turns + assistant header) and drops the middle.
+//   6. Stop-sequence scan is O(tail window) instead of O(entire response) per
+//      token.
+//   7. No more dead "warm-up": it pre-encoded the system prompt into the KV
+//      cache that the first inference immediately wiped anyway.
+//   8. The real n_ctx (after the OOM retry ladder) is tracked, so KV-usage %
+//      and prompt truncation use the ACTUAL context, not the requested one.
+//   9. New getNativeDiagnosticsNative() endpoint for the in-app Diagnostics
+//      screen.
+//
+// JNI surface is byte-for-byte identical to v8 except the ADDITIVE
+// getNativeDiagnosticsNative(), so the Kotlin side keeps working unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
+
 #include <jni.h>
 #include <sys/resource.h>
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string>
 #include <vector>
 #include <atomic>
+#include <mutex>
 #include <chrono>
 #include <sstream>
 #include <thread>
@@ -34,7 +72,7 @@
   #define ZC_HAS_CLIP
 #endif
 
-#define LOG_TAG "ZeroCopy_v8"
+#define LOG_TAG "ZeroCopy_v9"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN,  LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
@@ -45,6 +83,8 @@ extern "C" jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     g_jvm = vm;
     return JNI_VERSION_1_6;
 }
+
+// ── Configuration ───────────────────────────────────────────────────────────
 
 struct EngineConfig {
     int      n_ctx          = 4096;
@@ -65,43 +105,52 @@ struct EngineConfig {
     std::string system_prompt =
         "You are a helpful, concise assistant running on-device. "
         "Respond clearly and directly.";
-    std::string mmproj_path = "";
+    std::string mmproj_path   = "";
     std::string chat_template = "auto";
 };
 
-static llama_model*   g_model       = nullptr;
-static llama_context* g_ctx         = nullptr;
-static llama_sampler* g_sampler     = nullptr;
-static EngineConfig   g_cfg;
-static std::atomic<bool> g_abort    { false };
-static bool           g_backend_initialized = false;
-static jobject        g_callback    = nullptr;
+struct Message { std::string role; std::string content; };
 
-// Multimodal (vision) support
+// ── Engine state — every access is serialized by g_mtx ──────────────────────
+static std::mutex           g_mtx;
+static EngineConfig         g_cfg;
+static llama_model*         g_model   = nullptr;
+static llama_context*       g_ctx     = nullptr;
+static llama_sampler*       g_sampler = nullptr;
+static std::vector<Message> g_history;
+static std::string          g_model_path = "";
+static int                  g_ctx_actual = 0;   // real n_ctx after retry ladder
+static bool                 g_flash_attn_effective = false;
+static bool                 g_backend_initialized = false;
+
 #ifdef ZC_HAS_CLIP
 static struct clip_ctx* g_clip = nullptr;
-#else
-static void* g_clip = nullptr;
 #endif
-static std::string g_current_image_path = "";
 
-struct Message { std::string role; std::string content; };
-static std::vector<Message> g_history;
+// Abort is intentionally lock-free so the UI can always stop a run instantly,
+// even while the engine mutex is held by a long generation.
+static std::atomic<bool> g_abort{false};
 
-// Cached big-core list — read once, reuse across model reloads
+// Big-core list — read once, immutable afterwards (no lock required).
 static std::vector<int> g_big_cores;
 static bool g_big_cores_cached = false;
+
+// ── CPU topology / features ─────────────────────────────────────────────────
 
 static std::vector<int> detect_big_cores() {
     std::vector<int> big_cores;
     std::vector<std::pair<int, int>> core_freqs;
-    int ncpu = sysconf(_SC_NPROCESSORS_ONLN);
+    int ncpu = (int)sysconf(_SC_NPROCESSORS_ONLN);
     if (ncpu <= 0) ncpu = 8;
     for (int cpu = 0; cpu < ncpu; cpu++) {
         char path[128];
         snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%d/cpufreq/cpuinfo_max_freq", cpu);
         FILE* f = fopen(path, "r");
-        if (f) { int freq = 0; if (fscanf(f, "%d", &freq) == 1) core_freqs.push_back({cpu, freq}); fclose(f); }
+        if (f) {
+            int freq = 0;
+            if (fscanf(f, "%d", &freq) == 1) core_freqs.push_back({cpu, freq});
+            fclose(f);
+        }
     }
     if (core_freqs.empty()) return big_cores;
     int max_freq = 0;
@@ -119,7 +168,7 @@ static void pin_to_big_cores() {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     for (int core : g_big_cores) CPU_SET(core, &cpuset);
-    pid_t tid = syscall(SYS_gettid);
+    pid_t tid = (pid_t)syscall(SYS_gettid);
     if (sched_setaffinity(tid, sizeof(cpuset), &cpuset) == 0)
         LOGI("Pinned to %zu big cores", g_big_cores.size());
 #endif
@@ -129,38 +178,84 @@ static void pin_to_all_cores() {
 #ifdef __aarch64__
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    int ncpu = sysconf(_SC_NPROCESSORS_ONLN);
+    int ncpu = (int)sysconf(_SC_NPROCESSORS_ONLN);
     if (ncpu <= 0) ncpu = 8;
     for (int cpu = 0; cpu < ncpu; cpu++) CPU_SET(cpu, &cpuset);
-    pid_t tid = syscall(SYS_gettid);
+    pid_t tid = (pid_t)syscall(SYS_gettid);
     sched_setaffinity(tid, sizeof(cpuset), &cpuset);
 #endif
 }
 
 static void boost_priority() {
-    // Raise priority of THIS thread only (tid 0 = calling thread).
-    // Using PRIO_PROCESS with tid=0 targets only the current thread on Linux/Android,
-    // which avoids starving the Compose UI compositor when in foreground.
+    // Raise the priority of THIS thread only (tid 0 = calling thread),
+    // so the Compose UI compositor is never starved while we generate.
     if (setpriority(PRIO_PROCESS, 0, -8) == 0)
         LOGI("Inference thread priority set to -8");
 }
 
 // NOTE: mlockall(MCL_FUTURE) was removed — it caused persistent crash-on-launch
-// on Exynos 9825 (Note 10 Lite). MCL_FUTURE locks ALL future mmap() calls into
-// physical RAM, including JVM class loading on the next app launch. On 8GB devices
-// with a large model loaded, this exhausted RLIMIT_MEMLOCK and caused mmap() to
-// return ENOMEM inside the Android runtime on cold start, making the app
-// unlaunchable until the user cleared data. llama.cpp's own mmap for model weights
-// is sufficient — no additional page locking needed.
+// on Exynos 9825 (Note 10 Lite): it locks ALL future mmap() calls into physical
+// RAM, including JVM class loading on the next app launch, exhausting
+// RLIMIT_MEMLOCK and making the app unlaunchable until data was cleared.
+// llama.cpp's own model mmap is sufficient — no extra page locking needed.
 
 static void apply_perf_optimizations() {
     boost_priority();
     pin_to_big_cores();
 }
 
-static inline llama_memory_t get_mem() { return llama_get_memory(g_ctx); }
+// Word-boundary search in the /proc/cpuinfo Features line (so "sve" doesn't
+// match "sve2" and "asimddp" doesn't match "asimd").
+static std::string cpu_features_line() {
+    std::string feats;
+#ifdef __aarch64__
+    std::ifstream f("/proc/cpuinfo");
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line.find("Features") != std::string::npos) {
+            size_t c = line.find(':');
+            if (c != std::string::npos) feats = line.substr(c + 1);
+            break;
+        }
+    }
+#endif
+    return feats;
+}
 
+static bool cpu_has_feature(const std::string& feats, const char* name) {
+    size_t len = strlen(name);
+    size_t pos = 0;
+    while ((pos = feats.find(name, pos)) != std::string::npos) {
+        bool left_ok  = (pos == 0 || feats[pos - 1] == ' ');
+        bool right_ok = (pos + len >= feats.size() || feats[pos + len] == ' ');
+        if (left_ok && right_ok) return true;
+        pos += len;
+    }
+    return false;
+}
+
+// May we enable flash attention? Requires i8mm (ARMv8.4-a+) or SVE.
+// Exynos 9825/9820 (ARMv8.2-a) have neither — enabling FA there crashes
+// llama_init_from_model() via i8mm kernel intrinsics. Emulators/containers
+// without a Features line are conservatively treated as "no".
+static bool detect_i8mm() {
+#ifdef __aarch64__
+    std::string feats = cpu_features_line();
+    if (feats.empty()) return false;
+    return cpu_has_feature(feats, "i8mm")
+        || cpu_has_feature(feats, "sve")
+        || cpu_has_feature(feats, "sve2");
+#else
+    return true; // x86_64 — FA codegen is AVX-safe
+#endif
+}
+
+// ── Sampler ─────────────────────────────────────────────────────────────────
+
+// Caller must hold g_mtx. Rebuilds the sampler chain from the CURRENT config,
+// so temperature/top-p/min-p/top-k/seed changes take effect immediately.
 static void rebuild_sampler() {
+    if (!g_ctx) return;
     if (g_sampler) { llama_sampler_free(g_sampler); g_sampler = nullptr; }
     g_sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
     // Correct order: penalties -> temperature -> top-p -> min-p -> distribution
@@ -172,46 +267,69 @@ static void rebuild_sampler() {
         llama_sampler_chain_add(g_sampler, llama_sampler_init_top_k(g_cfg.top_k));
     }
     llama_sampler_chain_add(g_sampler, llama_sampler_init_dist(g_cfg.seed));
+    LOGI("Sampler rebuilt: temp=%.2f top_p=%.2f min_p=%.2f top_k=%d seed=%u",
+         g_cfg.temperature, g_cfg.top_p, g_cfg.min_p, g_cfg.top_k, g_cfg.seed);
+}
+
+// ── Chat template ───────────────────────────────────────────────────────────
+
+// Applies a chat template with a grow-until-fits buffer (no fixed 64KB cap).
+// Returns "" if the template rejected this message set.
+static std::string apply_chat_template(const char* tmpl, const std::vector<llama_chat_message>& msgs) {
+    size_t cap = 65536;
+    for (int attempt = 0; attempt < 4; attempt++) {
+        std::vector<char> buf(cap);
+        int n = llama_chat_apply_template(tmpl, msgs.data(), (int)msgs.size(), true, buf.data(), (int)buf.size());
+        if (n < 0) return "";
+        if (n < (int)buf.size()) return std::string(buf.data(), n);
+        cap = (size_t)n + 1; // buffer too small — grow and retry
+    }
+    return "";
 }
 
 static std::string build_chat_prompt() {
     std::vector<llama_chat_message> msgs;
-    if (g_cfg.system_prompt[0] != '\0') {
-        msgs.push_back({"system", g_cfg.system_prompt.c_str()});
-    }
+    if (!g_cfg.system_prompt.empty()) msgs.push_back({"system", g_cfg.system_prompt.c_str()});
     for (auto& m : g_history) msgs.push_back({m.role.c_str(), m.content.c_str()});
-    // Use user-selected template when set (not "auto"), otherwise fall
+
+    // Use the user-selected template when set (not "auto"), otherwise fall
     // back to the model's built-in chat template from GGUF metadata.
-    const char * tmpl = nullptr;
+    const char* tmpl = nullptr;
     if (g_cfg.chat_template != "auto") {
         tmpl = g_cfg.chat_template.c_str();
     } else {
         tmpl = g_model ? llama_model_chat_template(g_model, nullptr) : nullptr;
     }
     if (!tmpl) tmpl = "chatml";
-    std::vector<char> buf(65536);
-    int n = llama_chat_apply_template(tmpl, msgs.data(), (int)msgs.size(), true, buf.data(), (int)buf.size());
-    // Gemma 3 (and some other models) reject system messages — retry without.
-    if (n < 0 && strcmp(tmpl, "chatml") != 0) {
+
+    std::string out = apply_chat_template(tmpl, msgs);
+    if (out.empty() && strcmp(tmpl, "chatml") != 0) {
+        // Gemma 3 (and some other models) reject system messages — retry without.
         LOGW("Template with system prompt failed, retrying without system");
-        std::vector<llama_chat_message> msgs_no_sys;
-        for (auto& m : g_history) msgs_no_sys.push_back({m.role.c_str(), m.content.c_str()});
-        n = llama_chat_apply_template(tmpl, msgs_no_sys.data(), (int)msgs_no_sys.size(), true, buf.data(), (int)buf.size());
-        if (n >= 0) { msgs = std::move(msgs_no_sys); }
+        std::vector<llama_chat_message> no_sys;
+        for (auto& m : g_history) no_sys.push_back({m.role.c_str(), m.content.c_str()});
+        out = apply_chat_template(tmpl, no_sys);
+        if (!out.empty()) { msgs = std::move(no_sys); }
     }
-    // If template still fails, fall back to chatml
-    if (n < 0 && strcmp(tmpl, "chatml") != 0) {
+    if (out.empty() && strcmp(tmpl, "chatml") != 0) {
         LOGW("Chat template detection failed, falling back to chatml");
-        tmpl = "chatml";
-        std::vector<llama_chat_message> chatml_msgs;
-        for (auto& m : g_history) chatml_msgs.push_back({m.role.c_str(), m.content.c_str()});
-        n = llama_chat_apply_template(tmpl, chatml_msgs.data(), (int)chatml_msgs.size(), true, buf.data(), (int)buf.size());
-        if (n >= 0) { msgs = std::move(chatml_msgs); }
+        std::vector<llama_chat_message> no_sys;
+        for (auto& m : g_history) no_sys.push_back({m.role.c_str(), m.content.c_str()});
+        out = apply_chat_template("chatml", no_sys);
+        if (!out.empty()) { msgs = std::move(no_sys); }
     }
-    if (n > (int)buf.size()) { buf.resize(n + 1); n = llama_chat_apply_template(tmpl, msgs.data(), (int)msgs.size(), true, buf.data(), (int)buf.size()); }
-    if (n < 0) n = 0;
-    return std::string(buf.data(), n > 0 ? n : 0);
+    if (out.empty()) {
+        // Last resort: hand-rolled ChatML.
+        std::ostringstream s;
+        if (!g_cfg.system_prompt.empty()) s << "<|im_start|>system\n" << g_cfg.system_prompt << "<|im_end|>\n";
+        for (auto& m : g_history) s << "<|im_start|>" << m.role << "\n" << m.content << "<|im_end|>\n";
+        s << "<|im_start|>assistant\n";
+        out = s.str();
+    }
+    return out;
 }
+
+// ── Stop sequences ──────────────────────────────────────────────────────────
 
 // Stop sequences — chat template markers that signal the model is starting
 // a new turn (should stop generation and truncate at this point).
@@ -246,7 +364,6 @@ static const std::vector<std::string> g_token_patterns = {
     "<end>", "<im_end>", "</s>",
 };
 
-// Strip all token patterns from text
 static std::string strip_special_tokens(const std::string& text) {
     std::string result = text;
     for (const auto& pat : g_token_patterns) {
@@ -258,92 +375,238 @@ static std::string strip_special_tokens(const std::string& text) {
     return result;
 }
 
-// Check if any stop sequence appears in the accumulated response
-static bool contains_stop_sequence(const std::string& text) {
+static size_t g_max_stop_len = 0;
+
+// Only the TAIL of the response can contain a NEW stop marker; scanning the
+// whole buffer every token was O(n^2) on long replies. The window is padded by
+// the longest stop sequence so a marker straddling the window boundary is
+// still caught.
+static bool contains_stop_sequence(const std::string& text, size_t* pos_out, size_t* len_out) {
+    if (g_max_stop_len == 0) {
+        for (const auto& s : g_stop_sequences) g_max_stop_len = std::max(g_max_stop_len, s.size());
+    }
+    const size_t win = 96 + g_max_stop_len;
+    const size_t start = text.size() > win ? text.size() - win : 0;
     for (const auto& seq : g_stop_sequences) {
-        if (text.find(seq) != std::string::npos) return true;
+        size_t found = text.find(seq, start);
+        if (found != std::string::npos) {
+            *pos_out = found;
+            *len_out = seq.size();
+            return true;
+        }
     }
     return false;
 }
 
-static void call_callback_on_token(const std::string& piece) {
-    if (!g_callback || !g_jvm) return;
-    JNIEnv* env = nullptr; bool need_detach = false;
-    int stat = g_jvm->GetEnv((void**)&env, JNI_VERSION_1_6);
-    if (stat == JNI_EDETACHED) { g_jvm->AttachCurrentThread(&env, nullptr); need_detach = true; }
-    if (!env) return;
-    jclass cls = env->GetObjectClass(g_callback);
-    if (!cls) { if (need_detach) g_jvm->DetachCurrentThread(); return; }
-    jmethodID m = env->GetMethodID(cls, "onToken", "(Ljava/lang/String;)V");
-    if (m) { jstring s = env->NewStringUTF(piece.c_str()); env->CallVoidMethod(g_callback, m, s); env->DeleteLocalRef(s); }
-    env->DeleteLocalRef(cls);
-    if (need_detach) g_jvm->DetachCurrentThread();
-}
+// ── UTF-8 assembler ─────────────────────────────────────────────────────────
 
-static void call_callback_on_kv_cache(int percent) {
-    if (!g_callback || !g_jvm) return;
-    JNIEnv* env = nullptr; bool need_detach = false;
-    int stat = g_jvm->GetEnv((void**)&env, JNI_VERSION_1_6);
-    if (stat == JNI_EDETACHED) { g_jvm->AttachCurrentThread(&env, nullptr); need_detach = true; }
-    if (!env) return;
-    jclass cls = env->GetObjectClass(g_callback);
-    if (!cls) { if (need_detach) g_jvm->DetachCurrentThread(); return; }
-    jmethodID m = env->GetMethodID(cls, "onKvCacheUsage", "(I)V");
-    if (m) env->CallVoidMethod(g_callback, m, percent);
-    env->DeleteLocalRef(cls);
-    if (need_detach) g_jvm->DetachCurrentThread();
-}
+// llama_token_to_piece() returns raw BYTES; a multi-byte code point can be
+// split across two consecutive pieces (very common for Arabic/CJK/accents).
+// Feeding a split sequence to NewStringUTF() produces garbage or '?'. This
+// assembler buffers fragments and only ever forwards complete code points.
+struct Utf8Assembler {
+    std::string pending;
 
-static void call_callback_on_tokens_generated(int count) {
-    if (!g_callback || !g_jvm) return;
-    JNIEnv* env = nullptr; bool need_detach = false;
-    int stat = g_jvm->GetEnv((void**)&env, JNI_VERSION_1_6);
-    if (stat == JNI_EDETACHED) { g_jvm->AttachCurrentThread(&env, nullptr); need_detach = true; }
-    if (!env) return;
-    jclass cls = env->GetObjectClass(g_callback);
-    if (!cls) { if (need_detach) g_jvm->DetachCurrentThread(); return; }
-    jmethodID m = env->GetMethodID(cls, "onTokensGenerated", "(I)V");
-    if (m) env->CallVoidMethod(g_callback, m, count);
-    env->DeleteLocalRef(cls);
-    if (need_detach) g_jvm->DetachCurrentThread();
-}
-
-static void call_callback_on_done() {
-    if (!g_callback || !g_jvm) return;
-    JNIEnv* env = nullptr; bool need_detach = false;
-    int stat = g_jvm->GetEnv((void**)&env, JNI_VERSION_1_6);
-    if (stat == JNI_EDETACHED) { g_jvm->AttachCurrentThread(&env, nullptr); need_detach = true; }
-    if (!env) return;
-    jclass cls = env->GetObjectClass(g_callback);
-    if (!cls) { if (need_detach) g_jvm->DetachCurrentThread(); return; }
-    jmethodID m = env->GetMethodID(cls, "onDone", "()V");
-    if (m) env->CallVoidMethod(g_callback, m);
-    env->DeleteLocalRef(cls);
-    if (need_detach) g_jvm->DetachCurrentThread();
-}
-
-static void call_callback_on_error(const std::string& error) {
-    if (!g_callback || !g_jvm) return;
-    JNIEnv* env = nullptr; bool need_detach = false;
-    int stat = g_jvm->GetEnv((void**)&env, JNI_VERSION_1_6);
-    if (stat == JNI_EDETACHED) { g_jvm->AttachCurrentThread(&env, nullptr); need_detach = true; }
-    if (!env) return;
-    jclass cls = env->GetObjectClass(g_callback);
-    if (!cls) { if (need_detach) g_jvm->DetachCurrentThread(); return; }
-    jmethodID m = env->GetMethodID(cls, "onError", "(Ljava/lang/String;)V");
-    if (m) { jstring s = env->NewStringUTF(error.c_str()); env->CallVoidMethod(g_callback, m, s); env->DeleteLocalRef(s); }
-    env->DeleteLocalRef(cls);
-    if (need_detach) g_jvm->DetachCurrentThread();
-}
-
-static void release_callback() {
-    if (g_callback && g_jvm) {
-        JNIEnv* env = nullptr;
-        g_jvm->GetEnv((void**)&env, JNI_VERSION_1_6);
-        if (env) env->DeleteGlobalRef(g_callback);
-        g_callback = nullptr;
+    // True when the buffer ends on a UTF-8 code-point boundary.
+    static bool ends_complete(const std::string& s) {
+        size_t n = s.size();
+        if (n == 0) return true;
+        size_t j = n;
+        while (j > 0 && ((unsigned char)s[j - 1] & 0xC0) == 0x80) j--; // skip continuation bytes
+        if (j == n) return true;                  // last byte is ASCII or a lead
+        if (j == 0) return true;                  // lone continuation bytes — flush (corrupt input)
+        unsigned char lead = (unsigned char)s[j - 1];
+        int need;
+        if (lead < 0x80)                need = 1;
+        else if ((lead & 0xE0) == 0xC0) need = 2;
+        else if ((lead & 0xF0) == 0xE0) need = 3;
+        else if ((lead & 0xF8) == 0xF0) need = 4;
+        else return true;                         // invalid lead — flush as-is
+        return (n - j + 1) >= need;
     }
+
+    // Append a byte fragment; returns the complete prefix to forward ("" if
+    // the tail is still an incomplete code point).
+    std::string push(const char* bytes, int len) {
+        pending.append(bytes, len);
+        if (ends_complete(pending)) {
+            std::string out;
+            out.swap(pending);
+            return out;
+        }
+        return "";
+    }
+};
+
+// ── JNI callback context ────────────────────────────────────────────────────
+
+// Resolves the Java callback's class + method IDs ONCE per inference and
+// attaches the calling thread at most once — the v8 code did this on every
+// token, which was the single biggest JNI overhead in the hot path.
+struct JniCb {
+    JNIEnv*   env = nullptr;
+    bool      attached = false;
+    jobject   global = nullptr;
+    jclass    cls = nullptr;
+    jmethodID onToken  = nullptr;
+    jmethodID onDone   = nullptr;
+    jmethodID onError  = nullptr;
+    jmethodID onKv     = nullptr;
+    jmethodID onTokens = nullptr;
+
+    bool init(jobject java_cb) {
+        if (!g_jvm || !java_cb) return false;
+        int stat = g_jvm->GetEnv((void**)&env, JNI_VERSION_1_6);
+        if (stat == JNI_EDETACHED) {
+            if (g_jvm->AttachCurrentThread(&env, nullptr) != JNI_OK) return false;
+            attached = true;
+        } else if (stat != JNI_OK || !env) {
+            return false;
+        }
+        global = env->NewGlobalRef(java_cb);
+        jclass raw = env->GetObjectClass(java_cb);
+        if (!raw) return false;
+        cls = (jclass)env->NewGlobalRef(raw);
+        env->DeleteLocalRef(raw);
+        onToken  = env->GetMethodID(cls, "onToken", "(Ljava/lang/String;)V");
+        onDone   = env->GetMethodID(cls, "onDone", "()V");
+        onError  = env->GetMethodID(cls, "onError", "(Ljava/lang/String;)V");
+        onKv     = env->GetMethodID(cls, "onKvCacheUsage", "(I)V");
+        onTokens = env->GetMethodID(cls, "onTokensGenerated", "(I)V");
+        return onToken && onDone && onError;
+    }
+
+    void token(const std::string& t) {
+        if (env && global && onToken) {
+            jstring s = env->NewStringUTF(t.c_str());
+            env->CallVoidMethod(global, onToken, s);
+            env->DeleteLocalRef(s);
+        }
+    }
+    void done()  { if (env && global && onDone)  env->CallVoidMethod(global, onDone); }
+    void error(const std::string& e) {
+        if (env && global && onError) {
+            jstring s = env->NewStringUTF(e.c_str());
+            env->CallVoidMethod(global, onError, s);
+            env->DeleteLocalRef(s);
+        }
+    }
+    void kv(int pct)     { if (env && global && onKv)     env->CallVoidMethod(global, onKv, pct); }
+    void tokens(int cnt) { if (env && global && onTokens) env->CallVoidMethod(global, onTokens, cnt); }
+
+    void destroy() {
+        if (env) {
+            if (cls)    env->DeleteGlobalRef(cls);
+            if (global) env->DeleteGlobalRef(global);
+        }
+        if (attached && g_jvm) g_jvm->DetachCurrentThread();
+        env = nullptr; cls = nullptr; global = nullptr; attached = false;
+    }
+};
+
+// ── KV cache helpers ────────────────────────────────────────────────────────
+
+static llama_memory_t get_mem() { return llama_get_memory(g_ctx); }
+
+// KV-cache usage as a percentage of the ACTUAL context (post retry ladder).
+// Returns -1 for SSM/recurrent models (Mamba) where the concept doesn't apply.
+static int kv_cache_usage_pct() {
+    if (!g_ctx || g_ctx_actual <= 0) return 0;
+    if (g_model) {
+        char arch[64] = {0};
+        if (llama_model_meta_val_str(g_model, "general.architecture", arch, sizeof(arch)) >= 0 &&
+            (strcmp(arch, "mamba") == 0 || strcmp(arch, "mamba2") == 0)) {
+            return -1;
+        }
+    }
+    llama_pos max_pos = llama_memory_seq_pos_max(get_mem(), 0);
+    int used = (max_pos >= 0) ? (int)(max_pos + 1) : 0;
+    return (int)((used * 100LL) / g_ctx_actual);
 }
+
+// Caller holds g_mtx. When a long conversation overflows the context, keep the
+// HEAD (system prompt + template opening) and the TAIL (recent turns + the
+// assistant header that anchors generation); drop only the middle.
+static void truncate_prompt(std::vector<llama_token>& tokens, int limit) {
+    if ((int)tokens.size() <= limit) return;
+    int keep = std::min(256, (int)tokens.size() / 5);
+    int tail = limit - keep;
+    if (tail < 64) { keep = std::max(0, limit - 64); tail = limit - keep; }
+    if (tail <= 0) { // pathological tiny context — just keep the tail
+        std::vector<llama_token> t(tokens.end() - limit, tokens.end());
+        tokens.swap(t);
+        return;
+    }
+    std::vector<llama_token> trimmed;
+    trimmed.reserve(limit);
+    trimmed.insert(trimmed.end(), tokens.begin(), tokens.begin() + keep);
+    trimmed.insert(trimmed.end(), tokens.end() - tail, tokens.end());
+    tokens.swap(trimmed);
+    LOGW("Prompt truncated: kept head=%d tail=%d (limit=%d)", keep, tail, limit);
+}
+
+// ── Shared generation loop (text + vision) ──────────────────────────────────
+
+// Runs the sample/decode loop. Caller holds g_mtx and has already decoded the
+// prompt; `cb` is initialized. Returns the number of tokens generated.
+static int generate_loop(JniCb& cb, Utf8Assembler& utf8, std::string& response) {
+    pin_to_big_cores();
+    int tokens_generated = 0;
+    for (int i = 0; i < g_cfg.max_new_tokens; i++) {
+        if (g_abort.load()) { LOGI("Aborted at token %d", i); break; }
+
+        llama_token tok = llama_sampler_sample(g_sampler, g_ctx, -1);
+        if (llama_vocab_is_eog(llama_model_get_vocab(g_model), tok)) break;
+
+        char piece[256];
+        int n = llama_token_to_piece(llama_model_get_vocab(g_model), tok, piece, sizeof(piece), 0, false);
+        if (n > 0) {
+            std::string chunk;
+            if (n < (int)sizeof(piece)) {
+                chunk.assign(piece, n);
+            } else {
+                std::vector<char> buf(n + 1);
+                llama_token_to_piece(llama_model_get_vocab(g_model), tok, buf.data(), buf.size(), 0, false);
+                chunk.assign(buf.data(), n);
+            }
+
+            tokens_generated = i + 1;
+            cb.tokens(tokens_generated);
+
+            // Forward only COMPLETE UTF-8 code points (fixes mojibake).
+            std::string complete = utf8.push(chunk.data(), (int)chunk.size());
+            if (!complete.empty()) {
+                response += complete;
+                cb.token(complete);
+            }
+
+            // Stop if the model starts a new chat turn (tail-window scan).
+            size_t sp = 0, sl = 0;
+            if (contains_stop_sequence(response, &sp, &sl)) {
+                response = response.substr(0, sp);
+                LOGI("Stop sequence hit at byte %zu (len=%zu)", sp, sl);
+                break;
+            }
+        }
+
+        llama_batch nb = llama_batch_get_one(&tok, 1);
+        if (llama_decode(g_ctx, nb) != 0) {
+            LOGW("Decode failed at token %d", i);
+            break;
+        }
+
+        if ((i & 0xF) == 0) cb.kv(kv_cache_usage_pct());
+    }
+    // Flush any trailing partial code point (rare; only on hard stop).
+    if (!utf8.pending.empty()) {
+        response += utf8.pending;
+        cb.token(utf8.pending);
+        utf8.pending.clear();
+    }
+    return tokens_generated;
+}
+
+// ── JNI: configuration ──────────────────────────────────────────────────────
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_setEngineConfigNative(
@@ -351,10 +614,11 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_setEngineConfigNative(
         jint nCtx, jint nBatch, jint maxNewTokens, jfloat temp,
         jfloat topP, jfloat minP, jint topK, jint nGpuLayers, jint nThreads, jint seed,
         jboolean lowRamMode, jboolean flashAttention) {
-    g_cfg.n_ctx          = nCtx;
+    std::lock_guard<std::mutex> lock(g_mtx);
+    g_cfg.n_ctx          = (nCtx > 0) ? nCtx : 4096;
     g_cfg.n_batch        = (nBatch > 0) ? nBatch : 2048;
-    g_cfg.max_new_tokens = maxNewTokens;
-    g_cfg.temperature    = temp;
+    g_cfg.max_new_tokens = (maxNewTokens > 0) ? maxNewTokens : 2048;
+    g_cfg.temperature    = (temp > 0.0f) ? temp : 0.5f;
     g_cfg.top_p          = topP;
     g_cfg.min_p          = minP;
     g_cfg.top_k          = topK;
@@ -364,36 +628,46 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_setEngineConfigNative(
     g_cfg.low_ram_mode   = lowRamMode;
     g_cfg.flash_attn     = flashAttention;
     LOGI("Config: ctx=%d batch=%d gpu=%d threads=%d lowRam=%d flashAttn=%d topK=%d",
-         nCtx, nBatch, nGpuLayers, nThreads, lowRamMode, flashAttention, topK);
+         nCtx, nBatch, nGpuLayers, nThreads, (int)lowRamMode, (int)flashAttention, topK);
+    // Sampler changes take effect immediately, not only after a reload.
+    rebuild_sampler();
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_setRepeatPenaltyNative(
         JNIEnv*, jobject,
         jfloat repeatPenalty, jfloat freqPenalty, jfloat presPenalty) {
+    std::lock_guard<std::mutex> lock(g_mtx);
     g_cfg.repeat_penalty = repeatPenalty;
     g_cfg.freq_penalty   = freqPenalty;
     g_cfg.pres_penalty   = presPenalty;
-    if (g_ctx) rebuild_sampler();
+    rebuild_sampler();
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_setSystemPromptNative(
         JNIEnv* env, jobject, jstring prompt) {
     const char* s = env->GetStringUTFChars(prompt, nullptr);
-    if (s) { g_cfg.system_prompt = s; env->ReleaseStringUTFChars(prompt, s); }
+    if (!s) return;
+    std::lock_guard<std::mutex> lock(g_mtx);
+    g_cfg.system_prompt = s;
+    env->ReleaseStringUTFChars(prompt, s);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_setChatTemplateNative(
         JNIEnv* env, jobject, jstring template_) {
     const char* t = env->GetStringUTFChars(template_, nullptr);
-    if (t) { g_cfg.chat_template = t; env->ReleaseStringUTFChars(template_, t); }
+    if (!t) return;
+    std::lock_guard<std::mutex> lock(g_mtx);
+    g_cfg.chat_template = t;
+    env->ReleaseStringUTFChars(template_, t);
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_resetContextNative(
         JNIEnv*, jobject) {
+    std::lock_guard<std::mutex> lock(g_mtx);
     g_history.clear();
     if (g_ctx) llama_memory_clear(get_mem(), true);
     LOGI("Context reset");
@@ -402,32 +676,46 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_resetContextNative(
 extern "C" JNIEXPORT void JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_unloadModelNative(
         JNIEnv*, jobject) {
+    std::lock_guard<std::mutex> lock(g_mtx);
     LOGI("Unloading native model");
     g_history.clear();
-    g_current_image_path.clear();
     g_abort.store(false);
+#ifdef ZC_HAS_CLIP
+    if (g_clip)   { clip_free(g_clip);   g_clip = nullptr; }
+#endif
     if (g_sampler) { llama_sampler_free(g_sampler); g_sampler = nullptr; }
     if (g_ctx)     { llama_free(g_ctx);              g_ctx     = nullptr; }
     if (g_model)   { llama_model_free(g_model);      g_model   = nullptr; }
+    g_ctx_actual = 0;
+    g_flash_attn_effective = false;
+    g_model_path = "";
+    g_cfg.mmproj_path = "";
     LOGI("Native model unloaded");
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_abortInferenceNative(
         JNIEnv*, jobject) {
+    // Lock-free on purpose: must work even while the engine mutex is held by
+    // a long generation.
     g_abort.store(true);
     LOGI("Inference abort requested");
 }
+
+// ── JNI: model loading ──────────────────────────────────────────────────────
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
         JNIEnv* env, jobject, jstring path) {
     const char* filePath = env->GetStringUTFChars(path, nullptr);
     if (!filePath) return JNI_FALSE;
+    std::string path_copy(filePath);
+    env->ReleaseStringUTFChars(path, filePath);
 
-    // llama_backend_init() must be called exactly once per process lifetime.
-    // Previously we reset g_backend_initialized on context failure, causing
-    // a second llama_backend_init() on retry which is undefined behaviour.
+    std::lock_guard<std::mutex> lock(g_mtx);
+
+    // llama_backend_init() must be called exactly once per process lifetime —
+    // NOT reset on failures (a second call is undefined behaviour).
     if (!g_backend_initialized) { llama_backend_init(); g_backend_initialized = true; }
 
 #ifdef ZC_HAS_CLIP
@@ -437,64 +725,37 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
     if (g_ctx)     { llama_free(g_ctx);              g_ctx     = nullptr; }
     if (g_model)   { llama_model_free(g_model);      g_model   = nullptr; }
     g_history.clear();
-    g_current_image_path = "";
+    g_ctx_actual = 0;
+    g_flash_attn_effective = false;
+    g_model_path = "";
 
     llama_model_params mparams = llama_model_default_params();
     mparams.n_gpu_layers = g_cfg.n_gpu_layers;
 
-    g_model = llama_model_load_from_file(filePath, mparams);
-    env->ReleaseStringUTFChars(path, filePath);
-    if (!g_model) { LOGE("Failed to load model"); return JNI_FALSE; }
+    g_model = llama_model_load_from_file(path_copy.c_str(), mparams);
+    if (!g_model) {
+        LOGE("Failed to load model: %s", path_copy.c_str());
+        return JNI_FALSE;
+    }
+    g_model_path = path_copy;
 
     int total_cores = (int)std::thread::hardware_concurrency();
     if (total_cores < 1) total_cores = 4;
     int n_threads = (g_cfg.n_threads > 0) ? std::min(g_cfg.n_threads, total_cores) : total_cores;
 
-    // Detect ARMv8.2-a devices (Exynos 9825, 9820, etc.) by reading cpuinfo.
-    // These chips have no hardware flash-attention support and enabling FA
-    // via context params causes a crash during llama_init_from_model() because
-    // the GGML kernel falls back to a code path that uses i8mm intrinsics
-    // which are absent on ARMv8.2-a (i8mm is ARMv8.4-a+).
-    // Also handle emulators and kernels where /proc/cpuinfo lacks Features.
-    bool has_i8mm = false;
-#ifdef __aarch64__
-    {
-        std::ifstream cpuinfo("/proc/cpuinfo");
-        std::string line;
-        while (std::getline(cpuinfo, line)) {
-            if (line.find("Features") != std::string::npos) {
-                has_i8mm = (line.find("i8mm") != std::string::npos);
-                // Also check for sve (Scalable Vector Extension) which
-                // implies a modern ARM core that should have i8mm too
-                if (!has_i8mm) {
-                    has_i8mm = (line.find("sve") != std::string::npos);
-                }
-                break;
-            }
-        }
-        // If /proc/cpuinfo had no Features line at all (emulator, restricted
-        // container, etc.), assume no i8mm to be safe.
-        LOGI("CPU feature detection: i8mm=%d", (int)has_i8mm);
-    }
-#else
-    // Non-ARM architectures (x86_64) — flash attention might use AVX which is fine
-    has_i8mm = true;
-#endif
-    // Only enable flash attention on chips that have i8mm (ARMv8.4-a+: Exynos 2200,
-    // Snapdragon 888+, etc.). Exynos 9825 (ARMv8.2-a) has no i8mm → disable FA.
-    bool use_flash_attn = g_cfg.flash_attn && has_i8mm;
-    LOGI("CPU i8mm=%d, flash_attn requested=%d, effective=%d", (int)has_i8mm, (int)g_cfg.flash_attn, (int)use_flash_attn);
+    // Only enable flash attention on chips that actually have i8mm (ARMv8.4-a+:
+    // Exynos 2200, Snapdragon 888+, …). Exynos 9825 (ARMv8.2-a) has no i8mm →
+    // FA disabled, otherwise llama_init_from_model() crashes.
+    bool use_flash_attn = g_cfg.flash_attn && detect_i8mm();
+    LOGI("CPU i8mm=%d, flash_attn requested=%d, effective=%d",
+         (int)detect_i8mm(), (int)g_cfg.flash_attn, (int)use_flash_attn);
 
-    // Low RAM mode: reduce n_ctx aggressively
+    // Low RAM mode: reduce n_ctx aggressively.
     int n_ctx = g_cfg.n_ctx;
-    if (g_cfg.low_ram_mode) {
-        n_ctx = std::min(n_ctx, 2048);
-        LOGI("Low RAM mode: n_ctx limited to %d", n_ctx);
-    }
+    if (g_cfg.low_ram_mode) n_ctx = std::min(n_ctx, 2048);
+    LOGI("Low RAM mode: n_ctx limited to %d", n_ctx);
 
     // n_batch must not exceed n_ctx; n_ubatch must not exceed n_batch.
-    // Exynos 9825 with ctx=2048 was crashing because n_batch=512 was fine
-    // but n_ubatch was also 512 — both are fine here, but guard anyway.
     int n_batch  = std::min(g_cfg.n_batch, n_ctx);
     int n_ubatch = std::min(512, n_batch);
 
@@ -504,61 +765,38 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
     cparams.n_ubatch        = n_ubatch;
     cparams.n_threads       = std::max(1, n_threads / 2);
     cparams.n_threads_batch = n_threads;
-    // b9581 uses flash_attn_type enum (LLAMA_FLASH_ATTN_TYPE_ENABLED/DISABLED/AUTO)
+    // b9581 uses flash_attn_type enum.
     cparams.flash_attn_type = use_flash_attn
                               ? LLAMA_FLASH_ATTN_TYPE_ENABLED
                               : LLAMA_FLASH_ATTN_TYPE_DISABLED;
 
     g_ctx = llama_init_from_model(g_model, cparams);
-    if (!g_ctx) {
-        // First attempt failed — retry with minimal safe context (1024)
-        // before giving up. This handles OOM on 6-8GB devices with large models.
-        LOGW("Context creation failed at n_ctx=%d, retrying with n_ctx=1024", n_ctx);
-        cparams.n_ctx    = 1024;
-        cparams.n_batch  = std::min(n_batch, 1024);
-        cparams.n_ubatch = std::min(n_ubatch, 512);
+    int chosen = n_ctx;
+    // OOM retry ladder: 1024, then 512, before giving up.
+    const int ladder[] = {1024, 512};
+    for (int fallback : ladder) {
+        if (g_ctx) break;
+        if (fallback >= n_ctx) continue;
+        LOGW("Context failed at n_ctx=%d, retrying with %d", chosen, fallback);
+        cparams.n_ctx    = fallback;
+        cparams.n_batch  = std::min(n_batch, fallback);
+        cparams.n_ubatch = std::min(n_ubatch, fallback / 2);
         g_ctx = llama_init_from_model(g_model, cparams);
-        if (!g_ctx) {
-            // Still OOM? Go even smaller (512). This handles 4GB devices with 7B+ models.
-            LOGW("Context failed at n_ctx=1024 too, retrying with n_ctx=512");
-            cparams.n_ctx    = 512;
-            cparams.n_batch  = std::min(n_batch, 512);
-            cparams.n_ubatch = std::min(n_ubatch, 256);
-            g_ctx = llama_init_from_model(g_model, cparams);
-        }
+        chosen = fallback;
     }
+    g_ctx_actual = g_ctx ? chosen : 0;
+    g_flash_attn_effective = g_ctx ? use_flash_attn : false;
+
     if (!g_ctx) {
-        // Do NOT reset g_backend_initialized — backend is still valid.
+        // Do NOT reset g_backend_initialized — the backend is still valid.
         llama_model_free(g_model); g_model = nullptr;
-        LOGE("Failed to create context even at n_ctx=1024");
+        g_model_path = "";
+        LOGE("Failed to create context even at n_ctx=512");
         return JNI_FALSE;
     }
 
     rebuild_sampler();
     apply_perf_optimizations();
-
-    // Warm up: pre-encode the system prompt into the KV cache immediately
-    // after loading. This eliminates first-token latency on the first user
-    // message because the system prompt tokens are already in cache.
-    if (!g_cfg.system_prompt.empty()) {
-        std::vector<llama_chat_message> warmup_msgs;
-        warmup_msgs.push_back({"system", g_cfg.system_prompt.c_str()});
-        const char* tmpl = llama_model_chat_template(g_model, nullptr);
-        if (!tmpl) tmpl = "chatml";
-        std::vector<char> wbuf(8192);
-        int wn = llama_chat_apply_template(tmpl, warmup_msgs.data(), 1, false, wbuf.data(), (int)wbuf.size());
-        if (wn > 0 && wn <= (int)wbuf.size()) {
-            std::vector<llama_token> wtoks(wn + 4);
-            int wnt = llama_tokenize(llama_model_get_vocab(g_model), wbuf.data(), wn, wtoks.data(), (int)wtoks.size(), true, true);
-            if (wnt > 0) {
-                wtoks.resize(wnt);
-                llama_batch wb = llama_batch_get_one(wtoks.data(), wnt);
-                if (llama_decode(g_ctx, wb) == 0) {
-                    LOGI("System prompt warm-up: %d tokens pre-encoded into KV cache", wnt);
-                }
-            }
-        }
-    }
 
     LOGI("Model loaded: ctx=%d batch=%d ubatch=%d gpu=%d threads=%d cores=%d lowRam=%d fa=%d",
          cparams.n_ctx, cparams.n_batch, cparams.n_ubatch,
@@ -570,15 +808,16 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadMmprojNative(
         JNIEnv* env, jobject, jstring path) {
-    const char* mmproj_path = env->GetStringUTFChars(path, nullptr);
-    if (!mmproj_path) return JNI_FALSE;
-    std::string path_copy(mmproj_path);
-    env->ReleaseStringUTFChars(path, mmproj_path);
+    const char* p = env->GetStringUTFChars(path, nullptr);
+    if (!p) return JNI_FALSE;
+    std::string path_copy(p);
+    env->ReleaseStringUTFChars(path, p);
 
+    std::lock_guard<std::mutex> lock(g_mtx);
 #ifdef ZC_HAS_CLIP
     if (g_clip) { clip_free(g_clip); g_clip = nullptr; }
 
-    // Use clip_init (b9581+ API) instead of deprecated clip_model_load
+    // clip_init (b9581+ API) instead of the deprecated clip_model_load.
     struct clip_context_params clip_params;
     clip_params.use_gpu = true;
     clip_params.flash_attn_type = CLIP_FLASH_ATTN_TYPE_AUTO;
@@ -590,25 +829,26 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadMmprojNative(
     clip_params.no_alloc = false;
 
     struct clip_init_result init_res = clip_init(path_copy.c_str(), clip_params);
-
     if (!init_res.ctx_v) {
-        LOGE("Failed to load mmproj");
+        LOGE("Failed to load mmproj: %s", path_copy.c_str());
         return JNI_FALSE;
     }
-
     g_clip = init_res.ctx_v;
     g_cfg.mmproj_path = path_copy;
     LOGI("mmproj loaded successfully");
     return JNI_TRUE;
 #else
-    LOGE("mmproj loading not available - rebuild with CLIP support");
+    LOGE("mmproj loading not available — rebuild with CLIP support");
     return JNI_FALSE;
 #endif
 }
 
+// ── JNI: model info / benchmark / export ────────────────────────────────────
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_getModelInfoNative(
         JNIEnv* env, jobject) {
+    std::lock_guard<std::mutex> lock(g_mtx);
     if (!g_model) return env->NewStringUTF("{}");
     char arch[128] = "unknown";
     char key[256];
@@ -622,13 +862,10 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_getModelInfoNative(
     }
     j << "\"n_params\":" << llama_model_n_params(g_model) << ",";
     j << "\"n_embd\":" << llama_model_n_embd(g_model) << ",";
-    // GGUF metadata keys are prefixed with the architecture name, never
-    // a generic "llm.*" namespace.  Construct the correct key dynamically.
+    // GGUF metadata keys are prefixed with the architecture name.
     snprintf(key, sizeof(key), "%s.block_count", arch);
     if (llama_model_meta_val_str(g_model, key, val, sizeof(val)) >= 0)
         j << "\"n_layer\":" << atoi(val) << ",";
-    // Use llama.cpp's built-in resolver which handles per-architecture
-    // key lookup internally.
     j << "\"ctx_train\":" << llama_model_n_ctx_train(g_model) << ",";
     if (llama_model_meta_val_str(g_model, "general.file_type", val, sizeof(val)) >= 0) {
         const char* quant = "";
@@ -651,30 +888,35 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_getModelInfoNative(
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_benchmarkNative(
         JNIEnv* env, jobject, jint ppTokens, jint tgTokens) {
+    std::lock_guard<std::mutex> lock(g_mtx);
     if (!g_model || !g_ctx) return env->NewStringUTF("{\"error\":\"no model\"}");
+
+    int pp_n = std::min(ppTokens, 4096);
+    int tg_n = std::min(tgTokens, 2048);
     const char* test_str = "The quick brown fox jumps over the lazy dog. ";
-    std::vector<llama_token> pp_toks(ppTokens);
-    int n = llama_tokenize(llama_model_get_vocab(g_model), test_str, strlen(test_str), pp_toks.data(), ppTokens, false, true);
+    std::vector<llama_token> pp_toks(pp_n);
+    int n = llama_tokenize(llama_model_get_vocab(g_model), test_str, strlen(test_str), pp_toks.data(), pp_n, false, true);
     if (n <= 0) n = 1;
     pp_toks.resize(n);
-    while ((int)pp_toks.size() < ppTokens) {
+    while ((int)pp_toks.size() < pp_n) {
         auto old = pp_toks;
-        for (auto t : old) { pp_toks.push_back(t); if ((int)pp_toks.size() >= ppTokens) break; }
+        for (auto t : old) { pp_toks.push_back(t); if ((int)pp_toks.size() >= pp_n) break; }
     }
-    pp_toks.resize(ppTokens);
+    pp_toks.resize(pp_n);
+
     llama_memory_clear(get_mem(), true);
-    llama_batch batch = llama_batch_get_one(pp_toks.data(), ppTokens);
+    llama_batch batch = llama_batch_get_one(pp_toks.data(), pp_n);
     auto pp_start = std::chrono::high_resolution_clock::now();
     llama_decode(g_ctx, batch);
     auto pp_end = std::chrono::high_resolution_clock::now();
     double pp_ms = std::chrono::duration<double, std::milli>(pp_end - pp_start).count();
-    double pp_tps = ppTokens / (pp_ms / 1000.0);
+    double pp_tps = pp_n / (pp_ms / 1000.0);
 
     llama_sampler* bench_sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
     llama_sampler_chain_add(bench_sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
     llama_token token = llama_sampler_sample(bench_sampler, g_ctx, -1);
     auto tg_start = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i < tgTokens; i++) {
+    for (int i = 0; i < tg_n; i++) {
         llama_batch tb = llama_batch_get_one(&token, 1);
         if (llama_decode(g_ctx, tb) != 0) break;
         token = llama_sampler_sample(bench_sampler, g_ctx, -1);
@@ -682,18 +924,20 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_benchmarkNative(
     }
     auto tg_end = std::chrono::high_resolution_clock::now();
     double tg_ms  = std::chrono::duration<double, std::milli>(tg_end - tg_start).count();
-    double tg_tps = tgTokens / (tg_ms / 1000.0);
+    double tg_tps = tg_n / (tg_ms / 1000.0);
     llama_sampler_free(bench_sampler);
     llama_memory_clear(get_mem(), true);
 
     char result[256];
-    snprintf(result, sizeof(result), "{\"pp_tps\":%.1f,\"tg_tps\":%.1f,\"pp_ms\":%.1f,\"tg_ms\":%.1f}", pp_tps, tg_tps, pp_ms, tg_ms);
+    snprintf(result, sizeof(result), "{\"pp_tps\":%.1f,\"tg_tps\":%.1f,\"pp_ms\":%.1f,\"tg_ms\":%.1f}",
+             pp_tps, tg_tps, pp_ms, tg_ms);
     return env->NewStringUTF(result);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_exportChatHistoryNative(
         JNIEnv* env, jobject) {
+    std::lock_guard<std::mutex> lock(g_mtx);
     std::ostringstream out;
     out << "=== ZeroCopy Chat Export ===\n";
     for (size_t i = 0; i < g_history.size(); i++)
@@ -701,130 +945,25 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_exportChatHistoryNative(
     return env->NewStringUTF(out.str().c_str());
 }
 
-// ── Architecture helpers ────────────────────────────────────────────────
-
-/** Return true if the loaded model uses an attention-based architecture
- *  (standard transformer with a real KV cache).  SSM/recurrent models like
- *  Mamba carry a fixed-size state and have no meaningful KV-cache usage. */
-static bool is_attention_arch() {
-    if (!g_model) return true;  // conservative default
-    char arch[64] = {0};
-    if (llama_model_meta_val_str(g_model, "general.architecture", arch, sizeof(arch)) < 0)
-        return true;
-    // Known non-attention architectures in llama.cpp (b9581-ish)
-    return strcmp(arch, "mamba")    != 0
-        && strcmp(arch, "mamba2")   != 0;
-}
-
-/** Compute KV-cache usage as a percentage of n_ctx, or -1 for
- *  non-attention architectures (Mamba etc.) where the concept doesn't apply. */
-static int kv_cache_usage_pct() {
-    if (!g_ctx) return 0;
-    if (!is_attention_arch()) return -1;
-    llama_pos max_pos = llama_memory_seq_pos_max(get_mem(), 0);
-    int used = (max_pos >= 0) ? (int)(max_pos + 1) : 0;
-    return (g_cfg.n_ctx > 0) ? (int)((used * 100LL) / g_cfg.n_ctx) : 0;
-}
-
 extern "C" JNIEXPORT jint JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_getKvCacheUsageNative(
         JNIEnv*, jobject) {
+    std::lock_guard<std::mutex> lock(g_mtx);
     return kv_cache_usage_pct();
 }
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_gguf_zerocopy_domain_inference_NativeBridge_formatWithChatTemplateNative(
-        JNIEnv* env, jobject, jstring messagesJson) {
-    const char* json = env->GetStringUTFChars(messagesJson, nullptr);
-    if (!json) return env->NewStringUTF("");
+// ── JNI: history / template utilities ───────────────────────────────────────
 
-    // Parse JSON array of {role, content} messages
-    std::string input(json);
-    env->ReleaseStringUTFChars(messagesJson, json);
-
-    std::vector<llama_chat_message> msgs;
-    size_t pos = 0;
-    while (pos < input.size()) {
-        pos = input.find('{', pos);
-        if (pos == std::string::npos) break;
-        size_t end = input.find('}', pos);
-        if (end == std::string::npos) break;
-        std::string obj = input.substr(pos, end - pos + 1);
-        pos = end + 1;
-
-        auto extract = [&](const std::string& key) -> std::string {
-            std::string needle = "\"" + key + "\":\"";
-            size_t k = obj.find(needle);
-            if (k == std::string::npos) return "";
-            size_t vs = k + needle.size();
-            std::string val;
-            bool esc = false;
-            for (size_t i = vs; i < obj.size(); i++) {
-                char c = obj[i];
-                if (esc) { if (c == 'n') val += '\n'; else val += c; esc = false; continue; }
-                if (c == '\\') { esc = true; continue; }
-                if (c == '"') break;
-                val += c;
-            }
-            return val;
-        };
-
-        std::string role    = extract("role");
-        std::string content = extract("content");
-        if (!role.empty() && !content.empty()) {
-            msgs.push_back({strdup(role.c_str()), strdup(content.c_str())});
-        }
-    }
-
-    std::string result;
-    if (g_model) {
-        const char* tmpl = llama_model_chat_template(g_model, nullptr);
-        if (!tmpl) tmpl = "chatml";
-        std::vector<char> buf(65536);
-        int n = llama_chat_apply_template(tmpl, msgs.data(), (int)msgs.size(), true, buf.data(), (int)buf.size());
-        if (n > (int)buf.size()) { buf.resize(n + 1); n = llama_chat_apply_template(tmpl, msgs.data(), (int)msgs.size(), true, buf.data(), (int)buf.size()); }
-        if (n >= 0) result = std::string(buf.data(), n);
-    }
-
-    if (result.empty()) {
-        // Fallback: ChatML (use msgs BEFORE freeing)
-        result = "<|im_start|>system\nYou are a helpful AI assistant<|im_end|>\n";
-        for (auto& m : msgs) {
-            result += "<|im_start|>" + std::string(m.role) + "\n" + std::string(m.content) + "<|im_end|>\n";
-        }
-        result += "<|im_start|>assistant\n";
-    }
-
-    // Free strdup'd strings (after fallback which reads them)
-    for (auto& m : msgs) {
-        free((void*)m.role);
-        free((void*)m.content);
-    }
-
-    return env->NewStringUTF(result.c_str());
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_com_gguf_zerocopy_domain_inference_NativeBridge_restoreHistoryNative(
-        JNIEnv* env, jobject, jstring messagesJson) {
-    const char* json = env->GetStringUTFChars(messagesJson, nullptr);
-    if (!json) return;
-
-    g_history.clear();
-    std::string input(json);
-    env->ReleaseStringUTFChars(messagesJson, json);
-
-    // Robust JSON string extraction: handles escaped characters and nested braces.
-    // We find each {"role":"..."} object by tracking brace depth so that message
-    // content containing "}" (code, JSON, etc.) doesn't truncate the object.
+// Robust JSON string extraction: finds {"role":"...","content":"..."} objects
+// by tracking brace depth so content containing "}" (code, JSON, etc.) doesn't
+// truncate the object, and unescapes \n \r \t.
+static void parse_message_objects(const std::string& input, std::vector<llama_chat_message>& out) {
     size_t pos = 0;
     size_t len = input.size();
     while (pos < len) {
-        // Find start of next object
         pos = input.find('{', pos);
         if (pos == std::string::npos) break;
 
-        // Walk forward tracking brace depth to find the matching closing brace
         int depth = 0;
         bool in_string = false;
         bool escaped = false;
@@ -842,7 +981,6 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_restoreHistoryNative(
         std::string obj = input.substr(pos, obj_end - pos + 1);
         pos = obj_end + 1;
 
-        // Extract "role" value
         auto extract_str = [&](const std::string& key) -> std::string {
             std::string needle = "\"" + key + "\":\"";
             size_t k = obj.find(needle);
@@ -857,7 +995,8 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_restoreHistoryNative(
                     else if (c == 'r') val += '\r';
                     else if (c == 't') val += '\t';
                     else val += c;
-                    esc = false; continue;
+                    esc = false;
+                    continue;
                 }
                 if (c == '\\') { esc = true; continue; }
                 if (c == '"') break;
@@ -868,264 +1007,210 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_restoreHistoryNative(
 
         std::string role    = extract_str("role");
         std::string content = extract_str("content");
-        if (!role.empty()) g_history.push_back({role, content});
+        if (!role.empty() && !content.empty()) {
+            out.push_back({role.c_str(), content.c_str()});
+        }
     }
-    LOGI("Restored %zu history messages", g_history.size());
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
-        JNIEnv* env, jobject thiz, jstring jprompt, jobject callback) {
-    LOGI("executeWithCallbackNative called");
-    if (!g_model || !g_ctx || !g_sampler) {
-        LOGE("Engine not ready: model=%p, ctx=%p, sampler=%p", g_model, g_ctx, g_sampler);
-        if (callback) {
-            jclass cls = env->GetObjectClass(callback);
-            jmethodID onError = env->GetMethodID(cls, "onError", "(Ljava/lang/String;)V");
-            if (onError) { jstring err = env->NewStringUTF("Engine not ready"); env->CallVoidMethod(callback, onError, err); env->DeleteLocalRef(err); }
-            env->DeleteLocalRef(cls);
+Java_com_gguf_zerocopy_domain_inference_NativeBridge_restoreHistoryNative(
+        JNIEnv* env, jobject, jstring messagesJson) {
+    const char* json = env->GetStringUTFChars(messagesJson, nullptr);
+    if (!json) return;
+    std::string input(json);
+    env->ReleaseStringUTFChars(messagesJson, json);
+
+    std::lock_guard<std::mutex> lock(g_mtx);
+    g_history.clear();
+    std::vector<llama_chat_message> parsed;
+    parse_message_objects(input, parsed);
+    for (auto& m : parsed) g_history.push_back({m.role, m.content});
+    LOGI("Restored %zu history messages", g_history.size());
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_gguf_zerocopy_domain_inference_NativeBridge_formatWithChatTemplateNative(
+        JNIEnv* env, jobject, jstring messagesJson) {
+    const char* json = env->GetStringUTFChars(messagesJson, nullptr);
+    if (!json) return env->NewStringUTF("");
+    std::string input(json);
+    env->ReleaseStringUTFChars(messagesJson, json);
+
+    std::lock_guard<std::mutex> lock(g_mtx);
+    std::vector<llama_chat_message> msgs;
+    parse_message_objects(input, msgs);
+
+    std::string result;
+    if (g_model && !msgs.empty()) {
+        const char* tmpl = llama_model_chat_template(g_model, nullptr);
+        if (!tmpl) tmpl = "chatml";
+        result = apply_chat_template(tmpl, msgs);
+    }
+    if (result.empty()) {
+        // Fallback: hand-rolled ChatML (works with or without a model).
+        std::ostringstream s;
+        s << "<|im_start|>system\nYou are a helpful AI assistant<|im_end|>\n";
+        for (auto& m : msgs) {
+            s << "<|im_start|>" << m.role << "\n" << m.content << "<|im_end|>\n";
         }
+        s << "<|im_start|>assistant\n";
+        result = s.str();
+    }
+    return env->NewStringUTF(result.c_str());
+}
+
+// ── JNI: inference (text) ───────────────────────────────────────────────────
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
+        JNIEnv* env, jobject, jstring jprompt, jobject callback) {
+    LOGI("executeWithCallbackNative called");
+
+    // Held for the whole generation: serializes load/unload/config and makes
+    // concurrent execute calls queue up instead of corrupting shared state.
+    // abortInferenceNative() stays lock-free (atomic flag).
+    std::lock_guard<std::mutex> lock(g_mtx);
+
+    JniCb cb;
+    if (!g_model || !g_ctx || !g_sampler) {
+        LOGE("Engine not ready: model=%p ctx=%p sampler=%p", (void*)g_model, (void*)g_ctx, (void*)g_sampler);
+        if (cb.init(callback)) { cb.error("Engine not ready — load a model first"); cb.destroy(); }
+        return;
+    }
+    if (!cb.init(callback)) {
+        LOGE("Failed to bind Java callback");
         return;
     }
 
     const char* user_input = env->GetStringUTFChars(jprompt, nullptr);
-    if (!user_input) { call_callback_on_error("Failed to read prompt"); return; }
-
-    // Release old callback if exists
-    if (g_callback) release_callback();
-    // Store global reference immediately to prevent garbage collection
-    g_callback = env->NewGlobalRef(callback);
-    LOGI("Callback stored as global reference: %p", g_callback);
-    g_abort.store(false);
-
-    // Copy user_input before releasing JNI reference, push to history,
-    // and build the chat-template-formatted prompt from the full history.
-    // This ensures the model receives proper template wrapping
-    // (e.g. <|im_start|>user\n...<|im_end|>\n<|im_start|>assistant\n).
+    if (!user_input) { cb.error("Failed to read prompt"); cb.destroy(); return; }
     std::string user_copy(user_input);
     env->ReleaseStringUTFChars(jprompt, user_input);
+
+    g_abort.store(false);
     g_history.push_back({"user", user_copy});
     std::string prompt = build_chat_prompt();
     LOGI("Prompt len=%zu", prompt.size());
 
+    // Tokenize the template-formatted prompt. add_special=false is required:
+    // the template already ends with an assistant header that means "start
+    // generating"; appending EOS here would make the model emit nothing.
+    // parse_special=true tokenizes <|im_start|> etc. as single token IDs.
     int n_max = (int)llama_model_n_ctx_train(g_model);
-    std::vector<llama_token> tokens(n_max);
-    // add_special=false: we must NOT let llama_tokenize append EOS, because
-    // the chat template already ends with an assistant header that signals
-    // "start generating". If EOS is appended here the model immediately
-    // predicts EOS and produces no output.
-    // parse_special=true: tokenize <|im_start|> etc. as single token IDs.
-    int n_toks = llama_tokenize(llama_model_get_vocab(g_model), prompt.c_str(), prompt.size(), tokens.data(), n_max, false, true);
+    std::vector<llama_token> tokens(n_max + 64);
+    int n_toks = llama_tokenize(llama_model_get_vocab(g_model), prompt.c_str(), prompt.size(),
+                                tokens.data(), (int)tokens.size(), false, true);
     if (n_toks <= 0) {
         LOGE("Tokenization returned %d tokens, prompt len=%zu", n_toks, prompt.size());
-        call_callback_on_error("Tokenization failed");
-        release_callback();
+        cb.error("Tokenization failed — the prompt may be too long");
+        cb.destroy();
+        g_history.pop_back();
         return;
     }
     tokens.resize(n_toks);
 
-    // Truncate prompt tokens if they exceed the configured context window.
-    // The prompt buffer was sized by llama_model_n_ctx_train() which can be
-    // much larger (e.g. 8192) than g_cfg.n_ctx (as low as 1024 on old devices).
-    // llama_decode() would crash if we pass a batch larger than n_ctx.
-    // We keep the LAST g_cfg.n_ctx - 1 tokens (preserving the assistant header
-    // at the end) and discard earlier context.
-    if ((int)tokens.size() >= g_cfg.n_ctx) {
-      int discard = (int)tokens.size() - (g_cfg.n_ctx - 1);
-      if (discard < 16) discard = 16;
-      std::rotate(tokens.begin(), tokens.begin() + discard, tokens.end());
-      tokens.resize(g_cfg.n_ctx - 1);
-      LOGW("Prompt truncated: discarded %d tokens, kept %d (n_ctx=%d)",
-           discard, (int)tokens.size(), g_cfg.n_ctx);
-    }
+    // Fit into the ACTUAL context (post retry ladder), keeping the system
+    // prompt + recent turns instead of blindly keeping the last tokens.
+    int limit = std::max(64, g_ctx_actual - 2);
+    truncate_prompt(tokens, limit);
 
-    // The prompt contains the FULL conversation (already formatted by Kotlin).
-    // Since we're re-sending the entire conversation, clear the KV cache to
-    // avoid position collision with previously cached tokens.
+    // The prompt contains the FULL conversation (already formatted by Kotlin),
+    // so clear the KV cache to avoid position collision with cached tokens.
     llama_memory_clear(get_mem(), true);
 
-    // Manually prepend BOS token on the very first decode (KV cache empty).
-    // This is required because add_special=false skips the BOS.
-    if (llama_memory_seq_pos_max(get_mem(), 0) < 0) {
-        llama_token bos = llama_vocab_bos(llama_model_get_vocab(g_model));
-        if (bos != LLAMA_TOKEN_NULL) {
-            tokens.insert(tokens.begin(), bos);
-            LOGI("Prepended BOS token %d", bos);
-        }
-    }
-
-    llama_pos cur_max = llama_memory_seq_pos_max(get_mem(), 0);
-    int n_ctx_used = (cur_max >= 0) ? (int)(cur_max + 1) : 0;
-
-    if (n_ctx_used + (int)tokens.size() >= g_cfg.n_ctx && n_ctx_used > 0) {
-        int keep = g_cfg.n_ctx / 4;
-        int n_discard = (n_ctx_used - keep) / 2;
-        if (n_discard > 0) {
-            llama_memory_t mem = get_mem();
-            llama_memory_seq_rm (mem, 0, keep, keep + n_discard);
-            llama_memory_seq_add(mem, 0, keep + n_discard, -1, -n_discard);
-            LOGI("Context shift: discarded=%d", n_discard);
-        }
-    }
+    // Manually prepend BOS on the first decode (add_special=false skips it).
+    llama_token bos = llama_vocab_bos(llama_model_get_vocab(g_model));
+    if (bos != LLAMA_TOKEN_NULL) tokens.insert(tokens.begin(), bos);
 
     pin_to_all_cores();
     llama_batch batch = llama_batch_get_one(tokens.data(), (int)tokens.size());
     if (llama_decode(g_ctx, batch) != 0) {
         LOGE("Prompt decode failed for %d tokens", (int)tokens.size());
-        call_callback_on_error("Prompt decode failed");
-        release_callback();
+        cb.error("Prompt decode failed — reduce the context size or use a smaller model");
+        cb.destroy();
+        g_history.pop_back();
         return;
     }
 
-    call_callback_on_kv_cache(kv_cache_usage_pct());
+    cb.kv(kv_cache_usage_pct());
 
-    pin_to_big_cores();
     std::string response;
-    int tokens_generated = 0;
-    for (int i = 0; i < g_cfg.max_new_tokens; i++) {
-        if (g_abort.load()) { LOGI("Aborted at token %d", i); break; }
-
-        llama_token tok = llama_sampler_sample(g_sampler, g_ctx, -1);
-        if (llama_vocab_is_eog(llama_model_get_vocab(g_model), tok)) break;
-
-        char piece[256];
-        int n = llama_token_to_piece(llama_model_get_vocab(g_model), tok, piece, sizeof(piece), 0, false);
-        if (n > 0) {
-            if (n < (int)sizeof(piece)) {
-                piece[n] = '\0';
-                response += piece;
-                call_callback_on_token(std::string(piece, n));
-            } else {
-                std::vector<char> buf(n + 1);
-                llama_token_to_piece(llama_model_get_vocab(g_model), tok, buf.data(), buf.size(), 0, false);
-                buf[n] = '\0';
-                response += buf.data();
-                call_callback_on_token(std::string(buf.data(), n));
-            }
-            tokens_generated = i + 1;
-            call_callback_on_tokens_generated(tokens_generated);
-        }
-
-        // Stop if model starts generating a new chat turn
-        if (contains_stop_sequence(response)) {
-            for (const auto& seq : g_stop_sequences) {
-                auto pos = response.find(seq);
-                if (pos != std::string::npos) {
-                    response = response.substr(0, pos);
-                    break;
-                }
-            }
-            break;
-        }
-
-        llama_batch nb = llama_batch_get_one(&tok, 1);
-        if (llama_decode(g_ctx, nb) != 0) break;
-
-        if ((i & 0xF) == 0) {
-            call_callback_on_kv_cache(kv_cache_usage_pct());
-        }
-    }
+    Utf8Assembler utf8;
+    int tokens_generated = generate_loop(cb, utf8, response);
 
     g_history.push_back({"assistant", strip_special_tokens(response)});
-    call_callback_on_done();
+    cb.done();
+    cb.destroy();
     LOGI("Inference done: tokens=%d chars=%zu", tokens_generated, response.size());
-    release_callback();
 }
+
+// ── JNI: inference (vision) ─────────────────────────────────────────────────
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
-        JNIEnv* env, jobject thiz, jstring jprompt, jstring jimagePath, jobject callback) {
+        JNIEnv* env, jobject, jstring jprompt, jstring jimagePath, jobject callback) {
     LOGI("executeWithImageNative called");
+    std::lock_guard<std::mutex> lock(g_mtx);
+
+    JniCb cb;
     if (!g_model || !g_ctx || !g_sampler) {
-        LOGE("Engine not ready for image inference: model=%p, ctx=%p, sampler=%p", g_model, g_ctx, g_sampler);
-        if (callback) {
-            jclass cls = env->GetObjectClass(callback);
-            jmethodID onError = env->GetMethodID(cls, "onError", "(Ljava/lang/String;)V");
-            if (onError) { jstring err = env->NewStringUTF("Engine not ready"); env->CallVoidMethod(callback, onError, err); env->DeleteLocalRef(err); }
-            env->DeleteLocalRef(cls);
-        }
+        LOGE("Engine not ready for image inference");
+        if (cb.init(callback)) { cb.error("Engine not ready — load a model first"); cb.destroy(); }
         return;
     }
+    if (!cb.init(callback)) { LOGE("Failed to bind Java callback"); return; }
 
     const char* user_input = env->GetStringUTFChars(jprompt, nullptr);
     const char* image_path = env->GetStringUTFChars(jimagePath, nullptr);
     if (!user_input || !image_path) {
-        call_callback_on_error("Failed to read prompt/image");
+        cb.error("Failed to read prompt/image");
         if (user_input) env->ReleaseStringUTFChars(jprompt, user_input);
         if (image_path) env->ReleaseStringUTFChars(jimagePath, image_path);
+        cb.destroy();
         return;
     }
-
-    // Release old callback if exists
-    if (g_callback) release_callback();
-    // Store global reference immediately to prevent garbage collection
-    g_callback = env->NewGlobalRef(callback);
-    LOGI("Image callback stored as global reference: %p", g_callback);
-    g_abort.store(false);
-
-    // Copy user_input BEFORE releasing JNI references, push to history,
-    // and build the chat-template-formatted prompt from the full history.
     std::string user_copy(user_input);
     std::string image_copy(image_path);
     env->ReleaseStringUTFChars(jprompt, user_input);
     env->ReleaseStringUTFChars(jimagePath, image_path);
-    g_history.push_back({"user", user_copy});
-    g_current_image_path = image_copy;
-    std::string prompt = build_chat_prompt();
 
-    LOGI("Image-prompt len=%zu image=%s", prompt.size(), g_current_image_path.c_str());
+    g_abort.store(false);
+    g_history.push_back({"user", user_copy});
+    std::string prompt = build_chat_prompt();
+    LOGI("Image-prompt len=%zu image=%s", prompt.size(), image_copy.c_str());
 
     int n_max = (int)llama_model_n_ctx_train(g_model);
-    std::vector<llama_token> tokens(n_max);
-    // add_special=false: same rationale as executeWithCallbackNative.
-    int n_toks = llama_tokenize(llama_model_get_vocab(g_model), prompt.c_str(), prompt.size(), tokens.data(), n_max, false, true);
+    std::vector<llama_token> tokens(n_max + 64);
+    int n_toks = llama_tokenize(llama_model_get_vocab(g_model), prompt.c_str(), prompt.size(),
+                                tokens.data(), (int)tokens.size(), false, true);
     if (n_toks <= 0) {
         LOGE("Image tokenization returned %d tokens", n_toks);
-        call_callback_on_error("Tokenization failed");
-        release_callback();
+        cb.error("Tokenization failed");
+        cb.destroy();
+        g_history.pop_back();
         return;
     }
     tokens.resize(n_toks);
 
-    // Same token truncation as executeWithCallbackNative — cap at n_ctx to
-    // prevent llama_decode from crashing on batches larger than the context.
-    if ((int)tokens.size() >= g_cfg.n_ctx) {
-      int discard = (int)tokens.size() - (g_cfg.n_ctx - 1);
-      if (discard < 16) discard = 16;
-      std::rotate(tokens.begin(), tokens.begin() + discard, tokens.end());
-      tokens.resize(g_cfg.n_ctx - 1);
-      LOGW("Image prompt truncated: discarded %d tokens (n_ctx=%d)",
-           discard, g_cfg.n_ctx);
-    }
+    int limit = std::max(64, g_ctx_actual - 2);
+    truncate_prompt(tokens, limit);
 
-    // Clear the KV cache before decoding the full prompt.
     llama_memory_clear(get_mem(), true);
 
-    // Manually prepend BOS token on the very first decode (KV cache empty).
-    if (llama_memory_seq_pos_max(get_mem(), 0) < 0) {
-        llama_token bos = llama_vocab_bos(llama_model_get_vocab(g_model));
-        if (bos != LLAMA_TOKEN_NULL) {
-            tokens.insert(tokens.begin(), bos);
-            LOGI("Image: Prepended BOS token %d", bos);
-        }
-    }
+    llama_token bos = llama_vocab_bos(llama_model_get_vocab(g_model));
+    if (bos != LLAMA_TOKEN_NULL) tokens.insert(tokens.begin(), bos);
 
-    // Process image through CLIP if available
-    // New API (b9581+): clip_image_encode requires pre-allocated float* output
+    // Process image through CLIP if available (b9581+ API).
     std::vector<float> image_embeds;
     int n_image_tokens = 0;
 #ifdef ZC_HAS_CLIP
     if (g_clip) {
         int n_threads = g_cfg.n_threads > 0 ? g_cfg.n_threads : 4;
 
-        // Load image from file using stb_image
         int img_width = 0, img_height = 0, img_channels = 0;
-        unsigned char * img_data = stbi_load(
-            g_current_image_path.c_str(),
-            &img_width, &img_height, &img_channels, 3);
-
+        unsigned char* img_data = stbi_load(image_copy.c_str(), &img_width, &img_height, &img_channels, 3);
         if (img_data && img_width > 0 && img_height > 0) {
-            // Convert uint8 pixel data to float [0,1]
             size_t n_pixels = (size_t)img_width * (size_t)img_height;
             std::vector<float> float_pixels(n_pixels * 3);
             for (size_t i = 0; i < n_pixels; i++) {
@@ -1135,25 +1220,19 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
             }
             stbi_image_free(img_data);
 
-            // Create clip_image_f32 and populate with pixel data
-            struct clip_image_f32 * clip_img = clip_image_f32_init();
+            struct clip_image_f32* clip_img = clip_image_f32_init();
             if (clip_img) {
                 clip_img->set_size({img_width, img_height}, false, false);
                 clip_img->cpy_buf(float_pixels);
 
-                // Get number of output tokens for this image
                 n_image_tokens = clip_n_output_tokens(g_clip, clip_img);
                 if (n_image_tokens < 1) n_image_tokens = 256; // safety fallback
 
                 int n_embd = clip_n_mmproj_embd(g_clip);
                 if (n_embd < 1) n_embd = llama_model_n_embd(g_model);
 
-                // Pre-allocate output buffer: tokens * embedding_dim
                 std::vector<float> embeds_vec((size_t)n_image_tokens * (size_t)n_embd, 0.0f);
-
-                // Encode image into embeddings
                 bool ok = clip_image_encode(g_clip, n_threads, clip_img, embeds_vec.data());
-
                 clip_image_f32_free(clip_img);
 
                 if (ok) {
@@ -1167,7 +1246,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
                 LOGW("clip_image_f32_init failed");
             }
         } else {
-            LOGW("Failed to load image: %s", g_current_image_path.c_str());
+            LOGW("Failed to load image: %s", image_copy.c_str());
         }
     } else {
         LOGW("No mmproj loaded, skipping image processing");
@@ -1176,13 +1255,12 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
     LOGW("CLIP not available in this build, skipping image processing");
 #endif
 
-    // Context shift if needed
+    // Context shift if the image + prompt will overflow the context.
     llama_pos cur_max = llama_memory_seq_pos_max(get_mem(), 0);
     int n_ctx_used = (cur_max >= 0) ? (int)(cur_max + 1) : 0;
     int total_needed = n_ctx_used + n_image_tokens + (int)tokens.size() + 128;
-
-    if (total_needed >= g_cfg.n_ctx) {
-        int keep = g_cfg.n_ctx / 4;
+    if (total_needed >= g_ctx_actual) {
+        int keep = g_ctx_actual / 4;
         int n_discard = (n_ctx_used - keep) / 2;
         if (n_discard > 0) {
             llama_memory_t mem = get_mem();
@@ -1195,12 +1273,11 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
     pin_to_all_cores();
     int n_text_toks = (int)tokens.size();
 
-    // Inject image embeddings as a separate decode step before text tokens
+    // Inject image embeddings as a separate decode step before text tokens.
     if (!image_embeds.empty() && n_image_tokens > 0) {
         int n_embd = llama_model_n_embd(g_model);
         LOGI("Processing multimodal input: %d image + %d text tokens", n_image_tokens, n_text_toks);
 
-        // Step 1: Decode image embeddings as separate tokens
         std::vector<llama_token> img_tokens(n_image_tokens, llama_vocab_eos(llama_model_get_vocab(g_model)));
         std::vector<int32_t> img_pos(n_image_tokens);
         std::vector<int32_t> img_n_seq_id(n_image_tokens, 1);
@@ -1212,25 +1289,23 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
             img_seq_id[i] = &img_seq_id_data[i];
         }
 
-        // embd array: one float per dimension per token
-        float* img_embeds_flat = image_embeds.data();
-
         llama_batch ib;
-        ib.n_tokens   = n_image_tokens;
-        ib.token      = img_tokens.data();
-        ib.embd       = img_embeds_flat;
-        ib.pos        = img_pos.data();
-        ib.n_seq_id   = img_n_seq_id.data();
-        ib.seq_id     = img_seq_id.data();
-        ib.logits     = img_logits.data();
+        ib.n_tokens = n_image_tokens;
+        ib.token    = img_tokens.data();
+        ib.embd     = image_embeds.data();
+        ib.pos      = img_pos.data();
+        ib.n_seq_id = img_n_seq_id.data();
+        ib.seq_id   = img_seq_id.data();
+        ib.logits   = img_logits.data();
 
         if (llama_decode(g_ctx, ib) != 0) {
-            call_callback_on_error("Image embedding decode failed");
-            release_callback();
+            cb.error("Image embedding decode failed");
+            cb.destroy();
+            g_history.pop_back();
             return;
         }
 
-        // Step 2: Decode text tokens (including BOS) after image embeddings
+        // Text tokens (including BOS) follow the image tokens.
         std::vector<int32_t> text_pos(n_text_toks);
         std::vector<int32_t> text_n_seq_id(n_text_toks, 1);
         std::vector<llama_seq_id*> text_seq_id(n_text_toks);
@@ -1240,88 +1315,92 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
             text_pos[i] = n_image_tokens + i;
             text_seq_id[i] = &text_seq_id_data[i];
         }
-        // We only need logits for the LAST token of the prompt (to sample the
-        // first generated token from). Without this, llama_decode computes no
-        // logits at all and llama_sampler_sample() reads stale/garbage state,
-        // producing empty or nonsensical output for every vision request.
+        // We only need logits for the LAST prompt token (to sample the first
+        // generated token from); without this llama_decode computes no logits
+        // and llama_sampler_sample() reads stale state → empty/garbage output.
         if (n_text_toks > 0) text_logits[n_text_toks - 1] = 1;
 
         llama_batch tb;
-        tb.n_tokens   = n_text_toks;
-        tb.token      = tokens.data();
-        tb.embd       = nullptr;
-        tb.pos        = text_pos.data();
-        tb.n_seq_id   = text_n_seq_id.data();
-        tb.seq_id     = text_seq_id.data();
-        tb.logits     = text_logits.data();
+        tb.n_tokens = n_text_toks;
+        tb.token    = tokens.data();
+        tb.embd     = nullptr;
+        tb.pos      = text_pos.data();
+        tb.n_seq_id = text_n_seq_id.data();
+        tb.seq_id   = text_seq_id.data();
+        tb.logits   = text_logits.data();
 
         if (llama_decode(g_ctx, tb) != 0) {
-            call_callback_on_error("Text prompt decode after image failed");
-            release_callback();
+            cb.error("Text prompt decode after image failed");
+            cb.destroy();
+            g_history.pop_back();
             return;
         }
     } else {
         llama_batch batch = llama_batch_get_one(tokens.data(), n_text_toks);
         if (llama_decode(g_ctx, batch) != 0) {
-            call_callback_on_error("Prompt decode failed");
-            release_callback();
+            cb.error("Prompt decode failed");
+            cb.destroy();
+            g_history.pop_back();
             return;
         }
     }
 
-    call_callback_on_kv_cache(kv_cache_usage_pct());
+    cb.kv(kv_cache_usage_pct());
 
-    g_current_image_path = "";
-    pin_to_big_cores();
     std::string response;
-    int tokens_generated = 0;
-    for (int i = 0; i < g_cfg.max_new_tokens; i++) {
-        if (g_abort.load()) { LOGI("Aborted at token %d", i); break; }
-
-        llama_token tok = llama_sampler_sample(g_sampler, g_ctx, -1);
-        if (llama_vocab_is_eog(llama_model_get_vocab(g_model), tok)) break;
-
-        char piece[256];
-        int n = llama_token_to_piece(llama_model_get_vocab(g_model), tok, piece, sizeof(piece), 0, false);
-        if (n > 0) {
-            if (n < (int)sizeof(piece)) {
-                piece[n] = '\0';
-                response += piece;
-                call_callback_on_token(std::string(piece, n));
-            } else {
-                std::vector<char> buf(n + 1);
-                llama_token_to_piece(llama_model_get_vocab(g_model), tok, buf.data(), buf.size(), 0, false);
-                buf[n] = '\0';
-                response += buf.data();
-                call_callback_on_token(std::string(buf.data(), n));
-            }
-            tokens_generated = i + 1;
-            call_callback_on_tokens_generated(tokens_generated);
-        }
-
-        // Stop if model starts generating a new chat turn
-        if (contains_stop_sequence(response)) {
-            for (const auto& seq : g_stop_sequences) {
-                auto pos = response.find(seq);
-                if (pos != std::string::npos) {
-                    response = response.substr(0, pos);
-                    break;
-                }
-            }
-            break;
-        }
-
-        llama_batch nb = llama_batch_get_one(&tok, 1);
-        if (llama_decode(g_ctx, nb) != 0) break;
-
-        if ((i & 0xF) == 0) {
-            call_callback_on_kv_cache(kv_cache_usage_pct());
-        }
-    }
+    Utf8Assembler utf8;
+    int tokens_generated = generate_loop(cb, utf8, response);
 
     g_history.push_back({"assistant", strip_special_tokens(response)});
-    call_callback_on_done();
+    cb.done();
+    cb.destroy();
     LOGI("Image inference done: tokens=%d chars=%zu", tokens_generated, response.size());
-    release_callback();
 }
 
+// ── JNI: native diagnostics (for the in-app Diagnostics screen) ─────────────
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_gguf_zerocopy_domain_inference_NativeBridge_getNativeDiagnosticsNative(
+        JNIEnv* env, jobject) {
+    std::lock_guard<std::mutex> lock(g_mtx);
+    std::ostringstream j;
+    j << "{";
+    j << "\"bridge\":\"v9\",";
+#ifdef ZC_ARCH_PROFILE_STR
+    j << "\"arch_profile\":\"" << ZC_ARCH_PROFILE_STR << "\",";
+#else
+    j << "\"arch_profile\":\"unknown\",";
+#endif
+    std::string feats = cpu_features_line();
+    {
+        // trim leading/trailing whitespace
+        size_t a = feats.find_first_not_of(" \t\r\n");
+        size_t b = feats.find_last_not_of(" \t\r\n");
+        if (a == std::string::npos) feats.clear(); else feats = feats.substr(a, b - a + 1);
+    }
+    j << "\"cpu_features\":\"" << feats << "\",";
+    int ncpu = (int)sysconf(_SC_NPROCESSORS_ONLN);
+    if (ncpu < 1) ncpu = 0;
+    j << "\"cores\":" << ncpu << ",";
+    if (g_big_cores_cached) j << "\"big_cores\":" << (int)g_big_cores.size() << ",";
+    j << "\"model_loaded\":" << (g_model ? "true" : "false") << ",";
+    if (g_model) {
+        j << "\"n_params\":" << llama_model_n_params(g_model) << ",";
+        j << "\"n_ctx\":" << g_ctx_actual << ",";
+        j << "\"flash_attn\":" << (g_flash_attn_effective ? "true" : "false") << ",";
+        j << "\"model_path\":\"" << g_model_path << "\",";
+    }
+    long total_ram_kb = 0;
+    {
+        std::ifstream m("/proc/meminfo");
+        std::string line;
+        if (std::getline(m, line)) {
+            char key[64];
+            long val = 0;
+            if (sscanf(line.c_str(), "%63s %ld", key, &val) == 2) total_ram_kb = val;
+        }
+    }
+    j << "\"ram_mb\":" << (total_ram_kb / 1024);
+    j << "}";
+    return env->NewStringUTF(j.str().c_str());
+}

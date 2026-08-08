@@ -207,6 +207,11 @@ if(NOT HAS_VISION_SUPPORT)
 endif()
 
 add_library(ipc-bridge SHARED ipc-bridge.cpp)
+# Expose the flavor's arch profile to the bridge (used by native diagnostics)
+if(NOT DEFINED ZC_ARCH_PROFILE)
+    set(ZC_ARCH_PROFILE "standard")
+endif()
+target_compile_definitions(ipc-bridge PRIVATE ZC_ARCH_PROFILE_STR="${ZC_ARCH_PROFILE}")
 target_include_directories(ipc-bridge PRIVATE
     ${llama_SOURCE_DIR}/include
     ${llama_SOURCE_DIR}/ggml/include

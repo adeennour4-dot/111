@@ -74,4 +74,6 @@ object NativeBridge {
   external fun restoreHistoryNative(messagesJson: String)
   external fun formatWithChatTemplateNative(messagesJson: String): String
   external fun unloadModelNative()
+
+  external fun getNativeDiagnosticsNative(): String
 }
