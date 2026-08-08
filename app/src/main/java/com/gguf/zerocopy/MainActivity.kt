@@ -343,6 +343,8 @@ fun AppRoot() {
                       InventProjectStore.saveProject(inventContext, p.withSessionIds(p.sessionIds + newSid))
                       inventProjects = InventProjectStore.listProjects(inventContext)
                     }
+                    // Remember the live session so a process-death restore reopens it.
+                    if (newSid.isNotEmpty()) inventSessionId = newSid
                   }
               )
             } else {

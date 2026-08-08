@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.FileProvider
 import com.gguf.zerocopy.data.invent.InventProject
 import com.gguf.zerocopy.data.invent.InventProjectStore
@@ -261,10 +262,12 @@ fun InventDashboardScreen(
             models = models,
             freeRamMb = freeRamMb(context),
             onPick = { newRole ->
-                val p = projects.find { it.id == pid } ?: return@ModelPickerDialog
-                val roles = p.roles.map { if (it.role == role.role) newRole else it }
-                onSaveProject(p.withRoles(roles))
-                modelPickerFor = null
+                val p = projects.find { it.id == pid }
+                if (p != null) {
+                    val roles = p.roles.map { if (it.role == role.role) newRole else it }
+                    onSaveProject(p.withRoles(roles))
+                    modelPickerFor = null
+                }
             },
             onDismiss = { modelPickerFor = null }
         )
@@ -274,10 +277,12 @@ fun InventDashboardScreen(
     addRoleFor?.let { pid ->
         AddRoleDialog(
             onAdd = { name, desc ->
-                val p = projects.find { it.id == pid } ?: return@AddRoleDialog
-                val newRole = InventRoleConfig(role = name, description = desc)
-                onSaveProject(p.withRoles(p.roles + newRole))
-                addRoleFor = null
+                val p = projects.find { it.id == pid }
+                if (p != null) {
+                    val newRole = InventRoleConfig(role = name, description = desc)
+                    onSaveProject(p.withRoles(p.roles + newRole))
+                    addRoleFor = null
+                }
             },
             onDismiss = { addRoleFor = null }
         )
@@ -288,15 +293,17 @@ fun InventDashboardScreen(
         RoleActionsDialog(
             role = role,
             onEdit = { newName, newDesc ->
-                val p = projects.find { it.id == pid } ?: return@RoleActionsDialog
-                onSaveProject(p.withRoles(p.roles.map {
-                    if (it.role == role.role) it.copy(role = newName, description = newDesc) else it
-                }))
-                roleMenuFor = null
+                val p = projects.find { it.id == pid }
+                if (p != null) {
+                    onSaveProject(p.withRoles(p.roles.map {
+                        if (it.role == role.role) it.copy(role = newName, description = newDesc) else it
+                    }))
+                    roleMenuFor = null
+                }
             },
             onDelete = {
-                val p = projects.find { it.id == pid } ?: return@RoleActionsDialog
-                if (!role.isCoder) {
+                val p = projects.find { it.id == pid }
+                if (p != null && !role.isCoder) {
                     onSaveProject(p.withRoles(p.roles.filter { it.role != role.role }))
                 }
                 roleMenuFor = null
@@ -310,15 +317,19 @@ fun InventDashboardScreen(
         SessionActionsDialog(
             sessionName = sid,
             onOpen = {
-                val p = projects.find { it.id == pid } ?: return@SessionActionsDialog
-                onOpenSession(p, sid)
-                sessionMenuFor = null
+                val p = projects.find { it.id == pid }
+                if (p != null) {
+                    onOpenSession(p, sid)
+                    sessionMenuFor = null
+                }
             },
             onDelete = {
-                val p = projects.find { it.id == pid } ?: return@SessionActionsDialog
-                InventStorage.deleteSession(context, sid)
-                onSaveProject(p.withSessionIds(p.sessionIds.filter { it != sid }))
-                sessionMenuFor = null
+                val p = projects.find { it.id == pid }
+                if (p != null) {
+                    InventStorage.deleteSession(context, sid)
+                    onSaveProject(p.withSessionIds(p.sessionIds.filter { it != sid }))
+                    sessionMenuFor = null
+                }
             },
             onReset = {
                 // Reset session: wipe messages/zcp content, keep files.
