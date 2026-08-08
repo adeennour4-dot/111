@@ -135,13 +135,15 @@ private fun phaseColor(phase: InventPhase): Color = when (phase) {
 fun InventScreen(
     model1Path: String, model1Name: String,
     model2Path: String, model2Name: String,
-    researcherPath: String, researcherName: String,
+    debuggerPath: String, debuggerName: String,
     offlineMode: Boolean, sameModelMode: Boolean,
     reasoningEnabled: Boolean = true,
     onBack: () -> Unit,
     onModelsClick: () -> Unit,
     onNewSession: (() -> Unit)? = null,
     startFresh: Boolean = false,
+    sessionToOpen: String? = null,
+    onSessionCreated: (String) -> Unit = {},
     vm: InventViewModel = viewModel()
 ) {
     val ui by vm.ui.collectAsState()
@@ -202,11 +204,18 @@ fun InventScreen(
         // InventScreen WITHOUT going through the setup flow (process-death
         // auto-resume). When the user explicitly picked models in setup, always
         // start a fresh session with those exact models — never a stale one.
-        if (ui.sessionId.isEmpty() || startFresh) {
+        if (!sessionToOpen.isNullOrEmpty()) {
+            // Opening an existing session from the dashboard
+            vm.switchToSession(sessionToOpen)
+        } else if (ui.sessionId.isEmpty() || startFresh) {
             vm.setupSession(model1Path, model1Name, model2Path, model2Name,
-                researcherPath, researcherName, offlineMode, sameModelMode,
+                debuggerPath, debuggerName, offlineMode, sameModelMode,
                 reasoningEnabled = reasoningEnabled)
         }
+    }
+    // Register freshly-created sessions with the dashboard project
+    LaunchedEffect(ui.sessionId) {
+        if (startFresh && ui.sessionId.isNotEmpty()) onSessionCreated(ui.sessionId)
     }
     LaunchedEffect(chats.size) {
         if (chats.isNotEmpty()) listState.animateScrollToItem(chats.size - 1)
@@ -313,10 +322,10 @@ fun InventScreen(
             ModelPills(
                 modelMode = ui.modelMode,
                 plannerLoaded = ui.plannerLoaded,
-                researcherLoaded = ui.researcherLoaded,
+                debuggerLoaded = ui.debuggerLoaded,
                 coderLoaded = ui.coderLoaded,
                 plannerName = ui.model1Name,
-                researcherName = ui.researcherName,
+                debuggerName = ui.debuggerName,
                 coderName = ui.model2Name,
                 phase = ui.phase,
                 onTap = { roleIdx ->
@@ -328,6 +337,31 @@ fun InventScreen(
                 },
                 colors = colors
             )
+
+            // ══ Chat with a role selector ══
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf("planner" to "PLANNER" to Am, "coder" to "CODER" to Cy, "debugger" to "DEBUGGER" to Rd)
+                    .forEach { (kv, accent) ->
+                        val (role, label) = kv
+                        val active = ui.chatRole == role
+                        Surface(
+                            onClick = { vm.setChatRole(role) },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (active) accent.copy(alpha = 0.14f) else colors.Surface,
+                            border = BorderStroke(1.dp, if (active) accent.copy(alpha = 0.7f) else colors.Border.copy(alpha = 0.3f))
+                        ) {
+                            Row(Modifier.padding(horizontal = 9.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(6.dp).clip(CircleShape).background(if (active) accent else colors.Border))
+                                Spacer(Modifier.width(5.dp))
+                                Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                                    color = if (active) accent else colors.Text3, fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                    }
+            }
 
             // ══ Phase hint banner ══
             AnimatedVisibility(
@@ -629,7 +663,7 @@ fun InventScreen(
             SettingsPopup2(
                 onDismiss = { showSettings = false; settingsRestrictRole = -1 },
                 colors = colors,
-                model1Path = model1Path, model2Path = model2Path, researcherPath = researcherPath,
+                model1Path = model1Path, model2Path = model2Path, debuggerPath = debuggerPath,
                 modelMode = ui.modelMode, restrictRole = settingsRestrictRole,
                 onReload = { vm.reloadInventModel() },
                 reasoningEnabled = ui.reasoningEnabled,
@@ -765,14 +799,14 @@ private fun FlowRibbon(phase: InventPhase, animColor: Color, colors: ZcPalette) 
 @Composable
 private fun ModelPills(
     modelMode: ModelMode,
-    plannerLoaded: Boolean, researcherLoaded: Boolean, coderLoaded: Boolean,
-    plannerName: String, researcherName: String, coderName: String,
+    plannerLoaded: Boolean, debuggerLoaded: Boolean, coderLoaded: Boolean,
+    plannerName: String, debuggerName: String, coderName: String,
     phase: InventPhase, onTap: (Int) -> Unit, colors: ZcPalette
 ) {
     val pills = mutableListOf<Pair<Int, Triple<String, Boolean, String>>>()
     pills.add(0 to Triple("PLANNER", plannerLoaded, plannerName))
     if (modelMode != ModelMode.SINGLE) {
-        pills.add(1 to Triple("RESEARCH", researcherLoaded, researcherName))
+        pills.add(1 to Triple("DEBUGGER", debuggerLoaded, debuggerName))
         pills.add(2 to Triple("CODER", coderLoaded, coderName))
     }
     val accents = listOf(Am, Pr, Cy)
@@ -943,7 +977,7 @@ private fun ChatBubbleCard(bubble: ChatBubble, colors: ZcPalette) {
         "user" -> Cy
         "model1" -> Am
         "model2" -> Cy
-        "researcher" -> Pr
+        "debugger" -> Rd
         "system" -> Gy
         else -> colors.Text2
     }
@@ -951,12 +985,12 @@ private fun ChatBubbleCard(bubble: ChatBubble, colors: ZcPalette) {
         "user" -> "YOU"
         "model1" -> "PLANNER"
         "model2" -> "CODER"
-        "researcher" -> "RESEARCH"
+        "debugger" -> "DEBUGGER"
         "system" -> "SYS"
         else -> bubble.role.uppercase()
     }
     val avatar = when (bubble.role) {
-        "user" -> "Y"; "model1" -> "P"; "model2" -> "C"; "researcher" -> "R"; "system" -> "S"; else -> "?"
+        "user" -> "Y"; "model1" -> "P"; "model2" -> "C"; "debugger" -> "D"; "system" -> "S"; else -> "?"
     }
     Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.Top) {
         // Monogram avatar
@@ -1231,7 +1265,7 @@ private fun ModelPickerSheet(
         -2 -> "Planner + Coder"
         -1 -> "All Roles"
         0 -> "Planner"
-        1 -> "Researcher"
+        1 -> "Debugger"
         2 -> "Coder"
         else -> "Model"
     }
@@ -1511,7 +1545,7 @@ private fun SessionPopup(
 @Composable
 private fun SettingsPopup2(
     onDismiss: () -> Unit, colors: ZcPalette,
-    model1Path: String, model2Path: String, researcherPath: String,
+    model1Path: String, model2Path: String, debuggerPath: String,
     modelMode: ModelMode = ModelMode.TRIPLE, restrictRole: Int = -1,
     onReload: () -> Unit = {},
     reasoningEnabled: Boolean = false,
@@ -1521,13 +1555,13 @@ private fun SettingsPopup2(
 
     val getCfg = { role: String -> SettingsManager.getInventModelConfig(role) }
     val plannerCfg = remember(model1Path) { getCfg("Planner") }
-    val researcherCfg = remember(researcherPath) { getCfg("Researcher") }
+    val debuggerCfg = remember(debuggerPath) { getCfg("Debugger") }
     val coderCfg = remember(model2Path) { getCfg("Coder") }
 
     val allTabs = when (modelMode) {
         ModelMode.SINGLE -> listOf("Planner" to "Planner")
-        ModelMode.DUAL -> listOf("Planner+Coder" to "Planner", "Researcher" to "Researcher")
-        ModelMode.TRIPLE -> listOf("Planner" to "Planner", "Researcher" to "Researcher", "Coder" to "Coder")
+        ModelMode.DUAL -> listOf("Planner+Coder" to "Planner", "Debugger" to "Debugger")
+        ModelMode.TRIPLE -> listOf("Planner" to "Planner", "Debugger" to "Debugger", "Coder" to "Coder")
     }
     val tabs = if (restrictRole < 0) allTabs else allTabs.filterIndexed { i, _ -> i == restrictRole }
 
@@ -1574,10 +1608,10 @@ private fun SettingsPopup2(
                 ) { tab ->
                     val (_, roleKey) = if (tab < tabs.size) tabs[tab] else ("Planner" to "Planner")
                     val cfg = when (roleKey) {
-                        "Planner" -> plannerCfg; "Researcher" -> researcherCfg; else -> coderCfg
+                        "Planner" -> plannerCfg; "Debugger" -> debuggerCfg; else -> coderCfg
                     }
                     val path = when (roleKey) {
-                        "Planner" -> model1Path; "Researcher" -> researcherPath; else -> model2Path
+                        "Planner" -> model1Path; "Debugger" -> debuggerPath; else -> model2Path
                     }
                     ConfigSliders(role = roleKey, config = cfg, modelPath = path, colors)
                 }

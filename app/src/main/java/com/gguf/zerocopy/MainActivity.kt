@@ -57,12 +57,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -86,9 +88,9 @@ import com.gguf.zerocopy.ui.settings.SettingsScreen
 import com.gguf.zerocopy.ui.theme.ZeroCopyTheme
 import com.gguf.zerocopy.ui.theme.ZcPalette
 import com.gguf.zerocopy.ui.theme.currentPalette
-import com.gguf.zerocopy.ui.invent.InventProjectScreen
+import com.gguf.zerocopy.data.invent.InventProjectStore
+import com.gguf.zerocopy.ui.invent.InventDashboardScreen
 import com.gguf.zerocopy.ui.invent.InventScreen
-import com.gguf.zerocopy.ui.invent.InventSetupScreen
 import kotlinx.coroutines.delay
 
 data class NavItem(val label: String, val icon: ImageVector, val activeIcon: ImageVector)
@@ -137,24 +139,24 @@ fun AppRoot() {
   }
   var selectedTab by rememberSaveable { mutableIntStateOf(0) }
   var showSessionList by remember { mutableStateOf(false) }
-  var inventStarted by rememberSaveable { mutableStateOf(false) }
-  var inventProjectSelected by rememberSaveable { mutableStateOf(false) }
-  var inventProjectIndex by rememberSaveable { mutableIntStateOf(0) }
-  var completedInventProjects by rememberSaveable { mutableStateOf<Set<Int>>(emptySet()) }
-  var inventModel1Path by rememberSaveable { mutableStateOf("") }
-  // True only when the user completed the setup flow in THIS process instance.
-  // Deliberately NOT rememberSaveable: after a process death the restored
-  // session must be auto-resumed (startFresh = false), never wiped by a fresh
-  // setupSession with stale/empty picks.
-  var inventFreshStart by remember { mutableStateOf(false) }
-  var inventModel1Name by rememberSaveable { mutableStateOf("") }
-  var inventModel2Path by rememberSaveable { mutableStateOf("") }
-  var inventModel2Name by rememberSaveable { mutableStateOf("") }
-  var inventResPath by rememberSaveable { mutableStateOf("") }
-  var inventResName by rememberSaveable { mutableStateOf("") }
-  var inventOffline by rememberSaveable { mutableStateOf(false) }
-  var inventSameModel by rememberSaveable { mutableStateOf(false) }
-  var inventReasoningEnabled by rememberSaveable { mutableStateOf(true) }
+  // Invent navigation: "dashboard" (the 4 squares) | "chat" (session screen)
+  var inventScreen by rememberSaveable { mutableStateOf("dashboard") }
+  var inventProjectId by rememberSaveable { mutableStateOf("") }
+  var inventSessionId by rememberSaveable { mutableStateOf("") } // "" = start a fresh session
+
+  val inventContext = LocalContext.current
+  var inventProjects by remember { mutableStateOf(InventProjectStore.listProjects(inventContext)) }
+  val inventModels by app.modelRepository.models.collectAsState()
+  // Force a refresh of the project list after returning from a chat session
+  var inventProjectRefresh by remember { mutableIntStateOf(0) }
+  LaunchedEffect(inventProjectRefresh) { inventProjects = InventProjectStore.listProjects(inventContext) }
+  // First run: seed the 4 squares so each one exists with its + ready
+  LaunchedEffect(Unit) {
+    if (InventProjectStore.listProjects(inventContext).isEmpty()) {
+      repeat(4) { i -> InventProjectStore.createProject(inventContext, "Project ${i + 1}") }
+      inventProjects = InventProjectStore.listProjects(inventContext)
+    }
+  }
 
   if (showSplash) {
     SplashScreen(onDone = { showSplash = false })
@@ -302,7 +304,7 @@ fun AppRoot() {
         SettingsScreen(onBack = { selectedTab = 0 })
       }
 
-      // Tab 4: Invent (setup → project selection → main screen)
+      // Tab 4: Invent (dashboard of 4 squares → session chat)
       Box(
         modifier = Modifier.fillMaxSize().graphicsLayer {
           alpha = if (selectedTab == 4) 1f else 0f
@@ -310,65 +312,70 @@ fun AppRoot() {
           if (selectedTab != 4) { scaleX = 0.001f; scaleY = 0.001f }
         }
       ) {
-        if (!inventStarted) {
-          InventSetupScreen(
-            onStart = { m1p, m1n, m2p, m2n, rp, rn, offline, sameModel, reasoning ->
-              inventModel1Path = m1p; inventModel1Name = m1n
-              inventModel2Path = m2p; inventModel2Name = m2n
-              inventResPath = rp; inventResName = rn
-              inventOffline = offline
-              inventSameModel = sameModel
-              inventReasoningEnabled = reasoning
-              inventFreshStart = true
-              inventStarted = true
-              inventProjectSelected = false
-            },
-            onBack = { selectedTab = 0 }
-          )
-        } else if (!inventProjectSelected) {
-          InventProjectScreen(
-            model1Path = inventModel1Path, model1Name = inventModel1Name,
-            model2Path = inventModel2Path, model2Name = inventModel2Name,
-            researcherPath = inventResPath, researcherName = inventResName,
-            offlineMode = inventOffline,
-            sameModelMode = inventSameModel,
-            reasoningEnabled = inventReasoningEnabled,
-            completedProjects = completedInventProjects,
-            onStartProject = { idx ->
-              inventProjectIndex = idx
-              inventProjectSelected = true
-            },
-            onBack = {
-              inventStarted = false
-              inventFreshStart = false
-            },
-            onSettings = { role, modelPath, modelName ->
-              // Open settings dialog for the model
-            },
-            onPickModel = { role ->
-              selectedTab = 1
+        when (inventScreen) {
+          "chat" -> {
+            val project = inventProjects.find { it.id == inventProjectId }
+            if (project != null) {
+              val planner = project.roles.find { it.isPlanner }
+              val coder = project.roles.find { it.isCoder }
+              val debugger = project.roles.find { it.isDebugger }
+              InventScreen(
+                  model1Path = planner?.modelPath ?: "", model1Name = planner?.modelName ?: "",
+                  model2Path = coder?.modelPath ?: "", model2Name = coder?.modelName ?: "",
+                  debuggerPath = debugger?.modelPath ?: "", debuggerName = debugger?.modelName ?: "",
+                  offlineMode = false,
+                  sameModelMode = planner?.modelPath != null && planner.modelPath.isNotEmpty() && planner.modelPath == coder?.modelPath,
+                  reasoningEnabled = planner?.thinkingEnabled ?: true,
+                  onBack = {
+                    inventScreen = "dashboard"
+                    inventProjectRefresh++
+                  },
+                  onModelsClick = { selectedTab = 1 },
+                  onNewSession = {
+                    inventScreen = "dashboard"
+                    inventProjectRefresh++
+                  },
+                  startFresh = inventSessionId.isEmpty(),
+                  sessionToOpen = inventSessionId.ifEmpty { null },
+                  onSessionCreated = { newSid ->
+                    val p = inventProjects.find { it.id == inventProjectId }
+                    if (p != null && newSid.isNotEmpty() && !p.sessionIds.contains(newSid)) {
+                      InventProjectStore.saveProject(inventContext, p.withSessionIds(p.sessionIds + newSid))
+                      inventProjects = InventProjectStore.listProjects(inventContext)
+                    }
+                  }
+              )
+            } else {
+              // Project missing (cleared) — fall back to the dashboard.
+              LaunchedEffect(Unit) { inventScreen = "dashboard" }
             }
-          )
-        } else {
-          InventScreen(
-              model1Path = inventModel1Path, model1Name = inventModel1Name,
-              model2Path = inventModel2Path, model2Name = inventModel2Name,
-              researcherPath = inventResPath, researcherName = inventResName,
-              offlineMode = inventOffline,
-              sameModelMode = inventSameModel,
-              reasoningEnabled = inventReasoningEnabled,
-              onNewSession = {
-                completedInventProjects = completedInventProjects + inventProjectIndex
-                inventStarted = false
-                inventFreshStart = false
-                inventModel1Path = ""; inventModel1Name = ""
-                inventModel2Path = ""; inventModel2Name = ""
-                inventResPath = ""; inventResName = ""
-              },
-              onBack = { selectedTab = 0 },
-              onModelsClick = { selectedTab = 1 },
-              startFresh = inventFreshStart
-          )
+          }
+          else -> {
+            // The dashboard: one big square holding 4 small squares (2×2)
+            InventDashboardScreen(
+                projects = inventProjects,
+                models = inventModels,
+                onSaveProject = { p ->
+                  InventProjectStore.saveProject(inventContext, p)
+                  inventProjects = InventProjectStore.listProjects(inventContext)
+                },
+                onClearProject = { id ->
+                  InventProjectStore.clearProjectContents(inventContext, id)
+                  inventProjects = InventProjectStore.listProjects(inventContext)
+                },
+                onStartSession = { project ->
+                  inventProjectId = project.id
+                  inventSessionId = ""
+                  inventScreen = "chat"
+                },
+                onOpenSession = { project, sid ->
+                  inventProjectId = project.id
+                  inventSessionId = sid
+                  inventScreen = "chat"
+                },
+                onBack = { selectedTab = 0 }
+            )
+          }
         }
       }
     }

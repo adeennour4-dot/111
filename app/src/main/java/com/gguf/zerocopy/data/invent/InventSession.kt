@@ -259,6 +259,18 @@ object InventStorage {
         File(ctx.filesDir, "invent_projects/$sessionId").deleteRecursively()
     }
 
+    /**
+     * Reset a session: wipe its messages/ZCP state so it starts fresh,
+     * but KEEP all generated files on disk (dashboard "Reset session").
+     */
+    fun resetSessionContent(ctx: Context, sessionId: String) {
+        File(getDir(ctx), "zcp_${sessionId}.json").delete()
+        File(getDir(ctx), "state_${sessionId}.json").delete()
+        File(getDir(ctx), "searchlog_${sessionId}.json").delete()
+        File(getDir(ctx), "zcp_${sessionId}_sr").deleteRecursively()
+        // keep invent_projects/<sessionId> (generated files)
+    }
+
     fun listSessions(ctx: Context): List<String> {
         return getDir(ctx).listFiles()
             ?.filter { it.name.startsWith("state_") }

@@ -48,7 +48,8 @@ data class InventUiState(
     val projectName: String = "",
     val model1Name: String = "",
     val model2Name: String = "",
-    val researcherName: String = "",
+    val debuggerName: String = "",
+    val chatRole: String = "planner", // who the user is chatting with: planner | coder | debugger
     val offlineMode: Boolean = false,
     val sameModelMode: Boolean = false,
     val error: String = "",
@@ -63,7 +64,7 @@ data class InventUiState(
     val currentModelLabel: String = "",
     val processLabel: String = "",
     val plannerLoaded: Boolean = false,
-    val researcherLoaded: Boolean = false,
+    val debuggerLoaded: Boolean = false,
     val coderLoaded: Boolean = false,
     val modelMode: ModelMode = ModelMode.TRIPLE,
     val showNavigateAwayDialog: Boolean = false,
@@ -210,7 +211,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 it.copy(
                     phase = saved.phase, messages = saved.messages, sessionId = existing,
                     model1Name = saved.model1Name, model2Name = saved.model2Name,
-                    researcherName = saved.researcherName,
+                    debuggerName = saved.researcherName,
                     offlineMode = saved.offlineMode, sameModelMode = saved.sameModelMode,
                     modelMode = when {
                         saved.sameModelMode && saved.researcherPath == saved.model1Path -> ModelMode.SINGLE
@@ -262,11 +263,11 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                         uiTransform = { cur ->
                             cur.copy(
                                 plannerLoaded = cur.plannerLoaded || ((useForAll || tab == 0) && ok),
-                                researcherLoaded = cur.researcherLoaded || ((useForAll || tab == 1) && ok),
+                                debuggerLoaded = cur.debuggerLoaded || ((useForAll || tab == 1) && ok),
                                 coderLoaded = cur.coderLoaded || ((useForAll || tab == 2) && ok),
                                 model1Name = if (ok && (useForAll || tab == 0) && name.isNotEmpty()) name else cur.model1Name,
                                 model2Name = if (ok && (useForAll || tab == 2) && name.isNotEmpty()) name else cur.model2Name,
-                                researcherName = if (ok && (useForAll || tab == 1) && name.isNotEmpty()) name else cur.researcherName
+                                debuggerName = if (ok && (useForAll || tab == 1) && name.isNotEmpty()) name else cur.debuggerName
                             )
                         },
                         sessionTransform = { s ->
@@ -338,7 +339,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                             messages = saved.messages,
                             sessionId = targetId,
                             model1Name = saved.model1Name, model2Name = saved.model2Name,
-                            researcherName = saved.researcherName,
+                            debuggerName = saved.researcherName,
                             offlineMode = saved.offlineMode, sameModelMode = saved.sameModelMode,
                             modelMode = when {
                                 saved.sameModelMode && saved.researcherPath == saved.model1Path -> ModelMode.SINGLE
@@ -437,7 +438,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
     fun setupSession(
         model1Path: String, model1Name: String,
         model2Path: String, model2Name: String,
-        researcherPath: String, researcherName: String,
+        debuggerPath: String, debuggerName: String,
         offlineMode: Boolean, sameModelMode: Boolean,
         reasoningEnabled: Boolean = true
     ) {
@@ -445,7 +446,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             val selectedTemplate = com.gguf.zerocopy.data.local.SettingsManager.chatTemplate
             var m1p = model1Path; var m1n = model1Name
             var m2p = model2Path; var m2n = model2Name
-            var rp = researcherPath; var rn = researcherName
+            var rp = debuggerPath; var rn = debuggerName
             if (m1p.isEmpty()) {
                 val active = engineManager.getActiveEngine()
                 val curPath = active?.loadedModelPath ?: ""
@@ -521,6 +522,10 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         addMessage("model1", opening, InventPhase.QUESTIONING)
     }
 
+    fun setChatRole(role: String) {
+        _ui.value = _ui.value.copy(chatRole = role)
+    }
+
     fun toggleReasoning() {
         val enabled = !_ui.value.reasoningEnabled
         _ui.value = _ui.value.copy(reasoningEnabled = enabled)
@@ -535,14 +540,84 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             val hints = extractAttachedFileHints(text)
             if (hints.isNotEmpty()) effectiveText = "$text\n\n[From attached files, I noticed: $hints]"
         }
-        addMessage("user", effectiveText, _ui.value.phase)
+        val chatRole = _ui.value.chatRole
+        val phase = _ui.value.phase
+
+        // Chatting with the Coder: needs a file context (adds its own user message)
+        if (chatRole == "coder" && phase != InventPhase.QUESTIONING) {
+            val f = _ui.value.currentFileName
+            if (f.isEmpty()) {
+                addMessage("user", effectiveText, phase)
+                addMessage("system", "Open a file in the Files panel first to chat with the Coder about it.", phase)
+            } else {
+                handleCoderChatMessage(effectiveText, f)
+            }
+            return
+        }
+
+        addMessage("user", effectiveText, phase)
         viewModelScope.launch(Dispatchers.IO) {
-            when (_ui.value.phase) {
-                InventPhase.QUESTIONING -> handleQuestioningReply(effectiveText)
-                InventPhase.DEBUGGING -> handleDebuggingReply(effectiveText)
+            when {
+                // Role selector: chatting with the debugger (outside a debugging round)
+                chatRole == "debugger" && phase != InventPhase.DEBUGGING ->
+                    handleDebuggerChat(effectiveText)
+                phase == InventPhase.QUESTIONING -> handleQuestioningReply(effectiveText)
+                phase == InventPhase.DEBUGGING -> handleDebuggingReply(effectiveText)
                 else -> {}
             }
         }
+    }
+
+    /** Chat with the Debugger role: reads the file summaries + readme.txt and answers. */
+    fun handleDebuggerChat(userText: String) {
+        val state = sessionState ?: return
+        val cur = _ui.value
+        if (cur.isGenerating) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val dPath = state.researcherPath.ifEmpty { state.model1Path }
+                val dName = state.researcherName.ifEmpty { state.model1Name }
+                setSwap("Loading $dName (debugger)…")
+                if (!loadOrKeepModel(dPath)) {
+                    setSwap("")
+                    addMessage("system", "Failed to load $dName (debugger)", cur.phase)
+                    return@launch
+                }
+                setSwap("")
+                val projDir = InventStorage.getProjectDir(ctx, sessionId)
+                val projectContext = buildDebuggerContext(projDir)
+                val response = runInference(
+                    systemPrompt = "You are the Debugger. You have every file summary and the project readme.txt. " +
+                        "Find bugs, explain what is wrong, and improve the code when asked.",
+                    userMessage = "Project context:\n$projectContext\n\nUser: $userText",
+                    history = buildConversationHistory(excludeLast = 1),
+                    onStream = { partial -> _ui.value = _ui.value.copy(streamingResponse = partial) }
+                )
+                _ui.value = _ui.value.copy(streamingResponse = "")
+                if (response.trim().isNotEmpty()) {
+                    addMessage("model1", response.trim(), cur.phase)
+                } else {
+                    addMessage("model1", "I couldn't analyze that. Tell me which file to inspect.", cur.phase)
+                }
+            } catch (e: Exception) {
+                addMessage("system", "Debugger error: ${e.message}", cur.phase)
+            }
+        }
+    }
+
+    /** Gather the context the Debugger needs: readme + per-file summaries. */
+    private fun buildDebuggerContext(projDir: File): String {
+        val sb = StringBuilder()
+        val readme = listOf("readme.txt", "README.md", "README.txt").mapNotNull { f ->
+            val file = File(projDir, f)
+            if (file.exists()) try { file.readText().take(6000) } catch (_: Exception) { null } else null
+        }.firstOrNull()
+        if (readme != null) sb.append("== README ==\n$readme\n\n")
+        projDir.listFiles()?.filter { it.isFile && it.name.contains("summary", true) && it.length() < 4000 }
+            ?.sortedBy { it.name }?.forEach { f ->
+                try { sb.append("== ${f.name} ==\n${f.readText().take(1500)}\n\n") } catch (_: Exception) {}
+            }
+        return sb.toString().take(12000)
     }
 
     /** Extract tech-stack hints from attached file content to pre-fill ZCP. */
@@ -655,11 +730,13 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                 )
                 addMessage("system", "✓ Research URLs ready", InventPhase.PLANNING)
 
-                // ── Step 3: Research phase — fetch official changelogs ──
+                // ── Step 3: Research phase — the planner searches only when required ──
                 updatePhase(InventPhase.SEARCHING)
-                setSwap("Loading ${state.researcherName}…")
-                if (!loadOrKeepModel(state.researcherPath)) {
-                    setSwap(""); _ui.value = _ui.value.copy(error = "Researcher load failed"); return@launch
+                setSwap("Planner is researching (only when needed)…")
+                // No separate researcher model: the planner stays loaded and does the
+                // search itself, so no unload/reload churn.
+                if (!loadOrKeepModel(state.model1Path)) {
+                    setSwap(""); _ui.value = _ui.value.copy(error = "Planner load failed"); return@launch
                 }
                 setSwap("Fetching official changelogs…")
                 val fetched = fetchOfficialChangelogs(researchPrompt)
@@ -1353,9 +1430,12 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             updatePhase(InventPhase.DEBUGGING)
             _ui.value = _ui.value.copy(debugMode = true)
             val state = sessionState ?: return@launch
-            setSwap("Loading ${state.model1Name}…")
-            if (!loadOrKeepModel(state.model1Path)) {
-                setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load ${state.model1Name}"); return@launch
+            // Debug with the Debugger role model (falls back to the planner).
+            val dPath = state.researcherPath.ifEmpty { state.model1Path }
+            val dName = state.researcherName.ifEmpty { state.model1Name }
+            setSwap("Loading $dName (debugger)…")
+            if (!loadOrKeepModel(dPath)) {
+                setSwap(""); _ui.value = _ui.value.copy(error = "Failed to load $dName"); return@launch
             }
             setSwap("")
             addMessage("model1", "I'm ready for debugging. Tell me which file has an issue and describe the problem.", InventPhase.DEBUGGING)
@@ -1592,7 +1672,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
         val role = when (path) {
             state.model1Path -> "Planner"
             state.model2Path -> "Coder"
-            state.researcherPath -> "Researcher"
+            state.researcherPath -> "Debugger"
             else -> return
         }
         val inventCfg = SettingsManager.getInventModelConfig(role) ?: return
@@ -1636,7 +1716,7 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             val role = when (path) {
                 state.model1Path -> "Planner"
                 state.model2Path -> "Coder"
-                state.researcherPath -> "Researcher"
+                state.researcherPath -> "Debugger"
                 else -> return@launch
             }
             val inventCfg = SettingsManager.getInventModelConfig(role) ?: return@launch
@@ -1826,7 +1906,7 @@ Example:
         return when (activePath) {
             state.model1Path -> SettingsManager.getInventModelConfig("Planner")
             state.model2Path -> SettingsManager.getInventModelConfig("Coder")
-            state.researcherPath -> SettingsManager.getInventModelConfig("Researcher")
+            state.researcherPath -> SettingsManager.getInventModelConfig("Debugger")
             else -> null
         }
     }
@@ -2216,8 +2296,8 @@ Example:
             .removeSuffix("<|end|>")
             .removeSuffix("<end_of_turn>")
             .removeSuffix("<｜User｜>").trimEnd()
-        val started = role == "model1" || role == "model2" || role == "researcher"
-        val added = if (role == "user" || role == "model1" || role == "model2" || role == "researcher") content.length else 0
+        val started = role == "model1" || role == "model2" || role == "debugger"
+        val added = if (role == "user" || role == "model1" || role == "model2" || role == "debugger") content.length else 0
         withTransaction(
             uiTransform = { state ->
                 val newMsg = InventMessage(role, cleaned, phase, thinkingContent)
