@@ -329,7 +329,8 @@ fun InventDashboardScreen(
                     color = Color(0xB30B0D12),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    Column(Modifier.align(Alignment.Center).padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("INVENT TOUR", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace)
                         Spacer(Modifier.height(12.dp))
                         Text("• Tap a square (or ⤢ top-right) to maximize it into a full window", fontSize = 11.sp, color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
@@ -349,6 +350,7 @@ fun InventDashboardScreen(
                             Text("Got it — start building", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.Monospace,
                                 modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp))
                         }
+                    }
                     }
                 }
             }
