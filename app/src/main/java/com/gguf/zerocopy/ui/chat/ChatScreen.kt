@@ -1079,11 +1079,13 @@ private fun ChatToolCircle(
     onClick: () -> Unit
 ) {
     val colors = currentPalette()
+    val borderBrush = if (active) IdentityBorderBrush
+        else Brush.linearGradient(listOf(colors.Border.copy(alpha = 0.45f), colors.Border.copy(alpha = 0.25f)))
     Surface(
         onClick = onClick,
         shape = CircleShape,
         color = if (active) accent.copy(alpha = 0.14f) else colors.Card,
-        border = BorderStroke(1.dp, if (active) IdentityBorderBrush else colors.Border.copy(alpha = 0.4f)),
+        border = BorderStroke(1.dp, borderBrush),
         modifier = Modifier.size(30.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {
