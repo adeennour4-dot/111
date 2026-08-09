@@ -38,6 +38,8 @@ import com.gguf.zerocopy.data.local.SettingsManager
 import com.gguf.zerocopy.data.local.SettingsManager.ModelTokenConfig
 import com.gguf.zerocopy.ui.theme.ZcPalette
 import com.gguf.zerocopy.ui.theme.currentPalette
+import com.gguf.zerocopy.ui.components.GradientBubbleBox
+import com.gguf.zerocopy.ui.components.GradientThinkingDots
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import kotlin.math.roundToInt
@@ -53,10 +55,10 @@ import java.io.File
 private val Cy = Color(0xFF00E5A0)
 private val CyGlow = Color(0x6000E5A0)
 private val Pr = Color(0xFF8B83FF)
-private val Am = Color(0xFFFFB74D)
-private val Rd = Color(0xFFFF6B6B)
+private val Am = Color(0xFF00E5F0)   // cyan
+private val Rd = Color(0xFFC44DFF)   // hot purple
 private val Gy = Color(0xFF6A6A7A)
-private val Bulb = Color(0xFFFFD166)
+private val Bulb = Color(0xFF00E5F0)  // cyan
 
 // ─── Animation specs ──────────────────────────────────────────────────────────
 private val tweenFast = tween<Float>(300, easing = FastOutSlowInEasing)
@@ -261,14 +263,55 @@ fun InventScreen(
                         )
                     }
                     Spacer(Modifier.weight(1f))
-                    // Thinking toggle (rotates on tap)
-                    TextButton(
+                    // Thinking toggle — animated pill (menu)
+                    val thinkRotAnim by animateFloatAsState(
+                        targetValue = thinkRotate,
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy),
+                        label = "thinkRot"
+                    )
+                    val thinkPulse = rememberInfiniteTransition(label = "thinkPulse")
+                    val pulseAlpha by thinkPulse.animateFloat(
+                        initialValue = 0.35f, targetValue = 1f,
+                        animationSpec = infiniteRepeatable(tween(850), RepeatMode.Reverse),
+                        label = "thinkPulseAlpha"
+                    )
+                    val pulseScale by thinkPulse.animateFloat(
+                        initialValue = 0.9f, targetValue = 1.1f,
+                        animationSpec = infiniteRepeatable(tween(850), RepeatMode.Reverse),
+                        label = "thinkPulseScale"
+                    )
+                    val thinkingOn = ui.reasoningEnabled
+                    Surface(
                         onClick = { vm.toggleReasoning(); thinkRotate += 360f },
-                        modifier = Modifier.height(28.dp),
-                        contentPadding = PaddingValues(horizontal = 4.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (thinkingOn) colors.Accent2.copy(alpha = 0.13f) else colors.Surface,
+                        border = BorderStroke(1.dp, if (thinkingOn) colors.Accent2.copy(alpha = 0.5f) else colors.Border.copy(alpha = 0.35f)),
+                        modifier = Modifier.height(26.dp)
                     ) {
-                        Text("🧠", fontSize = 12.sp, color = if (ui.reasoningEnabled) colors.Accent2 else colors.Text3,
-                            modifier = Modifier.graphicsLayer { rotationZ = thinkRotate })
+                        Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(contentAlignment = Alignment.Center) {
+                                if (thinkingOn) {
+                                    // Breathing halo behind the brain
+                                    Box(Modifier.size(12.dp).clip(CircleShape)
+                                        .background(colors.Accent2.copy(alpha = pulseAlpha * 0.35f)))
+                                }
+                                Text("🧠", fontSize = 11.sp,
+                                    color = if (thinkingOn) colors.Accent2 else colors.Text3,
+                                    modifier = Modifier.graphicsLayer {
+                                        rotationZ = thinkRotAnim
+                                        if (thinkingOn) { scaleX = pulseScale; scaleY = pulseScale }
+                                    })
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            Text(if (thinkingOn) "THINKING" else "THINK", fontSize = 8.5.sp,
+                                fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp,
+                                color = if (thinkingOn) colors.Accent2 else colors.Text3,
+                                fontFamily = FontFamily.Monospace)
+                            if (thinkingOn) {
+                                Spacer(Modifier.width(5.dp))
+                                Box(Modifier.size(5.dp).clip(CircleShape).background(colors.Accent2.copy(alpha = pulseAlpha)))
+                            }
+                        }
                     }
                     // Token chip
                     if (ui.totalTokensUsed > 0) {
@@ -1064,26 +1107,28 @@ private fun ChatBubbleCard(bubble: ChatBubble, colors: ZcPalette) {
                 }
             }
             Spacer(Modifier.height(3.dp))
-            // Content card with accent bar
-            Row(
-                Modifier
-                    .height(IntrinsicSize.Min)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (bubble.isUser) Cy.copy(alpha = 0.05f) else colors.Surface)
-                    .border(1.dp, if (bubble.isUser) Cy.copy(0.12f) else colors.Border.copy(0.25f), RoundedCornerShape(10.dp)),
-                verticalAlignment = Alignment.CenterVertically
+            // Content card — black/white bubble with the app's gradient ring
+            // (circulating while the response streams).
+            GradientBubbleBox(
+                circulating = bubble.isStreaming,
+                bubbleColor = colors.Surface,
+                shape = RoundedCornerShape(10.dp)
             ) {
-                Box(Modifier.width(3.dp).fillMaxHeight().background(roleColor))
-                Text(
-                    bubble.content,
-                    fontSize = 12.5.sp, color = if (bubble.isError) Rd else colors.Text,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp)
-                )
-                if (bubble.isStreaming) {
-                    Spacer(Modifier.width(2.dp))
-                    StreamingCursor(roleColor)
+                Row(
+                    Modifier.height(IntrinsicSize.Min),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(Modifier.width(3.dp).fillMaxHeight().background(roleColor))
+                    Text(
+                        bubble.content,
+                        fontSize = 12.5.sp, color = if (bubble.isError) Rd else colors.Text,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp)
+                    )
+                    if (bubble.isStreaming) {
+                        Spacer(Modifier.width(2.dp))
+                        StreamingCursor(roleColor)
+                    }
                 }
             }
         }
@@ -1639,8 +1684,13 @@ private fun SettingsPopup2(
                 }
                 Spacer(Modifier.height(6.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("🧠 Reasoning", fontSize = 10.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
-                    Spacer(Modifier.weight(1f))
+                    Column(Modifier.weight(1f)) {
+                        Text("🧠 Reasoning", fontSize = 10.sp,
+                            fontWeight = if (reasoningEnabled) FontWeight.Bold else FontWeight.Normal,
+                            color = if (reasoningEnabled) Cy else colors.Text2, fontFamily = FontFamily.Monospace)
+                        Text("planner/debugger wrap replies in <think> blocks", fontSize = 8.5.sp,
+                            color = colors.Text3, fontFamily = FontFamily.Monospace)
+                    }
                     Switch(
                         checked = reasoningEnabled,
                         onCheckedChange = { onToggleReasoning() },
@@ -1653,8 +1703,19 @@ private fun SettingsPopup2(
                 }
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = { onReload(); onDismiss() }, modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp), colors = ButtonDefaults.buttonColors(containerColor = Cy)) {
-                    Text("Confirm ✓", fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = Color.Black)
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Box(
+                        Modifier.fillMaxWidth().background(
+                            Brush.linearGradient(listOf(Cy, Pr, Color(0xFF00E5F0)))
+                        ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Confirm ✓", fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold, color = Color.Black, modifier = Modifier.padding(vertical = 10.dp))
+                    }
                 }
             }
         }

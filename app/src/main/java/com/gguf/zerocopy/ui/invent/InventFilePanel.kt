@@ -32,7 +32,7 @@ import com.gguf.zerocopy.ui.theme.ZcPalette
 import kotlinx.coroutines.launch
 
 private val Cy = Color(0xFF00E5A0)
-private val Am = Color(0xFFFFB74D)
+private val Am = Color(0xFF00E5F0)   // cyan
 
 @Composable
 fun FilePanel(

@@ -52,10 +52,10 @@ import java.util.zip.ZipOutputStream
 // ─── Palette (mirrors the app theme) ────────────────────────────────────────
 private val Cy = Color(0xFF00E5A0)
 private val Pr = Color(0xFF8B83FF)
-private val Am = Color(0xFFFFB74D)
-private val Rd = Color(0xFFFF6B6B)
+private val Am = Color(0xFF00E5F0)   // cyan
+private val Rd = Color(0xFFC44DFF)   // hot purple
 private val Gy = Color(0xFF6A6A7A)
-private val Bulb = Color(0xFFFFD166)
+private val Bulb = Color(0xFF00E5F0)  // cyan
 private val Bg = Color(0xFF0B0D12)
 private val Card = Color(0xFF14171F)
 private val CardLight = Color(0xFF1B1F2A)

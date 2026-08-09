@@ -55,6 +55,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.data.repository.AttachmentType
 import com.gguf.zerocopy.data.repository.MessageRole
+import com.gguf.zerocopy.ui.components.GradientBubbleBox
+import com.gguf.zerocopy.ui.components.GradientThinkingDots
+import com.gguf.zerocopy.ui.components.IdentityBorderBrush
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.io.File
 import java.text.SimpleDateFormat
@@ -129,6 +132,7 @@ fun ChatBubble(
             onClick = onToggleThinking,
             shape = RoundedCornerShape(12.dp),
             color = colors.ThinkBg,
+            border = BorderStroke(1.dp, IdentityBorderBrush),
             modifier = Modifier
               .padding(bottom = 4.dp)
           ) {
@@ -163,27 +167,25 @@ fun ChatBubble(
           )
         }
 
-        Surface(
-          modifier = Modifier
-            .clip(
-              RoundedCornerShape(
-                topStart = if (isUser) 12.dp else 18.dp,
-                topEnd = if (isUser) 18.dp else 12.dp,
-                bottomStart = if (isUser) 4.dp else 18.dp,
-                bottomEnd = if (isUser) 18.dp else 4.dp
-              )
-            )
-            .combinedClickable(
-              onClick = {},
-              onLongClick = { showMenu = true }
-            ),
-          color = if (isUser) colors.UserBg else colors.Card,
-          tonalElevation = if (isUser) 0.dp else 1.dp,
-          border = if (isUser) null else BorderStroke(1.dp, colors.Border.copy(alpha = 0.25f))
+        val bubbleShape = RoundedCornerShape(
+          topStart = if (isUser) 12.dp else 18.dp,
+          topEnd = if (isUser) 18.dp else 12.dp,
+          bottomStart = if (isUser) 4.dp else 18.dp,
+          bottomEnd = if (isUser) 18.dp else 4.dp
+        )
+        GradientBubbleBox(
+          circulating = isStreaming || isLoading,
+          bubbleColor = colors.Card,
+          shape = bubbleShape,
+          borderWidth = if (isStreaming || isLoading) 2.dp else 1.5.dp
         ) {
           Column(
             modifier = Modifier
               .padding(horizontal = 14.dp, vertical = 10.dp)
+              .combinedClickable(
+                onClick = {},
+                onLongClick = { showMenu = true }
+              )
           ) {
             if (attachmentPath != null && attachmentType == AttachmentType.IMAGE) {
               val file = File(attachmentPath)
@@ -208,7 +210,14 @@ fun ChatBubble(
             }
 
             if (isLoading) {
-              PulsingDots(colors.Text3)
+              GradientThinkingDots()
+              Spacer(Modifier.height(4.dp))
+              Text(
+                text = "thinking…",
+                fontSize = 10.sp,
+                color = colors.Text3,
+                fontFamily = FontFamily.Monospace
+              )
             } else {
               Text(
                 text = content,
@@ -347,30 +356,6 @@ fun ChatBubble(
           textAlign = TextAlign.Center
         )
       }
-    }
-  }
-}
-
-@Composable
-private fun PulsingDots(color: Color) {
-  val infiniteTransition = rememberInfiniteTransition()
-  val alpha by infiniteTransition.animateFloat(
-    initialValue = 0.3f,
-    targetValue = 1.0f,
-    animationSpec = infiniteRepeatable(
-      animation = tween(600),
-      repeatMode = RepeatMode.Reverse
-    )
-  )
-  Row(verticalAlignment = Alignment.CenterVertically) {
-    repeat(3) { index ->
-      Box(
-        modifier = Modifier
-          .size(8.dp)
-          .clip(CircleShape)
-          .background(color.copy(alpha = alpha))
-      )
-      if (index < 2) Spacer(Modifier.width(4.dp))
     }
   }
 }

@@ -5,6 +5,7 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -17,6 +18,7 @@ import com.gguf.zerocopy.data.local.SettingsManager
 
 object ThemeState {
   var isDark by mutableStateOf(SettingsManager.isDarkTheme)
+  var themeMode by mutableStateOf(SettingsManager.themeMode)
 }
 
 private val DarkScheme =
@@ -75,8 +77,10 @@ val ZcTypography = Typography(
 )
 
 @Composable
-fun ZeroCopyTheme(content: @Composable () -> Unit) {
-  val colorScheme = if (ThemeState.isDark) DarkScheme else LightScheme
+fun ZeroCopyTheme(darkTheme: Boolean = ThemeState.isDark, content: @Composable () -> Unit) {
+  // Keep currentPalette()/ThemeState.isDark in sync with the effective theme.
+  SideEffect { ThemeState.isDark = darkTheme }
+  val colorScheme = if (darkTheme) DarkScheme else LightScheme
   MaterialTheme(colorScheme = colorScheme, typography = ZcTypography) { content() }
 }
 
@@ -91,6 +95,7 @@ interface ZcPalette {
   val Border: Color
   val Accent: Color
   val Accent2: Color
+  val Cyan: Color
   val Red: Color
   val Amber: Color
   val Purple: Color

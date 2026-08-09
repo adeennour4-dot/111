@@ -124,7 +124,7 @@ fun SettingsScreen(onBack: () -> Unit) {
   var sysPrompt by remember { mutableStateOf(SettingsManager.systemPrompt) }
   var showBenchmark by remember { mutableStateOf(false) }
   var lowRam by remember { mutableStateOf(SettingsManager.lowRamMode) }
-  var isDark by remember { mutableStateOf(SettingsManager.isDarkTheme) }
+  var themeMode by remember { mutableStateOf(SettingsManager.themeMode) }
   var mmprojPath by remember { mutableStateOf(SettingsManager.mmprojPath) }
   var reasoningEnabled by remember { mutableStateOf(SettingsManager.reasoningEnabled) }
   var ragEnabled by remember { mutableStateOf(SettingsManager.ragEnabled) }
@@ -504,9 +504,26 @@ fun SettingsScreen(onBack: () -> Unit) {
       Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
         border = BorderStroke(1.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
-          ToggleRow("Dark Theme", null, isDark, {
-            isDark = it; SettingsManager.isDarkTheme = it
-          }, colors)
+          Text("Theme", fontSize = 12.sp, color = colors.Text, fontWeight = FontWeight.SemiBold)
+          Text("Follow the system, or force dark / light", fontSize = 10.sp, color = colors.Text3)
+          Spacer(Modifier.height(8.dp))
+          Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("system" to "System", "dark" to "Dark", "light" to "Light").forEach { (key, label) ->
+              Surface(
+                onClick = { themeMode = key; SettingsManager.themeMode = key },
+                shape = RoundedCornerShape(8.dp),
+                color = if (themeMode == key) colors.Accent.copy(alpha = 0.18f) else colors.CardLight,
+                border = BorderStroke(1.dp, if (themeMode == key) colors.Accent else colors.Border),
+                modifier = Modifier.weight(1f)
+              ) {
+                Box(Modifier.padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
+                  Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                    color = if (themeMode == key) colors.Accent else colors.Text2,
+                    fontFamily = FontFamily.Monospace)
+                }
+              }
+            }
+          }
         }
       }
 

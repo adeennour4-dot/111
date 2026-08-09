@@ -67,6 +67,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
@@ -113,7 +114,16 @@ class MainActivity : ComponentActivity() {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
     requestNotificationPermission()
-    setContent { ZeroCopyTheme { AppRoot() } }
+    setContent {
+      val themeMode = com.gguf.zerocopy.ui.theme.ThemeState.themeMode
+      val systemDark = isSystemInDarkTheme()
+      val darkTheme = when (themeMode) {
+        "light" -> false
+        "dark" -> true
+        else -> systemDark
+      }
+      ZeroCopyTheme(darkTheme = darkTheme) { AppRoot() }
+    }
   }
 
   private fun requestNotificationPermission() {
@@ -504,7 +514,7 @@ private fun navTabColor(label: String, colors: ZcPalette): Color = when (label) 
   "Models" -> colors.Accent
   "Server" -> colors.Amber
   "Settings" -> colors.Purple
-  else -> Color(0xFFFFD166) // Invent bulb amber
+  else -> Color(0xFF00E5F0) // Invent bulb cyan
 }
 
 @Composable

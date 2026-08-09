@@ -3,6 +3,7 @@ package com.gguf.zerocopy.ui.chat.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,6 +27,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gguf.zerocopy.ui.components.IdentityBorderBrush
 import com.gguf.zerocopy.ui.theme.currentPalette
 
 @Composable
@@ -41,6 +43,7 @@ fun ThinkingContent(
       .padding(bottom = 6.dp),
     shape = RoundedCornerShape(10.dp),
     color = colors.ThinkBg,
+    border = BorderStroke(1.dp, IdentityBorderBrush),
     tonalElevation = 0.dp
   ) {
     Column(
