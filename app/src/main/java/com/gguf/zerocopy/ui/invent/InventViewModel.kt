@@ -497,7 +497,9 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             val newZcp = ZcpProtocol(model2ContextSize = m2Ctx, offlineMode = offlineMode)
             withTransaction(
                 uiTransform = {
-                    it.copy(
+                    // FULL fresh UI state — a new session must never show the
+                    // previous session's messages or transient state.
+                    InventUiState().copy(
                         phase = InventPhase.QUESTIONING, sessionId = newSessionId,
                         model1Name = m1n, model2Name = if (sameModelMode) m1n else m2n,
                         debuggerName = rn, offlineMode = offlineMode, sameModelMode = sameModelMode,
@@ -533,6 +535,11 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
                     chatStarted = true
                 )
             } else {
+                // Fresh session: wipe the engine's KV cache so the first prompt
+                // starts clean. A kept engine (same model path) would otherwise
+                // append onto the PREVIOUS session's context and overflow at
+                // the very first decode → native crash.
+                runCatching { engineManager.getActiveEngine()?.resetContext() }
                 _ui.value = _ui.value.copy(plannerLoaded = true, chatStarted = true)
             }
             setSwap("")
