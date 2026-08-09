@@ -881,16 +881,16 @@ private fun ProjectWindow(
         Column(Modifier.fillMaxSize().padding(12.dp)) {
             // ── Window title bar ──
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // minimize
+                // "−" minimize → collapse back to the 2×2 grid
                 Surface(
                     onClick = onMinimize,
                     shape = CircleShape,
                     color = Bulb.copy(alpha = 0.12f),
                     border = BorderStroke(1.dp, Bulb.copy(alpha = 0.5f)),
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(26.dp)
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Minimize, null, tint = Bulb, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Filled.Minimize, null, tint = Bulb, modifier = Modifier.size(15.dp))
                     }
                 }
                 Spacer(Modifier.width(8.dp))
@@ -898,16 +898,16 @@ private fun ProjectWindow(
                     Text(project.name.uppercase(), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("MODELS · SESSIONS · FILES", fontSize = 8.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
                 }
-                // delete project (single back = the — minimize button)
+                // 🗑 trash → delete the project (asks for confirmation)
                 Surface(
                     onClick = onDelete,
                     shape = CircleShape,
                     color = Rd.copy(alpha = 0.12f),
                     border = BorderStroke(1.dp, Rd.copy(alpha = 0.5f)),
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(26.dp)
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Delete, null, tint = Rd, modifier = Modifier.size(13.dp))
+                        Icon(Icons.Filled.Delete, null, tint = Rd, modifier = Modifier.size(14.dp))
                     }
                 }
             }

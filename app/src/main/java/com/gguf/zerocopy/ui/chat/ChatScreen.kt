@@ -46,13 +46,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -82,6 +87,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -104,6 +110,10 @@ import com.gguf.zerocopy.ui.chat.components.DeleteConfirmDialog
 import com.gguf.zerocopy.ui.chat.components.ExportSessionDialog
 import com.gguf.zerocopy.ui.chat.components.InputBar
 import com.gguf.zerocopy.ui.chat.components.getFileName
+import com.gguf.zerocopy.ui.components.IdentityBorderBrush
+import com.gguf.zerocopy.ui.components.IdentityCyan
+import com.gguf.zerocopy.ui.components.IdentityGreen
+import com.gguf.zerocopy.ui.components.IdentityPurple
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.io.File
 import java.io.FileOutputStream
@@ -823,13 +833,6 @@ fun ChatScreen(
         InputBar(
           onSend = { text, uris, names -> sendMessage(text, uris, names) },
           onStop = { stopInference() },
-          onAttach = {
-            if (hasVision) {
-              docPickLauncher.launch(arrayOf("image/*", "text/plain", "text/markdown", "application/pdf"))
-            } else {
-              docPickLauncher.launch(arrayOf("text/plain", "text/markdown", "application/pdf"))
-            }
-          },
           isInferring = isInferring,
           attachmentUris = attachmentUris,
           attachmentFileNames = attachmentFileNames,
@@ -843,11 +846,56 @@ fun ChatScreen(
     snackbarHost = { SnackbarHost(snackbarHostState) },
     containerColor = colors.Bg
   ) { pad ->
-    Box(
+    Column(
       modifier = Modifier
         .padding(pad)
         .fillMaxSize()
     ) {
+      // Chat toolbar — think / search / clip as small circles above the bubbles
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 10.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        ChatToolCircle(
+          icon = if (reasoningEnabled) Icons.Filled.Psychology else Icons.Outlined.Psychology,
+          label = "Thinking",
+          active = reasoningEnabled,
+          accent = IdentityGreen,
+          onClick = {
+            reasoningEnabled = !reasoningEnabled
+            SettingsManager.reasoningEnabled = reasoningEnabled
+          }
+        )
+        ChatToolCircle(
+          icon = if (webSearchEnabled) Icons.Filled.Search else Icons.Outlined.Search,
+          label = "Web search",
+          active = webSearchEnabled,
+          accent = IdentityCyan,
+          onClick = { webSearchEnabled = !webSearchEnabled }
+        )
+        ChatToolCircle(
+          icon = Icons.Filled.AttachFile,
+          label = "Attach",
+          active = attachmentUris.isNotEmpty(),
+          accent = IdentityPurple,
+          onClick = {
+            if (hasVision) {
+              docPickLauncher.launch(arrayOf("image/*", "text/plain", "text/markdown", "application/pdf"))
+            } else {
+              docPickLauncher.launch(arrayOf("text/plain", "text/markdown", "application/pdf"))
+            }
+          }
+        )
+        Spacer(Modifier.weight(1f))
+      }
+      Box(
+        modifier = Modifier
+          .fillMaxWidth()
+          .weight(1f)
+      ) {
       if (kvUsagePercent > 50) {
         LinearProgressIndicator(
           progress = { kvUsagePercent / 100f },
@@ -1001,6 +1049,7 @@ fun ChatScreen(
           }
         }
       }
+      }
     }
   }
 
@@ -1018,4 +1067,27 @@ fun ChatScreen(
       onConfirm = { handleDelete(deleteMsgIndex) }
     )
   }
+}
+
+/** Small circular chat toolbar toggle (think / search / clip) above the bubbles. */
+@Composable
+private fun ChatToolCircle(
+    icon: ImageVector,
+    label: String,
+    active: Boolean,
+    accent: Color,
+    onClick: () -> Unit
+) {
+    val colors = currentPalette()
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = if (active) accent.copy(alpha = 0.14f) else colors.Card,
+        border = BorderStroke(1.dp, if (active) IdentityBorderBrush else colors.Border.copy(alpha = 0.4f)),
+        modifier = Modifier.size(30.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(icon, label, tint = if (active) accent else colors.Text3, modifier = Modifier.size(15.dp))
+        }
+    }
 }

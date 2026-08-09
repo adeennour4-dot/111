@@ -51,14 +51,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.gguf.zerocopy.ui.components.ClipCircleIcon
 import com.gguf.zerocopy.ui.theme.currentPalette
 
 @Composable
 fun InputBar(
   onSend: (String, List<Uri>, List<String>) -> Unit,
   onStop: () -> Unit,
-  onAttach: () -> Unit,
   isInferring: Boolean,
   attachmentUris: List<Uri>,
   attachmentFileNames: List<String>,
@@ -191,14 +189,6 @@ fun InputBar(
             cursorColor = colors.Accent
           ),
           textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
-        )
-        Spacer(Modifier.width(8.dp))
-        // Clip (attach) circle
-        ClipCircleIcon(
-          onClick = onAttach,
-          size = 40.dp,
-          fill = colors.Card,
-          active = hasAttachments
         )
         Spacer(Modifier.width(8.dp))
         if (isInferring) {
