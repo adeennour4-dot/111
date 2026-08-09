@@ -14,6 +14,11 @@ import android.speech.tts.TextToSpeech
 import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -43,7 +48,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 
@@ -75,9 +79,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -98,7 +103,6 @@ import com.gguf.zerocopy.ui.chat.components.ChatBubble
 import com.gguf.zerocopy.ui.chat.components.DeleteConfirmDialog
 import com.gguf.zerocopy.ui.chat.components.ExportSessionDialog
 import com.gguf.zerocopy.ui.chat.components.InputBar
-import com.gguf.zerocopy.ui.chat.components.PromptSuggestions
 import com.gguf.zerocopy.ui.chat.components.getFileName
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.io.File
@@ -715,84 +719,95 @@ fun ChatScreen(
         Row(
           modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 8.dp),
+            .padding(horizontal = 10.dp, vertical = 4.dp),
           verticalAlignment = Alignment.CenterVertically
         ) {
-          Column(
-            modifier = Modifier
-              .weight(1f)
-              .padding(start = 12.dp)
-          ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-              // Live status dot: teal = model ready, amber = generating, red = none loaded
-              Box(
-                Modifier.size(7.dp).clip(CircleShape).background(
-                  when {
-                    isInferring -> colors.Amber
-                    engine?.isModelLoaded == true -> colors.Accent2
-                    else -> colors.Red
-                  }
-                )
-              )
-              Spacer(Modifier.width(6.dp))
+          // Live status dot: teal = model ready, amber = generating, red = none loaded
+          Box(
+            Modifier.size(7.dp).clip(CircleShape).background(
+              when {
+                isInferring -> colors.Amber
+                engine?.isModelLoaded == true -> colors.Accent2
+                else -> colors.Red
+              }
+            )
+          )
+          Spacer(Modifier.width(8.dp))
+          Text(
+            text = sessionName,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            color = colors.Text,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+          )
+          if (modelName.isNotEmpty()) {
+            Surface(
+              shape = RoundedCornerShape(6.dp),
+              color = colors.Accent2.copy(alpha = 0.10f),
+              border = BorderStroke(1.dp, colors.Accent2.copy(alpha = 0.25f)),
+              modifier = Modifier.padding(end = 6.dp)
+            ) {
               Text(
-                text = sessionName,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = colors.Text,
+                text = modelName,
+                fontSize = 8.5.sp,
+                color = colors.Accent2,
+                fontFamily = FontFamily.Monospace,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
               )
             }
-            if (modelName.isNotEmpty()) {
-              Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = colors.Accent2.copy(alpha = 0.10f),
-                border = BorderStroke(1.dp, colors.Accent2.copy(alpha = 0.25f)),
-                modifier = Modifier.padding(top = 3.dp)
-              ) {
-                Row(
-                  modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
-                  verticalAlignment = Alignment.CenterVertically
-                ) {
-                  Box(Modifier.size(5.dp).clip(CircleShape).background(colors.Accent2))
-                  Spacer(Modifier.width(4.dp))
-                  Text(
-                    text = modelName,
-                    fontSize = 9.5.sp,
-                    color = colors.Accent2,
-                    fontFamily = FontFamily.Monospace,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                  )
-                }
-              }
-            }
           }
-          // Unload model button (only shown when model is loaded)
-          if (engine?.isModelLoaded == true) {
-            IconButton(onClick = {
-              scope.launch {
-                engine?.unloadModel()
-                startNewChat()
-              }
-            }) {
-              Icon(Icons.Outlined.Close, contentDescription = "Unload model", tint = colors.Text3)
-            }
+          // New session — pulsing gradient orb (redesigned "+")
+          val newOrbPulse = rememberInfiniteTransition(label = "newOrb")
+          val orbScale by newOrbPulse.animateFloat(
+            initialValue = 0.96f, targetValue = 1.06f,
+            animationSpec = infiniteRepeatable(tween(1100), RepeatMode.Reverse),
+            label = "newOrbScale"
+          )
+          Box(
+            modifier = Modifier
+              .size(28.dp)
+              .clip(CircleShape)
+              .graphicsLayer { scaleX = orbScale; scaleY = orbScale }
+              .background(
+                Brush.sweepGradient(listOf(colors.GradientStart, colors.Accent2, colors.GradientEnd, colors.GradientStart))
+              )
+              .clickable { startNewChat() },
+            contentAlignment = Alignment.Center
+          ) {
+            Icon(Icons.Filled.Add, "New conversation", tint = Color.Black, modifier = Modifier.size(16.dp))
           }
-          IconButton(onClick = { app.chatRepository.refreshSessions(); onSessions() }) {
-            Icon(Icons.Outlined.History, contentDescription = "Sessions", tint = colors.Text2)
+          Spacer(Modifier.width(6.dp))
+          IconButton(
+            onClick = { app.chatRepository.refreshSessions(); onSessions() },
+            modifier = Modifier.size(28.dp)
+          ) {
+            Icon(Icons.Outlined.History, contentDescription = "Sessions", tint = colors.Text2, modifier = Modifier.size(16.dp))
           }
-          IconButton(onClick = { startNewChat() }) {
-            Icon(Icons.Filled.Add, contentDescription = "New conversation", tint = colors.Text2)
-          }
-            // Server icon removed per user request
           IconButton(
             onClick = { if (chatId != null) showExportDialog = true },
-            enabled = chatId != null && messages.isNotEmpty()
+            enabled = chatId != null && messages.isNotEmpty(),
+            modifier = Modifier.size(28.dp)
           ) {
             Icon(Icons.Outlined.Share, contentDescription = "Export",
-              tint = if (chatId != null && messages.isNotEmpty()) colors.Text2 else colors.Text3)
+              tint = if (chatId != null && messages.isNotEmpty()) colors.Text2 else colors.Text3,
+              modifier = Modifier.size(16.dp))
+          }
+          if (engine?.isModelLoaded == true) {
+            IconButton(
+              onClick = {
+                scope.launch {
+                  engine?.unloadModel()
+                  startNewChat()
+                }
+              },
+              modifier = Modifier.size(28.dp)
+            ) {
+              Icon(Icons.Outlined.Close, contentDescription = "Unload model", tint = colors.Text3, modifier = Modifier.size(16.dp))
+            }
           }
         }
         // Gradient accent divider
@@ -805,59 +820,9 @@ fun ChatScreen(
     },
     bottomBar = {
       Column(modifier = Modifier.fillMaxWidth().imePadding()) {
-        if (messages.isEmpty() && !isInferring) {
-          PromptSuggestions(suggestions = suggestions, onSelect = { text ->
-            sendMessage(text, emptyList(), emptyList())
-          })
-        }
-        val ragEngine = app.ragEngine
-        if (ragEngine.hasDocuments && ragEnabled) {
-          Row(
-            modifier = Modifier
-              .fillMaxWidth()
-              .horizontalScroll(rememberScrollState())
-              .padding(horizontal = 12.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            ragEngine.documentNames.forEach { name ->
-              Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = colors.CardLight
-              ) {
-                Row(
-                  modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                  verticalAlignment = Alignment.CenterVertically
-                ) {
-                  Icon(Icons.Filled.Description, null, tint = colors.Purple, modifier = Modifier.size(14.dp))
-                  Spacer(Modifier.width(4.dp))
-                  Text(name, fontSize = 10.sp, color = colors.Text2, maxLines = 1)
-                }
-              }
-            }
-            Spacer(Modifier.width(4.dp))
-            TextButton(
-              onClick = { ragEngine.clear() },
-              modifier = Modifier.height(24.dp)
-            ) {
-              Text("Clear", fontSize = 10.sp, color = colors.Red)
-            }
-          }
-        }
         InputBar(
           onSend = { text, uris, names -> sendMessage(text, uris, names) },
           onStop = { stopInference() },
-          onCamera = {
-            if (hasVision) {
-              if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                launchCamera()
-              } else {
-                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-              }
-            } else {
-              scope.launch { snackbarHostState.showSnackbar("Camera requires a vision model") }
-            }
-          },
           onAttach = {
             if (hasVision) {
               docPickLauncher.launch(arrayOf("image/*", "text/plain", "text/markdown", "application/pdf"))
@@ -865,39 +830,13 @@ fun ChatScreen(
               docPickLauncher.launch(arrayOf("text/plain", "text/markdown", "application/pdf"))
             }
           },
-          onVoice = {
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-              putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-              putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-              putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak your message…")
-            }
-            try {
-              speechLauncher.launch(intent)
-            } catch (e: Exception) {
-              scope.launch { snackbarHostState.showSnackbar("Speech recognition not available on this device") }
-            }
-          },
-          onSpeak = {
-            val lastAssistant = messages.lastOrNull { it.role == MessageRole.ASSISTANT }
-            if (lastAssistant != null) speakText(lastAssistant.content)
-            else scope.launch { snackbarHostState.showSnackbar("No response to read aloud yet") }
-          },
-          isSpeaking = isSpeaking,
           isInferring = isInferring,
-          hasVision = hasVision,
           attachmentUris = attachmentUris,
           attachmentFileNames = attachmentFileNames,
           onRemoveAttachment = { idx ->
             attachmentUris = attachmentUris.toMutableList().also { it.removeAt(idx) }
             attachmentFileNames = attachmentFileNames.toMutableList().also { it.removeAt(idx) }
-          },
-          reasoningEnabled = reasoningEnabled,
-          onToggleReasoning = {
-            reasoningEnabled = !reasoningEnabled
-            SettingsManager.reasoningEnabled = reasoningEnabled
-          },
-          webSearchEnabled = webSearchEnabled,
-          onToggleWebSearch = { webSearchEnabled = !webSearchEnabled }
+          }
         )
       }
     },
@@ -1002,7 +941,7 @@ fun ChatScreen(
           modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 8.dp),
-          contentPadding = PaddingValues(vertical = 8.dp),
+          contentPadding = PaddingValues(top = 4.dp, bottom = 0.dp),
           verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
           itemsIndexed(

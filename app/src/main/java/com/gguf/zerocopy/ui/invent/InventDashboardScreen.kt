@@ -309,14 +309,6 @@ fun InventDashboardScreen(
                                                 onStartSession = { onStartSession(project) },
                                                 onOpenSession = { sid -> onOpenSession(project, sid) },
                                                 onSessionMenu = { sid -> sessionMenuFor = project.id to sid },
-                                                onToggleThinking = { role ->
-                                                    val p = projects.find { it.id == project.id }
-                                                    if (p != null) {
-                                                        onSaveProject(p.withRoles(p.roles.map {
-                                                            if (it.role == role.role) it.copy(thinkingEnabled = !it.thinkingEnabled) else it
-                                                        }))
-                                                    }
-                                                },
                                                 onToggleBackground = { role ->
                                                     val p = projects.find { it.id == project.id }
                                                     if (p != null) {
@@ -1195,7 +1187,6 @@ private fun ModelPickerDialog(
 ) {
     var ctx by remember { mutableStateOf(role.contextWindow) }
     var maxNew by remember { mutableStateOf(role.maxTokens) }
-    var thinking by remember { mutableStateOf(role.thinkingEnabled) }
     var background by remember { mutableStateOf(role.backgroundWork) }
     var selectedPath by remember { mutableStateOf(role.modelPath) }
     var selectedName by remember { mutableStateOf(role.modelName) }
@@ -1285,19 +1276,6 @@ private fun ModelPickerDialog(
                         colors = SliderDefaults.colors(thumbColor = roleColor(role.role), activeTrackColor = roleColor(role.role))
                     )
                 }
-                item {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Thinking mode", fontSize = 11.sp, color = Color(0xFFB9C1D0), fontFamily = FontFamily.Monospace)
-                            Text("wrap replies in <think> reasoning", fontSize = 8.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
-                        }
-                        Switch(
-                            checked = thinking,
-                            onCheckedChange = { thinking = it },
-                            colors = SwitchDefaults.colors(checkedTrackColor = roleColor(role.role))
-                        )
-                    }
-                }
                 if (role.isCoder) {
                     item {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1322,7 +1300,7 @@ private fun ModelPickerDialog(
                                     role.copy(
                                         modelPath = selectedPath, modelName = selectedName.ifEmpty { sel?.name ?: selectedPath },
                                         contextWindow = ctx, maxTokens = maxNew,
-                                        thinkingEnabled = thinking, backgroundWork = background
+                                        thinkingEnabled = role.thinkingEnabled, backgroundWork = background
                                     )
                                 )
                             }
@@ -1730,10 +1708,10 @@ private fun SquarePanel(
     onStartSession: () -> Unit,
     onOpenSession: (String) -> Unit,
     onSessionMenu: (String) -> Unit,
-    onToggleThinking: (InventRoleConfig) -> Unit,
     onToggleBackground: (InventRoleConfig) -> Unit
 ) {
     val context = LocalContext.current
+    var tab by remember { mutableIntStateOf(0) } // 0 = MODELS, 1 = SESSIONS
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = Card,
@@ -1741,106 +1719,116 @@ private fun SquarePanel(
         modifier = Modifier.fillMaxSize()
     ) {
         Column(Modifier.fillMaxSize().padding(10.dp)) {
-            // ── Panel title bar ──
+            // ── Title bar ──
             Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(8.dp).clip(CircleShape).background(Cy))
+                Spacer(Modifier.width(6.dp))
                 Column(Modifier.weight(1f)) {
                     Text(project.name.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("RAM ${freeRamMb(context)} MB free", fontSize = 7.sp, color = Gy, fontFamily = FontFamily.Monospace)
                 }
-                Surface(onClick = onMaximize, shape = CircleShape, color = Cy.copy(alpha = 0.12f), border = BorderStroke(1.dp, Cy.copy(alpha = 0.5f)), modifier = Modifier.size(22.dp)) {
+                Surface(onClick = onMaximize, shape = CircleShape, color = Cy.copy(alpha = 0.12f), border = BorderStroke(1.dp, Cy.copy(alpha = 0.5f)), modifier = Modifier.size(24.dp)) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.OpenInFull, null, tint = Cy, modifier = Modifier.size(12.dp)) }
                 }
                 Spacer(Modifier.width(6.dp))
-                Surface(onClick = onClose, shape = CircleShape, color = Rd.copy(alpha = 0.12f), border = BorderStroke(1.dp, Rd.copy(alpha = 0.5f)), modifier = Modifier.size(22.dp)) {
+                Surface(onClick = onClose, shape = CircleShape, color = Rd.copy(alpha = 0.12f), border = BorderStroke(1.dp, Rd.copy(alpha = 0.5f)), modifier = Modifier.size(24.dp)) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, null, tint = Rd, modifier = Modifier.size(12.dp)) }
                 }
             }
-            Spacer(Modifier.height(10.dp))
-            Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // ── LEFT: roles / models ──
-                Column(Modifier.weight(1f).fillMaxHeight()) {
-                    Text("MODELS", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
-                    Spacer(Modifier.height(6.dp))
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.weight(1f)) {
-                        itemsIndexed(project.roles) { _, role ->
-                            val missing = role.modelPath.isNotEmpty() && !knownPaths.contains(role.modelPath)
-                            val model = models.find { it.path == role.modelPath }
-                            Surface(
-                                shape = RoundedCornerShape(7.dp),
-                                color = CardLight,
-                                border = BorderStroke(1.dp, roleColor(role.role).copy(alpha = 0.4f)),
-                                modifier = Modifier.fillMaxWidth().combinedClickable(
-                                    onClick = { if (model != null) onModelInfo(role, model) else onPickModel(role) },
-                                    onLongClick = { onRoleMenu(role) }
-                                )
-                            ) {
-                                Column(Modifier.padding(horizontal = 8.dp, vertical = 7.dp)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Box(Modifier.size(7.dp).clip(CircleShape).background(if (missing) Rd else roleColor(role.role)))
-                                        Spacer(Modifier.width(5.dp))
-                                        Text(role.role.uppercase(), fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = roleColor(role.role), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                        if (role.isCoder) { Spacer(Modifier.width(3.dp)); Text("🔒", fontSize = 7.sp) }
-                                    }
+            Spacer(Modifier.height(8.dp))
+            // ── Tab switcher: MODELS | SESSIONS ──
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(0 to "MODELS", 1 to "SESSIONS").forEach { (t, label) ->
+                    val active = tab == t
+                    Surface(
+                        onClick = { tab = t },
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (active) Pr.copy(alpha = 0.18f) else CardLight,
+                        border = BorderStroke(1.dp, if (active) Pr.copy(alpha = 0.7f) else Line),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(Modifier.padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+                            Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                                color = if (active) Pr else Gy, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            // ── Tab content ──
+            if (tab == 0) {
+                // MODELS
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxSize()) {
+                    itemsIndexed(project.roles) { _, role ->
+                        val missing = role.modelPath.isNotEmpty() && !knownPaths.contains(role.modelPath)
+                        val model = models.find { it.path == role.modelPath }
+                        Surface(
+                            shape = RoundedCornerShape(9.dp),
+                            color = CardLight,
+                            border = BorderStroke(1.dp, roleColor(role.role).copy(alpha = 0.4f)),
+                            modifier = Modifier.fillMaxWidth().combinedClickable(
+                                onClick = { if (model != null) onModelInfo(role, model) else onPickModel(role) },
+                                onLongClick = { onRoleMenu(role) }
+                            )
+                        ) {
+                            Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(8.dp).clip(CircleShape).background(if (missing) Rd else roleColor(role.role)))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(role.role.uppercase(), fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = roleColor(role.role), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                    if (role.isCoder) { Spacer(Modifier.width(3.dp)); Text("🔒", fontSize = 7.sp) }
+                                }
+                                Spacer(Modifier.height(3.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         when {
                                             role.modelPath.isEmpty() -> "no model — tap to pick"
                                             missing -> "Unknown file — tap to pick"
                                             else -> role.modelName.ifEmpty { model?.name ?: "model" }
                                         },
-                                        fontSize = 8.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis
+                                        fontSize = 8.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
                                     )
-                                    // Thinking / background toggles
-                                    if (role.isPlanner || role.isDebugger) {
-                                        Spacer(Modifier.height(4.dp))
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("thinking", fontSize = 7.sp, color = Gy, fontFamily = FontFamily.Monospace)
-                                            Spacer(Modifier.weight(1f))
-                                            MiniToggle(checked = role.thinkingEnabled, onToggle = { onToggleThinking(role) })
-                                        }
-                                    }
                                     if (role.isCoder) {
-                                        Spacer(Modifier.height(4.dp))
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("background", fontSize = 7.sp, color = Gy, fontFamily = FontFamily.Monospace)
-                                            Spacer(Modifier.weight(1f))
-                                            MiniToggle(checked = role.backgroundWork, onToggle = { onToggleBackground(role) })
-                                        }
+                                        Spacer(Modifier.width(4.dp))
+                                        MiniToggle(checked = role.backgroundWork, onToggle = { onToggleBackground(role) })
                                     }
-                                }
-                            }
-                        }
-                        item {
-                            Surface(
-                                onClick = onAddRole,
-                                shape = RoundedCornerShape(7.dp),
-                                color = Color.Transparent,
-                                border = BorderStroke(1.dp, Line),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(Modifier.padding(vertical = 6.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Filled.Add, null, tint = Pr, modifier = Modifier.size(10.dp))
-                                    Spacer(Modifier.width(3.dp))
-                                    Text("add role", fontSize = 8.sp, color = Pr, fontFamily = FontFamily.Monospace)
                                 }
                             }
                         }
                     }
+                    item {
+                        Surface(
+                            onClick = onAddRole,
+                            shape = RoundedCornerShape(9.dp),
+                            color = Pr.copy(alpha = 0.10f),
+                            border = BorderStroke(1.dp, Pr.copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(Modifier.padding(vertical = 7.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Add, null, tint = Pr, modifier = Modifier.size(11.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("add role", fontSize = 8.sp, color = Pr, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
-                // ── RIGHT: sessions ──
-                Column(Modifier.weight(1f).fillMaxHeight()) {
-                    Text("SESSIONS", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
-                    Spacer(Modifier.height(6.dp))
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp), modifier = Modifier.weight(1f)) {
+            } else {
+                // SESSIONS
+                Column(Modifier.fillMaxSize()) {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
                         if (project.sessionIds.isEmpty()) {
                             item {
-                                Text("no sessions yet", fontSize = 8.5.sp, color = Gy, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(4.dp))
+                                Box(Modifier.fillMaxWidth().padding(vertical = 14.dp), contentAlignment = Alignment.Center) {
+                                    Text("no sessions yet", fontSize = 9.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                                }
                             }
                         }
                         itemsIndexed(project.sessionIds) { i, sid ->
                             val s = remember(sid, fileRefresh) { runCatching { InventStorage.loadSession(context, sid) }.getOrNull() }
                             val title = s?.model1Name?.takeIf { it.isNotBlank() } ?: "Session ${i + 1}"
                             Surface(
-                                shape = RoundedCornerShape(7.dp),
+                                shape = RoundedCornerShape(9.dp),
                                 color = CardLight,
                                 border = BorderStroke(1.dp, Pr.copy(alpha = 0.35f)),
                                 modifier = Modifier.fillMaxWidth().combinedClickable(
@@ -1848,23 +1836,29 @@ private fun SquarePanel(
                                     onLongClick = { onSessionMenu(sid) }
                                 )
                             ) {
-                                Column(Modifier.padding(horizontal = 8.dp, vertical = 7.dp)) {
-                                    Text("S#${i + 1} — $title", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text("phase: ${s?.phase?.name ?: "?"} · hold: menu", fontSize = 7.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                                Row(Modifier.padding(horizontal = 10.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(20.dp).clip(RoundedCornerShape(5.dp)).background(Pr.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                                        Text("S#${i + 1}", fontSize = 7.5.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
+                                    }
+                                    Spacer(Modifier.width(7.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(title, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text("phase: ${s?.phase?.name ?: "?"}", fontSize = 7.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                                    }
                                 }
                             }
                         }
                     }
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(8.dp))
                     Surface(
                         onClick = onStartSession,
-                        shape = RoundedCornerShape(8.dp),
-                        color = Pr.copy(alpha = 0.15f),
-                        border = BorderStroke(1.dp, Pr.copy(alpha = 0.6f)),
+                        shape = RoundedCornerShape(10.dp),
+                        color = Pr.copy(alpha = 0.16f),
+                        border = BorderStroke(1.dp, Pr.copy(alpha = 0.65f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Add, null, tint = Pr, modifier = Modifier.size(12.dp))
+                        Row(Modifier.padding(vertical = 9.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Add, null, tint = Pr, modifier = Modifier.size(13.dp))
                             Spacer(Modifier.width(4.dp))
                             Text("new session", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
                         }

@@ -39,7 +39,8 @@ import com.gguf.zerocopy.data.local.SettingsManager.ModelTokenConfig
 import com.gguf.zerocopy.ui.theme.ZcPalette
 import com.gguf.zerocopy.ui.theme.currentPalette
 import com.gguf.zerocopy.ui.components.GradientBubbleBox
-import com.gguf.zerocopy.ui.components.GradientThinkingDots
+import com.gguf.zerocopy.ui.components.GradientSearchingCircle
+import com.gguf.zerocopy.ui.components.GradientThinkingCircle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import kotlin.math.roundToInt
@@ -159,7 +160,6 @@ fun InventScreen(
     var coderChatFile by remember { mutableStateOf("") }
     var showModelPicker by remember { mutableStateOf<Int?>(null) }
     var settingsRestrictRole by remember { mutableStateOf(-1) }
-    var thinkRotate by remember { mutableStateOf(0f) }
     val listState = rememberLazyListState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -213,7 +213,7 @@ fun InventScreen(
         } else if (ui.sessionId.isEmpty() || startFresh) {
             vm.setupSession(model1Path, model1Name, model2Path, model2Name,
                 debuggerPath, debuggerName, offlineMode, sameModelMode,
-                reasoningEnabled = reasoningEnabled)
+                reasoningEnabled = false)
         }
     }
     // Register freshly-created sessions with the dashboard project
@@ -263,56 +263,6 @@ fun InventScreen(
                         )
                     }
                     Spacer(Modifier.weight(1f))
-                    // Thinking toggle — animated pill (menu)
-                    val thinkRotAnim by animateFloatAsState(
-                        targetValue = thinkRotate,
-                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy),
-                        label = "thinkRot"
-                    )
-                    val thinkPulse = rememberInfiniteTransition(label = "thinkPulse")
-                    val pulseAlpha by thinkPulse.animateFloat(
-                        initialValue = 0.35f, targetValue = 1f,
-                        animationSpec = infiniteRepeatable(tween(850), RepeatMode.Reverse),
-                        label = "thinkPulseAlpha"
-                    )
-                    val pulseScale by thinkPulse.animateFloat(
-                        initialValue = 0.9f, targetValue = 1.1f,
-                        animationSpec = infiniteRepeatable(tween(850), RepeatMode.Reverse),
-                        label = "thinkPulseScale"
-                    )
-                    val thinkingOn = ui.reasoningEnabled
-                    Surface(
-                        onClick = { vm.toggleReasoning(); thinkRotate += 360f },
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (thinkingOn) colors.Accent2.copy(alpha = 0.13f) else colors.Surface,
-                        border = BorderStroke(1.dp, if (thinkingOn) colors.Accent2.copy(alpha = 0.5f) else colors.Border.copy(alpha = 0.35f)),
-                        modifier = Modifier.height(26.dp)
-                    ) {
-                        Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(contentAlignment = Alignment.Center) {
-                                if (thinkingOn) {
-                                    // Breathing halo behind the brain
-                                    Box(Modifier.size(12.dp).clip(CircleShape)
-                                        .background(colors.Accent2.copy(alpha = pulseAlpha * 0.35f)))
-                                }
-                                Text("🧠", fontSize = 11.sp,
-                                    color = if (thinkingOn) colors.Accent2 else colors.Text3,
-                                    modifier = Modifier.graphicsLayer {
-                                        rotationZ = thinkRotAnim
-                                        if (thinkingOn) { scaleX = pulseScale; scaleY = pulseScale }
-                                    })
-                            }
-                            Spacer(Modifier.width(4.dp))
-                            Text(if (thinkingOn) "THINKING" else "THINK", fontSize = 8.5.sp,
-                                fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp,
-                                color = if (thinkingOn) colors.Accent2 else colors.Text3,
-                                fontFamily = FontFamily.Monospace)
-                            if (thinkingOn) {
-                                Spacer(Modifier.width(5.dp))
-                                Box(Modifier.size(5.dp).clip(CircleShape).background(colors.Accent2.copy(alpha = pulseAlpha)))
-                            }
-                        }
-                    }
                     // Token chip
                     if (ui.totalTokensUsed > 0) {
                         Surface(
@@ -496,7 +446,7 @@ fun InventScreen(
                                     LazyColumn(
                                         state = listState,
                                         modifier = Modifier.fillMaxSize(),
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                        contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 4.dp, bottom = 0.dp),
                                         verticalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         // Swap banner
@@ -525,19 +475,14 @@ fun InventScreen(
                                         }
                                         // Live streaming response
                                         if (ui.streamingResponse.isNotEmpty()) {
-                                            val streamThink = Regex("<think>([\\s\\S]*?)(<\\/think>|$)").find(ui.streamingResponse)
-                                            val streamContent = ui.streamingResponse
-                                                .replace(Regex("<think>[\\s\\S]*?(<\\/think>|$)"), "").trim()
-                                            val thinkText = streamThink?.groupValues?.getOrNull(1)?.trim() ?: ""
                                             item(key = "stream") {
                                                 ChatBubbleCard(
                                                     ChatBubble(
                                                         role = "model1",
-                                                        content = streamContent.ifEmpty { ui.streamingResponse },
+                                                        content = ui.streamingResponse,
                                                         phase = InventPhase.QUESTIONING,
                                                         isUser = false, isError = false,
-                                                        isStreaming = true,
-                                                        thinkingContent = thinkText
+                                                        isStreaming = true
                                                     ), colors
                                                 )
                                             }
@@ -730,9 +675,7 @@ fun InventScreen(
                 colors = colors,
                 model1Path = model1Path, model2Path = model2Path, debuggerPath = debuggerPath,
                 modelMode = ui.modelMode, restrictRole = settingsRestrictRole,
-                onReload = { vm.reloadInventModel() },
-                reasoningEnabled = ui.reasoningEnabled,
-                onToggleReasoning = { vm.toggleReasoning() }
+                onReload = { vm.reloadInventModel() }
             )
         }
         AnimatedVisibility(
@@ -1614,9 +1557,7 @@ private fun SettingsPopup2(
     onDismiss: () -> Unit, colors: ZcPalette,
     model1Path: String, model2Path: String, debuggerPath: String,
     modelMode: ModelMode = ModelMode.TRIPLE, restrictRole: Int = -1,
-    onReload: () -> Unit = {},
-    reasoningEnabled: Boolean = false,
-    onToggleReasoning: () -> Unit = {}
+    onReload: () -> Unit = {}
 ) {
     var settingsTab by remember { mutableIntStateOf(0) }
 
@@ -1681,25 +1622,6 @@ private fun SettingsPopup2(
                         "Planner" -> model1Path; "Debugger" -> debuggerPath; else -> model2Path
                     }
                     ConfigSliders(role = roleKey, config = cfg, modelPath = path, colors)
-                }
-                Spacer(Modifier.height(6.dp))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("🧠 Reasoning", fontSize = 10.sp,
-                            fontWeight = if (reasoningEnabled) FontWeight.Bold else FontWeight.Normal,
-                            color = if (reasoningEnabled) Cy else colors.Text2, fontFamily = FontFamily.Monospace)
-                        Text("planner/debugger wrap replies in <think> blocks", fontSize = 8.5.sp,
-                            color = colors.Text3, fontFamily = FontFamily.Monospace)
-                    }
-                    Switch(
-                        checked = reasoningEnabled,
-                        onCheckedChange = { onToggleReasoning() },
-                        colors = SwitchDefaults.colors(
-                            checkedTrackColor = Cy, checkedThumbColor = colors.Bg,
-                            uncheckedTrackColor = colors.Border, uncheckedThumbColor = colors.Text3
-                        ),
-                        modifier = Modifier.height(24.dp)
-                    )
                 }
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = { onReload(); onDismiss() }, modifier = Modifier.fillMaxWidth(),
@@ -1983,27 +1905,14 @@ private fun SessionSuccessCard(ui: InventUiState, colors: ZcPalette) {
 // ── Blue researching overlay: rotating square + orbiting circle + "researching" ──
 @Composable
 private fun ResearchingOverlay(onCancel: () -> Unit) {
-    val transition = rememberInfiniteTransition(label = "research")
-    val angle by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(1400, easing = LinearEasing)),
-        label = "researchAngle"
-    )
     Box(
         Modifier.fillMaxSize()
             .background(Brush.linearGradient(listOf(Color(0xFF0A2A55), Color(0xFF0E3F7A)))),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            // Rotating square with an orbiting circle around it.
-            Box(Modifier.size(110.dp).graphicsLayer { rotationZ = angle }) {
-                Box(Modifier.fillMaxSize().border(2.5.dp, Color(0xFF5FB0FF), RoundedCornerShape(20.dp)))
-                Box(
-                    Modifier.offset(x = 106.dp, y = 46.dp).size(16.dp)
-                        .clip(CircleShape).background(Color(0xFF9BD4FF))
-                )
-            }
+            // Circular searching indicator — the gradient ring sweeps around the search glyph.
+            GradientSearchingCircle(size = 88.dp)
             Spacer(Modifier.height(26.dp))
             Text("researching", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB9E2FF), fontFamily = FontFamily.Monospace)
             Spacer(Modifier.height(6.dp))

@@ -56,7 +56,7 @@ import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.data.repository.AttachmentType
 import com.gguf.zerocopy.data.repository.MessageRole
 import com.gguf.zerocopy.ui.components.GradientBubbleBox
-import com.gguf.zerocopy.ui.components.GradientThinkingDots
+import com.gguf.zerocopy.ui.components.GradientThinkingCircle
 import com.gguf.zerocopy.ui.components.IdentityBorderBrush
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.io.File
@@ -210,14 +210,16 @@ fun ChatBubble(
             }
 
             if (isLoading) {
-              GradientThinkingDots()
-              Spacer(Modifier.height(4.dp))
-              Text(
-                text = "thinking…",
-                fontSize = 10.sp,
-                color = colors.Text3,
-                fontFamily = FontFamily.Monospace
-              )
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                GradientThinkingCircle(size = 14.dp)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                  text = "thinking",
+                  fontSize = 10.sp,
+                  color = colors.Text3,
+                  fontFamily = FontFamily.Monospace
+                )
+              }
             } else {
               Text(
                 text = content,
