@@ -853,23 +853,23 @@ private fun ProjectSquare(
             Text(project.name.uppercase(), fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Txt, fontFamily = FuturisticFont,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp))
         }
-        // Center: the DOOR (state orb) + role dots
+        // ── Center stage: the DOOR (state orb) + status ──
         Column(
-            Modifier.fillMaxSize().padding(4.dp),
+            Modifier.fillMaxSize().padding(bottom = 18.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Soft state glow behind the door
-            Box(Modifier.size(56.dp).background(Brush.radialGradient(listOf(doorColor.copy(alpha = 0.22f), doorColor.copy(alpha = 0f))), CircleShape), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(66.dp).background(Brush.radialGradient(listOf(doorColor.copy(alpha = 0.22f), doorColor.copy(alpha = 0f))), CircleShape), contentAlignment = Alignment.Center) {
                 Surface(
                     onClick = onPanel,
                     shape = CircleShape,
                     color = if (DarkMode) Color.Black else Card,
                     border = BorderStroke(1.dp, doorColor),
-                    modifier = Modifier.size(34.dp)
+                    modifier = Modifier.size(38.dp)
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Add, null, tint = doorColor, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Filled.Add, null, tint = doorColor, modifier = Modifier.size(18.dp))
                     }
                 }
             }
@@ -882,8 +882,50 @@ private fun ProjectSquare(
                     }
                 }
             }
-            Spacer(Modifier.height(4.dp))
-            Text("tap or + : panel · ⤢: window", fontSize = 5.5.sp, color = Color(0xFF3A4152), fontFamily = FontFamily.Monospace)
+            // Status chip: ● READY (cyan) or ● CODING… (red) while a coder runs
+            Spacer(Modifier.height(5.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                Box(Modifier.size(4.dp).clip(CircleShape).background(doorColor))
+                Text(
+                    if (coderRunning) "CODING…" else "READY",
+                    fontSize = 6.sp, fontWeight = FontWeight.Bold,
+                    color = if (coderRunning) Rd else Cy,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+        // ── Footer: gradient hairline + action bar (OPEN / menu) — the square is a tiny app UI ──
+        Box(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(1.dp)
+                .background(Brush.horizontalGradient(listOf(IdentityCyan, IdentityPurple)))
+        )
+        Row(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                onClick = onPanel,
+                shape = RoundedCornerShape(50),
+                color = Color.Transparent,
+                border = BorderStroke(1.dp, IdentityBorderBrush),
+                modifier = Modifier.weight(1f).height(14.dp)
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("OPEN", fontSize = 6.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FuturisticFont)
+                }
+            }
+            Surface(
+                onClick = onMenu,
+                shape = RoundedCornerShape(50),
+                color = Pr.copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, Pr.copy(alpha = 0.4f)),
+                modifier = Modifier.height(14.dp)
+            ) {
+                Box(Modifier.padding(horizontal = 9.dp), contentAlignment = Alignment.Center) {
+                    Text("⋯", fontSize = 7.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FuturisticFont)
+                }
+            }
         }
     }
 }
