@@ -37,12 +37,12 @@ val IdentityCyan = Color(0xFF00E5F0)
 val IdentityGreen = Color(0xFF00E5A0)
 val IdentityPurple = Color(0xFF7C5CFF)
 
-val IdentityGradient = listOf(IdentityCyan, IdentityGreen, IdentityPurple)
-val IdentitySweepBrush = Brush.sweepGradient(listOf(IdentityCyan, IdentityGreen, IdentityPurple, IdentityCyan))
+val IdentityGradient = listOf(IdentityCyan, IdentityPurple)
+val IdentitySweepBrush = Brush.sweepGradient(listOf(IdentityCyan, IdentityPurple, IdentityCyan))
 val IdentityBorderBrush = Brush.linearGradient(IdentityGradient)
 
 /**
- * Black/white chat bubble wrapped in the app's cyan→green→purple gradient
+ * Black/white chat bubble wrapped in the app's cyan→purple gradient
  * ring. While [circulating] (a response is being generated) the gradient
  * sweeps around the outline; otherwise it sits as a static gradient border.
  * The bubble fill is [bubbleColor] — near-black in dark mode, white in light.
@@ -52,7 +52,7 @@ fun GradientBubbleBox(
     circulating: Boolean,
     bubbleColor: Color,
     shape: Shape,
-    borderWidth: androidx.compose.ui.unit.Dp = 1.5.dp,
+    borderWidth: androidx.compose.ui.unit.Dp = 1.dp,
     content: @Composable BoxScope.() -> Unit
 ) {
     val angle = rememberCirculatingAngle(circulating)

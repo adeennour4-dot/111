@@ -254,7 +254,7 @@ fun InventDashboardScreen(
         }
 
         // Identity gradient hairline under the Invent title bar
-        Box(Modifier.fillMaxWidth().height(2.dp).background(Brush.horizontalGradient(listOf(IdentityCyan, IdentityPurple))))
+        Box(Modifier.fillMaxWidth().height(1.5.dp).background(Brush.horizontalGradient(listOf(IdentityCyan, IdentityPurple))))
 
         val active = projects.find { it.id == maximized }
         if (active != null) {
@@ -770,7 +770,7 @@ private fun ProjectSquare(
     ) {
         // Identity gradient hairline — every square carries the app ring
         Box(
-            Modifier.align(Alignment.TopCenter).fillMaxWidth(0.72f).height(2.dp)
+            Modifier.align(Alignment.TopCenter).fillMaxWidth(0.72f).height(1.5.dp)
                 .background(Brush.horizontalGradient(listOf(IdentityCyan, IdentityPurple)))
         )
         // Maximize (top-right)

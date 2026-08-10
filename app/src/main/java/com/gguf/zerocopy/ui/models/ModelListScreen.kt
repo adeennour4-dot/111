@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -71,6 +72,7 @@ import com.gguf.zerocopy.domain.inference.BenchmarkResult
 import com.gguf.zerocopy.domain.inference.EngineType
 import com.gguf.zerocopy.domain.inference.InferenceConfig
 import com.gguf.zerocopy.domain.inference.RustCore
+import com.gguf.zerocopy.ui.components.IdentityBorderBrush
 import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlin.math.roundToInt
 import java.text.SimpleDateFormat
@@ -827,7 +829,9 @@ private fun ModelCard(
         onLongClick = onLongClick
       ),
     shape = RoundedCornerShape(12.dp),
-    color = if (isLoaded) colors.CardLight else colors.Card
+    color = if (isLoaded) colors.CardLight else colors.Card,
+    border = if (isLoaded) BorderStroke(1.dp, IdentityBorderBrush)
+        else BorderStroke(1.dp, colors.Border.copy(alpha = 0.5f))
   ) {
     Row(
       modifier = Modifier.padding(12.dp),

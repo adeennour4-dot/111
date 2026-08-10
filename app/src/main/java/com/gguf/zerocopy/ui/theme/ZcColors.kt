@@ -13,7 +13,7 @@ object ZcColors : ZcPalette {
   override val Bg = Color(0xFF05050F)
   override val Surface = Color(0xFF0D0D1A)
   override val Card = Color(0xFF101018)
-  override val CardLight = Color(0xFF1A1A28)
+  override val CardLight = Color(0xFF141422)
   override val Border = Color(0xFF262640)
   override val Accent = Color(0xFF7C5CFF)      // icon purple
   override val Accent2 = Color(0xFF00E5A0)     // icon green

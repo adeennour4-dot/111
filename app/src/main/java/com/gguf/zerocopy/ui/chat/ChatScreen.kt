@@ -788,7 +788,7 @@ fun ChatScreen(
               .clip(CircleShape)
               .graphicsLayer { scaleX = orbScale; scaleY = orbScale }
               .background(Color.Black)
-              .border(1.5.dp, IdentitySweepBrush, CircleShape)
+              .border(1.dp, IdentitySweepBrush, CircleShape)
               .clickable { startNewChat() },
             contentAlignment = Alignment.Center
           ) {
@@ -810,7 +810,7 @@ fun ChatScreen(
               .size(30.dp)
               .clip(CircleShape)
               .background(if (chatId != null && messages.isNotEmpty()) Color.Black else colors.Card)
-              .border(1.5.dp, IdentitySweepBrush, CircleShape)
+              .border(1.dp, IdentitySweepBrush, CircleShape)
               .clickable { if (chatId != null) showExportDialog = true },
             contentAlignment = Alignment.Center
           ) {
@@ -838,12 +838,7 @@ fun ChatScreen(
             )
           }
         }
-        // Gradient accent divider
-        Box(
-          Modifier.fillMaxWidth().height(2.dp)
-            .background(Brush.horizontalGradient(listOf(colors.GradientStart, colors.Accent2, colors.GradientEnd)))
-        )
-        }
+      }
       }
     },
     bottomBar = {
@@ -1092,12 +1087,12 @@ private fun ChatToolCircle(
 ) {
     val colors = currentPalette()
     val borderBrush = if (active) IdentityBorderBrush
-        else Brush.linearGradient(listOf(colors.Border.copy(alpha = 0.45f), colors.Border.copy(alpha = 0.25f)))
+        else Brush.linearGradient(listOf(IdentityCyan.copy(alpha = 0.35f), IdentityPurple.copy(alpha = 0.35f)))
     Surface(
         onClick = onClick,
         shape = CircleShape,
         color = if (active) accent.copy(alpha = 0.14f) else colors.Card,
-        border = BorderStroke(1.dp, borderBrush),
+        border = BorderStroke(0.75.dp, borderBrush),
         modifier = Modifier.size(30.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {

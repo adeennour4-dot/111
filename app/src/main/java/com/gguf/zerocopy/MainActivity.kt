@@ -531,9 +531,9 @@ private fun navTabColor(label: String, colors: ZcPalette): Color = when (label) 
 /** Per-tab gradient for the selected bottom-nav pill — each tab its own pair. */
 private fun navGradient(label: String): Brush = when (label) {
   "Chat" -> Brush.linearGradient(listOf(IdentityCyan, IdentityGreen))
-  "Models" -> Brush.linearGradient(listOf(IdentityPurple, IdentityCyan))
+  "Models" -> Brush.linearGradient(listOf(IdentityCyan, IdentityPurple))
   "Server" -> Brush.linearGradient(listOf(Color(0xFFFFB44D), Color(0xFFFF7A3D)))
-  "Settings" -> Brush.linearGradient(listOf(IdentityPurple, Color(0xFFB66BFF)))
+  "Settings" -> Brush.linearGradient(listOf(IdentityCyan, IdentityPurple))
   else -> Brush.linearGradient(listOf(IdentityCyan, IdentityPurple)) // Invent
 }
 
