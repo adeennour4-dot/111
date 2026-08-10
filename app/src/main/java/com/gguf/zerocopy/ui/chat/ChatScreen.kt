@@ -328,26 +328,19 @@ fun ChatScreen(
     }
     if (useReasoning) {
       if (useSearch) {
-        // Fix A: when web search AND reasoning are both enabled, the old soft
-        // "thinking is optional" wrapper conflicted with the tool-call system
-        // prompt ("answer normally if you don't need tools") — small GGUF models
-        // answered directly from memory and did NEITHER: no web_search call and
-        // no visible reasoning. This bridged protocol gives an explicit order:
-        // search first (if needed), then reason over the results, then answer.
-        prompt = "Work through this task step by step. Follow this protocol:\n" +
-                 "1. If your answer needs current, recent, or factual information, FIRST respond with a single tool call:\n" +
-                 "<tool_call>\n{\"name\": \"web_search\", \"arguments\": {\"query\": \"your search query\"}}\n</tool_call>\n" +
-                 "2. Wait for the tool result, then reason step by step about what it means (you may wrap your reasoning in <think></think> tags).\n" +
-                 "3. Provide your final answer, using the tool results where relevant.\n\n" +
-                 "$prompt"
+        // Web search runs automatically (Kotlin-side, not model-emitted tool
+        // calls — tiny GGUF models never emit them). The model just needs to
+        // reason over the results it will be shown.
+        prompt = "The web search for this question runs automatically before you answer. " +
+                 "When you receive the search results, reason step by step and write your " +
+                 "reasoning between <think> and </think> tags, then give your final answer " +
+                 "using ONLY the search results for facts.\n\n$prompt"
       } else {
-        // Universal reasoning prompt that works with ALL models, not just
-        // those fine-tuned for <think> tags (DeepSeek, etc.).
-        // The <think> tag format is still used by some models, so we also
-        // include it as guidance in case the model supports it.
-        prompt = "Let's work through this step by step to be thorough. " +
-                 "You may wrap your reasoning in <think></think> tags if you wish, " +
-                 "but it's not required.\n\n$prompt"
+        // Directive reasoning prompt — works with ANY model, and Gemma-style
+        // models (fine-tuned on <think> tags) reliably follow the explicit
+        // instruction to write reasoning between the tags.
+        prompt = "Think step by step before answering. Write your reasoning between " +
+                 "<think> and </think> tags, then give your final answer after the closing tag.\n\n$prompt"
       }
     }
     return prompt

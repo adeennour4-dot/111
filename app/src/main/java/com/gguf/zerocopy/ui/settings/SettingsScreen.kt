@@ -8,6 +8,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
@@ -74,6 +75,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -91,6 +95,8 @@ import com.gguf.zerocopy.ui.jobs.JobsScreen
 import com.gguf.zerocopy.ui.settings.BenchmarkDialog
 import kotlinx.coroutines.Dispatchers
 import com.gguf.zerocopy.ui.chat.components.getFileName
+import com.gguf.zerocopy.ui.components.IdentityCyan
+import com.gguf.zerocopy.ui.components.IdentityPurple
 import com.gguf.zerocopy.ui.theme.ZcPalette
 import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlinx.coroutines.delay
@@ -663,7 +669,14 @@ fun SettingsScreen(onBack: () -> Unit) {
 private fun SectionHeader(title: String, colors: ZcPalette) {
   Text(title.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold,
     color = colors.Accent.copy(alpha = 0.7f), fontFamily = FontFamily.Monospace,
-    letterSpacing = 2.sp, modifier = Modifier.padding(top = 4.dp))
+    letterSpacing = 2.sp)
+  Spacer(Modifier.height(3.dp))
+  Box(
+    Modifier
+      .fillMaxWidth(0.35f)
+      .height(2.dp)
+      .background(Brush.horizontalGradient(listOf(IdentityCyan, IdentityPurple)))
+  )
 }
 
 @Composable
@@ -739,14 +752,14 @@ private fun ToggleRow(
 @Composable
 private fun ActionButton(text: String, color: androidx.compose.ui.graphics.Color, colors: ZcPalette,
   onClick: () -> Unit) {
-  OutlinedButton(
-    onClick = onClick,
-    modifier = Modifier.fillMaxWidth().height(38.dp),
-    shape = RoundedCornerShape(8.dp),
-    border = BorderStroke(1.dp, color.copy(alpha = 0.4f)),
-    colors = ButtonDefaults.outlinedButtonColors(contentColor = color)
+  Box(
+    modifier = Modifier.fillMaxWidth().height(38.dp).clip(RoundedCornerShape(8.dp))
+      .background(Brush.horizontalGradient(listOf(IdentityCyan, IdentityPurple)))
+      .clickable { onClick() },
+    contentAlignment = Alignment.Center
   ) {
-    Text(text, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+    Text(text, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+      color = Color.Black, fontWeight = FontWeight.Bold)
   }
   Spacer(Modifier.height(4.dp))
 }

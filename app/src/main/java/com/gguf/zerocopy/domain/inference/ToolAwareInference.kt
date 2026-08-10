@@ -112,7 +112,35 @@ object ToolAwareInference {
             val toolCall = toolManager.parseToolCall(output)
 
             if (toolCall == null) {
-                // No tool call → model answer is the final output
+                // The model didn't emit a tool call. If web search is ENABLED
+                // (searchQuery carries the clean user query) but the model
+                // skipped the tool — tiny GGUF models never emit <tool_call> —
+                // force the search OURSELVES and run one final round over the
+                // results. This guarantees search actually happens.
+                if (searchQuery != null && searchQuery.isNotBlank() &&
+                    toolManager.hasTool("web_search") && totalRounds == 0
+                ) {
+                    val args = JSONObject().put("query", searchQuery).put("num_results", 5)
+                    val toolResult = toolManager.executeTool(ToolCall("forced", "web_search", args))
+                    // Budget the result against the context window — same
+                    // accounting as the tool-call path above.
+                    val usedTokens = currentContextTokens()
+                    val budget = (contextLimit - usedTokens - maxNewTokens.coerceAtLeast(128) - 128)
+                        .coerceAtLeast(64)
+                    val maxResultChars = (budget * 3).coerceIn(140, 2000)
+                    val toolResultText = if (toolResult.result.length > maxResultChars) {
+                        toolResult.result.take(maxResultChars) + "\n[... truncated to fit context]"
+                    } else toolResult.result
+                    lastToolResult = toolResultText
+                    currentPrompt = "You searched the web for \"$searchQuery\". Here is the result:\n\n" +
+                        "$toolResultText\n\n" +
+                        "Do NOT call any more tools. Think step by step and write your reasoning " +
+                        "between <think> and </think> tags, then provide your final answer using " +
+                        "ONLY the information above."
+                    totalRounds++
+                    continue
+                }
+                // Otherwise the model answer is the final output
                 break
             }
 

@@ -1,5 +1,7 @@
 package com.gguf.zerocopy.ui.chat.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -27,12 +29,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.data.repository.LocalModel
+import com.gguf.zerocopy.ui.components.IdentityCyan
+import com.gguf.zerocopy.ui.components.IdentityPurple
 import com.gguf.zerocopy.ui.theme.currentPalette
 
 @Composable
@@ -241,24 +248,39 @@ fun DeleteConfirmDialog(
         text = "Delete message?",
         fontSize = 16.sp,
         fontWeight = FontWeight.Bold,
-        color = colors.Text
+        color = colors.Text,
+        fontFamily = FontFamily.Monospace
       )
     },
     text = {
       Text(
         text = "This action cannot be undone. The message will be permanently removed.",
         fontSize = 14.sp,
-        color = colors.Text2
+        color = colors.Text2,
+        fontFamily = FontFamily.Monospace
       )
     },
     confirmButton = {
-      TextButton(onClick = onConfirm) {
-        Text(text = "Delete", color = colors.Red, fontSize = 14.sp)
+      Box(
+        modifier = Modifier
+          .clip(RoundedCornerShape(8.dp))
+          .background(Brush.horizontalGradient(listOf(IdentityCyan, IdentityPurple)))
+          .clickable { onConfirm() },
+        contentAlignment = Alignment.Center
+      ) {
+        Text(
+          text = "Delete",
+          color = Color.Black,
+          fontSize = 12.sp,
+          fontFamily = FontFamily.Monospace,
+          fontWeight = FontWeight.Bold,
+          modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
+        )
       }
     },
     dismissButton = {
       TextButton(onClick = onDismiss) {
-        Text(text = "Cancel", color = colors.Text2, fontSize = 14.sp)
+        Text(text = "Cancel", color = colors.Text2, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
       }
     }
   )
