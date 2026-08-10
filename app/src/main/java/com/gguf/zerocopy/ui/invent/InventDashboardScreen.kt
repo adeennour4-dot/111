@@ -310,12 +310,11 @@ fun InventDashboardScreen(
                 }
             )
         } else {
-            // ── 2×2 grid of equal squares ──
+            // ── 2×2 grid — the squares FILL the whole screen below the title bar ──
             Box(Modifier.fillMaxSize()) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
-                val canvas = (minOf(maxWidth, maxHeight) - 12.dp).coerceAtLeast(280.dp)
                 Column(
-                    Modifier.align(Alignment.Center).size(canvas).padding(10.dp),
+                    Modifier.fillMaxSize().padding(10.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     for (row in 0..1) {
