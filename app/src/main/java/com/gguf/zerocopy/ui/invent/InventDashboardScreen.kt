@@ -283,7 +283,13 @@ fun InventDashboardScreen(
                 currentDir = currentDir[active.id],
                 onSetDir = { currentDir[active.id] = it },
                 fileRefresh = fileRefresh,
-                onMinimize = { maximized = null },
+                onMinimize = {
+                    maximized = null
+                    // Belt-and-suspenders: minimize NEVER deletes — it also
+                    // clears any pending delete flag so the confirm dialog can
+                    // never appear after minimizing.
+                    deleteProjectFor = null
+                },
                 onPickModel = { role -> modelPickerFor = active.id to role },
                 onAddRole = { addRoleFor = active.id },
                 onRoleMenu = { role -> roleMenuFor = Triple(active.id, role, true) },
