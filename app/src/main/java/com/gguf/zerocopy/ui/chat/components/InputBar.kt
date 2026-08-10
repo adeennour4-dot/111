@@ -51,6 +51,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gguf.zerocopy.ui.components.GradientBubbleBox
 import com.gguf.zerocopy.ui.theme.currentPalette
 
 @Composable
@@ -150,85 +151,96 @@ fun InputBar(
           }
         }
       }
-      Row(verticalAlignment = Alignment.Bottom) {
-        OutlinedTextField(
-          value = prompt,
-          onValueChange = { prompt = it },
-          modifier = Modifier.weight(1f),
-          placeholder = {
-            Text(
-              text = "Type a message...",
-              color = colors.Text3,
-              fontSize = 14.sp
-            )
-          },
-          enabled = !isInferring,
-          minLines = 1,
-          maxLines = 4,
-          shape = RoundedCornerShape(14.dp),
-          keyboardOptions = KeyboardOptions(
-            keyboardType = KeyboardType.Text,
-            imeAction = ImeAction.Send
-          ),
-          keyboardActions = KeyboardActions(
-            onSend = {
-              if (prompt.isNotBlank() && !isInferring) {
-                val text = prompt
-                prompt = ""
-                onSend(text, attachmentUris, attachmentFileNames)
-              }
-            }
-          ),
-          colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = colors.Accent.copy(alpha = 0.5f),
-            unfocusedBorderColor = colors.Border,
-            focusedContainerColor = colors.Card,
-            unfocusedContainerColor = colors.Card,
-            focusedTextColor = colors.Text,
-            unfocusedTextColor = colors.Text,
-            cursorColor = colors.Accent
-          ),
-          textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
-        )
-        Spacer(Modifier.width(8.dp))
-        if (isInferring) {
-          // Stop orb
-          Box(
-            modifier = Modifier.size(40.dp).clip(CircleShape)
-              .background(colors.Red.copy(alpha = 0.16f))
-              .border(1.dp, colors.Red.copy(alpha = 0.45f), CircleShape)
-              .clickable { onStop() },
-            contentAlignment = Alignment.Center
-          ) {
-            Icon(Icons.Filled.Stop, "Stop", tint = colors.Red, modifier = Modifier.size(18.dp))
-          }
-        } else {
-          // Send orb — identity gradient
-          val canSend = prompt.isNotBlank()
-          val sendGradient = remember {
-            Brush.horizontalGradient(listOf(Color(0xFF00E5A0), Color(0xFF7C5CFF)))
-          }
-          Box(
-            modifier = Modifier
-              .size(40.dp)
-              .clip(CircleShape)
-              .then(
-                if (canSend) Modifier.background(sendGradient) else Modifier.background(colors.Card)
+      // Input styled as a chat bubble — gradient ring, circulating while generating
+      GradientBubbleBox(
+        circulating = isInferring,
+        bubbleColor = colors.Card,
+        shape = RoundedCornerShape(22.dp),
+        borderWidth = 1.5.dp
+      ) {
+        Row(
+          modifier = Modifier.padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          OutlinedTextField(
+            value = prompt,
+            onValueChange = { prompt = it },
+            modifier = Modifier.weight(1f),
+            placeholder = {
+              Text(
+                text = "Type a message...",
+                color = colors.Text3,
+                fontSize = 14.sp
               )
-              .border(1.dp, if (canSend) Color.Transparent else colors.Border, CircleShape)
-              .clickable(enabled = canSend) {
-                val text = prompt
-                prompt = ""
-                onSend(text, attachmentUris, attachmentFileNames)
-              },
-            contentAlignment = Alignment.Center
-          ) {
-            Icon(
-              Icons.AutoMirrored.Filled.Send,
-              contentDescription = "Send",
-              tint = if (canSend) colors.Bg else colors.Text3,
-              modifier = Modifier.size(18.dp)
-            )
+            },
+            enabled = !isInferring,
+            minLines = 1,
+            maxLines = 4,
+            shape = RoundedCornerShape(20.dp),
+            keyboardOptions = KeyboardOptions(
+              keyboardType = KeyboardType.Text,
+              imeAction = ImeAction.Send
+            ),
+            keyboardActions = KeyboardActions(
+              onSend = {
+                if (prompt.isNotBlank() && !isInferring) {
+                  val text = prompt
+                  prompt = ""
+                  onSend(text, attachmentUris, attachmentFileNames)
+                }
+              }
+            ),
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedBorderColor = Color.Transparent,
+              unfocusedBorderColor = Color.Transparent,
+              focusedContainerColor = Color.Transparent,
+              unfocusedContainerColor = Color.Transparent,
+              focusedTextColor = colors.Text,
+              unfocusedTextColor = colors.Text,
+              cursorColor = colors.Accent
+            ),
+            textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
+          )
+          Spacer(Modifier.width(6.dp))
+          if (isInferring) {
+            // Stop orb
+            Box(
+              modifier = Modifier.size(40.dp).clip(CircleShape)
+                .background(colors.Red.copy(alpha = 0.16f))
+                .border(1.dp, colors.Red.copy(alpha = 0.45f), CircleShape)
+                .clickable { onStop() },
+              contentAlignment = Alignment.Center
+            ) {
+              Icon(Icons.Filled.Stop, "Stop", tint = colors.Red, modifier = Modifier.size(18.dp))
+            }
+          } else {
+            // Send orb — identity gradient
+            val canSend = prompt.isNotBlank()
+            val sendGradient = remember {
+              Brush.horizontalGradient(listOf(Color(0xFF00E5A0), Color(0xFF7C5CFF)))
+            }
+            Box(
+              modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .then(
+                  if (canSend) Modifier.background(sendGradient) else Modifier.background(colors.Card)
+                )
+                .border(1.dp, if (canSend) Color.Transparent else colors.Border, CircleShape)
+                .clickable(enabled = canSend) {
+                  val text = prompt
+                  prompt = ""
+                  onSend(text, attachmentUris, attachmentFileNames)
+                },
+              contentAlignment = Alignment.Center
+            ) {
+              Icon(
+                Icons.AutoMirrored.Filled.Send,
+                contentDescription = "Send",
+                tint = if (canSend) colors.Bg else colors.Text3,
+                modifier = Modifier.size(18.dp)
+              )
+            }
           }
         }
       }

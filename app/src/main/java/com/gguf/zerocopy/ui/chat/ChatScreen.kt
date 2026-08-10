@@ -791,33 +791,38 @@ fun ChatScreen(
             Icon(Icons.Filled.Add, "New conversation", tint = Color.Black, modifier = Modifier.size(16.dp))
           }
           Spacer(Modifier.width(6.dp))
-          IconButton(
-            onClick = { app.chatRepository.refreshSessions(); onSessions() },
-            modifier = Modifier.size(28.dp)
-          ) {
-            Icon(Icons.Outlined.History, contentDescription = "Sessions", tint = colors.Text2, modifier = Modifier.size(16.dp))
-          }
-          IconButton(
-            onClick = { if (chatId != null) showExportDialog = true },
-            enabled = chatId != null && messages.isNotEmpty(),
-            modifier = Modifier.size(28.dp)
-          ) {
-            Icon(Icons.Outlined.Share, contentDescription = "Export",
-              tint = if (chatId != null && messages.isNotEmpty()) colors.Text2 else colors.Text3,
-              modifier = Modifier.size(16.dp))
-          }
+          // Sessions — circular
+          ChatToolCircle(
+            icon = Icons.Outlined.History,
+            label = "Sessions",
+            active = true,
+            accent = IdentityPurple,
+            onClick = { app.chatRepository.refreshSessions(); onSessions() }
+          )
+          Spacer(Modifier.width(6.dp))
+          // Export — circular
+          ChatToolCircle(
+            icon = Icons.Outlined.Share,
+            label = "Export",
+            active = chatId != null && messages.isNotEmpty(),
+            accent = IdentityCyan,
+            onClick = { if (chatId != null) showExportDialog = true }
+          )
+          Spacer(Modifier.width(6.dp))
+          // Unload — circular
           if (engine?.isModelLoaded == true) {
-            IconButton(
+            ChatToolCircle(
+              icon = Icons.Outlined.Close,
+              label = "Unload model",
+              active = true,
+              accent = colors.Red,
               onClick = {
                 scope.launch {
                   engine?.unloadModel()
                   startNewChat()
                 }
-              },
-              modifier = Modifier.size(28.dp)
-            ) {
-              Icon(Icons.Outlined.Close, contentDescription = "Unload model", tint = colors.Text3, modifier = Modifier.size(16.dp))
-            }
+              }
+            )
           }
         }
         // Gradient accent divider
@@ -830,6 +835,46 @@ fun ChatScreen(
     },
     bottomBar = {
       Column(modifier = Modifier.fillMaxWidth().imePadding()) {
+        // Small circles above the input bubble: think / search / clip
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          ChatToolCircle(
+            icon = if (reasoningEnabled) Icons.Filled.Psychology else Icons.Outlined.Psychology,
+            label = "Thinking",
+            active = reasoningEnabled,
+            accent = IdentityGreen,
+            onClick = {
+              reasoningEnabled = !reasoningEnabled
+              SettingsManager.reasoningEnabled = reasoningEnabled
+            }
+          )
+          ChatToolCircle(
+            icon = if (webSearchEnabled) Icons.Filled.Search else Icons.Outlined.Search,
+            label = "Web search",
+            active = webSearchEnabled,
+            accent = IdentityCyan,
+            onClick = { webSearchEnabled = !webSearchEnabled }
+          )
+          ChatToolCircle(
+            icon = Icons.Filled.AttachFile,
+            label = "Attach",
+            active = attachmentUris.isNotEmpty(),
+            accent = IdentityPurple,
+            onClick = {
+              if (hasVision) {
+                docPickLauncher.launch(arrayOf("image/*", "text/plain", "text/markdown", "application/pdf"))
+              } else {
+                docPickLauncher.launch(arrayOf("text/plain", "text/markdown", "application/pdf"))
+              }
+            }
+          )
+          Spacer(Modifier.weight(1f))
+        }
         InputBar(
           onSend = { text, uris, names -> sendMessage(text, uris, names) },
           onStop = { stopInference() },
@@ -846,56 +891,11 @@ fun ChatScreen(
     snackbarHost = { SnackbarHost(snackbarHostState) },
     containerColor = colors.Bg
   ) { pad ->
-    Column(
+    Box(
       modifier = Modifier
         .padding(pad)
         .fillMaxSize()
     ) {
-      // Chat toolbar — think / search / clip as small circles above the bubbles
-      Row(
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(horizontal = 10.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        ChatToolCircle(
-          icon = if (reasoningEnabled) Icons.Filled.Psychology else Icons.Outlined.Psychology,
-          label = "Thinking",
-          active = reasoningEnabled,
-          accent = IdentityGreen,
-          onClick = {
-            reasoningEnabled = !reasoningEnabled
-            SettingsManager.reasoningEnabled = reasoningEnabled
-          }
-        )
-        ChatToolCircle(
-          icon = if (webSearchEnabled) Icons.Filled.Search else Icons.Outlined.Search,
-          label = "Web search",
-          active = webSearchEnabled,
-          accent = IdentityCyan,
-          onClick = { webSearchEnabled = !webSearchEnabled }
-        )
-        ChatToolCircle(
-          icon = Icons.Filled.AttachFile,
-          label = "Attach",
-          active = attachmentUris.isNotEmpty(),
-          accent = IdentityPurple,
-          onClick = {
-            if (hasVision) {
-              docPickLauncher.launch(arrayOf("image/*", "text/plain", "text/markdown", "application/pdf"))
-            } else {
-              docPickLauncher.launch(arrayOf("text/plain", "text/markdown", "application/pdf"))
-            }
-          }
-        )
-        Spacer(Modifier.weight(1f))
-      }
-      Box(
-        modifier = Modifier
-          .fillMaxWidth()
-          .weight(1f)
-      ) {
       if (kvUsagePercent > 50) {
         LinearProgressIndicator(
           progress = { kvUsagePercent / 100f },
@@ -1048,7 +1048,6 @@ fun ChatScreen(
             }
           }
         }
-      }
       }
     }
   }
