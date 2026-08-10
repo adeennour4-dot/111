@@ -402,6 +402,33 @@ static bool contains_stop_sequence(const std::string& text, size_t* pos_out, siz
 
 // llama_token_to_piece() returns raw BYTES; a multi-byte code point can be
 // split across two consecutive pieces (very common for Arabic/CJK/accents).
+// Replace any invalid UTF-8 byte sequence with U+FFFD so NewStringUTF()
+// never receives a malformed string — NewStringUTF ABORTS the JVM on bad
+// input, and GGUF byte-fallback tokens can split UTF-8 mid-sequence (a
+// lead byte followed by an ASCII byte etc.). This is the hard-crash guard.
+static std::string sanitize_utf8(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    size_t i = 0, n = s.size();
+    while (i < n) {
+        unsigned char b = (unsigned char)s[i];
+        if (b < 0x80) { out += (char)b; i++; continue; }
+        int need;
+        if      ((b & 0xE0) == 0xC0) need = 2;
+        else if ((b & 0xF0) == 0xE0) need = 3;
+        else if ((b & 0xF8) == 0xF0) need = 4;
+        else { out += "\xEF\xBF\xBD"; i++; continue; }
+        bool ok = (i + need) <= n;
+        for (int k = 1; ok && k < need; k++) {
+            unsigned char c = (unsigned char)s[i + k];
+            if ((c & 0xC0) != 0x80) ok = false;
+        }
+        if (ok) { out.append(s, i, need); i += (size_t)need; }
+        else    { out += "\xEF\xBF\xBD"; i++; }
+    }
+    return out;
+}
+
 // Feeding a split sequence to NewStringUTF() produces garbage or '?'. This
 // assembler buffers fragments and only ever forwards complete code points.
 struct Utf8Assembler {
@@ -478,7 +505,7 @@ struct JniCb {
 
     void token(const std::string& t) {
         if (env && global && onToken) {
-            jstring s = env->NewStringUTF(t.c_str());
+            jstring s = env->NewStringUTF(sanitize_utf8(t).c_str());
             env->CallVoidMethod(global, onToken, s);
             env->DeleteLocalRef(s);
         }
@@ -486,7 +513,7 @@ struct JniCb {
     void done()  { if (env && global && onDone)  env->CallVoidMethod(global, onDone); }
     void error(const std::string& e) {
         if (env && global && onError) {
-            jstring s = env->NewStringUTF(e.c_str());
+            jstring s = env->NewStringUTF(sanitize_utf8(e).c_str());
             env->CallVoidMethod(global, onError, s);
             env->DeleteLocalRef(s);
         }
