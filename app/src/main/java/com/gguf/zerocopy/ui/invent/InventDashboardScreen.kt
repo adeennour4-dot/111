@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -31,6 +32,7 @@ import androidx.compose.ui.text.style.TextAlign
 import com.gguf.zerocopy.ui.components.IdentityCyan
 import com.gguf.zerocopy.ui.components.IdentityPurple
 import com.gguf.zerocopy.ui.components.IdentitySweepBrush
+import com.gguf.zerocopy.ui.theme.currentPalette
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -57,13 +59,31 @@ private val Cy = Color(0xFF00E5A0)
 private val Pr = Color(0xFF8B83FF)
 private val Am = Color(0xFF00E5F0)   // cyan
 private val Rd = Color(0xFFC44DFF)   // hot purple
-private val Gy = Color(0xFF6A6A7A)
-private val Bulb = Color(0xFF00E5F0)  // cyan
-private val Bg = Color(0xFF0B0D12)
-private val Card = Color(0xFF14171F)
-private val CardLight = Color(0xFF1B1F2A)
-private val Line = Color(0xFF262B38)
+// Theme-aware surfaces/text — the Invent dashboard follows the app palette
+// (light in light mode, dark in dark mode) instead of hardcoding a dark lab.
+private val Gy: Color
+    @Composable get() = currentPalette().Text2
+private val Bulb: Color
+    @Composable get() = currentPalette().Cyan
+private val Bg: Color
+    @Composable get() = currentPalette().Bg
+private val Card: Color
+    @Composable get() = currentPalette().Card
+private val CardLight: Color
+    @Composable get() = currentPalette().CardLight
+private val Line: Color
+    @Composable get() = currentPalette().Border
+private val Txt: Color
+    @Composable get() = currentPalette().Text
+private val Txt2: Color
+    @Composable get() = currentPalette().Text2
+// First-run tour rides an opaque dark scrim → keeps its own light text.
+private val TourText = Color(0xFFE4E9F5)
+// True when the app is in dark mode (used for black-pill orbs).
+private val DarkMode: Boolean
+    @Composable get() = currentPalette().Bg.luminance() < 0.5f
 
+@Composable
 private fun roleColor(role: String): Color = when (role.lowercase()) {
     "planner" -> Pr
     "debugger" -> Rd
@@ -71,6 +91,7 @@ private fun roleColor(role: String): Color = when (role.lowercase()) {
     else -> Bulb
 }
 
+@Composable
 private fun sectorColor(sector: String): Color = when (sector) {
     "sessions" -> Pr
     "files" -> Cy
@@ -220,7 +241,7 @@ fun InventDashboardScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Filled.ArrowBack, "Back", tint = Color(0xFF9AA3B5), modifier = Modifier.size(18.dp))
+                Icon(Icons.Filled.ArrowBack, "Back", tint = Txt2, modifier = Modifier.size(18.dp))
             }
             Column(Modifier.weight(1f)) {
                 Text("INVENT", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace)
@@ -235,7 +256,7 @@ fun InventDashboardScreen(
                 Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.BugReport, null, tint = Cy, modifier = Modifier.size(13.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Diag", fontSize = 10.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace)
+                    Text("Diag", fontSize = 10.sp, color = Txt2, fontFamily = FontFamily.Monospace)
                 }
             }
             Spacer(Modifier.width(6.dp))
@@ -248,13 +269,10 @@ fun InventDashboardScreen(
                 Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.QuestionMark, null, tint = Bulb, modifier = Modifier.size(13.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Help", fontSize = 10.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace)
+                    Text("Help", fontSize = 10.sp, color = Txt2, fontFamily = FontFamily.Monospace)
                 }
             }
         }
-
-        // Identity gradient hairline under the Invent title bar
-        Box(Modifier.fillMaxWidth().height(1.5.dp).background(Brush.horizontalGradient(listOf(IdentityCyan, IdentityPurple))))
 
         val active = projects.find { it.id == maximized }
         if (active != null) {
@@ -340,7 +358,7 @@ fun InventDashboardScreen(
                                             onClick = { newProjectDialog = true },
                                             shape = RoundedCornerShape(14.dp),
                                             color = Card.copy(alpha = 0.5f),
-                                            border = BorderStroke(1.dp, Line),
+                                            border = BorderStroke(0.5.dp, Line),
                                             modifier = Modifier.fillMaxSize()
                                         ) {
                                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -362,20 +380,20 @@ fun InventDashboardScreen(
             if (showTour) {
                 Surface(
                     onClick = { dismissTour() },
-                    color = Color(0xB30B0D12),
+                    color = Color(0xFF0B0D12),
                     modifier = Modifier.fillMaxSize()
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("INVENT TOUR", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace)
                         Spacer(Modifier.height(12.dp))
-                        Text("• Tap a square (or ⤢ top-right) to maximize it into a full window", fontSize = 11.sp, color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
+                        Text("• Tap a square (or ⤢ top-right) to maximize it into a full window", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(6.dp))
-                        Text("• MODELS · SESSIONS · FILES sections live inside the window", fontSize = 11.sp, color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
+                        Text("• MODELS · SESSIONS · FILES sections live inside the window", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(6.dp))
-                        Text("• — minimizes · ✕ clears · hold a square for rename / export", fontSize = 11.sp, color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
+                        Text("• — minimizes · ✕ clears · hold a square for rename / export", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(6.dp))
-                        Text("• Tap + on an empty slot to create a project from a template", fontSize = 11.sp, color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
+                        Text("• Tap + on an empty slot to create a project from a template", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(16.dp))
                         Surface(
                             onClick = { dismissTour() },
@@ -403,7 +421,7 @@ fun InventDashboardScreen(
             onDismissRequest = { deleteProjectFor = null },
             containerColor = Card,
             title = { Text("Delete project?", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace) },
-            text = { Text("'${p?.name ?: ""}' and all its sessions + files will be permanently removed. This cannot be undone.", fontSize = 11.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace) },
+            text = { Text("'${p?.name ?: ""}' and all its sessions + files will be permanently removed. This cannot be undone.", fontSize = 11.sp, color = Txt2, fontFamily = FontFamily.Monospace) },
             confirmButton = {
                 TextButton(onClick = {
                     onDeleteProject(pid)
@@ -765,14 +783,9 @@ private fun ProjectSquare(
         Modifier.fillMaxSize()
             .clip(RoundedCornerShape(14.dp))
             .background(Brush.verticalGradient(listOf(CardLight.copy(alpha = 0.7f), Card)))
-            .border(1.dp, Line, RoundedCornerShape(14.dp))
+            .border(0.5.dp, Line, RoundedCornerShape(14.dp))
             .combinedClickable(onClick = onPanel, onLongClick = onMenu)
     ) {
-        // Identity gradient hairline — every square carries the app ring
-        Box(
-            Modifier.align(Alignment.TopCenter).fillMaxWidth(0.72f).height(1.5.dp)
-                .background(Brush.horizontalGradient(listOf(IdentityCyan, IdentityPurple)))
-        )
         // Maximize (top-right)
         Surface(
             onClick = onMaximize,
@@ -803,16 +816,16 @@ private fun ProjectSquare(
             Surface(
                 onClick = onPanel,
                 shape = CircleShape,
-                color = Color.Black,
-                border = BorderStroke(1.5.dp, IdentitySweepBrush),
+                color = if (DarkMode) Color.Black else Card,
+                border = BorderStroke(1.dp, IdentitySweepBrush),
                 modifier = Modifier.size(40.dp)
             ) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Add, null, tint = IdentityCyan, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Filled.Add, null, tint = if (DarkMode) IdentityCyan else Pr, modifier = Modifier.size(20.dp))
                 }
             }
             Spacer(Modifier.height(6.dp))
-            Text(project.name, fontSize = 7.5.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace,
+            Text(project.name, fontSize = 7.5.sp, color = Txt2, fontFamily = FontFamily.Monospace,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp), textAlign = TextAlign.Center)
             if (previewRoles.isNotEmpty()) {
                 Spacer(Modifier.height(5.dp))
@@ -974,7 +987,7 @@ private fun ProjectWindow(
                                                 missing -> "Unknown"
                                                 else -> role.modelName
                                             },
-                                            fontSize = 9.5.sp, color = if (missing) Rd else Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis
+                                            fontSize = 9.5.sp, color = if (missing) Rd else Txt2, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
@@ -1079,7 +1092,7 @@ private fun ProjectWindow(
                                             }
                                         }
                                         if (names.isNotEmpty()) {
-                                            Text(names, fontSize = 9.5.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(names, fontSize = 9.5.sp, color = Txt2, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         }
                                     }
                                 }
@@ -1233,7 +1246,7 @@ private fun ModelPickerDialog(
                         modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp),
                         singleLine = true,
                         placeholder = { Text("🔍  search ${models.size} models…", fontSize = 11.sp, color = Gy, fontFamily = FontFamily.Monospace) },
-                        textStyle = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = Color(0xFFE4E9F5)),
+                        textStyle = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = Txt),
                         shape = RoundedCornerShape(9.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = roleColor(role.role),
@@ -1258,7 +1271,7 @@ private fun ModelPickerDialog(
                     ) {
                         Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text(m.name, fontSize = 12.sp, color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(m.name, fontSize = 12.sp, color = Txt, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text("${m.sizeFormatted} · ${m.format}", fontSize = 9.sp, color = Gy, fontFamily = FontFamily.Monospace)
                             }
                             if (isSel) {
@@ -1359,7 +1372,7 @@ private fun AddRoleDialog(
                     onValueChange = { name = it },
                     label = { Text("Role name", fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
                     singleLine = true,
-                    textStyle = LocalTextStyle.current.copy(color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, fontSize = 13.sp),
+                    textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.Monospace, fontSize = 13.sp),
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(8.dp))
@@ -1368,7 +1381,7 @@ private fun AddRoleDialog(
                     onValueChange = { desc = it },
                     label = { Text("Description / command (who he is, what he does)", fontFamily = FontFamily.Monospace, fontSize = 11.sp) },
                     minLines = 3,
-                    textStyle = LocalTextStyle.current.copy(color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, fontSize = 12.sp),
+                    textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.Monospace, fontSize = 12.sp),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -1404,7 +1417,7 @@ private fun NewFolderDialog(
                 onValueChange = { name = it },
                 label = { Text("Folder name", fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
                 singleLine = true,
-                textStyle = LocalTextStyle.current.copy(color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, fontSize = 13.sp),
+                textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.Monospace, fontSize = 13.sp),
                 modifier = Modifier.fillMaxWidth()
             )
         },
@@ -1441,10 +1454,10 @@ private fun RoleActionsDialog(
             if (editing) {
                 Column {
                     OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") },
-                        singleLine = true, textStyle = LocalTextStyle.current.copy(color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, fontSize = 13.sp), modifier = Modifier.fillMaxWidth())
+                        singleLine = true, textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.Monospace, fontSize = 13.sp), modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(value = desc, onValueChange = { desc = it }, label = { Text("Description") },
-                        minLines = 3, textStyle = LocalTextStyle.current.copy(color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, fontSize = 12.sp), modifier = Modifier.fillMaxWidth())
+                        minLines = 3, textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.Monospace, fontSize = 12.sp), modifier = Modifier.fillMaxWidth())
                 }
             } else {
                 Column {
@@ -1551,7 +1564,7 @@ private fun ProjectMenuDialog(
         containerColor = Card,
         title = { Text(project.name, color = Bulb, fontFamily = FontFamily.Monospace, fontSize = 14.sp) },
         text = {
-            Text("${project.roles.size} roles · ${project.sessionIds.size} sessions", color = Color(0xFF9AA3B5), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            Text("${project.roles.size} roles · ${project.sessionIds.size} sessions", color = Txt2, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
         },
         confirmButton = {
             TextButton(onClick = { onRename(); onDismiss() }) { Text("Rename", color = Am, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
@@ -1584,7 +1597,7 @@ private fun RenameDialog(
                 onValueChange = { name = it },
                 label = { Text("Project name", fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
                 singleLine = true,
-                textStyle = LocalTextStyle.current.copy(color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, fontSize = 13.sp),
+                textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.Monospace, fontSize = 13.sp),
                 modifier = Modifier.fillMaxWidth()
             )
         },
@@ -1618,7 +1631,7 @@ private fun NewProjectDialog(
                     onValueChange = { name = it },
                     label = { Text("Project name", fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
                     singleLine = true,
-                    textStyle = LocalTextStyle.current.copy(color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, fontSize = 13.sp),
+                    textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.Monospace, fontSize = 13.sp),
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(10.dp))
@@ -1635,7 +1648,7 @@ private fun NewProjectDialog(
                     ) {
                         Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("${t.label} — ${t.tagline}", fontSize = 11.sp, color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace)
+                                Text("${t.label} — ${t.tagline}", fontSize = 11.sp, color = Txt, fontFamily = FontFamily.Monospace)
                                 Text(t.description, fontSize = 8.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
                             }
                             if (active) Icon(Icons.Filled.Check, null, tint = Cy, modifier = Modifier.size(14.dp))
@@ -1671,7 +1684,7 @@ private fun HistoryDialog(
         text = {
             if (versions.isEmpty()) {
                 Text("No saved versions yet — edit the file once and it will be kept here.",
-                    color = Color(0xFF9AA3B5), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    color = Txt2, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
             } else {
                 LazyColumn(Modifier.heightIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     itemsIndexed(versions) { i, v ->
@@ -1686,7 +1699,7 @@ private fun HistoryDialog(
                             Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text("v${versions.size - i}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
                                 Spacer(Modifier.width(8.dp))
-                                Text(stamp, fontSize = 9.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace)
+                                Text(stamp, fontSize = 9.sp, color = Txt2, fontFamily = FontFamily.Monospace)
                                 Spacer(Modifier.weight(1f))
                                 TextButton(onClick = { onView(v); onDismiss() }) { Text("View", fontSize = 9.sp, color = Cy, fontFamily = FontFamily.Monospace) }
                                 TextButton(onClick = { onRestore(v); onDismiss() }) { Text("Restore", fontSize = 9.sp, color = Am, fontFamily = FontFamily.Monospace) }
@@ -1798,7 +1811,7 @@ private fun SquarePanel(
                                             missing -> "Unknown file — tap to pick"
                                             else -> role.modelName.ifEmpty { model?.name ?: "model" }
                                         },
-                                        fontSize = 8.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        fontSize = 8.sp, color = Txt2, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f)
                                     )
                                     if (role.isCoder) {
@@ -1979,7 +1992,7 @@ private fun ModelInfoDialog(
 private fun InfoRow(label: String, value: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
         Text(label, fontSize = 9.sp, color = Gy, fontFamily = FontFamily.Monospace, modifier = Modifier.width(96.dp))
-        Text(value, fontSize = 9.sp, color = Color(0xFFE4E9F5), fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+        Text(value, fontSize = 9.sp, color = Txt, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
     }
 }
 

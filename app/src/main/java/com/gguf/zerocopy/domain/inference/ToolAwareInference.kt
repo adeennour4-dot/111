@@ -64,10 +64,40 @@ object ToolAwareInference {
         var lastToolKey: String? = null
         var lastToolResult: String? = null
 
+        // Search-before-think: when web search is enabled (searchQuery carries
+        // the clean user query) the web search runs IMMEDIATELY — before any
+        // model generation. Tiny GGUF models never emit <tool_call> on their
+        // own, so we never wait for one: search first, then the model thinks
+        // over the results and answers.
+        val searchForced = searchQuery != null && searchQuery.isNotBlank() && toolManager.hasTool("web_search")
+        var searchRan = false
+
         while (totalRounds < MAX_TOOL_ROUNDS) {
             if (isAborted()) {
                 callback.onDone()
                 return
+            }
+
+            if (searchForced && !searchRan) {
+                searchRan = true
+                val args = JSONObject().put("query", searchQuery).put("num_results", 5)
+                val toolResult = toolManager.executeTool(ToolCall("forced", "web_search", args))
+                // Budget the result against the context window.
+                val usedTokens = currentContextTokens()
+                val budget = (contextLimit - usedTokens - maxNewTokens.coerceAtLeast(128) - 128)
+                    .coerceAtLeast(64)
+                val maxResultChars = (budget * 3).coerceIn(140, 2000)
+                val toolResultText = if (toolResult.result.length > maxResultChars) {
+                    toolResult.result.take(maxResultChars) + "\n[... truncated to fit context]"
+                } else toolResult.result
+                lastToolResult = toolResultText
+                currentPrompt = "You searched the web for \"$searchQuery\". Here is the result:\n\n" +
+                    "$toolResultText\n\n" +
+                    "Do NOT call any more tools. Think step by step and write your reasoning " +
+                    "between <think> and </think> tags, then provide your final answer using " +
+                    "ONLY the information above."
+                totalRounds++
+                continue
             }
 
             val roundOutput = StringBuilder()
@@ -112,35 +142,9 @@ object ToolAwareInference {
             val toolCall = toolManager.parseToolCall(output)
 
             if (toolCall == null) {
-                // The model didn't emit a tool call. If web search is ENABLED
-                // (searchQuery carries the clean user query) but the model
-                // skipped the tool — tiny GGUF models never emit <tool_call> —
-                // force the search OURSELVES and run one final round over the
-                // results. This guarantees search actually happens.
-                if (searchQuery != null && searchQuery.isNotBlank() &&
-                    toolManager.hasTool("web_search") && totalRounds == 0
-                ) {
-                    val args = JSONObject().put("query", searchQuery).put("num_results", 5)
-                    val toolResult = toolManager.executeTool(ToolCall("forced", "web_search", args))
-                    // Budget the result against the context window — same
-                    // accounting as the tool-call path above.
-                    val usedTokens = currentContextTokens()
-                    val budget = (contextLimit - usedTokens - maxNewTokens.coerceAtLeast(128) - 128)
-                        .coerceAtLeast(64)
-                    val maxResultChars = (budget * 3).coerceIn(140, 2000)
-                    val toolResultText = if (toolResult.result.length > maxResultChars) {
-                        toolResult.result.take(maxResultChars) + "\n[... truncated to fit context]"
-                    } else toolResult.result
-                    lastToolResult = toolResultText
-                    currentPrompt = "You searched the web for \"$searchQuery\". Here is the result:\n\n" +
-                        "$toolResultText\n\n" +
-                        "Do NOT call any more tools. Think step by step and write your reasoning " +
-                        "between <think> and </think> tags, then provide your final answer using " +
-                        "ONLY the information above."
-                    totalRounds++
-                    continue
-                }
-                // Otherwise the model answer is the final output
+                // Model answered without a tool call → final output.
+                // (When search was enabled it already ran BEFORE this round,
+                // so the answer here is grounded in the search results.)
                 break
             }
 

@@ -87,6 +87,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -787,12 +788,12 @@ fun ChatScreen(
               .size(28.dp)
               .clip(CircleShape)
               .graphicsLayer { scaleX = orbScale; scaleY = orbScale }
-              .background(Color.Black)
+              .background(colors.Card)
               .border(1.dp, IdentitySweepBrush, CircleShape)
               .clickable { startNewChat() },
             contentAlignment = Alignment.Center
           ) {
-            Icon(Icons.Filled.Add, "New conversation", tint = IdentityCyan, modifier = Modifier.size(16.dp))
+            Icon(Icons.Filled.Add, "New conversation", tint = if (colors.Bg.luminance() < 0.5f) IdentityCyan else IdentityPurple, modifier = Modifier.size(16.dp))
           }
           Spacer(Modifier.width(6.dp))
           // Sessions — circular
@@ -809,7 +810,7 @@ fun ChatScreen(
             modifier = Modifier
               .size(30.dp)
               .clip(CircleShape)
-              .background(if (chatId != null && messages.isNotEmpty()) Color.Black else colors.Card)
+              .background(colors.Card)
               .border(1.dp, IdentitySweepBrush, CircleShape)
               .clickable { if (chatId != null) showExportDialog = true },
             contentAlignment = Alignment.Center
@@ -817,7 +818,8 @@ fun ChatScreen(
             Icon(
               Icons.Outlined.Share,
               "Export",
-              tint = if (chatId != null && messages.isNotEmpty()) IdentityCyan else colors.Text3,
+              tint = if (chatId != null && messages.isNotEmpty())
+                (if (colors.Bg.luminance() < 0.5f) IdentityCyan else IdentityPurple) else colors.Text3,
               modifier = Modifier.size(15.dp)
             )
           }

@@ -439,7 +439,6 @@ fun AppRoot() {
  *  and — for Invent's lightbulb — warm amber rays. Every icon has its own color. */
 @Composable
 private fun NavSprite(item: NavItem, isSelected: Boolean, colors: ZcPalette) {
-  val isBulb = item.label == "Invent"
   // Every icon has its own color — dim when idle, full + glow when active
   val tabColor = navTabColor(item.label, colors)
   val idleTint = tabColor.copy(alpha = 0.45f)
@@ -474,26 +473,6 @@ private fun NavSprite(item: NavItem, isSelected: Boolean, colors: ZcPalette) {
         CircleShape
       )
     )
-    // Ray burst — lightbulb "turned on" rays (Invent tab only, short static rays)
-    if (isBulb && isSelected) {
-      Canvas(Modifier.size(28.dp)) {
-        val c = Offset(this.size.width / 2f, this.size.height / 2f)
-        val baseR = 8.dp.toPx()
-        val rayLen = 3.2f.dp.toPx()
-        for (i in 0 until 8) {
-          val a = i * (Math.PI / 4.0)
-          val dx = Math.cos(a)
-          val dy = Math.sin(a)
-          drawLine(
-            color = tabColor.copy(alpha = 0.55f),
-            start = Offset(c.x + (dx * baseR).toFloat(), c.y + (dy * baseR).toFloat()),
-            end = Offset(c.x + (dx * (baseR + rayLen)).toFloat(), c.y + (dy * (baseR + rayLen)).toFloat()),
-            strokeWidth = 1.4.dp.toPx(),
-            cap = StrokeCap.Round
-          )
-        }
-      }
-    }
     // Switching effect: outlined ↔ filled via 3D flip + crossfade + pop-in
     Box(contentAlignment = Alignment.Center, modifier = Modifier.size(24.dp)) {
       Icon(
