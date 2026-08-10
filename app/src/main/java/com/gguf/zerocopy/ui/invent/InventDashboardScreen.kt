@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import com.gguf.zerocopy.ui.components.FuturisticFont
+import com.gguf.zerocopy.ui.components.IdentityBorderBrush
 import com.gguf.zerocopy.ui.components.IdentityCyan
 import com.gguf.zerocopy.ui.components.IdentityPurple
 import com.gguf.zerocopy.ui.components.IdentitySweepBrush
@@ -813,12 +814,13 @@ private fun ProjectSquare(
             .combinedClickable(onClick = onPanel, onLongClick = onMenu)
     ) {
         // Folded-corner paper-note effect (bottom-right)
+        val foldColor = CardLight.copy(alpha = 0.9f)
         Canvas(
             Modifier.align(Alignment.BottomEnd).size(16.dp)
         ) {
             val w = size.width; val h = size.height
             val fold = Path().apply { moveTo(0f, h); lineTo(w, 0f); lineTo(w, h); close() }
-            drawPath(fold, CardLight.copy(alpha = 0.9f))
+            drawPath(fold, foldColor)
             drawLine(
                 Brush.linearGradient(listOf(IdentityCyan, IdentityPurple)),
                 Offset(0f, h), Offset(w, 0f), strokeWidth = 0.8.dp.toPx()

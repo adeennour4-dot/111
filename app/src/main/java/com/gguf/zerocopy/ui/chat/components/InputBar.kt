@@ -76,7 +76,7 @@ fun InputBar(
       modifier = Modifier
         .fillMaxWidth()
         // bottom = 2dp so the bubble hugs the nav bar's gradient hairline
-        .padding(horizontal = 12.dp, top = 2.dp, bottom = 2.dp)
+        .padding(horizontal = 12.dp).padding(top = 2.dp, bottom = 2.dp)
     ) {
       if (hasAttachments) {
         Row(
