@@ -23,6 +23,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -110,10 +111,12 @@ import com.gguf.zerocopy.ui.chat.components.DeleteConfirmDialog
 import com.gguf.zerocopy.ui.chat.components.ExportSessionDialog
 import com.gguf.zerocopy.ui.chat.components.InputBar
 import com.gguf.zerocopy.ui.chat.components.getFileName
+import com.gguf.zerocopy.ui.components.GradientBubbleBox
 import com.gguf.zerocopy.ui.components.IdentityBorderBrush
 import com.gguf.zerocopy.ui.components.IdentityCyan
 import com.gguf.zerocopy.ui.components.IdentityGreen
 import com.gguf.zerocopy.ui.components.IdentityPurple
+import com.gguf.zerocopy.ui.components.IdentitySweepBrush
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.io.File
 import java.io.FileOutputStream
@@ -736,15 +739,24 @@ fun ChatScreen(
             )
           )
           Spacer(Modifier.width(8.dp))
-          Text(
-            text = sessionName,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
-            color = colors.Text,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-          )
+          // Session name — the same gradient bubble as the input bubble
+          Box(Modifier.weight(1f)) {
+            GradientBubbleBox(
+              circulating = isInferring,
+              bubbleColor = colors.Card,
+              shape = RoundedCornerShape(22.dp)
+            ) {
+              Text(
+                text = sessionName,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.Text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 7.dp)
+              )
+            }
+          }
           if (modelName.isNotEmpty()) {
             Surface(
               shape = RoundedCornerShape(6.dp),
@@ -763,7 +775,7 @@ fun ChatScreen(
               )
             }
           }
-          // New session — pulsing gradient orb (redesigned "+")
+          // New session — black pill with the cyan→purple identity ring (app-icon style)
           val newOrbPulse = rememberInfiniteTransition(label = "newOrb")
           val orbScale by newOrbPulse.animateFloat(
             initialValue = 0.96f, targetValue = 1.06f,
@@ -775,13 +787,12 @@ fun ChatScreen(
               .size(28.dp)
               .clip(CircleShape)
               .graphicsLayer { scaleX = orbScale; scaleY = orbScale }
-              .background(
-                Brush.sweepGradient(listOf(colors.GradientStart, colors.Accent2, colors.GradientEnd, colors.GradientStart))
-              )
+              .background(Color.Black)
+              .border(1.5.dp, IdentitySweepBrush, CircleShape)
               .clickable { startNewChat() },
             contentAlignment = Alignment.Center
           ) {
-            Icon(Icons.Filled.Add, "New conversation", tint = Color.Black, modifier = Modifier.size(16.dp))
+            Icon(Icons.Filled.Add, "New conversation", tint = IdentityCyan, modifier = Modifier.size(16.dp))
           }
           Spacer(Modifier.width(6.dp))
           // Sessions — circular
@@ -793,14 +804,23 @@ fun ChatScreen(
             onClick = { app.chatRepository.refreshSessions(); onSessions() }
           )
           Spacer(Modifier.width(6.dp))
-          // Export — circular
-          ChatToolCircle(
-            icon = Icons.Outlined.Share,
-            label = "Export",
-            active = chatId != null && messages.isNotEmpty(),
-            accent = IdentityCyan,
-            onClick = { if (chatId != null) showExportDialog = true }
-          )
+          // Export — black pill + identity ring, matching the "+" orb
+          Box(
+            modifier = Modifier
+              .size(30.dp)
+              .clip(CircleShape)
+              .background(if (chatId != null && messages.isNotEmpty()) Color.Black else colors.Card)
+              .border(1.5.dp, IdentitySweepBrush, CircleShape)
+              .clickable { if (chatId != null) showExportDialog = true },
+            contentAlignment = Alignment.Center
+          ) {
+            Icon(
+              Icons.Outlined.Share,
+              "Export",
+              tint = if (chatId != null && messages.isNotEmpty()) IdentityCyan else colors.Text3,
+              modifier = Modifier.size(15.dp)
+            )
+          }
           Spacer(Modifier.width(6.dp))
           // Unload — circular
           if (engine?.isModelLoaded == true) {

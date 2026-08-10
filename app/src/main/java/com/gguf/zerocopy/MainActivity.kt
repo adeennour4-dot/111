@@ -86,6 +86,9 @@ import com.gguf.zerocopy.ui.cloud.CloudScreen
 import com.gguf.zerocopy.ui.models.ModelListScreen
 import com.gguf.zerocopy.ui.sessions.SessionListScreen
 import com.gguf.zerocopy.ui.settings.SettingsScreen
+import com.gguf.zerocopy.ui.components.IdentityCyan
+import com.gguf.zerocopy.ui.components.IdentityGreen
+import com.gguf.zerocopy.ui.components.IdentityPurple
 import com.gguf.zerocopy.ui.theme.ZeroCopyTheme
 import com.gguf.zerocopy.ui.theme.ZcPalette
 import com.gguf.zerocopy.ui.theme.currentPalette
@@ -454,6 +457,14 @@ private fun NavSprite(item: NavItem, isSelected: Boolean, colors: ZcPalette) {
   }
 
   Box(contentAlignment = Alignment.Center, modifier = Modifier.size(38.dp)) {
+    // Gradient pill behind the icon when selected — same identity-gradient
+    // language as the chat bubbles, but each tab has its own color pair.
+    if (isSelected) {
+      Box(
+        Modifier.size(30.dp).clip(RoundedCornerShape(10.dp))
+          .background(navGradient(item.label))
+      )
+    }
     // Soft radial glow — fades smoothly from center to edge
     Box(
       Modifier.size(34.dp).background(
@@ -497,7 +508,7 @@ private fun NavSprite(item: NavItem, isSelected: Boolean, colors: ZcPalette) {
       Icon(
         item.activeIcon,
         item.label,
-        tint = tabColor,
+        tint = if (isSelected) Color.White else tabColor,
         modifier = Modifier.size(22.dp).graphicsLayer {
           alpha = flip
           rotationY = -180f * (1f - flip)
@@ -515,6 +526,15 @@ private fun navTabColor(label: String, colors: ZcPalette): Color = when (label) 
   "Server" -> colors.Amber
   "Settings" -> colors.Purple
   else -> Color(0xFF00E5F0) // Invent bulb cyan
+}
+
+/** Per-tab gradient for the selected bottom-nav pill — each tab its own pair. */
+private fun navGradient(label: String): Brush = when (label) {
+  "Chat" -> Brush.linearGradient(listOf(IdentityCyan, IdentityGreen))
+  "Models" -> Brush.linearGradient(listOf(IdentityPurple, IdentityCyan))
+  "Server" -> Brush.linearGradient(listOf(Color(0xFFFFB44D), Color(0xFFFF7A3D)))
+  "Settings" -> Brush.linearGradient(listOf(IdentityPurple, Color(0xFFB66BFF)))
+  else -> Brush.linearGradient(listOf(IdentityCyan, IdentityPurple)) // Invent
 }
 
 @Composable

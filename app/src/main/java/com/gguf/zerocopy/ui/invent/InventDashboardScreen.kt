@@ -28,6 +28,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import com.gguf.zerocopy.ui.components.IdentityCyan
+import com.gguf.zerocopy.ui.components.IdentityPurple
+import com.gguf.zerocopy.ui.components.IdentitySweepBrush
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -199,7 +202,7 @@ fun InventDashboardScreen(
     var newProjectDialog by remember { mutableStateOf(false) } // empty slot → new project
     var historyFor by remember { mutableStateOf<Pair<String, File>?>(null) } // projectId, file
     var showZipInfo by remember { mutableStateOf(false) }
-    var squarePanelFor by remember { mutableStateOf<String?>(null) } // tap a square → in-place models/sessions panel
+    val squarePanels = remember { mutableStateListOf<String>() } // tap squares → in-place panels; MULTIPLE squares can be active at once
     var modelInfoFor by remember { mutableStateOf<Triple<String, InventRoleConfig, com.gguf.zerocopy.data.repository.LocalModel>?>(null) } // pid, role, model → info + RAM window
     var deleteProjectFor by remember { mutableStateOf<String?>(null) } // delete-project confirm (window ✕)
     // First-run tour (dismissed permanently)
@@ -213,7 +216,7 @@ fun InventDashboardScreen(
     Column(Modifier.fillMaxSize().background(Bg)) {
         // ── Title bar ──
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
@@ -221,7 +224,7 @@ fun InventDashboardScreen(
             }
             Column(Modifier.weight(1f)) {
                 Text("INVENT", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace)
-                Text("⤢ maximize · hold a square for menu · RAM ${freeRamMb(context)} MB", fontSize = 9.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                Text("⤢ maximize · hold a square for menu · RAM ${freeRamMb(context)} MB", fontSize = 8.sp, color = Gy, fontFamily = FontFamily.Monospace)
             }
             Surface(
                 onClick = { onDiagnostics() },
@@ -249,6 +252,9 @@ fun InventDashboardScreen(
                 }
             }
         }
+
+        // Identity gradient hairline under the Invent title bar
+        Box(Modifier.fillMaxWidth().height(2.dp).background(Brush.horizontalGradient(listOf(IdentityCyan, IdentityPurple))))
 
         val active = projects.find { it.id == maximized }
         if (active != null) {
@@ -293,15 +299,15 @@ fun InventDashboardScreen(
                                 val project = projects.getOrNull(idx)
                                 Box(Modifier.weight(1f).fillMaxHeight()) {
                                     if (project != null) {
-                                        if (squarePanelFor == project.id) {
+                                        if (project.id in squarePanels) {
                                             // The minimized square (panel) lives INSIDE the square.
                                             SquarePanel(
                                                 project = project,
                                                 knownPaths = knownPaths,
                                                 models = models,
                                                 fileRefresh = fileRefresh,
-                                                onMaximize = { squarePanelFor = null; maximized = project.id },
-                                                onClose = { squarePanelFor = null },
+                                                onMaximize = { squarePanels.remove(project.id); maximized = project.id },
+                                                onClose = { squarePanels.remove(project.id) },
                                                 onPickModel = { role -> modelPickerFor = project.id to role },
                                                 onModelInfo = { role, model -> modelInfoFor = Triple(project.id, role, model) },
                                                 onAddRole = { addRoleFor = project.id },
@@ -323,7 +329,7 @@ fun InventDashboardScreen(
                                                 project = project,
                                                 knownPaths = knownPaths,
                                                 fileRefresh = fileRefresh,
-                                                onPanel = { squarePanelFor = project.id },
+                                                onPanel = { if (!squarePanels.remove(project.id)) squarePanels.add(project.id) },
                                                 onMaximize = { maximized = project.id },
                                                 onMenu = { projectMenuFor = project.id }
                                             )
@@ -385,32 +391,33 @@ fun InventDashboardScreen(
                 }
             }
 
-            // ── Delete-project confirm (window title bar 🗑 / session delete) ──
-            deleteProjectFor?.let { pid ->
-                val p = projects.find { it.id == pid }
-                AlertDialog(
-                    onDismissRequest = { deleteProjectFor = null },
-                    containerColor = Card,
-                    title = { Text("Delete project?", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace) },
-                    text = { Text("'${p?.name ?: ""}' and all its sessions + files will be permanently removed. This cannot be undone.", fontSize = 11.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace) },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            onDeleteProject(pid)
-                            currentDir.remove(pid)
-                            fileRefresh++
-                            maximized = null
-                            squarePanelFor = null
-                            deleteProjectFor = null
-                        }) { Text("Delete", color = Rd, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { deleteProjectFor = null }) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
-                    }
-                )
-            }
-
         }
             }
+    }
+
+    // ── Delete-project confirm (window title bar 🗑) — composed OUTSIDE the
+    // grid/maximized branch so it works while a project window is maximized ──
+    deleteProjectFor?.let { pid ->
+        val p = projects.find { it.id == pid }
+        AlertDialog(
+            onDismissRequest = { deleteProjectFor = null },
+            containerColor = Card,
+            title = { Text("Delete project?", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace) },
+            text = { Text("'${p?.name ?: ""}' and all its sessions + files will be permanently removed. This cannot be undone.", fontSize = 11.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.Monospace) },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeleteProject(pid)
+                    currentDir.remove(pid)
+                    fileRefresh++
+                    maximized = null
+                    squarePanels.remove(pid)
+                    deleteProjectFor = null
+                }) { Text("Delete", color = Rd, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteProjectFor = null }) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
+            }
+        )
     }
 
     // ── Model picker dialog (sliders + toggles + RAM) ──
@@ -761,6 +768,11 @@ private fun ProjectSquare(
             .border(1.dp, Line, RoundedCornerShape(14.dp))
             .combinedClickable(onClick = onPanel, onLongClick = onMenu)
     ) {
+        // Identity gradient hairline — every square carries the app ring
+        Box(
+            Modifier.align(Alignment.TopCenter).fillMaxWidth(0.72f).height(2.dp)
+                .background(Brush.horizontalGradient(listOf(IdentityCyan, IdentityPurple)))
+        )
         // Maximize (top-right)
         Surface(
             onClick = onMaximize,
@@ -791,12 +803,12 @@ private fun ProjectSquare(
             Surface(
                 onClick = onPanel,
                 shape = CircleShape,
-                color = Bulb.copy(alpha = 0.14f),
-                border = BorderStroke(1.5.dp, Bulb.copy(alpha = 0.6f)),
+                color = Color.Black,
+                border = BorderStroke(1.5.dp, IdentitySweepBrush),
                 modifier = Modifier.size(40.dp)
             ) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Add, null, tint = Bulb, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Filled.Add, null, tint = IdentityCyan, modifier = Modifier.size(20.dp))
                 }
             }
             Spacer(Modifier.height(6.dp))
@@ -878,7 +890,7 @@ private fun ProjectWindow(
         border = BorderStroke(1.dp, Line),
         modifier = Modifier.fillMaxSize().padding(8.dp)
     ) {
-        Column(Modifier.fillMaxSize().padding(12.dp)) {
+        Column(Modifier.fillMaxSize().padding(10.dp)) {
             // ── Window title bar ──
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // "−" minimize → collapse back to the 2×2 grid
@@ -895,8 +907,8 @@ private fun ProjectWindow(
                 }
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(project.name.uppercase(), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("MODELS · SESSIONS · FILES", fontSize = 8.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                    Text(project.name.uppercase(), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("MODELS · SESSIONS · FILES", fontSize = 8.sp, color = Gy, fontFamily = FontFamily.Monospace)
                 }
                 // 🗑 trash → delete the project (asks for confirmation)
                 Surface(
