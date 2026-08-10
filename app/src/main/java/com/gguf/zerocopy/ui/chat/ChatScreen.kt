@@ -112,6 +112,7 @@ import com.gguf.zerocopy.ui.chat.components.DeleteConfirmDialog
 import com.gguf.zerocopy.ui.chat.components.ExportSessionDialog
 import com.gguf.zerocopy.ui.chat.components.InputBar
 import com.gguf.zerocopy.ui.chat.components.getFileName
+import com.gguf.zerocopy.ui.components.FuturisticFont
 import com.gguf.zerocopy.ui.components.GradientBubbleBox
 import com.gguf.zerocopy.ui.components.IdentityBorderBrush
 import com.gguf.zerocopy.ui.components.IdentityCyan
@@ -752,6 +753,7 @@ fun ChatScreen(
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
                 color = colors.Text,
+                fontFamily = FuturisticFont,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 7.dp)
@@ -785,7 +787,7 @@ fun ChatScreen(
           )
           Box(
             modifier = Modifier
-              .size(28.dp)
+              .size(30.dp)
               .clip(CircleShape)
               .graphicsLayer { scaleX = orbScale; scaleY = orbScale }
               .background(colors.Card)
@@ -1094,7 +1096,7 @@ private fun ChatToolCircle(
         onClick = onClick,
         shape = CircleShape,
         color = if (active) accent.copy(alpha = 0.14f) else colors.Card,
-        border = BorderStroke(0.75.dp, borderBrush),
+        border = BorderStroke(1.dp, borderBrush),
         modifier = Modifier.size(30.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {

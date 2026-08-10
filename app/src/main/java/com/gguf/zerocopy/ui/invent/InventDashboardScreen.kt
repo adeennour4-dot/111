@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -21,14 +22,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import com.gguf.zerocopy.ui.components.FuturisticFont
 import com.gguf.zerocopy.ui.components.IdentityCyan
 import com.gguf.zerocopy.ui.components.IdentityPurple
 import com.gguf.zerocopy.ui.components.IdentitySweepBrush
@@ -244,7 +248,7 @@ fun InventDashboardScreen(
                 Icon(Icons.Filled.ArrowBack, "Back", tint = Txt2, modifier = Modifier.size(18.dp))
             }
             Column(Modifier.weight(1f)) {
-                Text("INVENT", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace)
+                Text("INVENT", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FuturisticFont)
                 Text("⤢ maximize · hold a square for menu · RAM ${freeRamMb(context)} MB", fontSize = 8.sp, color = Gy, fontFamily = FontFamily.Monospace)
             }
             Surface(
@@ -355,7 +359,12 @@ fun InventDashboardScreen(
                                                 fileRefresh = fileRefresh,
                                                 onPanel = { if (!squarePanels.remove(project.id)) squarePanels.add(project.id) },
                                                 onMaximize = { maximized = project.id },
-                                                onMenu = { projectMenuFor = project.id }
+                                                onMenu = { projectMenuFor = project.id },
+                                                onClear = {
+                                                    onClearProject(project.id)
+                                                    currentDir.remove(project.id)
+                                                    fileRefresh++
+                                                }
                                             )
                                         }
                                     } else {
@@ -395,7 +404,7 @@ fun InventDashboardScreen(
                         Spacer(Modifier.height(12.dp))
                         Text("• Tap a square (or ⤢ top-right) to maximize it into a full window", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(6.dp))
-                        Text("• MODELS · SESSIONS · FILES sections live inside the window", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
+                        Text("• ROLES · SESSIONS · FILES sections live inside the window", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(6.dp))
                         Text("• — minimizes · ✕ clears · hold a square for rename / export", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(6.dp))
@@ -551,8 +560,15 @@ fun InventDashboardScreen(
                 sessionMenuFor = null
             },
             onDelete = {
-                // The captain's rule: "delete session" = delete the PROJECT.
-                deleteProjectFor = pid
+                // Delete only THIS session — the project itself can only be
+                // removed via the trash icon (window / square).
+                scope.launch(Dispatchers.IO) {
+                    InventStorage.deleteSession(context, sid)
+                }
+                val p = projects.find { it.id == pid }
+                if (p != null) {
+                    onSaveProject(p.withSessionIds(p.sessionIds.filter { it != sid }))
+                }
                 sessionMenuFor = null
             },
             onReset = {
@@ -777,64 +793,87 @@ private fun ProjectSquare(
     fileRefresh: Int,
     onPanel: () -> Unit,
     onMaximize: () -> Unit,
-    onMenu: () -> Unit
+    onMenu: () -> Unit,
+    onClear: () -> Unit
 ) {
     val context = LocalContext.current
     val fileCount = remember(project.id, fileRefresh) {
         InventProjectStore.filesDir(context, project.id).listFiles()?.size ?: 0
     }
     val previewRoles = project.roles.filter { it.isPlanner || it.isDebugger || it.isCoder }
+    // The door: RED while a coder runs in the background, CYAN when idle.
+    val coderRunning = project.roles.any { it.isCoder && it.backgroundWork }
+    val doorColor = if (coderRunning) Rd else Cy
 
     Box(
         Modifier.fillMaxSize()
             .clip(RoundedCornerShape(14.dp))
             .background(Brush.verticalGradient(listOf(CardLight.copy(alpha = 0.7f), Card)))
-            .border(0.5.dp, Line, RoundedCornerShape(14.dp))
+            .border(1.dp, IdentityBorderBrush, RoundedCornerShape(14.dp))
             .combinedClickable(onClick = onPanel, onLongClick = onMenu)
     ) {
-        // Maximize (top-right)
-        Surface(
-            onClick = onMaximize,
-            shape = CircleShape,
-            color = CardLight,
-            border = BorderStroke(1.dp, Cy.copy(alpha = 0.45f)),
-            modifier = Modifier.align(Alignment.TopEnd).size(18.dp)
+        // Folded-corner paper-note effect (bottom-right)
+        Canvas(
+            Modifier.align(Alignment.BottomEnd).size(16.dp)
         ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.OpenInFull, null, tint = Cy, modifier = Modifier.size(10.dp))
+            val w = size.width; val h = size.height
+            val fold = Path().apply { moveTo(0f, h); lineTo(w, 0f); lineTo(w, h); close() }
+            drawPath(fold, CardLight.copy(alpha = 0.9f))
+            drawLine(
+                Brush.linearGradient(listOf(IdentityCyan, IdentityPurple)),
+                Offset(0f, h), Offset(w, 0f), strokeWidth = 0.8.dp.toPx()
+            )
+        }
+        // Maximize + X — rounded-square tabs touching the top line
+        Row(Modifier.align(Alignment.TopEnd), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Surface(onClick = onMaximize, shape = RoundedCornerShape(5.dp), color = CardLight, border = BorderStroke(1.dp, IdentityBorderBrush), modifier = Modifier.size(15.dp)) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.OpenInFull, null, tint = Cy, modifier = Modifier.size(8.dp)) }
+            }
+            Surface(onClick = onClear, shape = RoundedCornerShape(5.dp), color = CardLight, border = BorderStroke(1.dp, Rd.copy(alpha = 0.5f)), modifier = Modifier.size(15.dp)) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, null, tint = Rd, modifier = Modifier.size(8.dp)) }
             }
         }
-        // Pills (top-left)
-        Row(Modifier.align(Alignment.TopStart), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        // Count pills (top-left) — small, tucked into the corner
+        Row(Modifier.align(Alignment.TopStart), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             Surface(shape = RoundedCornerShape(3.dp), color = Pr.copy(alpha = 0.12f), border = BorderStroke(1.dp, Pr.copy(alpha = 0.4f))) {
-                Text("${project.sessionIds.size}S", fontSize = 6.5.sp, color = Pr, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
+                Text("${project.sessionIds.size}S", fontSize = 6.sp, color = Pr, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
             }
             Surface(shape = RoundedCornerShape(3.dp), color = Cy.copy(alpha = 0.12f), border = BorderStroke(1.dp, Cy.copy(alpha = 0.4f))) {
-                Text("${fileCount}F", fontSize = 6.5.sp, color = Cy, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
+                Text("${fileCount}F", fontSize = 6.sp, color = Cy, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
             }
         }
-        // Center: + , name, role dots
+        // Name pill — horizontal expanded circle connected to the top (inside)
+        Box(
+            Modifier.align(Alignment.TopCenter).padding(top = 3.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Card)
+                .border(1.dp, IdentityBorderBrush, RoundedCornerShape(50))
+        ) {
+            Text(project.name.uppercase(), fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Txt, fontFamily = FuturisticFont,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp))
+        }
+        // Center: the DOOR (state orb) + role dots
         Column(
             Modifier.fillMaxSize().padding(4.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Surface(
-                onClick = onPanel,
-                shape = CircleShape,
-                color = if (DarkMode) Color.Black else Card,
-                border = BorderStroke(1.dp, IdentitySweepBrush),
-                modifier = Modifier.size(40.dp)
-            ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Add, null, tint = if (DarkMode) IdentityCyan else Pr, modifier = Modifier.size(20.dp))
+            // Soft state glow behind the door
+            Box(Modifier.size(56.dp).background(Brush.radialGradient(listOf(doorColor.copy(alpha = 0.22f), doorColor.copy(alpha = 0f))), CircleShape), contentAlignment = Alignment.Center) {
+                Surface(
+                    onClick = onPanel,
+                    shape = CircleShape,
+                    color = if (DarkMode) Color.Black else Card,
+                    border = BorderStroke(1.dp, doorColor),
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.Add, null, tint = doorColor, modifier = Modifier.size(16.dp))
+                    }
                 }
             }
-            Spacer(Modifier.height(6.dp))
-            Text(project.name, fontSize = 7.5.sp, color = Txt2, fontFamily = FontFamily.Monospace,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp), textAlign = TextAlign.Center)
             if (previewRoles.isNotEmpty()) {
-                Spacer(Modifier.height(5.dp))
+                Spacer(Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
                     previewRoles.forEach { role ->
                         val missing = role.modelPath.isNotEmpty() && !knownPaths.contains(role.modelPath)
@@ -926,8 +965,8 @@ private fun ProjectWindow(
                 }
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(project.name.uppercase(), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("MODELS · SESSIONS · FILES", fontSize = 8.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                    Text(project.name.uppercase(), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FuturisticFont, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("ROLES · SESSIONS · FILES", fontSize = 8.sp, color = Gy, fontFamily = FontFamily.Monospace)
                 }
                 // 🗑 trash → delete the project (asks for confirmation)
                 Surface(
@@ -946,7 +985,7 @@ private fun ProjectWindow(
 
             // ── Sections ──
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("models" to "MODELS", "sessions" to "SESSIONS", "files" to "FILES").forEach { (key, label) ->
+                listOf("models" to "ROLES", "sessions" to "SESSIONS", "files" to "FILES").forEach { (key, label) ->
                     val active = sector == key
                     Surface(
                         onClick = { sector = key },
@@ -1749,43 +1788,43 @@ private fun SquarePanel(
         border = BorderStroke(1.dp, Line),
         modifier = Modifier.fillMaxSize()
     ) {
-        Column(Modifier.fillMaxSize().padding(10.dp)) {
-            // ── Title bar ──
+        Column(Modifier.fillMaxSize().padding(8.dp)) {
+            // ── Title bar (slim — more room for the notebook below) ──
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(8.dp).clip(CircleShape).background(Cy))
-                Spacer(Modifier.width(6.dp))
+                Box(Modifier.size(6.dp).clip(CircleShape).background(Cy))
+                Spacer(Modifier.width(5.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(project.name.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("RAM ${freeRamMb(context)} MB free", fontSize = 7.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                    Text(project.name.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FuturisticFont, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("RAM ${freeRamMb(context)} MB free", fontSize = 6.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
                 }
-                Surface(onClick = onMaximize, shape = CircleShape, color = Cy.copy(alpha = 0.12f), border = BorderStroke(1.dp, Cy.copy(alpha = 0.5f)), modifier = Modifier.size(24.dp)) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.OpenInFull, null, tint = Cy, modifier = Modifier.size(12.dp)) }
+                Surface(onClick = onMaximize, shape = RoundedCornerShape(6.dp), color = Cy.copy(alpha = 0.12f), border = BorderStroke(1.dp, Cy.copy(alpha = 0.5f)), modifier = Modifier.size(20.dp)) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.OpenInFull, null, tint = Cy, modifier = Modifier.size(10.dp)) }
                 }
-                Spacer(Modifier.width(6.dp))
-                Surface(onClick = onClose, shape = CircleShape, color = Rd.copy(alpha = 0.12f), border = BorderStroke(1.dp, Rd.copy(alpha = 0.5f)), modifier = Modifier.size(24.dp)) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, null, tint = Rd, modifier = Modifier.size(12.dp)) }
+                Spacer(Modifier.width(5.dp))
+                Surface(onClick = onClose, shape = RoundedCornerShape(6.dp), color = Rd.copy(alpha = 0.12f), border = BorderStroke(1.dp, Rd.copy(alpha = 0.5f)), modifier = Modifier.size(20.dp)) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, null, tint = Rd, modifier = Modifier.size(10.dp)) }
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            // ── Tab switcher: MODELS | SESSIONS ──
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(0 to "MODELS", 1 to "SESSIONS").forEach { (t, label) ->
+            Spacer(Modifier.height(6.dp))
+            // ── Notebook pages: ROLES | SESSIONS (click flips to the next page) ──
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.Bottom) {
+                listOf(0 to "ROLES", 1 to "SESSIONS").forEach { (t, label) ->
                     val active = tab == t
                     Surface(
                         onClick = { tab = t },
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (active) Pr.copy(alpha = 0.18f) else CardLight,
-                        border = BorderStroke(1.dp, if (active) Pr.copy(alpha = 0.7f) else Line),
-                        modifier = Modifier.weight(1f)
+                        shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 4.dp, bottomEnd = 4.dp),
+                        color = if (active) CardLight else Card.copy(alpha = 0.6f),
+                        border = BorderStroke(1.dp, if (active) IdentityBorderBrush else Line),
+                        modifier = Modifier.weight(1f).then(if (active) Modifier else Modifier.offset(y = 2.dp))
                     ) {
-                        Box(Modifier.padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
-                            Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold,
-                                color = if (active) Pr else Gy, fontFamily = FontFamily.Monospace)
+                        Box(Modifier.padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+                            Text(label, fontSize = 8.sp, fontWeight = FontWeight.Bold,
+                                color = if (active) Pr else Gy, fontFamily = FuturisticFont, letterSpacing = 1.sp)
                         }
                     }
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(5.dp))
             // ── Tab content ──
             if (tab == 0) {
                 // MODELS
@@ -1802,11 +1841,11 @@ private fun SquarePanel(
                                 onLongClick = { onRoleMenu(role) }
                             )
                         ) {
-                            Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                            Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(8.dp).clip(CircleShape).background(if (missing) Rd else roleColor(role.role)))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(role.role.uppercase(), fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = roleColor(role.role), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                    Box(Modifier.size(6.dp).clip(CircleShape).background(if (missing) Rd else roleColor(role.role)))
+                                    Spacer(Modifier.width(5.dp))
+                                    Text(role.role.uppercase(), fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = roleColor(role.role), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                     if (role.isCoder) { Spacer(Modifier.width(3.dp)); Text("🔒", fontSize = 7.sp) }
                                 }
                                 Spacer(Modifier.height(3.dp))
@@ -1836,10 +1875,10 @@ private fun SquarePanel(
                             border = BorderStroke(1.dp, Pr.copy(alpha = 0.5f)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(Modifier.padding(vertical = 7.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.Add, null, tint = Pr, modifier = Modifier.size(11.dp))
+                            Row(Modifier.padding(vertical = 5.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Add, null, tint = Pr, modifier = Modifier.size(10.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("add role", fontSize = 8.sp, color = Pr, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                Text("add role", fontSize = 7.5.sp, color = Pr, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -1867,14 +1906,14 @@ private fun SquarePanel(
                                     onLongClick = { onSessionMenu(sid) }
                                 )
                             ) {
-                                Row(Modifier.padding(horizontal = 10.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(20.dp).clip(RoundedCornerShape(5.dp)).background(Pr.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-                                        Text("S#${i + 1}", fontSize = 7.5.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
+                                Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(16.dp).clip(RoundedCornerShape(4.dp)).background(Pr.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                                        Text("S#${i + 1}", fontSize = 7.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
                                     }
-                                    Spacer(Modifier.width(7.dp))
+                                    Spacer(Modifier.width(6.dp))
                                     Column(Modifier.weight(1f)) {
-                                        Text(title, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text("phase: ${s?.phase?.name ?: "?"}", fontSize = 7.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                                        Text(title, fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text("phase: ${s?.phase?.name ?: "?"}", fontSize = 7.sp, color = Gy, fontFamily = FontFamily.Monospace)
                                     }
                                 }
                             }
@@ -1888,10 +1927,10 @@ private fun SquarePanel(
                         border = BorderStroke(1.dp, Pr.copy(alpha = 0.65f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(Modifier.padding(vertical = 9.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Add, null, tint = Pr, modifier = Modifier.size(13.dp))
+                        Row(Modifier.padding(vertical = 6.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Add, null, tint = Pr, modifier = Modifier.size(12.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("new session", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
+                            Text("new session", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
                         }
                     }
                 }

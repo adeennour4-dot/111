@@ -182,7 +182,12 @@ fun AppRoot() {
     bottomBar = {
       val navColors = currentPalette()
       Column {
-        HorizontalDivider(color = navColors.Border.copy(alpha = 0.4f), thickness = 0.5.dp)
+        // Gradient hairline — the nav bar feels connected to the input bubble
+        // above it (both carry the app's cyan→purple ring).
+        Box(
+          Modifier.fillMaxWidth().height(1.dp)
+            .background(Brush.horizontalGradient(listOf(IdentityCyan, IdentityPurple)))
+        )
         NavigationBar(
           containerColor = navColors.Surface,
           tonalElevation = 0.dp
@@ -441,7 +446,7 @@ fun AppRoot() {
 private fun NavSprite(item: NavItem, isSelected: Boolean, colors: ZcPalette) {
   // Every icon has its own color — dim when idle, full + glow when active
   val tabColor = navTabColor(item.label, colors)
-  val idleTint = tabColor.copy(alpha = 0.45f)
+  val idleTint = if (isSelected) tabColor else Color(0xFF8B83FF).copy(alpha = 0.55f)
   val halo = remember { Animatable(if (isSelected) 1f else 0f) }
   // Icon flip progress: 0 = idle icon, 1 = active icon (3D switching effect)
   val flip by animateFloatAsState(
@@ -456,12 +461,21 @@ private fun NavSprite(item: NavItem, isSelected: Boolean, colors: ZcPalette) {
   }
 
   Box(contentAlignment = Alignment.Center, modifier = Modifier.size(38.dp)) {
-    // Gradient pill behind the icon when selected — same identity-gradient
-    // language as the chat bubbles, but each tab has its own color pair.
+    // Gradient chip: selected = full identity gradient pill with white icon;
+    // unselected = the SAME gradient cut from one paper at low alpha.
     if (isSelected) {
       Box(
         Modifier.size(30.dp).clip(RoundedCornerShape(10.dp))
           .background(navGradient(item.label))
+      )
+    } else {
+      Box(
+        Modifier.size(30.dp).clip(RoundedCornerShape(10.dp))
+          .background(
+            Brush.linearGradient(
+              listOf(IdentityCyan.copy(alpha = 0.14f), IdentityPurple.copy(alpha = 0.14f))
+            )
+          )
       )
     }
     // Soft radial glow — fades smoothly from center to edge

@@ -31,6 +31,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
+import com.gguf.zerocopy.R
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 
 /** Identity colors — the launcher-icon palette (purple + green) plus cyan. */
 val IdentityCyan = Color(0xFF00E5F0)
@@ -40,6 +43,9 @@ val IdentityPurple = Color(0xFF7C5CFF)
 val IdentityGradient = listOf(IdentityCyan, IdentityPurple)
 val IdentitySweepBrush = Brush.sweepGradient(listOf(IdentityCyan, IdentityPurple, IdentityCyan))
 val IdentityBorderBrush = Brush.linearGradient(IdentityGradient)
+
+/** Futuristic display font (Orbitron) for headers, names and labels. */
+val FuturisticFont = FontFamily(Font(R.font.orbitron))
 
 /**
  * Black/white chat bubble wrapped in the app's cyan→purple gradient
