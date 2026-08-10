@@ -1816,7 +1816,7 @@ private fun SquarePanel(
                         onClick = { tab = t },
                         shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 4.dp, bottomEnd = 4.dp),
                         color = if (active) CardLight else Card.copy(alpha = 0.6f),
-                        border = BorderStroke(1.dp, if (active) IdentityBorderBrush else Line),
+                        border = BorderStroke(1.dp, if (active) IdentityBorderBrush else Brush.linearGradient(listOf(Line, Line))),
                         modifier = Modifier.weight(1f).then(if (active) Modifier else Modifier.offset(y = 2.dp))
                     ) {
                         Box(Modifier.padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
