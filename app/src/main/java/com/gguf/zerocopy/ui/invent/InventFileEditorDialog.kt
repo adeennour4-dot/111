@@ -48,7 +48,7 @@ fun InventFileEditorDialog(
         Surface(
             shape = RoundedCornerShape(14.dp),
             color = EdBg,
-            border = BorderStroke(1.dp, EdLine)
+            border = BorderStroke(0.2.dp, EdLine)
         ) {
             Column(
                 Modifier
@@ -106,7 +106,7 @@ fun InventFileEditorDialog(
                         onClick = { onSave(fileName, text); onDismiss() },
                         shape = RoundedCornerShape(8.dp),
                         color = EdAccent.copy(alpha = 0.15f),
-                        border = BorderStroke(1.dp, EdAccent)
+                        border = BorderStroke(0.2.dp, EdAccent)
                     ) {
                         Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Filled.Save, null, tint = EdAccent, modifier = Modifier.size(14.dp))

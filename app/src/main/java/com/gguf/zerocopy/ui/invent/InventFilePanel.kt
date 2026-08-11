@@ -91,7 +91,7 @@ fun FilePanel(
             .fillMaxHeight(),
         color = colors.Bg,
         shadowElevation = 2.dp,
-        border = androidx.compose.foundation.BorderStroke(1.dp, colors.Border.copy(alpha = 0.3f))
+        border = androidx.compose.foundation.BorderStroke(0.2.dp, colors.Border.copy(alpha = 0.3f))
     ) {
         Column(Modifier.fillMaxSize()) {
             // ── Header with folder path / up button ──

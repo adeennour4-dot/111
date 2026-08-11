@@ -64,7 +64,7 @@ fun DiagnosticsScreen(
                 },
                 shape = MaterialTheme.shapes.small,
                 color = DbgCard,
-                border = androidx.compose.foundation.BorderStroke(1.dp, DbgLine)
+                border = androidx.compose.foundation.BorderStroke(0.2.dp, DbgLine)
             ) {
                 Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.ContentCopy, null, tint = DbgAccent, modifier = Modifier.size(13.dp))

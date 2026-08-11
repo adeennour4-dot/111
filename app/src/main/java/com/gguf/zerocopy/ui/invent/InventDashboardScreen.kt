@@ -33,7 +33,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import com.gguf.zerocopy.ui.components.FuturisticFont
-import com.gguf.zerocopy.ui.components.IdentityBorderBrush
+import com.gguf.zerocopy.ui.components.Line
 import com.gguf.zerocopy.ui.components.IdentityCyan
 import com.gguf.zerocopy.ui.components.IdentityPurple
 import com.gguf.zerocopy.ui.components.IdentitySweepBrush
@@ -256,7 +256,7 @@ fun InventDashboardScreen(
                 onClick = { onDiagnostics() },
                 shape = RoundedCornerShape(8.dp),
                 color = CardLight,
-                border = BorderStroke(1.dp, Line)
+                border = BorderStroke(0.2.dp, Line)
             ) {
                 Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.BugReport, null, tint = Cy, modifier = Modifier.size(13.dp))
@@ -269,7 +269,7 @@ fun InventDashboardScreen(
                 onClick = { showZipInfo = true },
                 shape = RoundedCornerShape(8.dp),
                 color = CardLight,
-                border = BorderStroke(1.dp, Line)
+                border = BorderStroke(0.2.dp, Line)
             ) {
                 Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.QuestionMark, null, tint = Bulb, modifier = Modifier.size(13.dp))
@@ -414,7 +414,7 @@ fun InventDashboardScreen(
                             onClick = { dismissTour() },
                             shape = RoundedCornerShape(10.dp),
                             color = Cy.copy(alpha = 0.18f),
-                            border = BorderStroke(1.dp, Cy.copy(alpha = 0.6f))
+                            border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.6f))
                         ) {
                             Text("Got it — start building", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.Monospace,
                                 modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp))
@@ -809,7 +809,7 @@ private fun ProjectSquare(
         Modifier.fillMaxSize()
             .clip(RoundedCornerShape(14.dp))
             .background(Brush.verticalGradient(listOf(CardLight.copy(alpha = 0.7f), Card)))
-            .border(1.dp, IdentityBorderBrush, RoundedCornerShape(14.dp))
+            .border(0.2.dp, Line, RoundedCornerShape(14.dp))
             .combinedClickable(onClick = onPanel, onLongClick = onMenu)
     ) {
         // Folded-corner paper-note effect (bottom-right)
@@ -822,24 +822,24 @@ private fun ProjectSquare(
             drawPath(fold, foldColor)
             drawLine(
                 Brush.linearGradient(listOf(IdentityCyan, IdentityPurple)),
-                Offset(0f, h), Offset(w, 0f), strokeWidth = 0.8.dp.toPx()
+                Offset(0f, h), Offset(w, 0f), strokeWidth = 0.2.dp.toPx()
             )
         }
         // Maximize + X — rounded-square tabs touching the top line
         Row(Modifier.align(Alignment.TopEnd), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            Surface(onClick = onMaximize, shape = RoundedCornerShape(5.dp), color = CardLight, border = BorderStroke(1.dp, IdentityBorderBrush), modifier = Modifier.size(15.dp)) {
+            Surface(onClick = onMaximize, shape = RoundedCornerShape(5.dp), color = CardLight, border = BorderStroke(0.2.dp, Line), modifier = Modifier.size(15.dp)) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.OpenInFull, null, tint = Cy, modifier = Modifier.size(8.dp)) }
             }
-            Surface(onClick = onClear, shape = RoundedCornerShape(5.dp), color = CardLight, border = BorderStroke(1.dp, Rd.copy(alpha = 0.5f)), modifier = Modifier.size(15.dp)) {
+            Surface(onClick = onClear, shape = RoundedCornerShape(5.dp), color = CardLight, border = BorderStroke(0.2.dp, Rd.copy(alpha = 0.5f)), modifier = Modifier.size(15.dp)) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, null, tint = Rd, modifier = Modifier.size(8.dp)) }
             }
         }
         // Count pills (top-left) — small, tucked into the corner
         Row(Modifier.align(Alignment.TopStart), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            Surface(shape = RoundedCornerShape(3.dp), color = Pr.copy(alpha = 0.12f), border = BorderStroke(1.dp, Pr.copy(alpha = 0.4f))) {
+            Surface(shape = RoundedCornerShape(3.dp), color = Pr.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.4f))) {
                 Text("${project.sessionIds.size}S", fontSize = 6.sp, color = Pr, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
             }
-            Surface(shape = RoundedCornerShape(3.dp), color = Cy.copy(alpha = 0.12f), border = BorderStroke(1.dp, Cy.copy(alpha = 0.4f))) {
+            Surface(shape = RoundedCornerShape(3.dp), color = Cy.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.4f))) {
                 Text("${fileCount}F", fontSize = 6.sp, color = Cy, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
             }
         }
@@ -848,7 +848,7 @@ private fun ProjectSquare(
             Modifier.align(Alignment.TopCenter).padding(top = 3.dp)
                 .clip(RoundedCornerShape(50))
                 .background(Card)
-                .border(1.dp, IdentityBorderBrush, RoundedCornerShape(50))
+                .border(0.2.dp, Line, RoundedCornerShape(50))
         ) {
             Text(project.name.uppercase(), fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Txt, fontFamily = FuturisticFont,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp))
@@ -865,7 +865,7 @@ private fun ProjectSquare(
                     onClick = onPanel,
                     shape = CircleShape,
                     color = if (DarkMode) Color.Black else Card,
-                    border = BorderStroke(1.dp, doorColor),
+                    border = BorderStroke(0.2.dp, doorColor),
                     modifier = Modifier.size(38.dp)
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -908,7 +908,7 @@ private fun ProjectSquare(
                 onClick = onPanel,
                 shape = RoundedCornerShape(50),
                 color = Color.Transparent,
-                border = BorderStroke(1.dp, IdentityBorderBrush),
+                border = BorderStroke(0.2.dp, Line),
                 modifier = Modifier.weight(1f).height(14.dp)
             ) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -919,7 +919,7 @@ private fun ProjectSquare(
                 onClick = onMenu,
                 shape = RoundedCornerShape(50),
                 color = Pr.copy(alpha = 0.12f),
-                border = BorderStroke(1.dp, Pr.copy(alpha = 0.4f)),
+                border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.4f)),
                 modifier = Modifier.height(14.dp)
             ) {
                 Box(Modifier.padding(horizontal = 9.dp), contentAlignment = Alignment.Center) {
@@ -988,7 +988,7 @@ private fun ProjectWindow(
     Surface(
         shape = RoundedCornerShape(18.dp),
         color = Card,
-        border = BorderStroke(1.dp, Line),
+        border = BorderStroke(0.2.dp, Line),
         modifier = Modifier.fillMaxSize().padding(8.dp)
     ) {
         Column(Modifier.fillMaxSize().padding(10.dp)) {
@@ -999,7 +999,7 @@ private fun ProjectWindow(
                     onClick = onMinimize,
                     shape = CircleShape,
                     color = Bulb.copy(alpha = 0.12f),
-                    border = BorderStroke(1.dp, Bulb.copy(alpha = 0.5f)),
+                    border = BorderStroke(0.2.dp, Bulb.copy(alpha = 0.5f)),
                     modifier = Modifier.size(26.dp)
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1016,7 +1016,7 @@ private fun ProjectWindow(
                     onClick = onDelete,
                     shape = CircleShape,
                     color = Rd.copy(alpha = 0.12f),
-                    border = BorderStroke(1.dp, Rd.copy(alpha = 0.5f)),
+                    border = BorderStroke(0.2.dp, Rd.copy(alpha = 0.5f)),
                     modifier = Modifier.size(26.dp)
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1034,7 +1034,7 @@ private fun ProjectWindow(
                         onClick = { sector = key },
                         shape = RoundedCornerShape(8.dp),
                         color = if (active) sectorColor(key).copy(alpha = 0.16f) else CardLight,
-                        border = BorderStroke(1.dp, if (active) sectorColor(key).copy(alpha = 0.8f) else Line),
+                        border = BorderStroke(0.2.dp, if (active) sectorColor(key).copy(alpha = 0.8f) else Line),
                         modifier = Modifier.weight(1f)
                     ) {
                         Box(Modifier.fillMaxWidth().padding(vertical = 7.dp), contentAlignment = Alignment.Center) {
@@ -1054,7 +1054,7 @@ private fun ProjectWindow(
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
                                 color = CardLight,
-                                border = BorderStroke(1.dp, roleColor(role.role).copy(alpha = 0.35f)),
+                                border = BorderStroke(0.2.dp, roleColor(role.role).copy(alpha = 0.35f)),
                                 modifier = Modifier.fillMaxWidth()
                                     .combinedClickable(
                                         onClick = { onPickModel(role) },
@@ -1086,7 +1086,7 @@ private fun ProjectWindow(
                                 onClick = onAddRole,
                                 shape = RoundedCornerShape(8.dp),
                                 color = Am.copy(alpha = 0.1f),
-                                border = BorderStroke(1.dp, Am.copy(alpha = 0.5f)),
+                                border = BorderStroke(0.2.dp, Am.copy(alpha = 0.5f)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(Modifier.padding(vertical = 7.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
@@ -1114,7 +1114,7 @@ private fun ProjectWindow(
                             onClick = { if (canStart) onStartSession() },
                             shape = RoundedCornerShape(8.dp),
                             color = if (canStart) Pr.copy(alpha = 0.15f) else CardLight,
-                            border = BorderStroke(1.dp, if (canStart) Pr.copy(alpha = 0.6f) else Line)
+                            border = BorderStroke(0.2.dp, if (canStart) Pr.copy(alpha = 0.6f) else Line)
                         ) {
                             Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.Add, null, tint = if (canStart) Pr else Gy, modifier = Modifier.size(12.dp))
@@ -1142,7 +1142,7 @@ private fun ProjectWindow(
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
                                     color = CardLight,
-                                    border = BorderStroke(1.dp, if (active) phaseColor.copy(alpha = 0.55f) else Pr.copy(alpha = 0.3f)),
+                                    border = BorderStroke(0.2.dp, if (active) phaseColor.copy(alpha = 0.55f) else Pr.copy(alpha = 0.3f)),
                                     modifier = Modifier.fillMaxWidth()
                                         .combinedClickable(
                                             onClick = { onOpenSession(sid) },
@@ -1167,7 +1167,7 @@ private fun ProjectWindow(
                                                     },
                                                     shape = RoundedCornerShape(5.dp),
                                                     color = Rd.copy(alpha = 0.15f),
-                                                    border = BorderStroke(1.dp, Rd.copy(alpha = 0.6f))
+                                                    border = BorderStroke(0.2.dp, Rd.copy(alpha = 0.6f))
                                                 ) {
                                                     Row(Modifier.padding(horizontal = 7.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                                                         Icon(Icons.Filled.Stop, null, tint = Rd, modifier = Modifier.size(9.dp))
@@ -1195,7 +1195,7 @@ private fun ProjectWindow(
                                 onClick = { onSetDir(if (sessionDirs.contains(dir)) root else dir.parentFile ?: root) },
                                 shape = RoundedCornerShape(6.dp),
                                 color = CardLight,
-                                border = BorderStroke(1.dp, Line)
+                                border = BorderStroke(0.2.dp, Line)
                             ) {
                                 Row(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Filled.ArrowUpward, null, tint = Cy, modifier = Modifier.size(12.dp))
@@ -1208,7 +1208,7 @@ private fun ProjectWindow(
                                 onClick = onShareZip,
                                 shape = RoundedCornerShape(6.dp),
                                 color = Cy.copy(alpha = 0.12f),
-                                border = BorderStroke(1.dp, Cy.copy(alpha = 0.5f))
+                                border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.5f))
                             ) {
                                 Row(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Filled.Share, null, tint = Cy, modifier = Modifier.size(12.dp))
@@ -1222,7 +1222,7 @@ private fun ProjectWindow(
                             onClick = onAddFolder,
                             shape = RoundedCornerShape(6.dp),
                             color = Bulb.copy(alpha = 0.1f),
-                            border = BorderStroke(1.dp, Bulb.copy(alpha = 0.4f))
+                            border = BorderStroke(0.2.dp, Bulb.copy(alpha = 0.4f))
                         ) {
                             Row(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.CreateNewFolder, null, tint = Bulb, modifier = Modifier.size(12.dp))
@@ -1235,7 +1235,7 @@ private fun ProjectWindow(
                             onClick = onAddFile,
                             shape = RoundedCornerShape(6.dp),
                             color = Cy.copy(alpha = 0.12f),
-                            border = BorderStroke(1.dp, Cy.copy(alpha = 0.5f))
+                            border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.5f))
                         ) {
                             Row(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.Add, null, tint = Cy, modifier = Modifier.size(12.dp))
@@ -1313,7 +1313,7 @@ private fun ModelPickerDialog(
         Surface(
             shape = RoundedCornerShape(14.dp),
             color = Card,
-            border = BorderStroke(1.dp, Line)
+            border = BorderStroke(0.2.dp, Line)
         ) {
             LazyColumn(Modifier.widthIn(max = 420.dp).heightIn(max = 560.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
@@ -1354,7 +1354,7 @@ private fun ModelPickerDialog(
                         onClick = { selectedPath = m.path; selectedName = m.name },
                         shape = RoundedCornerShape(8.dp),
                         color = CardLight,
-                        border = BorderStroke(1.dp, if (isSel) roleColor(role.role) else Line),
+                        border = BorderStroke(0.2.dp, if (isSel) roleColor(role.role) else Line),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1420,7 +1420,7 @@ private fun ModelPickerDialog(
                         },
                         shape = RoundedCornerShape(10.dp),
                         color = roleColor(role.role).copy(alpha = 0.15f),
-                        border = BorderStroke(1.dp, if (selectedPath.isNotEmpty()) roleColor(role.role) else Line),
+                        border = BorderStroke(0.2.dp, if (selectedPath.isNotEmpty()) roleColor(role.role) else Line),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(Modifier.padding(vertical = 10.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
@@ -1731,7 +1731,7 @@ private fun NewProjectDialog(
                         onClick = { selected = t.id },
                         shape = RoundedCornerShape(8.dp),
                         color = if (active) Cy.copy(alpha = 0.12f) else CardLight,
-                        border = BorderStroke(1.dp, if (active) Cy.copy(alpha = 0.6f) else Line),
+                        border = BorderStroke(0.2.dp, if (active) Cy.copy(alpha = 0.6f) else Line),
                         modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
                     ) {
                         Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1781,7 +1781,7 @@ private fun HistoryDialog(
                         Surface(
                             shape = RoundedCornerShape(6.dp),
                             color = CardLight,
-                            border = BorderStroke(1.dp, Line),
+                            border = BorderStroke(0.2.dp, Line),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1828,7 +1828,7 @@ private fun SquarePanel(
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = Card,
-        border = BorderStroke(1.dp, Line),
+        border = BorderStroke(0.2.dp, Line),
         modifier = Modifier.fillMaxSize()
     ) {
         Column(Modifier.fillMaxSize().padding(8.dp)) {
@@ -1840,11 +1840,11 @@ private fun SquarePanel(
                     Text(project.name.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FuturisticFont, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("RAM ${freeRamMb(context)} MB free", fontSize = 6.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
                 }
-                Surface(onClick = onMaximize, shape = RoundedCornerShape(6.dp), color = Cy.copy(alpha = 0.12f), border = BorderStroke(1.dp, Cy.copy(alpha = 0.5f)), modifier = Modifier.size(20.dp)) {
+                Surface(onClick = onMaximize, shape = RoundedCornerShape(6.dp), color = Cy.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.5f)), modifier = Modifier.size(20.dp)) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.OpenInFull, null, tint = Cy, modifier = Modifier.size(10.dp)) }
                 }
                 Spacer(Modifier.width(5.dp))
-                Surface(onClick = onClose, shape = RoundedCornerShape(6.dp), color = Rd.copy(alpha = 0.12f), border = BorderStroke(1.dp, Rd.copy(alpha = 0.5f)), modifier = Modifier.size(20.dp)) {
+                Surface(onClick = onClose, shape = RoundedCornerShape(6.dp), color = Rd.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Rd.copy(alpha = 0.5f)), modifier = Modifier.size(20.dp)) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, null, tint = Rd, modifier = Modifier.size(10.dp)) }
                 }
             }
@@ -1857,7 +1857,7 @@ private fun SquarePanel(
                         onClick = { tab = t },
                         shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 4.dp, bottomEnd = 4.dp),
                         color = if (active) CardLight else Card.copy(alpha = 0.6f),
-                        border = BorderStroke(1.dp, if (active) IdentityBorderBrush else Brush.linearGradient(listOf(Line, Line))),
+                        border = BorderStroke(0.2.dp, if (active) Line else Brush.linearGradient(listOf(Line, Line))),
                         modifier = Modifier.weight(1f).then(if (active) Modifier else Modifier.offset(y = 2.dp))
                     ) {
                         Box(Modifier.padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
@@ -1878,7 +1878,7 @@ private fun SquarePanel(
                         Surface(
                             shape = RoundedCornerShape(9.dp),
                             color = CardLight,
-                            border = BorderStroke(1.dp, roleColor(role.role).copy(alpha = 0.4f)),
+                            border = BorderStroke(0.2.dp, roleColor(role.role).copy(alpha = 0.4f)),
                             modifier = Modifier.fillMaxWidth().combinedClickable(
                                 onClick = { if (model != null) onModelInfo(role, model) else onPickModel(role) },
                                 onLongClick = { onRoleMenu(role) }
@@ -1915,7 +1915,7 @@ private fun SquarePanel(
                             onClick = onAddRole,
                             shape = RoundedCornerShape(9.dp),
                             color = Pr.copy(alpha = 0.10f),
-                            border = BorderStroke(1.dp, Pr.copy(alpha = 0.5f)),
+                            border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.5f)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(Modifier.padding(vertical = 5.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
@@ -1943,7 +1943,7 @@ private fun SquarePanel(
                             Surface(
                                 shape = RoundedCornerShape(9.dp),
                                 color = CardLight,
-                                border = BorderStroke(1.dp, Pr.copy(alpha = 0.35f)),
+                                border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.35f)),
                                 modifier = Modifier.fillMaxWidth().combinedClickable(
                                     onClick = { onOpenSession(sid) },
                                     onLongClick = { onSessionMenu(sid) }
@@ -1967,7 +1967,7 @@ private fun SquarePanel(
                         onClick = onStartSession,
                         shape = RoundedCornerShape(10.dp),
                         color = Pr.copy(alpha = 0.16f),
-                        border = BorderStroke(1.dp, Pr.copy(alpha = 0.65f)),
+                        border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.65f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(Modifier.padding(vertical = 6.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
@@ -1990,7 +1990,7 @@ private fun MiniToggle(checked: Boolean, onToggle: () -> Unit) {
         onClick = onToggle,
         shape = RoundedCornerShape(9.dp),
         color = col.copy(alpha = 0.18f),
-        border = BorderStroke(1.dp, col.copy(alpha = 0.55f))
+        border = BorderStroke(0.2.dp, col.copy(alpha = 0.55f))
     ) {
         Row(Modifier.padding(horizontal = 7.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(if (checked) "on" else "off", fontSize = 7.sp, color = col, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
@@ -2019,7 +2019,7 @@ private fun ModelInfoDialog(
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = Card,
-            border = BorderStroke(1.dp, if (fits) Cy.copy(alpha = 0.5f) else Rd.copy(alpha = 0.5f)),
+            border = BorderStroke(0.2.dp, if (fits) Cy.copy(alpha = 0.5f) else Rd.copy(alpha = 0.5f)),
             modifier = Modifier.widthIn(max = 320.dp).fillMaxWidth(0.85f)
         ) {
             Column(Modifier.padding(14.dp)) {
@@ -2052,7 +2052,7 @@ private fun ModelInfoDialog(
                         onClick = onChangeModel,
                         shape = RoundedCornerShape(9.dp),
                         color = Pr.copy(alpha = 0.15f),
-                        border = BorderStroke(1.dp, Pr.copy(alpha = 0.6f)),
+                        border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.6f)),
                         modifier = Modifier.weight(1f)
                     ) {
                         Box(Modifier.fillMaxWidth().padding(vertical = 7.dp), contentAlignment = Alignment.Center) {
@@ -2063,7 +2063,7 @@ private fun ModelInfoDialog(
                         onClick = onClose,
                         shape = RoundedCornerShape(9.dp),
                         color = Cy.copy(alpha = 0.15f),
-                        border = BorderStroke(1.dp, Cy.copy(alpha = 0.6f)),
+                        border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.6f)),
                         modifier = Modifier.weight(1f)
                     ) {
                         Box(Modifier.fillMaxWidth().padding(vertical = 7.dp), contentAlignment = Alignment.Center) {
