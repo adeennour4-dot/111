@@ -14,8 +14,8 @@ android {
         applicationId = "com.gguf.zerocopy"
         minSdk        = 29
         targetSdk     = 36
-        versionCode   = 1030
-        versionName   = "1030"
+        versionCode   = 1031
+        versionName   = "1031"
 
         externalNativeBuild {
             cmake {
