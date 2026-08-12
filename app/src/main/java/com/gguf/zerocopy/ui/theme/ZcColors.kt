@@ -26,8 +26,8 @@ object ZcColors : ZcPalette {
   override val Text3 = Color(0xFF56566E)
   override val UserBg = Color(0xFF1A1030)
   override val ThinkBg = Color(0xFF141428)
-  override val GradientStart = Color(0xFF7C5CFF)
-  override val GradientEnd = Color(0xFF00E5A0)
+  override val GradientStart = Color(0xFF00E5F0)   // cyan — matches identity
+  override val GradientEnd = Color(0xFF7C5CFF)     // purple — matches identity
   override val GlowAccent = Color(0x507C5CFF)
   override val GlowAccent2 = Color(0x5000E5A0)
 }
@@ -49,8 +49,8 @@ object ZcLightColors : ZcPalette {
   override val Text3 = Color(0xFF8E8EAC)
   override val UserBg = Color(0xFFEFEAFF)
   override val ThinkBg = Color(0xFFF2EFFC)
-  override val GradientStart = Color(0xFF6B4EE6)
-  override val GradientEnd = Color(0xFF00C890)
+  override val GradientStart = Color(0xFF00AEC8)   // cyan — matches identity (light)
+  override val GradientEnd = Color(0xFF6B4EE6)     // purple — matches identity (light)
   override val GlowAccent = Color(0x306B4EE6)
   override val GlowAccent2 = Color(0x3000C890)
 }
