@@ -999,7 +999,7 @@ fun ChatScreen(
       } else {
         /** Calm entrance for each chat message: fade in + a slight rise. */
         @Composable
-        private fun Modifier.messageEnter(): Modifier {
+        fun Modifier.messageEnter(): Modifier {
             val alpha = remember { Animatable(0f) }
             val dy = remember { Animatable(10f) }
             LaunchedEffect(Unit) {
