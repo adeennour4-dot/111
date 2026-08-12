@@ -81,6 +81,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.animation.core.Animatable
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -996,6 +997,18 @@ fun ChatScreen(
           )
         }
       } else {
+        /** Calm entrance for each chat message: fade in + a slight rise. */
+        @Composable
+        private fun Modifier.messageEnter(): Modifier {
+            val alpha = remember { Animatable(0f) }
+            val dy = remember { Animatable(10f) }
+            LaunchedEffect(Unit) {
+                alpha.animateTo(1f, tween(260))
+                dy.animateTo(0f, tween(260))
+            }
+            return this.graphicsLayer { this.alpha = alpha.value; translationY = dy.value }
+        }
+
         LazyColumn(
           state = listState,
           modifier = Modifier
@@ -1017,6 +1030,7 @@ fun ChatScreen(
             val thinking = extractThinking(msg.content)
             val display = removeThinking(msg.content)
 
+            Box(Modifier.fillMaxWidth().messageEnter()) {
             ChatBubble(
               content = display,
               role = msg.role,
@@ -1032,6 +1046,7 @@ fun ChatScreen(
                 { handleRegenerate(idx - 1) }
               } else null
             )
+            }
           }
 
           if (isInferring) {
@@ -1044,6 +1059,7 @@ fun ChatScreen(
               val reasoningLive = if (reasoningEnabled && reasoningPhaseActive) {
                 streamedContent
               } else null
+              Box(Modifier.fillMaxWidth().messageEnter()) {
               ChatBubble(
                 content = display,
                 role = MessageRole.ASSISTANT,
@@ -1057,6 +1073,7 @@ fun ChatScreen(
                 reasoningBadge = reasoningEnabled,
                 onToggleThinking = { showStreamingThinking = !showStreamingThinking }
               )
+              }
             }
           }
         }

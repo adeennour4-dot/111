@@ -106,7 +106,8 @@ fun ChatBubble(
           .clip(RoundedCornerShape(8.dp))
           .background(
             Brush.linearGradient(listOf(colors.GradientStart, colors.GradientEnd))
-          ),
+          )
+          .background(colors.Bg.copy(alpha = 0.18f)),
         contentAlignment = Alignment.Center
       ) {
         Text(
@@ -346,7 +347,8 @@ fun ChatBubble(
           .clip(RoundedCornerShape(8.dp))
           .background(
             Brush.linearGradient(listOf(colors.GradientStart, colors.GradientEnd))
-          ),
+          )
+          .background(colors.Bg.copy(alpha = 0.18f)),
         contentAlignment = Alignment.Center
       ) {
         Text(

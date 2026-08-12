@@ -22,6 +22,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -352,7 +354,8 @@ fun InventDashboardScreen(
                                                 }
                                             )
                                         } else {
-                                            ProjectSquare(
+                                                ProjectSquare(
+                                                index = idx,
                                                 project = project,
                                                 knownPaths = knownPaths,
                                                 fileRefresh = fileRefresh,
@@ -787,6 +790,7 @@ fun InventDashboardScreen(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ProjectSquare(
+    index: Int,
     project: InventProject,
     knownPaths: Set<String>,
     fileRefresh: Int,
@@ -804,8 +808,21 @@ private fun ProjectSquare(
     val coderRunning = project.roles.any { it.isCoder && it.backgroundWork }
     val doorColor = if (coderRunning) Rd else Cy
 
+    // Calm entrance: staggered fade + gentle rise + scale.
+    val appear = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { appear.animateTo(1f, tween(320, delayMillis = (index * 70).coerceAtMost(420))) }
+    // Soft, slow breathing glow on the door (professional micro-motion).
+    val glowAlpha by rememberInfiniteTransition(label = "sqOrb").animateFloat(
+        0.14f, 0.26f, infiniteRepeatable(tween(1500), RepeatMode.Reverse)
+    )
+
     Box(
         Modifier.fillMaxSize()
+            .graphicsLayer {
+                alpha = appear.value
+                val s = 0.95f + 0.05f * appear.value
+                scaleX = s; scaleY = s
+            }
             .clip(RoundedCornerShape(14.dp))
             .background(Brush.verticalGradient(listOf(CardLight.copy(alpha = 0.7f), Card)))
             .border(0.2.dp, Line, RoundedCornerShape(14.dp))
@@ -859,7 +876,7 @@ private fun ProjectSquare(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Soft state glow behind the door
-            Box(Modifier.size(66.dp).background(Brush.radialGradient(listOf(doorColor.copy(alpha = 0.22f), doorColor.copy(alpha = 0f))), CircleShape), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(66.dp).background(Brush.radialGradient(listOf(doorColor.copy(alpha = glowAlpha), doorColor.copy(alpha = 0f))), CircleShape), contentAlignment = Alignment.Center) {
                 Surface(
                     onClick = onPanel,
                     shape = CircleShape,
