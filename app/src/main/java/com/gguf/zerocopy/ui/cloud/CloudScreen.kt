@@ -139,7 +139,7 @@ fun CloudScreen(onBack: () -> Unit) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
           Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
-              modifier = Modifier.size(12.dp).clip(CircleShape).background(if (isRunning) Color(0xFF00E6A8) else Color(0xFF5A5A78))
+              modifier = Modifier.size(12.dp).clip(CircleShape).background(if (isRunning) Color(0xFF00E5A0) else Color(0xFF3A4152))
             )
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
@@ -191,7 +191,7 @@ fun CloudScreen(onBack: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
               ) {
                 Box(
-                  modifier = Modifier.size(8.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(0xFF00E6A8))
+                  modifier = Modifier.size(8.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(0xFF00E5A0))
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(ip, fontSize = 12.sp, color = colors.Text, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))

@@ -74,7 +74,7 @@ fun BenchmarkDialog(
                         shape = RoundedCornerShape(10.dp),
                         color = if (selectedModel?.id == model.id) colors.Accent.copy(alpha = 0.1f) else colors.Border.copy(alpha = 0.1f),
                         border = if (selectedModel?.id == model.id)
-                            androidx.compose.foundation.BorderStroke(1.dp, colors.Accent.copy(0.5f)) else null
+                            androidx.compose.foundation.BorderStroke(0.2.dp, colors.Accent.copy(0.5f)) else null
                     ) {
                         Column(Modifier.clickable { selectedModel = model }.padding(12.dp)) {
                             Text(model.name, fontSize = 12.sp, color = colors.Text, fontFamily = FontFamily.Monospace)

@@ -208,7 +208,7 @@ fun InputBar(
             Box(
               modifier = Modifier.size(40.dp).clip(CircleShape)
                 .background(colors.Red.copy(alpha = 0.16f))
-                .border(1.dp, colors.Red.copy(alpha = 0.45f), CircleShape)
+                .border(0.2.dp, colors.Red.copy(alpha = 0.45f), CircleShape)
                 .clickable { onStop() },
               contentAlignment = Alignment.Center
             ) {
@@ -227,7 +227,7 @@ fun InputBar(
                 .then(
                   if (canSend) Modifier.background(sendGradient) else Modifier.background(colors.Card)
                 )
-                .border(1.dp, if (canSend) Color.Transparent else colors.Border, CircleShape)
+                .border(0.2.dp, if (canSend) Color.Transparent else colors.Border, CircleShape)
                 .clickable(enabled = canSend) {
                   val text = prompt
                   prompt = ""

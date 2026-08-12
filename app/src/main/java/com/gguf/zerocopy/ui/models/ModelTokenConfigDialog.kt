@@ -324,7 +324,7 @@ fun ModelTokenConfigDialog(
                     Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
                     color = if (ramOk) colors.Surface else colors.Red.copy(alpha = 0.08f),
-                    border = if (!ramOk) androidx.compose.foundation.BorderStroke(1.dp, colors.Red.copy(0.5f)) else null
+                    border = if (!ramOk) androidx.compose.foundation.BorderStroke(0.2.dp, colors.Red.copy(0.5f)) else null
                 ) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("📊  RAM Estimate", fontSize = 10.sp, color = colors.Text3,

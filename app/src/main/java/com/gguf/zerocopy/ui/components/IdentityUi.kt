@@ -156,7 +156,7 @@ fun GradientThinkingCircle(size: androidx.compose.ui.unit.Dp = 14.dp) {
             Modifier
                 .fillMaxSize()
                 .graphicsLayer { rotationZ = rotation }
-                .border(1.5.dp, IdentityBorderBrush, CircleShape)
+                .border(0.2.dp, IdentityBorderBrush, CircleShape)
         )
         Box(
             Modifier
@@ -184,7 +184,7 @@ fun GradientSearchingCircle(size: androidx.compose.ui.unit.Dp = 26.dp) {
             Modifier
                 .fillMaxSize()
                 .graphicsLayer { rotationZ = rotation }
-                .border(2.dp, IdentityBorderBrush, CircleShape)
+                .border(0.2.dp, IdentityBorderBrush, CircleShape)
         )
         Icon(
             Icons.Outlined.Search,
@@ -211,7 +211,7 @@ fun ClipCircleIcon(
             .size(size)
             .clip(CircleShape)
             .background(fill, CircleShape)
-            .border(1.5.dp, if (active) IdentitySweepBrush else IdentityBorderBrush, CircleShape)
+            .border(0.2.dp, if (active) IdentitySweepBrush else IdentityBorderBrush, CircleShape)
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {

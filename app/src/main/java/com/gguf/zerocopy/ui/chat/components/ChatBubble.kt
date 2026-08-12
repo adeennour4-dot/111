@@ -132,7 +132,7 @@ fun ChatBubble(
             onClick = onToggleThinking,
             shape = RoundedCornerShape(12.dp),
             color = colors.ThinkBg,
-            border = BorderStroke(1.dp, IdentityBorderBrush),
+            border = BorderStroke(0.2.dp, IdentityBorderBrush),
             modifier = Modifier
               .padding(bottom = 4.dp)
           ) {

@@ -764,7 +764,7 @@ fun ChatScreen(
             Surface(
               shape = RoundedCornerShape(6.dp),
               color = colors.Accent2.copy(alpha = 0.10f),
-              border = BorderStroke(1.dp, colors.Accent2.copy(alpha = 0.25f)),
+              border = BorderStroke(0.2.dp, colors.Accent2.copy(alpha = 0.25f)),
               modifier = Modifier.padding(end = 6.dp)
             ) {
               Text(
@@ -791,7 +791,7 @@ fun ChatScreen(
               .clip(CircleShape)
               .graphicsLayer { scaleX = orbScale; scaleY = orbScale }
               .background(colors.Card)
-              .border(1.dp, IdentitySweepBrush, CircleShape)
+              .border(0.2.dp, IdentitySweepBrush, CircleShape)
               .clickable { startNewChat() },
             contentAlignment = Alignment.Center
           ) {
@@ -813,7 +813,7 @@ fun ChatScreen(
               .size(30.dp)
               .clip(CircleShape)
               .background(colors.Card)
-              .border(1.dp, IdentitySweepBrush, CircleShape)
+              .border(0.2.dp, IdentitySweepBrush, CircleShape)
               .clickable { if (chatId != null) showExportDialog = true },
             contentAlignment = Alignment.Center
           ) {
@@ -932,7 +932,7 @@ fun ChatScreen(
             .padding(top = 4.dp, start = 8.dp, end = 8.dp),
           shape = RoundedCornerShape(8.dp),
           color = colors.Red.copy(alpha = 0.08f),
-          border = BorderStroke(1.dp, colors.Red.copy(alpha = 0.3f))
+          border = BorderStroke(0.2.dp, colors.Red.copy(alpha = 0.3f))
         ) {
           Row(
             Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -1096,7 +1096,7 @@ private fun ChatToolCircle(
         onClick = onClick,
         shape = CircleShape,
         color = if (active) accent.copy(alpha = 0.14f) else colors.Card,
-        border = BorderStroke(1.dp, borderBrush),
+        border = BorderStroke(0.2.dp, borderBrush),
         modifier = Modifier.size(30.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {

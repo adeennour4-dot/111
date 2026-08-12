@@ -830,8 +830,8 @@ private fun ModelCard(
       ),
     shape = RoundedCornerShape(12.dp),
     color = if (isLoaded) colors.CardLight else colors.Card,
-    border = if (isLoaded) BorderStroke(1.dp, IdentityBorderBrush)
-        else BorderStroke(1.dp, colors.Border.copy(alpha = 0.5f))
+    border = if (isLoaded) BorderStroke(0.2.dp, IdentityBorderBrush)
+        else BorderStroke(0.2.dp, colors.Border.copy(alpha = 0.5f))
   ) {
     Row(
       modifier = Modifier.padding(12.dp),

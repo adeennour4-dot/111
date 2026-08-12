@@ -43,7 +43,7 @@ fun ThinkingContent(
       .padding(bottom = 6.dp),
     shape = RoundedCornerShape(10.dp),
     color = colors.ThinkBg,
-    border = BorderStroke(1.dp, IdentityBorderBrush),
+    border = BorderStroke(0.2.dp, IdentityBorderBrush),
     tonalElevation = 0.dp
   ) {
     Column(

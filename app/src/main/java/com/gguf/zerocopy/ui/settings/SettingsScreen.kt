@@ -285,7 +285,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
       // ── Sampling ──
       Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
-        border = BorderStroke(1.dp, colors.Border)) {
+        border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.Settings, null, tint = colors.Accent, modifier = Modifier.size(16.dp))
@@ -306,7 +306,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
       // ── Generation ──
       Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
-        border = BorderStroke(1.dp, colors.Border)) {
+        border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.Refresh, null, tint = colors.Accent2, modifier = Modifier.size(16.dp))
@@ -347,7 +347,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
       // ── Chat template ──
       Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
-        border = BorderStroke(1.dp, colors.Border)) {
+        border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Text("Chat Template", fontWeight = FontWeight.SemiBold, fontSize = 12.sp,
             color = colors.Accent, fontFamily = FontFamily.Monospace)
@@ -358,7 +358,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
       // ── Auto-load after import ──
       Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
-        border = BorderStroke(1.dp, colors.Border)) {
+        border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           ToggleRow(
             "Auto-load after import",
@@ -376,7 +376,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       SectionHeader("System", colors)
 
       Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
-        border = BorderStroke(1.dp, colors.Border)) {
+        border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Text("System Prompt", fontSize = 11.sp, color = colors.Text2)
           Spacer(Modifier.height(4.dp))
@@ -397,7 +397,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
       // ── System actions ──
       Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
-        border = BorderStroke(1.dp, colors.Border)) {
+        border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           ActionButton("Load Vision mmproj", colors.Purple, colors) {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -440,7 +440,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       SectionHeader("Reasoning", colors)
 
       Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
-        border = BorderStroke(1.dp, colors.Border)) {
+        border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           ToggleRow("Chain-of-Thought", "Let's work step-by-step before answering",
             reasoningEnabled, { reasoningEnabled = it }, colors)
@@ -453,7 +453,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       SectionHeader("RAG & Documents", colors)
 
       Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
-        border = BorderStroke(1.dp, colors.Border)) {
+        border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           ToggleRow("Retrieval-Augmented Gen", "Inject document context into prompts",
             ragEnabled, { ragEnabled = it }, colors)
@@ -508,7 +508,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       SectionHeader("Appearance", colors)
 
       Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
-        border = BorderStroke(1.dp, colors.Border)) {
+        border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Text("Theme", fontSize = 12.sp, color = colors.Text, fontWeight = FontWeight.SemiBold)
           Text("Follow the system, or force dark / light", fontSize = 10.sp, color = colors.Text3)
@@ -519,7 +519,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 onClick = { themeMode = key; SettingsManager.themeMode = key },
                 shape = RoundedCornerShape(8.dp),
                 color = if (themeMode == key) colors.Accent.copy(alpha = 0.18f) else colors.CardLight,
-                border = BorderStroke(1.dp, if (themeMode == key) colors.Accent else colors.Border),
+                border = BorderStroke(0.2.dp, if (themeMode == key) colors.Accent else colors.Border),
                 modifier = Modifier.weight(1f)
               ) {
                 Box(Modifier.padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
@@ -539,7 +539,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       SectionHeader("Server", colors)
 
       Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
-        border = BorderStroke(1.dp, colors.Border)) {
+        border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           ToggleRow("Model Server", "Anyone on WiFi can access the web UI",
             app.modelServer.isRunning, {
@@ -626,7 +626,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       SectionHeader("About", colors)
 
       Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
-        border = BorderStroke(1.dp, colors.Border)) {
+        border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Text("adeennour4-dot", fontSize = 12.sp, color = colors.Text2,
             fontFamily = FontFamily.Monospace)
