@@ -14,10 +14,6 @@ import android.speech.tts.TextToSpeech
 import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -780,17 +776,10 @@ fun ChatScreen(
             }
           }
           // New session — black pill with the cyan→purple identity ring (app-icon style)
-          val newOrbPulse = rememberInfiniteTransition(label = "newOrb")
-          val orbScale by newOrbPulse.animateFloat(
-            initialValue = 0.96f, targetValue = 1.06f,
-            animationSpec = infiniteRepeatable(tween(1100), RepeatMode.Reverse),
-            label = "newOrbScale"
-          )
           Box(
             modifier = Modifier
               .size(30.dp)
               .clip(CircleShape)
-              .graphicsLayer { scaleX = orbScale; scaleY = orbScale }
               .background(colors.Card)
               .border(0.2.dp, IdentitySweepBrush, CircleShape)
               .clickable { startNewChat() },
