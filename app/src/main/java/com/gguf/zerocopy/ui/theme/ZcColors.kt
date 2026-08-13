@@ -1,5 +1,6 @@
 package com.gguf.zerocopy.ui.theme
 
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 /**
@@ -54,3 +55,12 @@ object ZcLightColors : ZcPalette {
   override val GlowAccent = Color(0x306B4EE6)
   override val GlowAccent2 = Color(0x3000C890)
 }
+
+/**
+ * Single brand gradient for the whole app (cyan → purple), derived from the
+ * active palette so dark and light themes stay coherent. Use everywhere a
+ * brand wash is needed instead of hardcoding color stops.
+ */
+fun ZcPalette.gradient(vertical: Boolean = false): Brush =
+  if (vertical) Brush.verticalGradient(listOf(GradientStart, GradientEnd))
+  else Brush.linearGradient(listOf(GradientStart, GradientEnd))

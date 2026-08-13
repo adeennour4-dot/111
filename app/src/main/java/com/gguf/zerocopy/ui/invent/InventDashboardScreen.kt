@@ -35,10 +35,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import com.gguf.zerocopy.ui.components.FuturisticFont
+import com.gguf.zerocopy.ui.components.IdentityBorderBrush
 import com.gguf.zerocopy.ui.components.IdentityCyan
 import com.gguf.zerocopy.ui.components.ZcPillButton
 import com.gguf.zerocopy.ui.components.IdentityPurple
 import com.gguf.zerocopy.ui.components.IdentitySweepBrush
+import com.gguf.zerocopy.ui.theme.ZcEnter
 import com.gguf.zerocopy.ui.theme.currentPalette
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -355,6 +357,7 @@ fun InventDashboardScreen(
                                                 }
                                             )
                                         } else {
+                                            ZcEnter(index = idx) {
                                                 ProjectSquare(
                                                 index = idx,
                                                 project = project,
@@ -369,8 +372,10 @@ fun InventDashboardScreen(
                                                     fileRefresh++
                                                 }
                                             )
+                                            }
                                         }
                                     } else {
+                                        ZcEnter(index = idx) {
                                         // Empty slot → new project
                                         Surface(
                                             onClick = { newProjectDialog = true },
@@ -386,6 +391,7 @@ fun InventDashboardScreen(
                                                     Text("New project", fontSize = 7.sp, color = Gy, fontFamily = FontFamily.Monospace)
                                                 }
                                             }
+                                        }
                                         }
                                     }
                                 }
@@ -838,7 +844,7 @@ private fun ProjectSquare(
             val fold = Path().apply { moveTo(0f, h); lineTo(w, 0f); lineTo(w, h); close() }
             drawPath(fold, foldColor)
             drawLine(
-                Brush.linearGradient(listOf(IdentityCyan, IdentityPurple)),
+                IdentityBorderBrush,
                 Offset(0f, h), Offset(w, 0f), strokeWidth = 0.2.dp.toPx()
             )
         }

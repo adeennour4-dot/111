@@ -6,10 +6,13 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
@@ -26,6 +29,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +41,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.R
+import com.gguf.zerocopy.ui.theme.ThemeState
+import com.gguf.zerocopy.ui.theme.ZcColors
+import com.gguf.zerocopy.ui.theme.ZcLightColors
+import com.gguf.zerocopy.ui.theme.ZcMotion
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
@@ -46,9 +54,14 @@ val IdentityCyan = Color(0xFF00E5F0)
 val IdentityGreen = Color(0xFF00E5A0)
 val IdentityPurple = Color(0xFF7C5CFF)
 
-val IdentityGradient = listOf(IdentityCyan, IdentityPurple)
-val IdentitySweepBrush = Brush.sweepGradient(listOf(IdentityCyan, IdentityPurple, IdentityCyan))
-val IdentityBorderBrush = Brush.linearGradient(IdentityGradient)
+/** Brand gradient stops, resolved from the active theme palette (dark or light). */
+private fun identityStops(): List<Color> =
+  if (ThemeState.isDark) listOf(ZcColors.GradientStart, ZcColors.GradientEnd)
+  else listOf(ZcLightColors.GradientStart, ZcLightColors.GradientEnd)
+
+val IdentityGradient: List<Color> get() = identityStops()
+val IdentitySweepBrush: Brush get() = Brush.sweepGradient(identityStops() + identityStops().first())
+val IdentityBorderBrush: Brush get() = Brush.linearGradient(identityStops())
 
 /** Futuristic display font (Orbitron) for headers, names and labels. */
 val FuturisticFont = FontFamily(Font(R.font.orbitron))
@@ -244,10 +257,18 @@ fun ZcPillButton(
     ghost: Boolean = false,
     enabled: Boolean = true
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        if (pressed) 0.97f else 1f,
+        tween(ZcMotion.xxs, easing = ZcMotion.emphasis),
+        label = "zcPillScale"
+    )
     Surface(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier,
+        interactionSource = interactionSource,
+        modifier = modifier.graphicsLayer { scaleX = scale; scaleY = scale },
         shape = RoundedCornerShape(50),
         color = if (ghost) Color.Transparent else tint.copy(alpha = 0.14f),
         border = BorderStroke(0.2.dp, tint.copy(alpha = 0.5f)),
