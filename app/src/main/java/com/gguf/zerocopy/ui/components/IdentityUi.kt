@@ -6,19 +6,15 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,7 +24,6 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -234,7 +229,7 @@ fun ClipCircleIcon(
 
 /**
  * Polished, on-brand pill button. Fully circular, soft tinted fill with a
- * hairline gradient-ring border, and a subtle press-scale for tactile feel.
+ * hairline gradient-ring border, and the standard Material press ripple.
  * Use [ghost] = true for secondary / paired actions (transparent fill).
  */
 @Composable
@@ -244,40 +239,25 @@ fun ZcPillButton(
     label: String? = null,
     tint: Color = IdentityCyan,
     ghost: Boolean = false,
-    enabled: Boolean = true,
-    content: @Composable RowScope.() -> Unit = {}
+    enabled: Boolean = true
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.97f else 1f,
-        animationSpec = tween(120),
-        label = "pillScale"
-    )
     Surface(
         onClick = onClick,
         enabled = enabled,
-        interactionSource = interactionSource,
-        modifier = modifier.graphicsLayer { scaleX = scale; scaleY = scale },
+        modifier = modifier,
         shape = RoundedCornerShape(50),
         color = if (ghost) Color.Transparent else tint.copy(alpha = 0.14f),
         border = BorderStroke(0.2.dp, tint.copy(alpha = 0.5f)),
     ) {
-        Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            content()
-            if (label != null) {
-                Text(
-                    label,
-                    color = tint,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = FuturisticFont
-                )
-            }
+        if (label != null) {
+            Text(
+                label,
+                color = tint,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = FuturisticFont,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
+            )
         }
     }
 }
