@@ -7,12 +7,11 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -47,13 +46,13 @@ fun ZcEnter(
     content: @Composable () -> Unit
 ) {
     val delayMs = min(index, 12) * staggerMs
-    val offset: (Int) -> Int = { it / 3 }
     AnimatedVisibility(
         visible = true,
         enter = fadeIn(tween(ZcMotion.sm, delayMillis = delayMs, easing = ZcMotion.enter)) +
-                if (vertical) slideInVertically(tween(ZcMotion.sm, delayMillis = delayMs, easing = ZcMotion.enter), initialOffsetY = offset)
-                else slideInHorizontally(tween(ZcMotion.sm, delayMillis = delayMs, easing = ZcMotion.enter), initialOffsetX = offset)
-    ) { content() }
+                if (vertical) expandVertically(tween(ZcMotion.sm, delayMillis = delayMs, easing = ZcMotion.enter))
+                else expandHorizontally(tween(ZcMotion.sm, delayMillis = delayMs, easing = ZcMotion.enter)),
+        content = { content() }
+    )
 }
 
 /**
