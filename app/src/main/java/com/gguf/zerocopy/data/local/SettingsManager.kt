@@ -71,6 +71,8 @@ object SettingsManager {
     val ctx: Int,
     val maxNew: Int,
     val gpuLayers: Int,
+    /** Per-model compute backend override: "auto" | "cpu" | "gpu" | null = inherit global. */
+    val backend: String? = null,
     val temperature: Float? = null,
     val topP: Float? = null,
     val minP: Float? = null,
@@ -100,6 +102,7 @@ object SettingsManager {
         val gpuLayers = obj.optInt("gpuLayers", 0)
         map[key] = ModelTokenConfig(
           ctx = ctx, maxNew = maxNew, gpuLayers = gpuLayers,
+          backend = if (obj.has("backend")) obj.getString("backend") else null,
           temperature = if (obj.has("temperature")) obj.getDouble("temperature").toFloat() else null,
           topP = if (obj.has("topP")) obj.getDouble("topP").toFloat() else null,
           minP = if (obj.has("minP")) obj.getDouble("minP").toFloat() else null,
@@ -127,6 +130,7 @@ object SettingsManager {
           put("ctx", cfg.ctx)
           put("maxNew", cfg.maxNew)
           put("gpuLayers", cfg.gpuLayers)
+          cfg.backend?.let { put("backend", it) }
           cfg.temperature?.let { put("temperature", it.toDouble()) }
           cfg.topP?.let { put("topP", it.toDouble()) }
           cfg.minP?.let { put("minP", it.toDouble()) }
@@ -266,6 +270,14 @@ object SettingsManager {
   var gpuLayers: Int
     get() = prefs?.getInt("gpu_layers", 0) ?: 0
     set(v) { prefs?.edit()?.putInt("gpu_layers", v)?.apply() }
+
+  /** Compute backend selection.
+   *  "auto" (default) honors the GPU Layers slider.
+   *  "cpu"  forces CPU-only inference (n_gpu_layers = 0).
+   *  "gpu"  offloads to the GPU/Vulkan backend (n_gpu_layers = all). */
+  var backend: String
+    get() = prefs?.getString("backend", "auto") ?: "auto"
+    set(v) { prefs?.edit()?.putString("backend", v)?.apply() }
 
   var threads: Int
     get() = prefs?.getInt("threads", 4) ?: 4
@@ -437,6 +449,16 @@ object SettingsManager {
    *  Uses SettingsManager defaults for fields not covered by per-model config. */
   fun toConfig(modelPath: String? = null): InferenceConfig {
     val pm = if (modelPath != null) getModelTokenConfig(modelPath) else null
+    val backend = pm?.backend ?: this.backend
+    val baseGpu = pm?.gpuLayers ?: gpuLayers
+    val lowRam = pm?.lowRamMode ?: lowRamMode
+    // Map the high-level backend choice onto n_gpu_layers.
+    // "cpu" forces CPU-only; "gpu" offloads everything; "auto" honors the slider.
+    val gpuLayersFinal = when (backend) {
+      "cpu" -> 0
+      "gpu" -> if (baseGpu > 0) baseGpu else 99
+      else -> baseGpu
+    }.let { if (lowRam) min(it, 20) else it }.coerceIn(0, 999)
     return InferenceConfig(
       nCtx = pm?.ctx ?: nCtx,
       nBatch = (pm?.nBatch ?: nBatch).coerceIn(512, 8192),
@@ -446,11 +468,12 @@ object SettingsManager {
       topP = (pm?.topP ?: topP).coerceIn(0f, 1f),
       minP = (pm?.minP ?: minP).coerceIn(0f, 1f),
       topK = (pm?.topK ?: topK).coerceIn(0, 200),
-      nGpuLayers = (pm?.gpuLayers ?: gpuLayers).coerceIn(0, 999),
+      nGpuLayers = gpuLayersFinal,
       nThreads = (pm?.threads ?: threads).coerceIn(0, 16),
       seed = pm?.seed ?: -1,
-      lowRamMode = pm?.lowRamMode ?: lowRamMode,
+      lowRamMode = lowRam,
       flashAttention = pm?.flashAttention ?: flashAttention,
+      backend = backend,
       mmprojPath = mmprojPath
     )
   }

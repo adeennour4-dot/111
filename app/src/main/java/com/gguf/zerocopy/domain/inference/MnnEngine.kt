@@ -58,6 +58,7 @@ class MnnEngine : InferenceEngine {
   private external fun mnnGetModelInfo(): String
   private external fun mnnBenchmark(ppTokens: Int, tgTokens: Int): String
   private external fun mnnSetConfigNative(nCtx: Int, maxNewTokens: Int, temperature: Float, repeatPenalty: Float)
+  private external fun mnnSetBackendNative(backend: String)
   private external fun mnnSetSystemPromptNative(prompt: String)
   private external fun mnnRestoreHistoryNative(messagesJson: String)
   private external fun mnnGetKvCacheUsage(): Int
@@ -70,6 +71,7 @@ class MnnEngine : InferenceEngine {
     try {
       currentModelPath = path
       val modelDir = resolveModelDir(path)
+      mnnSetBackendNative(mapBackend(config.backend))
       mnnSetConfigNative(config.nCtx, config.maxNewTokens, config.temperature, repeatPenalty.repeatPenalty)
       mnnSetSystemPromptNative(systemPrompt)
       val ok = mnnLoadModel(modelDir)
@@ -205,6 +207,13 @@ class MnnEngine : InferenceEngine {
         )
       } catch (_: Exception) { BenchmarkResult(engine = engineName) }
     }
+
+  /** Map ZeroCopy's high-level backend choice onto MNN's native backend_type string. */
+  private fun mapBackend(backend: String): String = when (backend) {
+    "gpu" -> "vulkan"
+    "cpu" -> "cpu"
+    else -> "cpu" // "auto" → CPU, which is MNN's safe default when no Vulkan device is present
+  }
 
   override fun supportsFormat(path: String): Boolean = path.endsWith(".mnn", true)
   override fun getTokensGenerated(): Int = tokensGenerated.get()

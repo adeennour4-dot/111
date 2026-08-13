@@ -16,6 +16,8 @@ data class InferenceConfig(
   val lowRamMode: Boolean = true,
   val flashAttention: Boolean = true,
   val topK: Int = 40,
+  /** Compute backend choice: "auto" | "cpu" | "gpu". Honored by MNN (native backend) and llama.cpp (n_gpu_layers). */
+  val backend: String = "auto",
   val mmprojPath: String = ""
 )
 

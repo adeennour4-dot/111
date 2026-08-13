@@ -146,6 +146,20 @@ Java_com_gguf_zerocopy_domain_inference_MnnEngine_mnnSetConfigNative(
 }
 
 JNIEXPORT void JNICALL
+Java_com_gguf_zerocopy_domain_inference_MnnEngine_mnnSetBackendNative(
+    JNIEnv* env, jobject, jstring backend) {
+    const char* s = env->GetStringUTFChars(backend, nullptr);
+    if (s) {
+        std::string b(s);
+        // Only accept known MNN backend types; fall back to CPU otherwise.
+        if (b == "vulkan" || b == "cpu") g_cfg.backend = b;
+        else g_cfg.backend = "cpu";
+        env->ReleaseStringUTFChars(backend, s);
+    }
+    LOGI("Backend set to: %s", g_cfg.backend.c_str());
+}
+
+JNIEXPORT void JNICALL
 Java_com_gguf_zerocopy_domain_inference_MnnEngine_mnnSetSystemPromptNative(
     JNIEnv* env, jobject, jstring prompt) {
     const char* s = env->GetStringUTFChars(prompt, nullptr);

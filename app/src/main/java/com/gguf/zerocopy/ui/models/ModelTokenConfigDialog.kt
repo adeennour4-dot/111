@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.data.local.SettingsManager
+import com.gguf.zerocopy.ui.components.ZcPillButton
 import com.gguf.zerocopy.ui.theme.ZcPalette
 import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlin.math.roundToInt
@@ -64,6 +65,8 @@ fun ModelTokenConfigDialog(
     var lowRamSwitch by remember { mutableStateOf(initial.lowRamMode ?: SettingsManager.lowRamMode) }
     var threadsText by remember { mutableStateOf((initial.threads ?: SettingsManager.threads).toString()) }
     var batchText by remember { mutableStateOf((initial.nBatch ?: SettingsManager.nBatch).toString()) }
+    // "auto" = inherit the global backend; "cpu"/"gpu" = explicit per-model override.
+    var backendSel by remember { mutableStateOf(initial.backend ?: SettingsManager.backend) }
 
     // ── RAM calc ──
     val kvCacheMB by remember {
@@ -110,7 +113,8 @@ fun ModelTokenConfigDialog(
             flashAttention = flashSwitch,
             lowRamMode = lowRamSwitch,
             threads = threadsText.toIntOrNull()?.coerceIn(1, 16),
-            nBatch = batchText.toIntOrNull()?.coerceIn(512, 8192)
+            nBatch = batchText.toIntOrNull()?.coerceIn(512, 8192),
+            backend = if (backendSel == "auto") null else backendSel
         )
     }
 
@@ -292,6 +296,26 @@ fun ModelTokenConfigDialog(
                     }
                 }
 
+                // ── Compute backend (per-model) ──
+                Column {
+                  Text("Compute Backend", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+                  Row(Modifier.fillMaxWidth().padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ZcPillButton(onClick = { backendSel = "auto" }, modifier = Modifier.weight(1f), label = "Auto", tint = colors.Accent, ghost = backendSel != "auto")
+                    ZcPillButton(onClick = { backendSel = "cpu" }, modifier = Modifier.weight(1f), label = "CPU", tint = colors.Accent, ghost = backendSel != "cpu")
+                    ZcPillButton(onClick = { backendSel = "gpu" }, modifier = Modifier.weight(1f), label = "GPU", tint = colors.Accent, ghost = backendSel != "gpu")
+                  }
+                  Text(
+                    when (backendSel) {
+                      "cpu" -> "CPU only — ignores GPU Layers"
+                      "gpu" -> "Offload all layers to GPU / Vulkan"
+                      else -> "Auto — inherit global backend"
+                    },
+                    fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(top = 2.dp)
+                  )
+                }
+
                 HorizontalDivider(color = colors.Border.copy(0.5f))
 
                 // ── Sampling ──
@@ -359,6 +383,7 @@ fun ModelTokenConfigDialog(
                             lowRamSwitch = SettingsManager.lowRamMode
                             threadsText = SettingsManager.threads.toString()
                             batchText = SettingsManager.nBatch.toString()
+                            backendSel = SettingsManager.backend
                         },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(50),

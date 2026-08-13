@@ -124,6 +124,7 @@ fun SettingsScreen(onBack: () -> Unit) {
   var minP by remember { mutableStateOf(SettingsManager.minP.toString()) }
   var topK by remember { mutableStateOf(SettingsManager.topK.toString()) }
   var gpu by remember { mutableStateOf(SettingsManager.gpuLayers.toString()) }
+  var backend by remember { mutableStateOf(SettingsManager.backend) }
   var threads by remember { mutableStateOf(SettingsManager.threads.toString()) }
   var repPen by remember { mutableStateOf(SettingsManager.repeatPenalty.toString()) }
   var freqPen by remember { mutableStateOf(SettingsManager.freqPenalty.toString()) }
@@ -198,6 +199,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       presPenalty = presPen.toFloatOrNull() ?: 0f
     )
     SettingsManager.save(cfg, rp)
+    SettingsManager.backend = backend
     SettingsManager.systemPrompt = sysPrompt
     SettingsManager.reasoningEnabled = reasoningEnabled
     SettingsManager.ragEnabled = ragEnabled
@@ -316,6 +318,25 @@ fun SettingsScreen(onBack: () -> Unit) {
               color = colors.Accent2, fontFamily = FontFamily.Monospace)
           }
           Spacer(Modifier.height(8.dp))
+          // ── Compute backend ──
+          Text("Compute Backend", fontSize = 11.sp, color = colors.Text2,
+            fontFamily = FontFamily.Monospace)
+          Row(Modifier.fillMaxWidth().padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            BackendPill("Auto", "auto", backend, { backend = it }, colors)
+            BackendPill("CPU", "cpu", backend, { backend = it }, colors)
+            BackendPill("GPU", "gpu", backend, { backend = it }, colors)
+          }
+          Text(
+            when (backend) {
+              "cpu" -> "CPU only — ignores GPU Layers"
+              "gpu" -> "Offload all layers to GPU / Vulkan"
+              else -> "Auto — honors the GPU Layers slider"
+            },
+            fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace,
+            modifier = Modifier.padding(top = 2.dp)
+          )
+          Spacer(Modifier.height(6.dp))
           InlineField("Batch Size", "512–8192", batch, { batch = it }, focusManager)
           InlineField("GPU Layers", "99=GPU, 0=CPU", gpu, { gpu = it }, focusManager)
           InlineField("Threads", "0=auto, 1–16", threads, { threads = it }, focusManager)
@@ -422,6 +443,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             batch = SettingsManager.nBatch.toString()
             gpu = SettingsManager.gpuLayers.toString()
             threads = SettingsManager.threads.toString()
+            backend = SettingsManager.backend
             val active = engineManager.getActiveEngine()
             active?.let {
               it.config = SettingsManager.toConfig(it.loadedModelPath)
@@ -665,6 +687,23 @@ fun SettingsScreen(onBack: () -> Unit) {
 // ═══════════════════════════════════════════════════════════════════════════
 // COMPOSABLE HELPERS
 // ═══════════════════════════════════════════════════════════════════════════
+
+@Composable
+private fun BackendPill(
+  label: String,
+  value: String,
+  selected: String,
+  onSelect: (String) -> Unit,
+  colors: ZcPalette
+) {
+  ZcPillButton(
+    onClick = { onSelect(value) },
+    modifier = Modifier.weight(1f),
+    label = label,
+    tint = colors.Accent,
+    ghost = selected != value
+  )
+}
 
 @Composable
 private fun SectionHeader(title: String, colors: ZcPalette) {
