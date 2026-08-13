@@ -42,6 +42,24 @@ data class ModelInfo(
   val hasSTTCapability: Boolean get() = true
 
   val hasTTSCapability: Boolean get() = true
+
+  /**
+   * Whether this model is large/tuned enough to follow explicit reasoning
+   * (<think> tags) and tool/agent protocols reliably.
+   *
+   * Tiny non-reasoning-tuned models (e.g. gemma-3-1b-it) cannot be made to
+   * reason or call tools by prompting alone — the UI gates the
+   * Thinking / Web-search toggles on this so quality doesn't silently degrade.
+   * Unknown models (nParams == 0) are allowed through rather than blocked.
+   */
+  val supportsReasoning: Boolean
+    get() {
+      val name = (modelPath + " " + arch).lowercase()
+      if (name.contains("gemma-3-1b") || name.contains("gemma3-1b") || name.contains("gemma3_1b")) return false
+      // sub-~2B models generally can't follow the reasoning/tool protocols
+      if (nParams in 1..2_000_000_000L) return false
+      return true
+    }
 }
 
 interface TokenCallback {

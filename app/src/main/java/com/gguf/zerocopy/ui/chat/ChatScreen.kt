@@ -200,6 +200,10 @@ fun ChatScreen(
   var ragEnabled by remember { mutableStateOf(SettingsManager.ragEnabled) }
   var webSearchEnabled by remember { mutableStateOf(SettingsManager.webSearchEnabled) }
 
+  // Whether the loaded model can follow the reasoning/tool protocols.
+  // Tiny non-tuned models (e.g. gemma-3-1b-it) are gated off with a warning.
+  val modelReasoningOk = engine?.modelInfo?.supportsReasoning ?: true
+
   // Set ToolManager on the active engine whenever search toggle OR engine changes
   LaunchedEffect(webSearchEnabled, engine) {
     val eng = engine ?: return@LaunchedEffect
@@ -209,6 +213,15 @@ fun ChatScreen(
       eng.setToolManager(null)
     }
     SettingsManager.webSearchEnabled = webSearchEnabled
+    // Force a full KV-cache reset + system-prompt rebuild so the tool-
+    // definition preamble is dropped/added cleanly instead of lingering in
+    // the cached context when the search toggle flips.
+    if (eng.isModelLoaded) {
+      withContext(kotlinx.coroutines.Dispatchers.IO) {
+        eng.resetContext()
+        eng.systemPrompt = SettingsManager.systemPrompt
+      }
+    }
   }
   var showExportDialog by remember { mutableStateOf(false) }
 
@@ -348,6 +361,20 @@ fun ChatScreen(
     return prompt
   }
 
+  /**
+   * Force a full KV-cache clear + system-prompt rebuild so a Thinking/Search
+   * toggle change takes effect immediately (drops any stray think/tool
+   * preamble from cached context) instead of only applying to future turns.
+   */
+  fun resetContextForToggles() {
+    val eng = engine ?: return
+    if (!eng.isModelLoaded) return
+    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+      eng.resetContext()
+      eng.systemPrompt = SettingsManager.systemPrompt
+    }
+  }
+
   fun sendMessage(text: String, uris: List<Uri>, names: List<String>) {
     android.util.Log.d("ChatScreen", "sendMessage called with chatId: $chatId")
     val id = chatId ?: run {
@@ -370,7 +397,7 @@ fun ChatScreen(
     streamedContent = ""
     streamedTokens = 0
     streamedTps = 0f
-    reasoningPhaseActive = reasoningEnabled
+    reasoningPhaseActive = reasoningEnabled && modelReasoningOk
     if (reasoningEnabled) {
       showStreamingThinking = true
     } else {
@@ -541,7 +568,12 @@ fun ChatScreen(
             msg.role.name.lowercase() to msg.content
           }
           activeEngine.restoreHistory(historyPairs)
-          val prompt = buildConversationPrompt(finalPrompt, reasoningEnabled, ragContext.isNotEmpty(), webSearchEnabled)
+          val prompt = buildConversationPrompt(
+            finalPrompt,
+            reasoningEnabled && modelReasoningOk,
+            ragContext.isNotEmpty(),
+            webSearchEnabled && modelReasoningOk
+          )
           // Pass original user text as searchQuery so ToolAwareInference uses
           // the clean query (without reasoning/RAG instructions) for web search.
           if (savedPaths.isNotEmpty() && activeEngine.hasVisionCapability) {
@@ -837,6 +869,24 @@ fun ChatScreen(
     },
     bottomBar = {
       Column(modifier = Modifier.fillMaxWidth().imePadding()) {
+        // Warn when the loaded model can't reliably do reasoning/tool use.
+        if (!modelReasoningOk) {
+          Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+            shape = RoundedCornerShape(8.dp),
+            color = colors.Amber.copy(alpha = 0.12f),
+            border = BorderStroke(0.2.dp, colors.Amber.copy(0.5f))
+          ) {
+            Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+              Icon(Icons.Filled.Warning, null, tint = colors.Amber, modifier = Modifier.size(12.dp))
+              Spacer(Modifier.width(6.dp))
+              Text(
+                "Thinking & Web search need a 3B+ reasoning-tuned model — quality will degrade on this small model (e.g. gemma-3-1b-it).",
+                fontSize = 9.sp, color = colors.Amber
+              )
+            }
+          }
+        }
         // Small circles above the input bubble: think / search / clip
         Row(
           modifier = Modifier
@@ -848,17 +898,20 @@ fun ChatScreen(
           ChatToolCircle(
             icon = if (reasoningEnabled) Icons.Filled.Psychology else Icons.Outlined.Psychology,
             label = "Thinking",
-            active = reasoningEnabled,
+            active = reasoningEnabled && modelReasoningOk,
+            enabled = modelReasoningOk,
             accent = IdentityGreen,
             onClick = {
               reasoningEnabled = !reasoningEnabled
               SettingsManager.reasoningEnabled = reasoningEnabled
+              if (modelReasoningOk) resetContextForToggles()
             }
           )
           ChatToolCircle(
             icon = if (webSearchEnabled) Icons.Filled.Search else Icons.Outlined.Search,
             label = "Web search",
-            active = webSearchEnabled,
+            active = webSearchEnabled && modelReasoningOk,
+            enabled = modelReasoningOk,
             accent = IdentityCyan,
             onClick = { webSearchEnabled = !webSearchEnabled }
           )
@@ -1093,12 +1146,14 @@ private fun ChatToolCircle(
     label: String,
     active: Boolean,
     accent: Color,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     val colors = currentPalette()
     val borderBrush = if (active) IdentityBorderBrush
         else Brush.linearGradient(listOf(IdentityCyan.copy(alpha = 0.35f), IdentityPurple.copy(alpha = 0.35f)))
     Surface(
+        enabled = enabled,
         onClick = onClick,
         shape = CircleShape,
         color = if (active) accent.copy(alpha = 0.14f) else colors.Card,

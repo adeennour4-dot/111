@@ -1119,6 +1119,17 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
     g_history.push_back({"user", user_copy});
     std::string prompt = build_chat_prompt();
     LOGI("Prompt len=%zu", prompt.size());
+    // ── DEBUG: dump the FINAL prompt actually handed to llama_decode ──
+    // Lets us confirm whether stray think/tool preamble text survives when
+    // the reasoning/search toggles are OFF. logcat truncates ~4KB, so we log
+    // a generous prefix that always contains the system prompt + preamble.
+    {
+        bool has_think = prompt.find("<think") != std::string::npos;
+        bool has_tool  = prompt.find("<tool")  != std::string::npos;
+        size_t head = prompt.size() < 3500 ? prompt.size() : 3500;
+        LOGI("PROMPT_DUMP think=%d tool=%d head(%zu)=\"%.*s\"",
+             has_think ? 1 : 0, has_tool ? 1 : 0, head, (int)head, prompt.c_str());
+    }
 
     // Tokenize the template-formatted prompt. add_special=false is required:
     // the template already ends with an assistant header that means "start
@@ -1210,6 +1221,14 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
     g_history.push_back({"user", user_copy});
     std::string prompt = build_chat_prompt();
     LOGI("Image-prompt len=%zu image=%s", prompt.size(), image_copy.c_str());
+    // ── DEBUG: same final-prompt dump as the text path ──
+    {
+        bool has_think = prompt.find("<think") != std::string::npos;
+        bool has_tool  = prompt.find("<tool")  != std::string::npos;
+        size_t head = prompt.size() < 3500 ? prompt.size() : 3500;
+        LOGI("PROMPT_DUMP think=%d tool=%d head(%zu)=\"%.*s\"",
+             has_think ? 1 : 0, has_tool ? 1 : 0, head, (int)head, prompt.c_str());
+    }
 
     int n_max = (int)llama_model_n_ctx_train(g_model);
     if (n_max <= 0) n_max = 2048;
