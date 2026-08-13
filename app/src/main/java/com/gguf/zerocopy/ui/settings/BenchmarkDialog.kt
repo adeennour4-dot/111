@@ -130,7 +130,6 @@ fun BenchmarkDialog(
                     },
                     enabled = selectedModel != null && !benchmarking,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = colors.Accent)
                 ) {
                     if (benchmarking) {

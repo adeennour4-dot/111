@@ -612,7 +612,6 @@ fun SettingsScreen(onBack: () -> Unit) {
               scope.launch { snackbarHostState.showSnackbar("Settings saved & model reloaded") }
             },
             modifier = Modifier.fillMaxWidth().height(46.dp),
-            shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(containerColor = colors.Accent)
           ) {
             Icon(Icons.Filled.Save, null, tint = colors.Bg, modifier = Modifier.size(18.dp))

@@ -165,7 +165,6 @@ fun CloudScreen(onBack: () -> Unit) {
           }
         },
         modifier = Modifier.fillMaxWidth().height(52.dp),
-        shape = RoundedCornerShape(16.dp),
         colors = ButtonDefaults.buttonColors(containerColor = if (isRunning) colors.Red else colors.Accent2)
       ) {
         Icon(
