@@ -390,7 +390,7 @@ fun ModelListScreen(
               fontFamily = FontFamily.Monospace
             )
             Spacer(Modifier.height(16.dp))
-            TextButton(onClick = {
+            TextButton(shape = RoundedCornerShape(50), onClick = {
               loadCancelRequested = true
               loadingJob?.cancel()
               loadingJob = null
@@ -558,12 +558,12 @@ fun ModelListScreen(
             Text("Remove ${model.name} from device? This cannot be undone.", color = colors.Text2, fontSize = 14.sp)
           },
           confirmButton = {
-            TextButton(onClick = { confirmDelete(model) }) {
+            TextButton(shape = RoundedCornerShape(50), onClick = { confirmDelete(model) }) {
               Text("Delete", color = colors.Red)
             }
           },
           dismissButton = {
-            TextButton(onClick = { modelToDelete = null }) {
+            TextButton(shape = RoundedCornerShape(50), onClick = { modelToDelete = null }) {
               Text("Cancel", color = colors.Text2)
             }
           }
@@ -603,7 +603,7 @@ fun ModelListScreen(
             }
           },
           confirmButton = {
-            TextButton(onClick = {
+            TextButton(shape = RoundedCornerShape(50), onClick = {
               modelToDetail = null
               handleModelTap(model)
             }) {
@@ -611,7 +611,7 @@ fun ModelListScreen(
             }
           },
           dismissButton = {
-            TextButton(onClick = { modelToDetail = null }) {
+            TextButton(shape = RoundedCornerShape(50), onClick = { modelToDetail = null }) {
               Text("Close", color = colors.Text2)
             }
           }
@@ -633,12 +633,12 @@ fun ModelListScreen(
             }
           },
           confirmButton = {
-            TextButton(onClick = { confirmEngineSwitch(model) }) {
+            TextButton(shape = RoundedCornerShape(50), onClick = { confirmEngineSwitch(model) }) {
               Text("Switch", color = colors.Accent)
             }
           },
           dismissButton = {
-            TextButton(onClick = { engineSwitchWarningModel = null }) {
+            TextButton(shape = RoundedCornerShape(50), onClick = { engineSwitchWarningModel = null }) {
               Text("Cancel", color = colors.Text2)
             }
           }
@@ -666,7 +666,7 @@ fun ModelListScreen(
             }
           },
           confirmButton = {
-            TextButton(onClick = { importWarning = null }) {
+            TextButton(shape = RoundedCornerShape(50), onClick = { importWarning = null }) {
               Text("OK", color = colors.Accent)
             }
           }
@@ -707,7 +707,7 @@ fun ModelListScreen(
             }
           },
           confirmButton = {
-            TextButton(onClick = {
+            TextButton(shape = RoundedCornerShape(50), onClick = {
               val m = loadErrorModel
               loadError = null; loadErrorModel = null
               if (m != null) {
@@ -733,7 +733,7 @@ fun ModelListScreen(
             }
           },
           dismissButton = {
-            TextButton(onClick = { loadError = null; loadErrorModel = null }) {
+            TextButton(shape = RoundedCornerShape(50), onClick = { loadError = null; loadErrorModel = null }) {
               Text("Dismiss", color = colors.Text2)
             }
           }
@@ -790,7 +790,7 @@ fun ModelListScreen(
             }
           },
           confirmButton = {
-            TextButton(onClick = { benchmarkResult = null }) {
+            TextButton(shape = RoundedCornerShape(50), onClick = { benchmarkResult = null }) {
               Text("Close", color = colors.Accent)
             }
           }
@@ -828,7 +828,7 @@ private fun ModelCard(
         onClick = onClick,
         onLongClick = onLongClick
       ),
-    shape = RoundedCornerShape(12.dp),
+    shape = RoundedCornerShape(16.dp),
     color = if (isLoaded) colors.CardLight else colors.Card,
     border = if (isLoaded) BorderStroke(0.2.dp, IdentityBorderBrush)
         else BorderStroke(0.2.dp, colors.Border.copy(alpha = 0.5f))
@@ -882,7 +882,7 @@ private fun ModelCard(
               (findMmprojFor(model.path) != null || com.gguf.zerocopy.data.local.SettingsManager.mmprojPath.isNotEmpty())) {
             Spacer(Modifier.width(6.dp))
             Surface(
-              shape = RoundedCornerShape(3.dp),
+              shape = RoundedCornerShape(8.dp),
               color = colors.Amber.copy(alpha = 0.2f)
             ) {
               Text(
@@ -899,7 +899,7 @@ private fun ModelCard(
           if (model.isMoE) {
             Spacer(Modifier.width(6.dp))
             Surface(
-              shape = RoundedCornerShape(3.dp),
+              shape = RoundedCornerShape(8.dp),
               color = colors.Purple.copy(alpha = 0.2f)
             ) {
               Text(
@@ -965,7 +965,7 @@ private fun EngineBadge(engine: EngineType) {
     EngineType.LITER_T -> "TFLite" to colors.Amber
   }
   Surface(
-    shape = RoundedCornerShape(4.dp),
+    shape = RoundedCornerShape(8.dp),
     color = badgeColor.copy(alpha = 0.2f)
   ) {
     Text(

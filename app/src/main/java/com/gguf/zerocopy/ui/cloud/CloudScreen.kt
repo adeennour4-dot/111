@@ -135,7 +135,7 @@ fun CloudScreen(onBack: () -> Unit) {
       modifier = Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp),
       verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-      Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = colors.Card)) {
+      Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = colors.Card)) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
           Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -154,6 +154,7 @@ fun CloudScreen(onBack: () -> Unit) {
       }
 
       Button(
+        shape = RoundedCornerShape(50),
         onClick = {
           saveSettings()
           if (isRunning) {
@@ -164,7 +165,7 @@ fun CloudScreen(onBack: () -> Unit) {
           }
         },
         modifier = Modifier.fillMaxWidth().height(52.dp),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = ButtonDefaults.buttonColors(containerColor = if (isRunning) colors.Red else colors.Accent2)
       ) {
         Icon(
@@ -176,7 +177,7 @@ fun CloudScreen(onBack: () -> Unit) {
         Text(if (isRunning) "Stop Server" else "Start Server", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.White)
       }
 
-      Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = colors.Card)) {
+      Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = colors.Card)) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
           Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Connected Clients", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.Text2, modifier = Modifier.weight(1f))
@@ -202,7 +203,7 @@ fun CloudScreen(onBack: () -> Unit) {
         }
       }
 
-      Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = colors.Card)) {
+      Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = colors.Card)) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
           Text("Server Configuration", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.Text2)
 
@@ -271,7 +272,7 @@ fun CloudScreen(onBack: () -> Unit) {
         }
       }
 
-      Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = colors.Card)) {
+      Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = colors.Card)) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
           Text("Server Model", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.Text2)
           Text(
@@ -280,14 +281,14 @@ fun CloudScreen(onBack: () -> Unit) {
           )
           Button(
             onClick = { showModelDialog = true },
-            shape = RoundedCornerShape(10.dp),
+            shape = RoundedCornerShape(50),
             colors = ButtonDefaults.buttonColors(containerColor = colors.Accent),
             modifier = Modifier.fillMaxWidth()
           ) {
             Text("Select Model for Server", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
           }
           if (serverModelPath.isNotEmpty()) {
-            TextButton(onClick = {
+            TextButton(shape = RoundedCornerShape(50), onClick = {
               serverModelPath = ""
               serverModelName = ""
             }) {
@@ -302,7 +303,7 @@ fun CloudScreen(onBack: () -> Unit) {
       Button(
         onClick = { saveSettings() },
         modifier = Modifier.fillMaxWidth().height(48.dp),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(50),
         colors = ButtonDefaults.buttonColors(containerColor = colors.Accent)
       ) {
         Text("Save Settings", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)

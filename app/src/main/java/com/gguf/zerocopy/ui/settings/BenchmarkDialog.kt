@@ -45,7 +45,7 @@ fun BenchmarkDialog(
             if (!benchmarking) onDismiss()
         },
         containerColor = colors.Card,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(22.dp),
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.Refresh, null, tint = colors.Accent2, modifier = Modifier.size(20.dp))
@@ -87,6 +87,7 @@ fun BenchmarkDialog(
 
                 // ── Run button ──
                 Button(
+                    shape = RoundedCornerShape(50),
                     onClick = {
                         selectedModel?.let { model ->
                             benchmarking = true

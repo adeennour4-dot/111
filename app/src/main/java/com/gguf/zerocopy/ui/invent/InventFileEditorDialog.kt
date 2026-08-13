@@ -46,7 +46,7 @@ fun InventFileEditorDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(16.dp),
             color = EdBg,
             border = BorderStroke(0.2.dp, EdLine)
         ) {
@@ -98,7 +98,7 @@ fun InventFileEditorDialog(
                 }
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = onDismiss) {
+                    TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) {
                         Text("Cancel", fontSize = 12.sp, color = Color(0xFF8A93A8), fontFamily = FontFamily.Monospace)
                     }
                     Spacer(Modifier.width(8.dp))

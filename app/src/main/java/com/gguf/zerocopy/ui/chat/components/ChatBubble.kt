@@ -131,7 +131,7 @@ fun ChatBubble(
         if (thinkingContent != null && !showThinking) {
           Surface(
             onClick = onToggleThinking,
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(16.dp),
             color = colors.ThinkBg,
             border = BorderStroke(0.2.dp, IdentityBorderBrush),
             modifier = Modifier
@@ -202,7 +202,7 @@ fun ChatBubble(
                       .fillMaxWidth()
                       .widthIn(max = 260.dp)
                       .height(180.dp)
-                      .clip(RoundedCornerShape(12.dp)),
+                      .clip(RoundedCornerShape(16.dp)),
                     contentScale = ContentScale.Crop
                   )
                   Spacer(Modifier.height(8.dp))
@@ -247,7 +247,7 @@ fun ChatBubble(
         ) {
           if (reasoningBadge) {
             Surface(
-              shape = RoundedCornerShape(4.dp),
+              shape = RoundedCornerShape(8.dp),
               color = colors.Purple.copy(alpha = 0.15f),
               modifier = Modifier.padding(end = 4.dp)
             ) {

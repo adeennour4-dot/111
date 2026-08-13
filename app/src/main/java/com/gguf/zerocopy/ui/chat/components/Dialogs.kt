@@ -81,6 +81,7 @@ fun ExportSessionDialog(
         )
         Spacer(Modifier.height(12.dp))
         TextButton(
+          shape = RoundedCornerShape(50),
           onClick = {
             exportProgress = 1f
             onShareText()
@@ -110,6 +111,7 @@ fun ExportSessionDialog(
           }
         }
         TextButton(
+          shape = RoundedCornerShape(50),
           onClick = {
             exportProgress = 1f
             onShareJson()
@@ -141,7 +143,7 @@ fun ExportSessionDialog(
       }
     },
     confirmButton = {
-      TextButton(onClick = onDismiss) {
+      TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) {
         Text(text = "Done", color = colors.Accent, fontSize = 14.sp)
       }
     }
@@ -183,7 +185,7 @@ fun ModelSelectDialog(
           items(models, key = { it.id }) { model ->
             Surface(
               onClick = { onSelect(model) },
-              shape = RoundedCornerShape(12.dp),
+              shape = RoundedCornerShape(16.dp),
               color = colors.Card,
               modifier = Modifier
                 .fillMaxWidth()
@@ -226,7 +228,7 @@ fun ModelSelectDialog(
       }
     },
     confirmButton = {
-      TextButton(onClick = onDismiss) {
+      TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) {
         Text(text = "Cancel", color = colors.Text2, fontSize = 14.sp)
       }
     }
@@ -280,7 +282,7 @@ fun DeleteConfirmDialog(
       }
     },
     dismissButton = {
-      TextButton(onClick = onDismiss) {
+      TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) {
         Text(text = "Cancel", color = colors.Text2, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
       }
     }

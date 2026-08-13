@@ -154,7 +154,7 @@ fun FilePanel(
                     // Action buttons: Copy, Debug, Chat with Coder
                     Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Surface(
-                            shape = RoundedCornerShape(4.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = Cy.copy(alpha = 0.1f),
                             modifier = Modifier.clickable {
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -169,7 +169,7 @@ fun FilePanel(
                         }
                         if (selectedFileContent.isNotEmpty()) {
                             Surface(
-                                shape = RoundedCornerShape(4.dp),
+                                shape = RoundedCornerShape(8.dp),
                                 color = Am.copy(alpha = 0.1f),
                                 modifier = Modifier.clickable {
                                     vm.requestDebug(selectedNode!!.path, selectedFileContent)
@@ -184,7 +184,7 @@ fun FilePanel(
                             // Chat with Coder button (post-workflow)
                             if (onOpenCoderChat != null) {
                                 Surface(
-                                    shape = RoundedCornerShape(4.dp),
+                                    shape = RoundedCornerShape(8.dp),
                                     color = Cy.copy(alpha = 0.1f),
                                     modifier = Modifier.clickable {
                                         onOpenCoderChat(selectedNode!!.path)
@@ -207,7 +207,7 @@ fun FilePanel(
                             Modifier
                                 .fillMaxSize()
                                 .verticalScroll(scrollState)
-                                .background(colors.CardLight, RoundedCornerShape(4.dp))
+                                .background(colors.CardLight, RoundedCornerShape(8.dp))
                                 .padding(8.dp)
                         ) {
                             Text(
@@ -245,7 +245,7 @@ fun FilePanel(
                                         selectedNode = node
                                     }
                                 },
-                            shape = RoundedCornerShape(4.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = if (isSelected) Cy.copy(alpha = 0.08f) else Color.Transparent
                         ) {
                             Row(

@@ -43,7 +43,7 @@ fun ModelSelectionDialog(
   AlertDialog(
     onDismissRequest = onDismiss,
     containerColor = colors.Surface,
-    shape = RoundedCornerShape(20.dp),
+    shape = RoundedCornerShape(22.dp),
     title = {
       Text(
         "Select Model",
@@ -87,7 +87,7 @@ fun ModelSelectionDialog(
     },
     confirmButton = {},
     dismissButton = {
-      TextButton(onClick = onDismiss) {
+      TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) {
         Text("Cancel", color = colors.Text2)
       }
     }
@@ -145,7 +145,7 @@ private fun ModelRow(
           if (isLoaded) {
             Spacer(Modifier.width(8.dp))
             Surface(
-              shape = RoundedCornerShape(4.dp),
+              shape = RoundedCornerShape(8.dp),
               color = colors.Accent2.copy(alpha = 0.2f)
             ) {
               Text(
@@ -173,7 +173,7 @@ private fun EngineBadge(engine: EngineType) {
     EngineType.LITER_T -> "TFLite" to colors.Amber
   }
   Surface(
-    shape = RoundedCornerShape(4.dp),
+    shape = RoundedCornerShape(8.dp),
     color = badgeColor.copy(alpha = 0.2f)
   ) {
     Text(

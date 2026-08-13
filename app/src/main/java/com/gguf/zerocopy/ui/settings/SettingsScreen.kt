@@ -97,6 +97,7 @@ import kotlinx.coroutines.Dispatchers
 import com.gguf.zerocopy.ui.chat.components.getFileName
 import com.gguf.zerocopy.ui.components.IdentityCyan
 import com.gguf.zerocopy.ui.components.IdentityPurple
+import com.gguf.zerocopy.ui.components.ZcPillButton
 import com.gguf.zerocopy.ui.theme.ZcPalette
 import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlinx.coroutines.delay
@@ -284,7 +285,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       SectionHeader("Inference", colors)
 
       // ── Sampling ──
-      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Row(verticalAlignment = Alignment.CenterVertically) {
@@ -305,7 +306,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       }
 
       // ── Generation ──
-      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Row(verticalAlignment = Alignment.CenterVertically) {
@@ -346,7 +347,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       }
 
       // ── Chat template ──
-      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Text("Chat Template", fontWeight = FontWeight.SemiBold, fontSize = 12.sp,
@@ -357,7 +358,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       }
 
       // ── Auto-load after import ──
-      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           ToggleRow(
@@ -375,7 +376,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       // ═══════════════════════════════════════════════════════════════════════
       SectionHeader("System", colors)
 
-      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Text("System Prompt", fontSize = 11.sp, color = colors.Text2)
@@ -396,7 +397,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       }
 
       // ── System actions ──
-      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           ActionButton("Load Vision mmproj", colors.Purple, colors) {
@@ -439,7 +440,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       // ═══════════════════════════════════════════════════════════════════════
       SectionHeader("Reasoning", colors)
 
-      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           ToggleRow("Chain-of-Thought", "Let's work step-by-step before answering",
@@ -452,7 +453,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       // ═══════════════════════════════════════════════════════════════════════
       SectionHeader("RAG & Documents", colors)
 
-      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           ToggleRow("Retrieval-Augmented Gen", "Inject document context into prompts",
@@ -480,7 +481,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                   modifier = Modifier.weight(1f))
               }
             }
-            TextButton(onClick = { ragEngine.clear() },
+            TextButton(shape = RoundedCornerShape(50), onClick = { ragEngine.clear() },
               modifier = Modifier.height(32.dp)) {
               Text("Clear all documents", fontSize = 10.sp, color = colors.Red)
             }
@@ -507,7 +508,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       // ═══════════════════════════════════════════════════════════════════════
       SectionHeader("Appearance", colors)
 
-      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Text("Theme", fontSize = 12.sp, color = colors.Text, fontWeight = FontWeight.SemiBold)
@@ -538,7 +539,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       // ═══════════════════════════════════════════════════════════════════════
       SectionHeader("Server", colors)
 
-      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           ToggleRow("Model Server", "Anyone on WiFi can access the web UI",
@@ -600,17 +601,18 @@ fun SettingsScreen(onBack: () -> Unit) {
       // ═══════════════════════════════════════════════════════════════════════
       // BENCHMARK & SAVE
       // ═══════════════════════════════════════════════════════════════════════
-      Surface(shape = RoundedCornerShape(12.dp), color = colors.CardLight) {
+      Surface(shape = RoundedCornerShape(16.dp), color = colors.CardLight) {
         Column(Modifier.padding(14.dp)) {
           ActionButton("Run Benchmark", colors.Accent2, colors) { showBenchmark = true }
           Spacer(Modifier.height(8.dp))
           Button(
+            shape = RoundedCornerShape(50),
             onClick = {
               saveAndReload()
               scope.launch { snackbarHostState.showSnackbar("Settings saved & model reloaded") }
             },
             modifier = Modifier.fillMaxWidth().height(46.dp),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(containerColor = colors.Accent)
           ) {
             Icon(Icons.Filled.Save, null, tint = colors.Bg, modifier = Modifier.size(18.dp))
@@ -625,7 +627,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       // ═══════════════════════════════════════════════════════════════════════
       SectionHeader("About", colors)
 
-      Surface(shape = RoundedCornerShape(12.dp), color = colors.Card,
+      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Text("adeennour4-dot", fontSize = 12.sp, color = colors.Text2,
@@ -714,7 +716,7 @@ private fun InlineField(
       keyboardActions = KeyboardActions(
         onDone = { focusManager.clearFocus() }
       ),
-      shape = RoundedCornerShape(6.dp),
+      shape = RoundedCornerShape(8.dp),
       colors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
         focusedTextColor = colors.Text, unfocusedTextColor = colors.Text,
@@ -752,15 +754,12 @@ private fun ToggleRow(
 @Composable
 private fun ActionButton(text: String, color: androidx.compose.ui.graphics.Color, colors: ZcPalette,
   onClick: () -> Unit) {
-  Box(
-    modifier = Modifier.fillMaxWidth().height(38.dp).clip(RoundedCornerShape(8.dp))
-      .background(Brush.horizontalGradient(listOf(IdentityCyan, IdentityPurple)))
-      .clickable { onClick() },
-    contentAlignment = Alignment.Center
-  ) {
-    Text(text, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
-      color = Color.Black, fontWeight = FontWeight.Bold)
-  }
+  ZcPillButton(
+    onClick = onClick,
+    tint = color,
+    modifier = Modifier.fillMaxWidth().height(40.dp),
+    label = text
+  )
   Spacer(Modifier.height(4.dp))
 }
 
@@ -779,13 +778,13 @@ private fun ResetDialog(
     text = { Text("Clear the context window and conversation history. Model stays loaded.",
       color = colors.Text2) },
     confirmButton = {
-      TextButton(onClick = {
+      TextButton(shape = RoundedCornerShape(50), onClick = {
         engineManager.getActiveEngine()?.resetContext()
         onDismiss()
         scope.launch { snackbarHostState.showSnackbar("Context reset") }
       }) { Text("Reset", color = colors.Red) }
     },
-    dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = colors.Text2) } }
+    dismissButton = { TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) { Text("Cancel", color = colors.Text2) } }
   )
 }
 
@@ -829,7 +828,7 @@ private fun ChatTemplateSelector(
     OutlinedButton(
       onClick = { expanded.value = true },
       modifier = Modifier.fillMaxWidth(),
-      shape = RoundedCornerShape(8.dp),
+      shape = RoundedCornerShape(50),
       colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent)
     ) {
       Text(selectedLabel, fontSize = 12.sp, fontFamily = FontFamily.Monospace,

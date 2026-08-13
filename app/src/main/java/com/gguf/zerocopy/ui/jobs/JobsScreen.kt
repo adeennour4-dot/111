@@ -111,6 +111,7 @@ fun JobsScreen(onBack: () -> Unit) {
                 }
                 Spacer(Modifier.weight(1f))
                 TextButton(
+                    shape = RoundedCornerShape(50),
                     onClick = { jobManager.cancelAll() },
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 ) {
@@ -128,7 +129,7 @@ private fun JobCard(job: JobManager.TrackedJob, onCancel: () -> Unit) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = colors.Card)
     ) {
         Row(

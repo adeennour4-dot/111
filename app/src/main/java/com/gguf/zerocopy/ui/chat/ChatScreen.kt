@@ -763,7 +763,7 @@ fun ChatScreen(
           }
           if (modelName.isNotEmpty()) {
             Surface(
-              shape = RoundedCornerShape(6.dp),
+              shape = RoundedCornerShape(8.dp),
               color = colors.Accent2.copy(alpha = 0.10f),
               border = BorderStroke(0.2.dp, colors.Accent2.copy(alpha = 0.25f)),
               modifier = Modifier.padding(end = 6.dp)
@@ -969,7 +969,7 @@ fun ChatScreen(
               )
             )
             Box(
-              Modifier.size(54.dp).clip(RoundedCornerShape(18.dp))
+              Modifier.size(54.dp).clip(RoundedCornerShape(22.dp))
                 .background(Brush.linearGradient(listOf(colors.GradientStart, colors.GradientEnd))),
               contentAlignment = Alignment.Center
             ) {

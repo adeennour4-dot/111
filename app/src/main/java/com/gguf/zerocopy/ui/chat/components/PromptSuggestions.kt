@@ -31,7 +31,7 @@ fun PromptSuggestions(
   ) {
     items(suggestions) { suggestion ->
       Surface(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(22.dp),
         color = colors.CardLight,
         border = BorderStroke(0.2.dp, colors.Border.copy(alpha = 0.4f)),
         modifier = Modifier.clickable { onSelect(suggestion) }

@@ -157,7 +157,7 @@ fun SessionListScreen(
         )
       },
       confirmButton = {
-        TextButton(onClick = {
+        TextButton(shape = RoundedCornerShape(50), onClick = {
           if (renameName.isNotBlank()) {
             app.chatRepository.renameSession(session.id, renameName)
           }
@@ -165,7 +165,7 @@ fun SessionListScreen(
         }) { Text("Rename", color = colors.Accent) }
       },
       dismissButton = {
-        TextButton(onClick = { renameTarget = null }) {
+        TextButton(shape = RoundedCornerShape(50), onClick = { renameTarget = null }) {
           Text("Cancel", color = colors.Text2)
         }
       }
@@ -184,13 +184,13 @@ fun SessionListScreen(
         )
       },
       confirmButton = {
-        TextButton(onClick = {
+        TextButton(shape = RoundedCornerShape(50), onClick = {
           app.chatRepository.deleteSession(session.id)
           deleteTarget = null
         }) { Text("Delete", color = colors.Red) }
       },
       dismissButton = {
-        TextButton(onClick = { deleteTarget = null }) {
+        TextButton(shape = RoundedCornerShape(50), onClick = { deleteTarget = null }) {
           Text("Cancel", color = colors.Text2)
         }
       }
@@ -220,7 +220,7 @@ private fun SessionCard(
         onClick = onSelect,
         onLongClick = { showMenu = true }
       ),
-    shape = RoundedCornerShape(12.dp),
+    shape = RoundedCornerShape(16.dp),
     colors = CardDefaults.cardColors(containerColor = colors.CardLight),
     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
   ) {

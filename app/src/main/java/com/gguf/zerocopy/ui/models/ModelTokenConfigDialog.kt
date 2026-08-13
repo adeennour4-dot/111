@@ -118,7 +118,7 @@ fun ModelTokenConfigDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = colors.Card,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(22.dp),
         title = {
             Column {
                 Text("⚙  Per-Model Config", fontWeight = FontWeight.Bold,
@@ -130,7 +130,7 @@ fun ModelTokenConfigDialog(
         confirmButton = {
             Button(
                 onClick = { onSave(buildConfig()) },
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(50),
                 enabled = ramOk,
                 colors = ButtonDefaults.buttonColors(containerColor = colors.Accent)
             ) { Text("Save", fontFamily = FontFamily.Monospace,
@@ -139,7 +139,7 @@ fun ModelTokenConfigDialog(
         dismissButton = {
             OutlinedButton(
                 onClick = onDismiss,
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(50),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Text2)
             ) { Text("Cancel", fontFamily = FontFamily.Monospace) }
         },
@@ -196,7 +196,7 @@ fun ModelTokenConfigDialog(
                                 cursorColor = colors.Accent,
                                 focusedTextColor = colors.Text, unfocusedTextColor = colors.Text
                             ),
-                            shape = RoundedCornerShape(6.dp)
+                            shape = RoundedCornerShape(8.dp)
                         )
                     }
                     Slider(
@@ -252,7 +252,7 @@ fun ModelTokenConfigDialog(
                                 cursorColor = colors.Accent2,
                                 focusedTextColor = colors.Text, unfocusedTextColor = colors.Text
                             ),
-                            shape = RoundedCornerShape(6.dp)
+                            shape = RoundedCornerShape(8.dp)
                         )
                     }
                     Slider(
@@ -322,7 +322,7 @@ fun ModelTokenConfigDialog(
                 // ── RAM estimate ──
                 Surface(
                     Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(50),
                     color = if (ramOk) colors.Surface else colors.Red.copy(alpha = 0.08f),
                     border = if (!ramOk) androidx.compose.foundation.BorderStroke(0.2.dp, colors.Red.copy(0.5f)) else null
                 ) {
@@ -361,14 +361,14 @@ fun ModelTokenConfigDialog(
                             batchText = SettingsManager.nBatch.toString()
                         },
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Text3)
                     ) { Text("Reset", fontSize = 11.sp, fontFamily = FontFamily.Monospace) }
                     if (onRemove != null) {
                         OutlinedButton(
                             onClick = onRemove,
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(50),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Red)
                         ) { Text("Remove", fontSize = 11.sp, fontFamily = FontFamily.Monospace) }
                     }

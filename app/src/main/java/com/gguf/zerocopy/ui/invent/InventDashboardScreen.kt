@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import com.gguf.zerocopy.ui.components.FuturisticFont
 import com.gguf.zerocopy.ui.components.IdentityCyan
+import com.gguf.zerocopy.ui.components.ZcPillButton
 import com.gguf.zerocopy.ui.components.IdentityPurple
 import com.gguf.zerocopy.ui.components.IdentitySweepBrush
 import com.gguf.zerocopy.ui.theme.currentPalette
@@ -373,7 +374,7 @@ fun InventDashboardScreen(
                                         // Empty slot → new project
                                         Surface(
                                             onClick = { newProjectDialog = true },
-                                            shape = RoundedCornerShape(14.dp),
+                                            shape = RoundedCornerShape(16.dp),
                                             color = Card.copy(alpha = 0.5f),
                                             border = BorderStroke(0.5.dp, Line),
                                             modifier = Modifier.fillMaxSize()
@@ -440,7 +441,7 @@ fun InventDashboardScreen(
             title = { Text("Delete project?", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace) },
             text = { Text("'${p?.name ?: ""}' and all its sessions + files will be permanently removed. This cannot be undone.", fontSize = 11.sp, color = Txt2, fontFamily = FontFamily.Monospace) },
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(shape = RoundedCornerShape(50), onClick = {
                     onDeleteProject(pid)
                     currentDir.remove(pid)
                     fileRefresh++
@@ -450,7 +451,7 @@ fun InventDashboardScreen(
                 }) { Text("Delete", color = Rd, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
-                TextButton(onClick = { deleteProjectFor = null }) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
+                TextButton(shape = RoundedCornerShape(50), onClick = { deleteProjectFor = null }) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
             }
         )
     }
@@ -777,7 +778,7 @@ fun InventDashboardScreen(
                 )
             },
             confirmButton = {
-                TextButton(onClick = { showZipInfo = false }) {
+                TextButton(shape = RoundedCornerShape(50), onClick = { showZipInfo = false }) {
                     Text("Got it", color = Cy, fontFamily = FontFamily.Monospace)
                 }
             }
@@ -823,9 +824,9 @@ private fun ProjectSquare(
                 val s = 0.95f + 0.05f * appear.value
                 scaleX = s; scaleY = s
             }
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(Brush.verticalGradient(listOf(CardLight.copy(alpha = 0.7f), Card)))
-            .border(0.2.dp, Line, RoundedCornerShape(14.dp))
+            .border(0.2.dp, Line, RoundedCornerShape(16.dp))
             .combinedClickable(onClick = onPanel, onLongClick = onMenu)
     ) {
         // Folded-corner paper-note effect (bottom-right)
@@ -843,19 +844,19 @@ private fun ProjectSquare(
         }
         // Maximize + X — rounded-square tabs touching the top line
         Row(Modifier.align(Alignment.TopEnd), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            Surface(onClick = onMaximize, shape = RoundedCornerShape(5.dp), color = CardLight, border = BorderStroke(0.2.dp, Line), modifier = Modifier.size(15.dp)) {
+            Surface(onClick = onMaximize, shape = RoundedCornerShape(8.dp), color = CardLight, border = BorderStroke(0.2.dp, Line), modifier = Modifier.size(15.dp)) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.OpenInFull, null, tint = Cy, modifier = Modifier.size(8.dp)) }
             }
-            Surface(onClick = onClear, shape = RoundedCornerShape(5.dp), color = CardLight, border = BorderStroke(0.2.dp, Rd.copy(alpha = 0.5f)), modifier = Modifier.size(15.dp)) {
+            Surface(onClick = onClear, shape = RoundedCornerShape(8.dp), color = CardLight, border = BorderStroke(0.2.dp, Rd.copy(alpha = 0.5f)), modifier = Modifier.size(15.dp)) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, null, tint = Rd, modifier = Modifier.size(8.dp)) }
             }
         }
         // Count pills (top-left) — small, tucked into the corner
         Row(Modifier.align(Alignment.TopStart), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            Surface(shape = RoundedCornerShape(3.dp), color = Pr.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.4f))) {
+            Surface(shape = RoundedCornerShape(8.dp), color = Pr.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.4f))) {
                 Text("${project.sessionIds.size}S", fontSize = 6.sp, color = Pr, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
             }
-            Surface(shape = RoundedCornerShape(3.dp), color = Cy.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.4f))) {
+            Surface(shape = RoundedCornerShape(8.dp), color = Cy.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.4f))) {
                 Text("${fileCount}F", fontSize = 6.sp, color = Cy, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
             }
         }
@@ -920,28 +921,19 @@ private fun ProjectSquare(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(
+            ZcPillButton(
                 onClick = onPanel,
-                shape = RoundedCornerShape(50),
-                color = Color.Transparent,
-                border = BorderStroke(0.2.dp, Line),
-                modifier = Modifier.weight(1f).height(14.dp)
-            ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("OPEN", fontSize = 6.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FuturisticFont)
-                }
-            }
-            Surface(
+                tint = Cy,
+                modifier = Modifier.weight(1f).height(26.dp),
+                label = "OPEN"
+            )
+            ZcPillButton(
                 onClick = onMenu,
-                shape = RoundedCornerShape(50),
-                color = Pr.copy(alpha = 0.12f),
-                border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.4f)),
-                modifier = Modifier.height(14.dp)
-            ) {
-                Box(Modifier.padding(horizontal = 9.dp), contentAlignment = Alignment.Center) {
-                    Text("⋯", fontSize = 7.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FuturisticFont)
-                }
-            }
+                tint = Pr,
+                ghost = true,
+                modifier = Modifier.height(26.dp),
+                label = "⋯"
+            )
         }
     }
 }
@@ -1002,7 +994,7 @@ private fun ProjectWindow(
     var sector by remember(project.id) { mutableStateOf("models") }
 
     Surface(
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(22.dp),
         color = Card,
         border = BorderStroke(0.2.dp, Line),
         modifier = Modifier.fillMaxSize().padding(8.dp)
@@ -1181,7 +1173,7 @@ private fun ProjectWindow(
                                                         InventStopSignal.requested = true
                                                         liveTick++
                                                     },
-                                                    shape = RoundedCornerShape(5.dp),
+                                                    shape = RoundedCornerShape(8.dp),
                                                     color = Rd.copy(alpha = 0.15f),
                                                     border = BorderStroke(0.2.dp, Rd.copy(alpha = 0.6f))
                                                 ) {
@@ -1209,7 +1201,7 @@ private fun ProjectWindow(
                         if (dir != root) {
                             Surface(
                                 onClick = { onSetDir(if (sessionDirs.contains(dir)) root else dir.parentFile ?: root) },
-                                shape = RoundedCornerShape(6.dp),
+                                shape = RoundedCornerShape(8.dp),
                                 color = CardLight,
                                 border = BorderStroke(0.2.dp, Line)
                             ) {
@@ -1222,7 +1214,7 @@ private fun ProjectWindow(
                         } else {
                             Surface(
                                 onClick = onShareZip,
-                                shape = RoundedCornerShape(6.dp),
+                                shape = RoundedCornerShape(8.dp),
                                 color = Cy.copy(alpha = 0.12f),
                                 border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.5f))
                             ) {
@@ -1236,7 +1228,7 @@ private fun ProjectWindow(
                         Spacer(Modifier.weight(1f))
                         Surface(
                             onClick = onAddFolder,
-                            shape = RoundedCornerShape(6.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = Bulb.copy(alpha = 0.1f),
                             border = BorderStroke(0.2.dp, Bulb.copy(alpha = 0.4f))
                         ) {
@@ -1249,7 +1241,7 @@ private fun ProjectWindow(
                         Spacer(Modifier.width(6.dp))
                         Surface(
                             onClick = onAddFile,
-                            shape = RoundedCornerShape(6.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = Cy.copy(alpha = 0.12f),
                             border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.5f))
                         ) {
@@ -1271,7 +1263,7 @@ private fun ProjectWindow(
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
                             itemsIndexed(files) { _, row ->
                                 Surface(
-                                    shape = RoundedCornerShape(6.dp),
+                                    shape = RoundedCornerShape(8.dp),
                                     color = CardLight,
                                     modifier = Modifier.fillMaxWidth()
                                         .combinedClickable(
@@ -1327,7 +1319,7 @@ private fun ModelPickerDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(16.dp),
             color = Card,
             border = BorderStroke(0.2.dp, Line)
         ) {
@@ -1351,7 +1343,7 @@ private fun ModelPickerDialog(
                         singleLine = true,
                         placeholder = { Text("🔍  search ${models.size} models…", fontSize = 11.sp, color = Gy, fontFamily = FontFamily.Monospace) },
                         textStyle = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = Txt),
-                        shape = RoundedCornerShape(9.dp),
+                        shape = RoundedCornerShape(10.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = roleColor(role.role),
                             unfocusedBorderColor = Line,
@@ -1492,6 +1484,7 @@ private fun AddRoleDialog(
         },
         confirmButton = {
             TextButton(
+                shape = RoundedCornerShape(50),
                 onClick = { if (name.isNotBlank()) { onAdd(name.trim(), desc.trim()); onDismiss() } },
                 enabled = name.isNotBlank()
             ) {
@@ -1499,7 +1492,7 @@ private fun AddRoleDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
+            TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
         }
     )
 }
@@ -1527,6 +1520,7 @@ private fun NewFolderDialog(
         },
         confirmButton = {
             TextButton(
+                shape = RoundedCornerShape(50),
                 onClick = { if (name.isNotBlank()) { onAdd(name.trim()); onDismiss() } },
                 enabled = name.isNotBlank()
             ) {
@@ -1534,7 +1528,7 @@ private fun NewFolderDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
+            TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
         }
     )
 }
@@ -1575,22 +1569,22 @@ private fun RoleActionsDialog(
         },
         confirmButton = {
             if (editing) {
-                TextButton(onClick = { onEdit(name.trim(), desc.trim()); onDismiss() }, enabled = name.isNotBlank()) {
+                TextButton(shape = RoundedCornerShape(50), onClick = { onEdit(name.trim(), desc.trim()); onDismiss() }, enabled = name.isNotBlank()) {
                     Text("Save", color = Cy, fontFamily = FontFamily.Monospace)
                 }
             } else {
-                TextButton(onClick = { editing = true }) {
+                TextButton(shape = RoundedCornerShape(50), onClick = { editing = true }) {
                     Text("Change name/description", color = Am, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                 }
             }
         },
         dismissButton = {
             if (editing) {
-                TextButton(onClick = { editing = false }) { Text("Back", color = Gy, fontFamily = FontFamily.Monospace) }
+                TextButton(shape = RoundedCornerShape(50), onClick = { editing = false }) { Text("Back", color = Gy, fontFamily = FontFamily.Monospace) }
             } else if (!role.isCoder) {
-                TextButton(onClick = { onDelete(); onDismiss() }) { Text("Delete role", color = Rd, fontFamily = FontFamily.Monospace) }
+                TextButton(shape = RoundedCornerShape(50), onClick = { onDelete(); onDismiss() }) { Text("Delete role", color = Rd, fontFamily = FontFamily.Monospace) }
             } else {
-                TextButton(onClick = onDismiss) { Text("Close", color = Gy, fontFamily = FontFamily.Monospace) }
+                TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) { Text("Close", color = Gy, fontFamily = FontFamily.Monospace) }
             }
         }
     )
@@ -1612,14 +1606,14 @@ private fun SessionActionsDialog(
         title = { Text("Session", color = Pr, fontFamily = FontFamily.Monospace, fontSize = 14.sp) },
         text = { Text(sessionName, color = Color(0xFFB9C1D0), fontSize = 12.sp, fontFamily = FontFamily.Monospace) },
         confirmButton = {
-            TextButton(onClick = { onOpen(); onDismiss() }) { Text("Open session", color = Cy, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
+            TextButton(shape = RoundedCornerShape(50), onClick = { onOpen(); onDismiss() }) { Text("Open session", color = Cy, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
         },
         dismissButton = {
             Row {
-                TextButton(onClick = { onExport(); onDismiss() }) { Text("Export transcript", color = Am, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
-                TextButton(onClick = { onReset(); onDismiss() }) { Text("Reset", color = Am, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
-                TextButton(onClick = { onDelete(); onDismiss() }) { Text("Delete project", color = Rd, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
-                TextButton(onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
+                TextButton(shape = RoundedCornerShape(50), onClick = { onExport(); onDismiss() }) { Text("Export transcript", color = Am, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
+                TextButton(shape = RoundedCornerShape(50), onClick = { onReset(); onDismiss() }) { Text("Reset", color = Am, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
+                TextButton(shape = RoundedCornerShape(50), onClick = { onDelete(); onDismiss() }) { Text("Delete project", color = Rd, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
+                TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
             }
         }
     )
@@ -1641,14 +1635,14 @@ private fun FileActionsDialog(
         title = { Text("📄 $fileName", color = Cy, fontFamily = FontFamily.Monospace, fontSize = 13.sp) },
         text = { },
         confirmButton = {
-            TextButton(onClick = { onOpen(); onDismiss() }) { Text("Open", color = Cy, fontFamily = FontFamily.Monospace) }
+            TextButton(shape = RoundedCornerShape(50), onClick = { onOpen(); onDismiss() }) { Text("Open", color = Cy, fontFamily = FontFamily.Monospace) }
         },
         dismissButton = {
             Row {
-                TextButton(onClick = { onCopy(); onDismiss() }) { Text("Copy code", color = Am, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
-                TextButton(onClick = { onHistory(); onDismiss() }) { Text("History", color = Bulb, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
-                TextButton(onClick = { onDelete(); onDismiss() }) { Text("Delete", color = Rd, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
-                TextButton(onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
+                TextButton(shape = RoundedCornerShape(50), onClick = { onCopy(); onDismiss() }) { Text("Copy code", color = Am, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
+                TextButton(shape = RoundedCornerShape(50), onClick = { onHistory(); onDismiss() }) { Text("History", color = Bulb, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
+                TextButton(shape = RoundedCornerShape(50), onClick = { onDelete(); onDismiss() }) { Text("Delete", color = Rd, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
+                TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
             }
         }
     )
@@ -1671,13 +1665,13 @@ private fun ProjectMenuDialog(
             Text("${project.roles.size} roles · ${project.sessionIds.size} sessions", color = Txt2, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
         },
         confirmButton = {
-            TextButton(onClick = { onRename(); onDismiss() }) { Text("Rename", color = Am, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
+            TextButton(shape = RoundedCornerShape(50), onClick = { onRename(); onDismiss() }) { Text("Rename", color = Am, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
         },
         dismissButton = {
             Row {
-                TextButton(onClick = { onExportZip(); onDismiss() }) { Text("Export .zip", color = Cy, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
-                TextButton(onClick = { onClear(); onDismiss() }) { Text("Clear", color = Rd, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
-                TextButton(onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
+                TextButton(shape = RoundedCornerShape(50), onClick = { onExportZip(); onDismiss() }) { Text("Export .zip", color = Cy, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
+                TextButton(shape = RoundedCornerShape(50), onClick = { onClear(); onDismiss() }) { Text("Clear", color = Rd, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
+                TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
             }
         }
     )
@@ -1706,12 +1700,12 @@ private fun RenameDialog(
             )
         },
         confirmButton = {
-            TextButton(onClick = { if (name.isNotBlank()) { onRename(name.trim()); onDismiss() } }, enabled = name.isNotBlank()) {
+            TextButton(shape = RoundedCornerShape(50), onClick = { if (name.isNotBlank()) { onRename(name.trim()); onDismiss() } }, enabled = name.isNotBlank()) {
                 Text("Save", color = Cy, fontFamily = FontFamily.Monospace)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
+            TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
         }
     )
 }
@@ -1763,12 +1757,13 @@ private fun NewProjectDialog(
         },
         confirmButton = {
             TextButton(
+                shape = RoundedCornerShape(50),
                 onClick = { onCreate(name.trim().ifEmpty { "Project" }, selected); onDismiss() },
                 enabled = true
             ) { Text("Create", color = Cy, fontFamily = FontFamily.Monospace) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
+            TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
         }
     )
 }
@@ -1795,7 +1790,7 @@ private fun HistoryDialog(
                         val stamp = runCatching { java.text.SimpleDateFormat("MMM d, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(v.name.toLong())) }
                             .getOrDefault(v.name)
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = CardLight,
                             border = BorderStroke(0.2.dp, Line),
                             modifier = Modifier.fillMaxWidth()
@@ -1805,8 +1800,8 @@ private fun HistoryDialog(
                                 Spacer(Modifier.width(8.dp))
                                 Text(stamp, fontSize = 9.sp, color = Txt2, fontFamily = FontFamily.Monospace)
                                 Spacer(Modifier.weight(1f))
-                                TextButton(onClick = { onView(v); onDismiss() }) { Text("View", fontSize = 9.sp, color = Cy, fontFamily = FontFamily.Monospace) }
-                                TextButton(onClick = { onRestore(v); onDismiss() }) { Text("Restore", fontSize = 9.sp, color = Am, fontFamily = FontFamily.Monospace) }
+                                TextButton(shape = RoundedCornerShape(50), onClick = { onView(v); onDismiss() }) { Text("View", fontSize = 9.sp, color = Cy, fontFamily = FontFamily.Monospace) }
+                                TextButton(shape = RoundedCornerShape(50), onClick = { onRestore(v); onDismiss() }) { Text("Restore", fontSize = 9.sp, color = Am, fontFamily = FontFamily.Monospace) }
                             }
                         }
                     }
@@ -1814,7 +1809,7 @@ private fun HistoryDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Close", color = Gy, fontFamily = FontFamily.Monospace) }
+            TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) { Text("Close", color = Gy, fontFamily = FontFamily.Monospace) }
         }
     )
 }
@@ -1856,11 +1851,11 @@ private fun SquarePanel(
                     Text(project.name.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FuturisticFont, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("RAM ${freeRamMb(context)} MB free", fontSize = 6.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
                 }
-                Surface(onClick = onMaximize, shape = RoundedCornerShape(6.dp), color = Cy.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.5f)), modifier = Modifier.size(20.dp)) {
+                Surface(onClick = onMaximize, shape = RoundedCornerShape(8.dp), color = Cy.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.5f)), modifier = Modifier.size(20.dp)) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.OpenInFull, null, tint = Cy, modifier = Modifier.size(10.dp)) }
                 }
                 Spacer(Modifier.width(5.dp))
-                Surface(onClick = onClose, shape = RoundedCornerShape(6.dp), color = Rd.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Rd.copy(alpha = 0.5f)), modifier = Modifier.size(20.dp)) {
+                Surface(onClick = onClose, shape = RoundedCornerShape(8.dp), color = Rd.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Rd.copy(alpha = 0.5f)), modifier = Modifier.size(20.dp)) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, null, tint = Rd, modifier = Modifier.size(10.dp)) }
                 }
             }
@@ -1892,7 +1887,7 @@ private fun SquarePanel(
                         val missing = role.modelPath.isNotEmpty() && !knownPaths.contains(role.modelPath)
                         val model = models.find { it.path == role.modelPath }
                         Surface(
-                            shape = RoundedCornerShape(9.dp),
+                            shape = RoundedCornerShape(10.dp),
                             color = CardLight,
                             border = BorderStroke(0.2.dp, roleColor(role.role).copy(alpha = 0.4f)),
                             modifier = Modifier.fillMaxWidth().combinedClickable(
@@ -1929,7 +1924,7 @@ private fun SquarePanel(
                     item {
                         Surface(
                             onClick = onAddRole,
-                            shape = RoundedCornerShape(9.dp),
+                            shape = RoundedCornerShape(10.dp),
                             color = Pr.copy(alpha = 0.10f),
                             border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.5f)),
                             modifier = Modifier.fillMaxWidth()
@@ -1957,7 +1952,7 @@ private fun SquarePanel(
                             val s = remember(sid, fileRefresh) { runCatching { InventStorage.loadSession(context, sid) }.getOrNull() }
                             val title = s?.model1Name?.takeIf { it.isNotBlank() } ?: "Session ${i + 1}"
                             Surface(
-                                shape = RoundedCornerShape(9.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 color = CardLight,
                                 border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.35f)),
                                 modifier = Modifier.fillMaxWidth().combinedClickable(
@@ -1966,7 +1961,7 @@ private fun SquarePanel(
                                 )
                             ) {
                                 Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(16.dp).clip(RoundedCornerShape(4.dp)).background(Pr.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                                    Box(Modifier.size(16.dp).clip(RoundedCornerShape(8.dp)).background(Pr.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
                                         Text("S#${i + 1}", fontSize = 7.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
                                     }
                                     Spacer(Modifier.width(6.dp))
@@ -2004,7 +1999,7 @@ private fun MiniToggle(checked: Boolean, onToggle: () -> Unit) {
     val col = if (checked) Cy else Gy
     Surface(
         onClick = onToggle,
-        shape = RoundedCornerShape(9.dp),
+        shape = RoundedCornerShape(10.dp),
         color = col.copy(alpha = 0.18f),
         border = BorderStroke(0.2.dp, col.copy(alpha = 0.55f))
     ) {
@@ -2066,7 +2061,7 @@ private fun ModelInfoDialog(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Surface(
                         onClick = onChangeModel,
-                        shape = RoundedCornerShape(9.dp),
+                        shape = RoundedCornerShape(10.dp),
                         color = Pr.copy(alpha = 0.15f),
                         border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.6f)),
                         modifier = Modifier.weight(1f)
@@ -2077,7 +2072,7 @@ private fun ModelInfoDialog(
                     }
                     Surface(
                         onClick = onClose,
-                        shape = RoundedCornerShape(9.dp),
+                        shape = RoundedCornerShape(10.dp),
                         color = Cy.copy(alpha = 0.15f),
                         border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.6f)),
                         modifier = Modifier.weight(1f)

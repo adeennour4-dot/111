@@ -266,7 +266,7 @@ fun InventScreen(
                     // Token chip
                     if (ui.totalTokensUsed > 0) {
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = colors.Accent.copy(alpha = 0.10f),
                             border = BorderStroke(0.2.dp, colors.Accent.copy(alpha = 0.25f)),
                             modifier = Modifier.padding(end = 4.dp)
@@ -710,8 +710,8 @@ fun InventScreen(
                 onDismissRequest = { vm.setNavigateAway(false) },
                 title = { Text("Generation in Progress", fontFamily = FontFamily.Monospace) },
                 text = { Text("Files already generated will be saved. You can resume later.", fontFamily = FontFamily.Monospace) },
-                confirmButton = { TextButton(onClick = { vm.setNavigateAway(false); onBack() }) { Text("Leave", fontFamily = FontFamily.Monospace) } },
-                dismissButton = { TextButton(onClick = { vm.setNavigateAway(false) }) { Text("Stay", fontFamily = FontFamily.Monospace) } },
+                confirmButton = { TextButton(shape = RoundedCornerShape(50), onClick = { vm.setNavigateAway(false); onBack() }) { Text("Leave", fontFamily = FontFamily.Monospace) } },
+                dismissButton = { TextButton(shape = RoundedCornerShape(50), onClick = { vm.setNavigateAway(false) }) { Text("Stay", fontFamily = FontFamily.Monospace) } },
                 containerColor = colors.Card
             )
         }
@@ -737,7 +737,7 @@ private fun ActionChip(
     active: Boolean = false, onClick: () -> Unit
 ) {
     Surface(
-        modifier = Modifier.height(24.dp).clip(RoundedCornerShape(7.dp)).clickable { onClick() },
+        modifier = Modifier.height(24.dp).clip(RoundedCornerShape(8.dp)).clickable { onClick() },
         color = if (active) tint.copy(alpha = 0.14f) else Color.Transparent,
         border = BorderStroke(0.2.dp, if (active) tint.copy(0.5f) else tint.copy(0.28f))
     ) {
@@ -763,7 +763,7 @@ private fun FlowRibbon(phase: InventPhase, animColor: Color, colors: ZcPalette) 
             val active = i == current
             if (i > 0) {
                 Box(
-                    Modifier.weight(1f).height(2.dp).clip(RoundedCornerShape(1.dp))
+                    Modifier.weight(1f).height(2.dp).clip(RoundedCornerShape(8.dp))
                         .background(
                             when {
                                 i <= current -> animColor.copy(alpha = 0.75f)
@@ -947,7 +947,7 @@ private fun EmptyState(phase: InventPhase, phaseColor: Color, colors: ZcPalette)
                 }
                 Box(
                     Modifier.size(50.dp).graphicsLayer { rotationZ = spin }
-                        .clip(RoundedCornerShape(15.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(Brush.linearGradient(listOf(colors.GradientStart, colors.GradientEnd))),
                     contentAlignment = Alignment.Center
                 ) {
@@ -1175,7 +1175,7 @@ private fun InputArea(
                         )
                     },
                     textStyle = TextStyle(fontSize = 12.5.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Cy.copy(alpha = 0.5f),
                         unfocusedBorderColor = colors.Border,
@@ -1248,7 +1248,7 @@ private fun InputArea(
 @Composable
 private fun MiniToggle(icon: ImageVector, label: String, active: Boolean, onClick: () -> Unit, colors: ZcPalette) {
     Surface(
-        modifier = Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).clickable { onClick() },
+        modifier = Modifier.size(26.dp).clip(RoundedCornerShape(8.dp)).clickable { onClick() },
         color = if (active) Cy.copy(alpha = 0.12f) else Color.Transparent,
         border = BorderStroke(0.2.dp, if (active) Cy.copy(0.4f) else colors.Border.copy(0.35f))
     ) {
@@ -1283,7 +1283,7 @@ private fun ModelPickerSheet(
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center) {
         Surface(Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.74f).clickable {},
-            shape = RoundedCornerShape(20.dp), color = colors.Card,
+            shape = RoundedCornerShape(22.dp), color = colors.Card,
             border = BorderStroke(0.2.dp, colors.Border.copy(alpha = 0.4f))) {
             Column(Modifier.padding(14.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
@@ -1311,7 +1311,7 @@ private fun ModelPickerSheet(
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         items(models) { m ->
                             Surface(Modifier.fillMaxWidth().clickable { onSelect(m.path, m.name, useForAll) },
-                                shape = RoundedCornerShape(12.dp), color = colors.Surface,
+                                shape = RoundedCornerShape(16.dp), color = colors.Surface,
                                 border = BorderStroke(0.2.dp, colors.Border.copy(0.35f))) {
                                 Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Box(Modifier.size(26.dp).clip(RoundedCornerShape(8.dp))
@@ -1354,7 +1354,7 @@ private fun PlanReviewPanel(
     val dirs = fileTree.filter { it.isDir }
     Column(Modifier.fillMaxSize().padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Surface(
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(16.dp),
             color = colors.Card,
             border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.35f))
         ) {
@@ -1371,7 +1371,7 @@ private fun PlanReviewPanel(
             }
         }
         Surface(
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(16.dp),
             color = colors.Surface,
             border = BorderStroke(0.2.dp, colors.Border.copy(alpha = 0.3f)),
             modifier = Modifier.weight(1f)
@@ -1434,7 +1434,7 @@ private fun SessionPopup(
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center) {
         Surface(Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.74f).clickable {},
-            shape = RoundedCornerShape(20.dp), color = colors.Card,
+            shape = RoundedCornerShape(22.dp), color = colors.Card,
             border = BorderStroke(0.2.dp, colors.Border.copy(alpha = 0.4f))) {
             Column(Modifier.padding(14.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
@@ -1472,7 +1472,7 @@ private fun SessionPopup(
                         Spacer(Modifier.height(8.dp))
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             items(selectedFiles) { node ->
-                                Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(6.dp),
+                                Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp),
                                     color = colors.Surface.copy(alpha = 0.5f)) {
                                     Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Icon(if (node.isDir) Icons.Filled.Folder else Icons.Filled.Description, null,
@@ -1534,11 +1534,11 @@ private fun SessionPopup(
                             fontSize = 10.5.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
                         Spacer(Modifier.height(10.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            TextButton(onClick = { pendingDelete = null }) {
+                            TextButton(shape = RoundedCornerShape(50), onClick = { pendingDelete = null }) {
                                 Text("Cancel", color = colors.Text3, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                             }
                             Spacer(Modifier.width(6.dp))
-                            TextButton(onClick = { onDeleteProject?.invoke(); pendingDelete = null }) {
+                            TextButton(shape = RoundedCornerShape(50), onClick = { onDeleteProject?.invoke(); pendingDelete = null }) {
                                 Text("Delete project", color = Rd, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                             }
                         }
@@ -1576,7 +1576,7 @@ private fun SettingsPopup2(
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center) {
         Surface(Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.74f).clickable {},
-            shape = RoundedCornerShape(20.dp), color = colors.Card,
+            shape = RoundedCornerShape(22.dp), color = colors.Card,
             border = BorderStroke(0.2.dp, colors.Border.copy(alpha = 0.4f))) {
             Column(Modifier.padding(14.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
@@ -1811,7 +1811,7 @@ private fun CoderChatView(
                 placeholder = { Text("Ask the coder about this file…", fontSize = 11.sp,
                     color = colors.Text3, fontFamily = FontFamily.Monospace) },
                 minLines = 1, maxLines = 3,
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = {
                     if (coderInput.isNotBlank()) {
@@ -1850,7 +1850,7 @@ private fun CoderChatView(
 @Composable
 private fun ResearchLibrariesCard(colors: ZcPalette, onResearch: () -> Unit) {
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         color = Pr.copy(alpha = 0.10f),
         border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.5f)),
         modifier = Modifier.fillMaxWidth()
@@ -1881,7 +1881,7 @@ private fun ResearchLibrariesCard(colors: ZcPalette, onResearch: () -> Unit) {
 @Composable
 private fun SessionSuccessCard(ui: InventUiState, colors: ZcPalette) {
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         color = Cy.copy(alpha = 0.12f),
         border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.6f)),
         modifier = Modifier.fillMaxWidth()

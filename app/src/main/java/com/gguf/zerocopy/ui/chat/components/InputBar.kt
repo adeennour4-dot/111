@@ -177,7 +177,7 @@ fun InputBar(
             enabled = !isInferring,
             minLines = 1,
             maxLines = 4,
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(22.dp),
             keyboardOptions = KeyboardOptions(
               keyboardType = KeyboardType.Text,
               imeAction = ImeAction.Send
