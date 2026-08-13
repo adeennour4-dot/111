@@ -2,6 +2,7 @@ package com.gguf.zerocopy.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
+import kotlin.math.min
 import com.gguf.zerocopy.domain.device.DeviceInfo
 import com.gguf.zerocopy.domain.inference.InferenceConfig
 import com.gguf.zerocopy.domain.inference.RepeatPenaltyConfig
