@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import kotlin.math.min
 import com.gguf.zerocopy.domain.device.DeviceInfo
+import com.gguf.zerocopy.domain.device.DeviceUtils
 import com.gguf.zerocopy.domain.inference.InferenceConfig
 import com.gguf.zerocopy.domain.inference.RepeatPenaltyConfig
 
@@ -14,7 +15,28 @@ object SettingsManager {
 
   fun init(context: Context) {
     prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    seedDeviceThreadDefaultIfFirstRun(context)
     applyCompatBuildDefaultsIfFirstRun(context)
+  }
+
+  /**
+   * On first launch, seed the thread count from the device's actual CPU
+   * topology (number of high-frequency "big" cores) instead of the static
+   * default of 4. Avoids over-subscription on chips with few big cores and
+   * under-utilization on chips with many. Guarded by a one-time flag so a
+   * user's later manual change is never overwritten. The compat build's
+   * extra-conservative override (applyCompatBuildDefaultsIfFirstRun) still
+   * wins on old devices.
+   */
+  private fun seedDeviceThreadDefaultIfFirstRun(context: Context) {
+    val alreadySeeded = prefs?.getBoolean("threads_device_seeded", false) ?: true
+    if (alreadySeeded) return
+    try {
+      threads = DeviceUtils(context).recommendedThreads()
+    } catch (_: Exception) {
+      // detection unavailable — keep the static default of 4
+    }
+    prefs?.edit()?.putBoolean("threads_device_seeded", true)?.apply()
   }
 
   /**

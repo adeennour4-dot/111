@@ -26,10 +26,10 @@ data class DeviceInfo(
   fun suggestConfig(modelSizeB: Float = 7f, isMoE: Boolean = false, expertCount: Int = 0, expertUsedCount: Int = 0): InferenceConfig {
     val suggestedThreads =
       if (bigCores.isNotEmpty()) {
-        bigCores.size.coerceIn(1, 4)
+        bigCores.size.coerceIn(1, 8)
       } else {
         // If freq-based detection failed, assume 4 threads max for old devices
-        (cpuCores / 2).coerceIn(2, 4)
+        (cpuCores / 2).coerceIn(2, 8)
       }
 
     // Exynos chips (Note 10 Lite = 9825, S23 FE = 2200) have Vulkan but
@@ -126,6 +126,23 @@ class DeviceUtils(private val context: Context) {
       hasVulkan = hasVulkanDevice(),
       hasOpenCL = hasOpenCLDevice()
     )
+  }
+
+  /**
+   * Recommended thread count for CPU inference, derived from the device's
+   * high-frequency ("big") core count read via
+   * /sys/devices/system/cpu/cpu*/cpufreq/cpuinfo_max_freq. Falls back to half
+   * the available processors when frequency data is unavailable. No root needed.
+   * This is a lightweight path (no Vulkan/OpenCL native-lib probing) so it is
+   * safe to call during app startup.
+   */
+  fun recommendedThreads(): Int {
+    val big = detectBigCores()
+    return if (big.isNotEmpty()) {
+      big.size.coerceIn(1, 8)
+    } else {
+      (Runtime.getRuntime().availableProcessors() / 2).coerceIn(2, 8)
+    }
   }
 
   fun readCpuFreq(cpu: Int): Int = try {
