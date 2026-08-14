@@ -324,9 +324,9 @@ fun SettingsScreen(onBack: () -> Unit) {
             fontFamily = FontFamily.Monospace)
           Row(Modifier.fillMaxWidth().padding(top = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            BackendPill("Auto", "auto", backend, { backend = it }, colors)
-            BackendPill("CPU", "cpu", backend, { backend = it }, colors)
-            BackendPill("GPU", "gpu", backend, { backend = it }, colors)
+            BackendPill("Auto", "auto", backend, { backend = it }, colors, modifier = Modifier.weight(1f))
+            BackendPill("CPU", "cpu", backend, { backend = it }, colors, modifier = Modifier.weight(1f))
+            BackendPill("GPU", "gpu", backend, { backend = it }, colors, modifier = Modifier.weight(1f))
           }
           Text(
             when (backend) {
@@ -695,11 +695,12 @@ private fun BackendPill(
   value: String,
   selected: String,
   onSelect: (String) -> Unit,
-  colors: ZcPalette
+  colors: ZcPalette,
+  modifier: Modifier = Modifier
 ) {
   ZcPillButton(
     onClick = { onSelect(value) },
-    modifier = Modifier.weight(1f),
+    modifier = modifier,
     label = label,
     tint = colors.Accent,
     ghost = selected != value
