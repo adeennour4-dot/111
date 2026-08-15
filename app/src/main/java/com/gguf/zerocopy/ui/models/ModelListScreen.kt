@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.provider.OpenableColumns
 import android.util.Log
+import org.json.JSONObject
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -877,9 +878,9 @@ private fun ModelCard(
               fontFamily = FontFamily.Monospace
             )
           }
-          // Vision-capable badge (mmproj auto-detected next to the model or via global config)
-          if (model.format.equals("gguf", ignoreCase = true) &&
-              (findMmprojFor(model.path) != null || com.gguf.zerocopy.data.local.SettingsManager.mmprojPath.isNotEmpty())) {
+          // Vision-capable badge — per-format detection (GGUF mmproj, MNN
+          // config.json is_visual/vit_path, LiteRT-LM manifest IMAGE modality).
+          if (modelHasVision(model) || com.gguf.zerocopy.data.local.SettingsManager.mmprojPath.isNotEmpty()) {
             Spacer(Modifier.width(6.dp))
             Surface(
               shape = RoundedCornerShape(8.dp),
@@ -1099,6 +1100,52 @@ private fun findMmprojFor(modelPath: String): String? {
     java.io.File(parent, "mmproj-" + modelFile.name)
   )
   return candidates.firstOrNull { it.exists() && it.isFile }?.absolutePath
+}
+
+/** Vision capability per engine format.
+ *  - GGUF:      sibling mmproj file (existing detection).
+ *  - MNN:       config.json declares a visual tower (is_visual / vit_path).
+ *  - LiteRT-LM / TFLite: bundle manifest declares an IMAGE modality. */
+private fun modelHasVision(model: LocalModel): Boolean {
+  return when {
+    model.format.equals("gguf", ignoreCase = true) -> findMmprojFor(model.path) != null
+    model.format.equals("mnn", ignoreCase = true) -> mnnConfigIndicatesVision(model.path)
+    model.format.equals("litertlm", ignoreCase = true) ||
+    model.format.equals("lite", ignoreCase = true) ||
+    model.format.equals("tflite", ignoreCase = true) -> litertIndicatesVision(model.path)
+    else -> false
+  }
+}
+
+private fun mnnConfigIndicatesVision(modelPath: String): Boolean {
+  val configFile = findMnnConfigJson(modelPath) ?: return false
+  return try {
+    val json = JSONObject(configFile.readText())
+    json.optBoolean("is_visual", false) || json.optString("vit_path", "").isNotEmpty()
+  } catch (_: Exception) { false }
+}
+
+private fun findMnnConfigJson(modelPath: String): java.io.File? {
+  val file = java.io.File(modelPath)
+  val parent = file.parentFile ?: return null
+  val candidates = listOfNotNull(
+    if (file.isDirectory) java.io.File(file, "config.json") else null,
+    java.io.File(parent, "config.json"),
+    java.io.File(parent, file.nameWithoutExtension + ".json")
+  )
+  return candidates.firstOrNull { it.exists() && it.isFile }
+}
+
+private fun litertIndicatesVision(modelPath: String): Boolean {
+  return try {
+    val file = java.io.File(modelPath)
+    val dir = if (file.isDirectory) file else file.parentFile ?: return false
+    dir.walkTopDown().maxDepth(2).any { f ->
+      f.isFile && (f.name.contains("manifest", ignoreCase = true) || f.name.endsWith(".json", ignoreCase = true)) &&
+      runCatching { f.readText().contains("IMAGE", ignoreCase = true) || f.readText().contains("\"image\"", ignoreCase = true) }
+        .getOrDefault(false)
+    }
+  } catch (_: Exception) { false }
 }
 
 private fun getFileName(context: android.content.Context, uri: android.net.Uri): String {

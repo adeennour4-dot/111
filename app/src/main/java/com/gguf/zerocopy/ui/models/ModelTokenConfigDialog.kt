@@ -11,11 +11,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.data.local.SettingsManager
+import com.gguf.zerocopy.domain.device.DeviceUtils
 import com.gguf.zerocopy.ui.components.ZcPillButton
 import com.gguf.zerocopy.ui.theme.ZcPalette
 import com.gguf.zerocopy.ui.theme.currentPalette
@@ -43,6 +45,14 @@ fun ModelTokenConfigDialog(
     modelContextLength: Int = 32768
 ) {
     val colors = currentPalette()
+    val context = LocalContext.current
+    // Device-recommended thread count (big-core count) for the hint below.
+    val recommendedThreads = remember {
+        try { DeviceUtils(context).detect().bigCores.size.coerceIn(1, 8) } catch (_: Exception) { 4 }
+    }
+    // Flash Attention needs ARMv8.2-a dot-product / i8mm — disable the switch
+    // itself (not just a caption) when this CPU can't use it.
+    val flashSupported = remember { cpuSupportsFlashAttention() }
 
     // ── GPU layers enable (GGUF-specific) ──
     var enableGpu by remember { mutableStateOf(isGguf) }
@@ -336,11 +346,14 @@ fun ModelTokenConfigDialog(
                 SamplingField("Seed", "-1=random", seedText, { seedText = it }, colors)
 
                 SingleSwitch("Flash Attention", flashSwitch, { flashSwitch = it }, colors,
-                    hint = "llama.cpp only — auto-disabled on ARMv8.2-a")
+                    hint = if (flashSupported) "llama.cpp only — auto-disabled on ARMv8.2-a" else "Not supported on this CPU",
+                    enabled = flashSupported)
                 SingleSwitch("Low RAM mode", lowRamSwitch, { lowRamSwitch = it }, colors,
                     hint = "caps n_ctx to 2048, llama.cpp only")
 
                 SamplingField("Threads", "1-16", threadsText, { threadsText = it }, colors)
+                Text("Recommended: $recommendedThreads (big cores) for this device",
+                    fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
                 SamplingField("Batch", "512-8192", batchText, { batchText = it }, colors)
 
                 // ── RAM estimate ──
@@ -356,8 +369,10 @@ fun ModelTokenConfigDialog(
                         RamRow("Model", "${String.format("%.1f", modelFileSizeMB)} MB", colors.Text2, colors)
                         RamRow("KV Cache", "${String.format("%.0f", kvCacheMB)} MB", colors.Text2, colors)
                         HorizontalDivider(color = colors.Border.copy(0.5f))
+                        // Reserve color for state: neutral when within budget,
+                        // only red when over — not decorative green/cyan.
                         RamRow("Total", "${String.format("%.0f", totalEstMB)} MB / ${totalRamMB} MB",
-                            if (ramOk) colors.Accent2 else colors.Red, colors)
+                            if (ramOk) colors.Text2 else colors.Red, colors)
                         if (!ramOk) Text("⚠  Exceeds RAM — reduce ctx or max tokens",
                             fontSize = 9.sp, color = colors.Red, fontFamily = FontFamily.Monospace)
                     }
@@ -390,12 +405,12 @@ fun ModelTokenConfigDialog(
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Text3)
                     ) { Text("Reset", fontSize = 11.sp, fontFamily = FontFamily.Monospace) }
                     if (onRemove != null) {
-                        OutlinedButton(
+                        Button(
                             onClick = onRemove,
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(50),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Red)
-                        ) { Text("Remove", fontSize = 11.sp, fontFamily = FontFamily.Monospace) }
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.Red)
+                        ) { Text("Remove", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text, fontWeight = FontWeight.Bold) }
                     }
                 }
             }
@@ -505,23 +520,38 @@ private fun SingleSwitch(
     checked: Boolean,
     onCheck: (Boolean) -> Unit,
     colors: ZcPalette,
-    hint: String = ""
+    hint: String = "",
+    enabled: Boolean = true
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Switch(
             checked = checked,
             onCheckedChange = onCheck,
-            colors = SwitchDefaults.colors(checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg,
-                uncheckedTrackColor = colors.Border, uncheckedThumbColor = colors.Text3)
+            enabled = enabled,
+            colors = SwitchDefaults.colors(
+                checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg,
+                uncheckedTrackColor = colors.Border, uncheckedThumbColor = colors.Text3,
+                disabledCheckedTrackColor = colors.Border, disabledUncheckedTrackColor = colors.Border,
+                disabledThumbColor = colors.Text3)
         )
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
-            Text(label, fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+            Text(label, fontSize = 11.sp, color = if (enabled) colors.Text2 else colors.Text3,
+                fontFamily = FontFamily.Monospace)
             if (hint.isNotEmpty()) {
                 Text(hint, fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
             }
         }
     }
+}
+
+/** Flash Attention (llama.cpp FA) requires ARMv8.2-a dot-product / i8mm
+ *  instructions. Detect by scanning /proc/cpuinfo Features. */
+private fun cpuSupportsFlashAttention(): Boolean {
+    return try {
+        val info = java.io.File("/proc/cpuinfo").readText()
+        info.contains("i8mm") || info.contains("dotprod")
+    } catch (_: Exception) { true }
 }
 
 @Composable

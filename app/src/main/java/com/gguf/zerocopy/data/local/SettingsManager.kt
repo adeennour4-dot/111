@@ -32,7 +32,9 @@ object SettingsManager {
     val alreadySeeded = prefs?.getBoolean("threads_device_seeded", false) ?: true
     if (alreadySeeded) return
     try {
-      threads = DeviceUtils(context).recommendedThreads()
+      // Derive threads from the device's real CPU topology (big-core count)
+      // via the existing DeviceUtils detector, instead of the static default of 4.
+      threads = DeviceUtils(context).detect().suggestConfig().nThreads
     } catch (_: Exception) {
       // detection unavailable — keep the static default of 4
     }

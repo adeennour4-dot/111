@@ -128,23 +128,6 @@ class DeviceUtils(private val context: Context) {
     )
   }
 
-  /**
-   * Recommended thread count for CPU inference, derived from the device's
-   * high-frequency ("big") core count read via
-   * /sys/devices/system/cpu/cpu*/cpufreq/cpuinfo_max_freq. Falls back to half
-   * the available processors when frequency data is unavailable. No root needed.
-   * This is a lightweight path (no Vulkan/OpenCL native-lib probing) so it is
-   * safe to call during app startup.
-   */
-  fun recommendedThreads(): Int {
-    val big = detectBigCores()
-    return if (big.isNotEmpty()) {
-      big.size.coerceIn(1, 8)
-    } else {
-      (Runtime.getRuntime().availableProcessors() / 2).coerceIn(2, 8)
-    }
-  }
-
   fun readCpuFreq(cpu: Int): Int = try {
     val f = File("/sys/devices/system/cpu/cpu$cpu/cpufreq/cpuinfo_max_freq")
     if (f.exists()) {
