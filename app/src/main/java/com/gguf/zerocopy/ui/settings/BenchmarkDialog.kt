@@ -1,6 +1,5 @@
 package com.gguf.zerocopy.ui.settings
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -48,7 +47,6 @@ fun BenchmarkDialog(
         },
         containerColor = colors.Card,
         shape = RoundedCornerShape(22.dp),
-        scrim = { Box(Modifier.fillMaxSize().background(colors.Bg.copy(alpha = 0.92f))) },
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.Refresh, null, tint = colors.Accent2, modifier = Modifier.size(20.dp))

@@ -531,8 +531,7 @@ private fun SingleSwitch(
             colors = SwitchDefaults.colors(
                 checkedTrackColor = colors.Accent, checkedThumbColor = colors.Bg,
                 uncheckedTrackColor = colors.Border, uncheckedThumbColor = colors.Text3,
-                disabledCheckedTrackColor = colors.Border, disabledUncheckedTrackColor = colors.Border,
-                disabledThumbColor = colors.Text3)
+                disabledCheckedTrackColor = colors.Border, disabledUncheckedTrackColor = colors.Border)
         )
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
