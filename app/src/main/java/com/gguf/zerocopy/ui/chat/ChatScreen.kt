@@ -1,4 +1,5 @@
 package com.gguf.zerocopy.ui.chat
+import com.gguf.zerocopy.ui.theme.ZcShape
 
 import android.Manifest
 import android.app.Activity
@@ -791,7 +792,7 @@ fun ChatScreen(
           }
           if (modelName.isNotEmpty()) {
             Surface(
-              shape = RoundedCornerShape(8.dp),
+              shape = ZcShape.Sm,
               color = colors.Accent2.copy(alpha = 0.10f),
               border = BorderStroke(0.2.dp, colors.Accent2.copy(alpha = 0.25f)),
               modifier = Modifier.padding(end = 6.dp)
@@ -873,7 +874,7 @@ fun ChatScreen(
         if (!modelReasoningOk) {
           Surface(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
-            shape = RoundedCornerShape(8.dp),
+            shape = ZcShape.Sm,
             color = colors.Amber.copy(alpha = 0.12f),
             border = BorderStroke(0.2.dp, colors.Amber.copy(0.5f))
           ) {
@@ -973,7 +974,7 @@ fun ChatScreen(
             .fillMaxWidth()
             .align(Alignment.TopCenter)
             .padding(top = 4.dp, start = 8.dp, end = 8.dp),
-          shape = RoundedCornerShape(8.dp),
+          shape = ZcShape.Sm,
           color = colors.Red.copy(alpha = 0.08f),
           border = BorderStroke(0.2.dp, colors.Red.copy(alpha = 0.3f))
         ) {

@@ -1,4 +1,5 @@
 package com.gguf.zerocopy.ui.models
+import com.gguf.zerocopy.ui.theme.ZcShape
 
 import android.app.Activity
 import android.content.Intent
@@ -391,7 +392,7 @@ fun ModelListScreen(
               fontFamily = FontFamily.Monospace
             )
             Spacer(Modifier.height(16.dp))
-            TextButton(shape = RoundedCornerShape(50), onClick = {
+            TextButton(shape = ZcShape.Pill, onClick = {
               loadCancelRequested = true
               loadingJob?.cancel()
               loadingJob = null
@@ -559,12 +560,12 @@ fun ModelListScreen(
             Text("Remove ${model.name} from device? This cannot be undone.", color = colors.Text2, fontSize = 14.sp)
           },
           confirmButton = {
-            TextButton(shape = RoundedCornerShape(50), onClick = { confirmDelete(model) }) {
+            TextButton(shape = ZcShape.Pill, onClick = { confirmDelete(model) }) {
               Text("Delete", color = colors.Red)
             }
           },
           dismissButton = {
-            TextButton(shape = RoundedCornerShape(50), onClick = { modelToDelete = null }) {
+            TextButton(shape = ZcShape.Pill, onClick = { modelToDelete = null }) {
               Text("Cancel", color = colors.Text2)
             }
           }
@@ -604,7 +605,7 @@ fun ModelListScreen(
             }
           },
           confirmButton = {
-            TextButton(shape = RoundedCornerShape(50), onClick = {
+            TextButton(shape = ZcShape.Pill, onClick = {
               modelToDetail = null
               handleModelTap(model)
             }) {
@@ -612,7 +613,7 @@ fun ModelListScreen(
             }
           },
           dismissButton = {
-            TextButton(shape = RoundedCornerShape(50), onClick = { modelToDetail = null }) {
+            TextButton(shape = ZcShape.Pill, onClick = { modelToDetail = null }) {
               Text("Close", color = colors.Text2)
             }
           }
@@ -634,12 +635,12 @@ fun ModelListScreen(
             }
           },
           confirmButton = {
-            TextButton(shape = RoundedCornerShape(50), onClick = { confirmEngineSwitch(model) }) {
+            TextButton(shape = ZcShape.Pill, onClick = { confirmEngineSwitch(model) }) {
               Text("Switch", color = colors.Accent)
             }
           },
           dismissButton = {
-            TextButton(shape = RoundedCornerShape(50), onClick = { engineSwitchWarningModel = null }) {
+            TextButton(shape = ZcShape.Pill, onClick = { engineSwitchWarningModel = null }) {
               Text("Cancel", color = colors.Text2)
             }
           }
@@ -667,7 +668,7 @@ fun ModelListScreen(
             }
           },
           confirmButton = {
-            TextButton(shape = RoundedCornerShape(50), onClick = { importWarning = null }) {
+            TextButton(shape = ZcShape.Pill, onClick = { importWarning = null }) {
               Text("OK", color = colors.Accent)
             }
           }
@@ -708,7 +709,7 @@ fun ModelListScreen(
             }
           },
           confirmButton = {
-            TextButton(shape = RoundedCornerShape(50), onClick = {
+            TextButton(shape = ZcShape.Pill, onClick = {
               val m = loadErrorModel
               loadError = null; loadErrorModel = null
               if (m != null) {
@@ -734,7 +735,7 @@ fun ModelListScreen(
             }
           },
           dismissButton = {
-            TextButton(shape = RoundedCornerShape(50), onClick = { loadError = null; loadErrorModel = null }) {
+            TextButton(shape = ZcShape.Pill, onClick = { loadError = null; loadErrorModel = null }) {
               Text("Dismiss", color = colors.Text2)
             }
           }
@@ -791,7 +792,7 @@ fun ModelListScreen(
             }
           },
           confirmButton = {
-            TextButton(shape = RoundedCornerShape(50), onClick = { benchmarkResult = null }) {
+            TextButton(shape = ZcShape.Pill, onClick = { benchmarkResult = null }) {
               Text("Close", color = colors.Accent)
             }
           }
@@ -829,7 +830,7 @@ private fun ModelCard(
         onClick = onClick,
         onLongClick = onLongClick
       ),
-    shape = RoundedCornerShape(16.dp),
+    shape = ZcShape.Lg,
     color = if (isLoaded) colors.CardLight else colors.Card,
     border = if (isLoaded) BorderStroke(0.2.dp, IdentityBorderBrush)
         else BorderStroke(0.2.dp, colors.Border.copy(alpha = 0.5f))
@@ -883,7 +884,7 @@ private fun ModelCard(
           if (modelHasVision(model) || com.gguf.zerocopy.data.local.SettingsManager.mmprojPath.isNotEmpty()) {
             Spacer(Modifier.width(6.dp))
             Surface(
-              shape = RoundedCornerShape(8.dp),
+              shape = ZcShape.Sm,
               color = colors.Amber.copy(alpha = 0.2f)
             ) {
               Text(
@@ -900,7 +901,7 @@ private fun ModelCard(
           if (model.isMoE) {
             Spacer(Modifier.width(6.dp))
             Surface(
-              shape = RoundedCornerShape(8.dp),
+              shape = ZcShape.Sm,
               color = colors.Purple.copy(alpha = 0.2f)
             ) {
               Text(
@@ -966,7 +967,7 @@ private fun EngineBadge(engine: EngineType) {
     EngineType.LITER_T -> "TFLite" to colors.Amber
   }
   Surface(
-    shape = RoundedCornerShape(8.dp),
+    shape = ZcShape.Sm,
     color = badgeColor.copy(alpha = 0.2f)
   ) {
     Text(

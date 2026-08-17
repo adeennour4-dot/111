@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.outlined.Search
@@ -33,11 +32,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.R
@@ -45,6 +44,8 @@ import com.gguf.zerocopy.ui.theme.ThemeState
 import com.gguf.zerocopy.ui.theme.ZcColors
 import com.gguf.zerocopy.ui.theme.ZcLightColors
 import com.gguf.zerocopy.ui.theme.ZcMotion
+import com.gguf.zerocopy.ui.theme.ZcShape
+import com.gguf.zerocopy.ui.theme.ZcSpace
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
@@ -63,21 +64,29 @@ val IdentityGradient: List<Color> get() = identityStops()
 val IdentitySweepBrush: Brush get() = Brush.sweepGradient(identityStops() + identityStops().first())
 val IdentityBorderBrush: Brush get() = Brush.linearGradient(identityStops())
 
-/** Futuristic display font (Orbitron) for headers, names and labels. */
+/** Geometric display font (Orbitron) for headers, names and labels. */
 val FuturisticFont = FontFamily(Font(R.font.orbitron))
 
+// ── Symmetric control geometry ──────────────────────────────────────────────
+
+/** Standard interactive control height (48dp — Material touch target). */
+val ZcControlHeight = 48.dp
+
+/** Standard circular icon-button size (40dp). */
+val ZcIconButtonSize = 40.dp
+
 /**
- * Black/white chat bubble wrapped in the app's cyan→purple gradient
- * ring. While [circulating] (a response is being generated) the gradient
- * sweeps around the outline; otherwise it sits as a static gradient border.
- * The bubble fill is [bubbleColor] — near-black in dark mode, white in light.
+ * Chat bubble with the cyan→purple gradient ring.
+ * While [circulating] (a response is being generated) the gradient sweeps
+ * around the outline as an ACTIVE state; at rest it is a crisp static
+ * hairline ring — no glow. Fill is [bubbleColor].
  */
 @Composable
 fun GradientBubbleBox(
     circulating: Boolean,
     bubbleColor: Color,
     shape: Shape,
-    borderWidth: androidx.compose.ui.unit.Dp = 1.dp,
+    borderWidth: Dp = 1.dp,
     content: @Composable BoxScope.() -> Unit
 ) {
     val angle = rememberCirculatingAngle(circulating)
@@ -121,15 +130,15 @@ private fun rememberCirculatingAngle(enabled: Boolean): Float {
 
 /**
  * Typing/"thinking" indicator: three pulsing dots in the identity gradient
- * (cyan → green → purple).
+ * (cyan → green → purple), symmetric spacing.
  */
 @Composable
 fun GradientThinkingDots(
     modifier: Modifier = Modifier,
-    dotSize: androidx.compose.ui.unit.Dp = 7.dp
+    dotSize: Dp = 7.dp
 ) {
     val transition = rememberInfiniteTransition(label = "thinkingDots")
-    Row(modifier = modifier, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         IdentityGradient.forEachIndexed { index, color ->
             val alpha by transition.animateFloat(
                 initialValue = 0.25f,
@@ -142,7 +151,7 @@ fun GradientThinkingDots(
             )
             Box(
                 Modifier
-                    .padding(horizontal = 1.5.dp)
+                    .padding(horizontal = ZcSpace.Xs)
                     .size(dotSize)
                     .clip(CircleShape)
                     .background(color.copy(alpha = alpha))
@@ -153,10 +162,10 @@ fun GradientThinkingDots(
 
 /**
  * Circular "thinking" indicator — the gradient ring sweeps around the circle
- * while the center dot breathes. Used in chat bubbles while a reply streams.
+ * while the center dot pulses. Active state only.
  */
 @Composable
-fun GradientThinkingCircle(size: androidx.compose.ui.unit.Dp = 14.dp) {
+fun GradientThinkingCircle(size: Dp = 14.dp) {
     val transition = rememberInfiniteTransition(label = "thinkingCircle")
     val rotation by transition.animateFloat(
         initialValue = 0f,
@@ -187,10 +196,10 @@ fun GradientThinkingCircle(size: androidx.compose.ui.unit.Dp = 14.dp) {
 
 /**
  * Circular "searching" indicator — gradient ring sweeps around a search glyph.
- * Used while the app researches / searches (Invent libraries, web search).
+ * Active state only.
  */
 @Composable
-fun GradientSearchingCircle(size: androidx.compose.ui.unit.Dp = 26.dp) {
+fun GradientSearchingCircle(size: Dp = 26.dp) {
     val transition = rememberInfiniteTransition(label = "searchingCircle")
     val rotation by transition.animateFloat(
         initialValue = 0f,
@@ -215,13 +224,13 @@ fun GradientSearchingCircle(size: androidx.compose.ui.unit.Dp = 26.dp) {
 }
 
 /**
- * Circular attach (paperclip) button with the identity gradient ring.
- * Lights up with a full gradient fill when [active] (an attachment is set).
+ * Circular attach (paperclip) button — symmetric icon button with the
+ * identity ring. Fills with the gradient when [active] (attachment set).
  */
 @Composable
 fun ClipCircleIcon(
     onClick: () -> Unit,
-    size: androidx.compose.ui.unit.Dp = 36.dp,
+    size: Dp = ZcIconButtonSize,
     fill: Color = Color(0xFF0B0E13),
     active: Boolean = false
 ) {
@@ -244,8 +253,8 @@ fun ClipCircleIcon(
 }
 
 /**
- * Polished, on-brand pill button. Fully circular, soft tinted fill with a
- * hairline gradient-ring border, and the standard Material press ripple.
+ * Polished, on-brand pill button — symmetric 48dp control, fully circular,
+ * tinted fill + hairline gradient-ring border, standard Material press ripple.
  * Use [ghost] = true for secondary / paired actions (transparent fill).
  */
 @Composable
@@ -253,7 +262,7 @@ fun ZcPillButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     label: String? = null,
-    tint: Color = IdentityCyan,
+    tint: Color = IdentityPurple,
     ghost: Boolean = false,
     enabled: Boolean = true
 ) {
@@ -261,7 +270,7 @@ fun ZcPillButton(
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         if (pressed) 0.97f else 1f,
-        tween(ZcMotion.xxs, easing = ZcMotion.emphasis),
+        tween(ZcMotion.xs, easing = ZcMotion.emphasis),
         label = "zcPillScale"
     )
     Surface(
@@ -269,7 +278,7 @@ fun ZcPillButton(
         enabled = enabled,
         interactionSource = interactionSource,
         modifier = modifier.graphicsLayer { scaleX = scale; scaleY = scale },
-        shape = RoundedCornerShape(50),
+        shape = ZcShape.Pill,
         color = if (ghost) Color.Transparent else tint.copy(alpha = 0.14f),
         border = BorderStroke(0.2.dp, tint.copy(alpha = 0.5f)),
     ) {
@@ -280,7 +289,7 @@ fun ZcPillButton(
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 fontFamily = FuturisticFont,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
+                modifier = Modifier.padding(horizontal = ZcSpace.Lg, vertical = ZcSpace.Md)
             )
         }
     }

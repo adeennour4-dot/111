@@ -1,4 +1,5 @@
 package com.gguf.zerocopy.ui.models
+import com.gguf.zerocopy.ui.theme.ZcShape
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -87,7 +88,7 @@ fun ModelSelectionDialog(
     },
     confirmButton = {},
     dismissButton = {
-      TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) {
+      TextButton(shape = ZcShape.Pill, onClick = onDismiss) {
         Text("Cancel", color = colors.Text2)
       }
     }
@@ -145,7 +146,7 @@ private fun ModelRow(
           if (isLoaded) {
             Spacer(Modifier.width(8.dp))
             Surface(
-              shape = RoundedCornerShape(8.dp),
+              shape = ZcShape.Sm,
               color = colors.Accent2.copy(alpha = 0.2f)
             ) {
               Text(
@@ -173,7 +174,7 @@ private fun EngineBadge(engine: EngineType) {
     EngineType.LITER_T -> "TFLite" to colors.Amber
   }
   Surface(
-    shape = RoundedCornerShape(8.dp),
+    shape = ZcShape.Sm,
     color = badgeColor.copy(alpha = 0.2f)
   ) {
     Text(

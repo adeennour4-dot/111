@@ -1,4 +1,5 @@
 package com.gguf.zerocopy.ui.settings
+import com.gguf.zerocopy.ui.theme.ZcShape
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -88,7 +89,7 @@ fun BenchmarkDialog(
 
                 // ── Run button ──
                 Button(
-                    shape = RoundedCornerShape(50),
+                    shape = ZcShape.Pill,
                     onClick = {
                         selectedModel?.let { model ->
                             benchmarking = true
@@ -149,7 +150,7 @@ fun BenchmarkDialog(
 
                 // ── Error ──
                 if (error != null) {
-                    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = colors.Red.copy(0.08f)) {
+                    Surface(Modifier.fillMaxWidth(), shape = ZcShape.Sm, color = colors.Red.copy(0.08f)) {
                         Text(error!!, color = colors.Red, fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(10.dp))
                     }
                 }

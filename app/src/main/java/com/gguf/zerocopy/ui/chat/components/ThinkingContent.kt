@@ -1,4 +1,5 @@
 package com.gguf.zerocopy.ui.chat.components
+import com.gguf.zerocopy.ui.theme.ZcShape
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -89,7 +90,7 @@ fun ThinkingContent(
             .fillMaxWidth()
             .padding(horizontal = 10.dp)
             .padding(bottom = 10.dp),
-          shape = RoundedCornerShape(8.dp),
+          shape = ZcShape.Sm,
           color = colors.Card,
           tonalElevation = 0.dp
         ) {

@@ -1,4 +1,5 @@
 package com.gguf.zerocopy.ui.sessions
+import com.gguf.zerocopy.ui.theme.ZcShape
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -90,7 +91,7 @@ fun SessionListScreen(
         },
         containerColor = colors.Accent,
         contentColor = colors.Bg,
-        shape = RoundedCornerShape(16.dp)
+        shape = ZcShape.Lg
       ) {
         Icon(Icons.Filled.Add, "New Chat")
       }
@@ -157,7 +158,7 @@ fun SessionListScreen(
         )
       },
       confirmButton = {
-        TextButton(shape = RoundedCornerShape(50), onClick = {
+        TextButton(shape = ZcShape.Pill, onClick = {
           if (renameName.isNotBlank()) {
             app.chatRepository.renameSession(session.id, renameName)
           }
@@ -165,7 +166,7 @@ fun SessionListScreen(
         }) { Text("Rename", color = colors.Accent) }
       },
       dismissButton = {
-        TextButton(shape = RoundedCornerShape(50), onClick = { renameTarget = null }) {
+        TextButton(shape = ZcShape.Pill, onClick = { renameTarget = null }) {
           Text("Cancel", color = colors.Text2)
         }
       }
@@ -184,13 +185,13 @@ fun SessionListScreen(
         )
       },
       confirmButton = {
-        TextButton(shape = RoundedCornerShape(50), onClick = {
+        TextButton(shape = ZcShape.Pill, onClick = {
           app.chatRepository.deleteSession(session.id)
           deleteTarget = null
         }) { Text("Delete", color = colors.Red) }
       },
       dismissButton = {
-        TextButton(shape = RoundedCornerShape(50), onClick = { deleteTarget = null }) {
+        TextButton(shape = ZcShape.Pill, onClick = { deleteTarget = null }) {
           Text("Cancel", color = colors.Text2)
         }
       }
@@ -220,7 +221,7 @@ private fun SessionCard(
         onClick = onSelect,
         onLongClick = { showMenu = true }
       ),
-    shape = RoundedCornerShape(16.dp),
+    shape = ZcShape.Lg,
     colors = CardDefaults.cardColors(containerColor = colors.CardLight),
     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
   ) {

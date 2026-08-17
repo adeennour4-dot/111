@@ -1,4 +1,5 @@
 package com.gguf.zerocopy.ui.settings
+import com.gguf.zerocopy.ui.theme.ZcShape
 
 import android.app.Activity
 import android.content.Intent
@@ -288,7 +289,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       SectionHeader("Inference", colors)
 
       // ── Sampling ──
-      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
+      Surface(shape = ZcShape.Lg, color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Row(verticalAlignment = Alignment.CenterVertically) {
@@ -309,7 +310,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       }
 
       // ── Generation ──
-      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
+      Surface(shape = ZcShape.Lg, color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Row(verticalAlignment = Alignment.CenterVertically) {
@@ -369,7 +370,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       }
 
       // ── Chat template ──
-      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
+      Surface(shape = ZcShape.Lg, color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Text("Chat Template", fontWeight = FontWeight.SemiBold, fontSize = 12.sp,
@@ -380,7 +381,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       }
 
       // ── Auto-load after import ──
-      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
+      Surface(shape = ZcShape.Lg, color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           ToggleRow(
@@ -398,7 +399,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       // ═══════════════════════════════════════════════════════════════════════
       SectionHeader("System", colors)
 
-      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
+      Surface(shape = ZcShape.Lg, color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Text("System Prompt", fontSize = 11.sp, color = colors.Text2)
@@ -407,7 +408,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             value = sysPrompt, onValueChange = { sysPrompt = it },
             modifier = Modifier.fillMaxWidth(),
             maxLines = 4,
-            shape = RoundedCornerShape(8.dp),
+            shape = ZcShape.Sm,
             colors = OutlinedTextFieldDefaults.colors(
               focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
               focusedTextColor = colors.Text, unfocusedTextColor = colors.Text,
@@ -419,7 +420,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       }
 
       // ── System actions ──
-      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
+      Surface(shape = ZcShape.Lg, color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           ActionButton("Load Vision mmproj", colors.Purple, colors) {
@@ -463,7 +464,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       // ═══════════════════════════════════════════════════════════════════════
       SectionHeader("Reasoning", colors)
 
-      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
+      Surface(shape = ZcShape.Lg, color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           ToggleRow("Chain-of-Thought", "Let's work step-by-step before answering",
@@ -476,7 +477,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       // ═══════════════════════════════════════════════════════════════════════
       SectionHeader("RAG & Documents", colors)
 
-      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
+      Surface(shape = ZcShape.Lg, color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           ToggleRow("Retrieval-Augmented Gen", "Inject document context into prompts",
@@ -504,7 +505,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                   modifier = Modifier.weight(1f))
               }
             }
-            TextButton(shape = RoundedCornerShape(50), onClick = { ragEngine.clear() },
+            TextButton(shape = ZcShape.Pill, onClick = { ragEngine.clear() },
               modifier = Modifier.height(32.dp)) {
               Text("Clear all documents", fontSize = 10.sp, color = colors.Red)
             }
@@ -531,7 +532,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       // ═══════════════════════════════════════════════════════════════════════
       SectionHeader("Appearance", colors)
 
-      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
+      Surface(shape = ZcShape.Lg, color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Text("Theme", fontSize = 12.sp, color = colors.Text, fontWeight = FontWeight.SemiBold)
@@ -541,7 +542,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             listOf("system" to "System", "dark" to "Dark", "light" to "Light").forEach { (key, label) ->
               Surface(
                 onClick = { themeMode = key; SettingsManager.themeMode = key },
-                shape = RoundedCornerShape(8.dp),
+                shape = ZcShape.Sm,
                 color = if (themeMode == key) colors.Accent.copy(alpha = 0.18f) else colors.CardLight,
                 border = BorderStroke(0.2.dp, if (themeMode == key) colors.Accent else colors.Border),
                 modifier = Modifier.weight(1f)
@@ -562,7 +563,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       // ═══════════════════════════════════════════════════════════════════════
       SectionHeader("Server", colors)
 
-      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
+      Surface(shape = ZcShape.Lg, color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           ToggleRow("Model Server", "Anyone on WiFi can access the web UI",
@@ -607,7 +608,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     if (showToken) "Hide" else "Show", tint = colors.Text3)
                 }
               },
-              shape = RoundedCornerShape(8.dp),
+              shape = ZcShape.Sm,
               colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
                 focusedTextColor = colors.Text, unfocusedTextColor = colors.Text,
@@ -624,12 +625,12 @@ fun SettingsScreen(onBack: () -> Unit) {
       // ═══════════════════════════════════════════════════════════════════════
       // BENCHMARK & SAVE
       // ═══════════════════════════════════════════════════════════════════════
-      Surface(shape = RoundedCornerShape(16.dp), color = colors.CardLight) {
+      Surface(shape = ZcShape.Lg, color = colors.CardLight) {
         Column(Modifier.padding(14.dp)) {
           ActionButton("Run Benchmark", colors.Accent2, colors) { showBenchmark = true }
           Spacer(Modifier.height(8.dp))
           Button(
-            shape = RoundedCornerShape(50),
+            shape = ZcShape.Pill,
             onClick = {
               saveAndReload()
               scope.launch { snackbarHostState.showSnackbar("Settings saved & model reloaded") }
@@ -649,7 +650,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       // ═══════════════════════════════════════════════════════════════════════
       SectionHeader("About", colors)
 
-      Surface(shape = RoundedCornerShape(16.dp), color = colors.Card,
+      Surface(shape = ZcShape.Lg, color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Text("adeennour4-dot", fontSize = 12.sp, color = colors.Text2,
@@ -756,7 +757,7 @@ private fun InlineField(
       keyboardActions = KeyboardActions(
         onDone = { focusManager.clearFocus() }
       ),
-      shape = RoundedCornerShape(8.dp),
+      shape = ZcShape.Sm,
       colors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
         focusedTextColor = colors.Text, unfocusedTextColor = colors.Text,
@@ -818,13 +819,13 @@ private fun ResetDialog(
     text = { Text("Clear the context window and conversation history. Model stays loaded.",
       color = colors.Text2) },
     confirmButton = {
-      TextButton(shape = RoundedCornerShape(50), onClick = {
+      TextButton(shape = ZcShape.Pill, onClick = {
         engineManager.getActiveEngine()?.resetContext()
         onDismiss()
         scope.launch { snackbarHostState.showSnackbar("Context reset") }
       }) { Text("Reset", color = colors.Red) }
     },
-    dismissButton = { TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) { Text("Cancel", color = colors.Text2) } }
+    dismissButton = { TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Cancel", color = colors.Text2) } }
   )
 }
 
@@ -839,7 +840,7 @@ fun SettingField(label: String, hint: String, value: String, onChange: (String) 
       modifier = Modifier.fillMaxWidth().height(42.dp),
       singleLine = true,
       keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-      shape = RoundedCornerShape(8.dp),
+      shape = ZcShape.Sm,
       colors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
         focusedTextColor = colors.Accent, unfocusedTextColor = colors.Accent.copy(alpha = 0.7f),
@@ -868,7 +869,7 @@ private fun ChatTemplateSelector(
     OutlinedButton(
       onClick = { expanded.value = true },
       modifier = Modifier.fillMaxWidth(),
-      shape = RoundedCornerShape(50),
+      shape = ZcShape.Pill,
       colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent)
     ) {
       Text(selectedLabel, fontSize = 12.sp, fontFamily = FontFamily.Monospace,

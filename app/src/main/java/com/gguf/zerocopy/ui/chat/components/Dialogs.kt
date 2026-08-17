@@ -1,4 +1,5 @@
 package com.gguf.zerocopy.ui.chat.components
+import com.gguf.zerocopy.ui.theme.ZcShape
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -56,7 +57,7 @@ fun ExportSessionDialog(
   AlertDialog(
     onDismissRequest = { exportProgress = 0f; onDismiss() },
     containerColor = colors.Surface,
-    shape = RoundedCornerShape(16.dp),
+    shape = ZcShape.Lg,
     title = {
       Text(
         text = "Export Session",
@@ -81,7 +82,7 @@ fun ExportSessionDialog(
         )
         Spacer(Modifier.height(12.dp))
         TextButton(
-          shape = RoundedCornerShape(50),
+          shape = ZcShape.Pill,
           onClick = {
             exportProgress = 1f
             onShareText()
@@ -111,7 +112,7 @@ fun ExportSessionDialog(
           }
         }
         TextButton(
-          shape = RoundedCornerShape(50),
+          shape = ZcShape.Pill,
           onClick = {
             exportProgress = 1f
             onShareJson()
@@ -143,7 +144,7 @@ fun ExportSessionDialog(
       }
     },
     confirmButton = {
-      TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) {
+      TextButton(shape = ZcShape.Pill, onClick = onDismiss) {
         Text(text = "Done", color = colors.Accent, fontSize = 14.sp)
       }
     }
@@ -161,7 +162,7 @@ fun ModelSelectDialog(
   AlertDialog(
     onDismissRequest = onDismiss,
     containerColor = colors.Surface,
-    shape = RoundedCornerShape(16.dp),
+    shape = ZcShape.Lg,
     title = {
       Text(
         text = "Select Model",
@@ -185,7 +186,7 @@ fun ModelSelectDialog(
           items(models, key = { it.id }) { model ->
             Surface(
               onClick = { onSelect(model) },
-              shape = RoundedCornerShape(16.dp),
+              shape = ZcShape.Lg,
               color = colors.Card,
               modifier = Modifier
                 .fillMaxWidth()
@@ -228,7 +229,7 @@ fun ModelSelectDialog(
       }
     },
     confirmButton = {
-      TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) {
+      TextButton(shape = ZcShape.Pill, onClick = onDismiss) {
         Text(text = "Cancel", color = colors.Text2, fontSize = 14.sp)
       }
     }
@@ -245,7 +246,7 @@ fun DeleteConfirmDialog(
   AlertDialog(
     onDismissRequest = onDismiss,
     containerColor = colors.Surface,
-    shape = RoundedCornerShape(16.dp),
+    shape = ZcShape.Lg,
     title = {
       Text(
         text = "Delete message?",
@@ -266,7 +267,7 @@ fun DeleteConfirmDialog(
     confirmButton = {
       Box(
         modifier = Modifier
-          .clip(RoundedCornerShape(8.dp))
+          .clip(ZcShape.Sm)
           .background(Brush.horizontalGradient(listOf(IdentityCyan, IdentityPurple)))
           .clickable { onConfirm() },
         contentAlignment = Alignment.Center
@@ -282,7 +283,7 @@ fun DeleteConfirmDialog(
       }
     },
     dismissButton = {
-      TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) {
+      TextButton(shape = ZcShape.Pill, onClick = onDismiss) {
         Text(text = "Cancel", color = colors.Text2, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
       }
     }

@@ -1,4 +1,5 @@
 package com.gguf.zerocopy.ui.chat.components
+import com.gguf.zerocopy.ui.theme.ZcShape
 
 import android.graphics.BitmapFactory
 import androidx.compose.animation.core.RepeatMode
@@ -103,7 +104,7 @@ fun ChatBubble(
       Box(
         modifier = Modifier
           .size(26.dp)
-          .clip(RoundedCornerShape(8.dp))
+          .clip(ZcShape.Sm)
           .background(
             Brush.linearGradient(listOf(colors.GradientStart, colors.GradientEnd))
           )
@@ -131,7 +132,7 @@ fun ChatBubble(
         if (thinkingContent != null && !showThinking) {
           Surface(
             onClick = onToggleThinking,
-            shape = RoundedCornerShape(16.dp),
+            shape = ZcShape.Lg,
             color = colors.ThinkBg,
             border = BorderStroke(0.2.dp, IdentityBorderBrush),
             modifier = Modifier
@@ -202,7 +203,7 @@ fun ChatBubble(
                       .fillMaxWidth()
                       .widthIn(max = 260.dp)
                       .height(180.dp)
-                      .clip(RoundedCornerShape(16.dp)),
+                      .clip(ZcShape.Lg),
                     contentScale = ContentScale.Crop
                   )
                   Spacer(Modifier.height(8.dp))
@@ -247,7 +248,7 @@ fun ChatBubble(
         ) {
           if (reasoningBadge) {
             Surface(
-              shape = RoundedCornerShape(8.dp),
+              shape = ZcShape.Sm,
               color = colors.Purple.copy(alpha = 0.15f),
               modifier = Modifier.padding(end = 4.dp)
             ) {
@@ -344,7 +345,7 @@ fun ChatBubble(
       Box(
         modifier = Modifier
           .size(26.dp)
-          .clip(RoundedCornerShape(8.dp))
+          .clip(ZcShape.Sm)
           .background(
             Brush.linearGradient(listOf(colors.GradientStart, colors.GradientEnd))
           )

@@ -1,4 +1,5 @@
 package com.gguf.zerocopy.ui.invent
+import com.gguf.zerocopy.ui.theme.ZcShape
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -46,7 +47,7 @@ fun InventFileEditorDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(16.dp),
+            shape = ZcShape.Lg,
             color = EdBg,
             border = BorderStroke(0.2.dp, EdLine)
         ) {
@@ -65,7 +66,7 @@ fun InventFileEditorDialog(
                     }
                 }
                 Spacer(Modifier.height(6.dp))
-                Surface(shape = RoundedCornerShape(8.dp), color = EdLine.copy(alpha = 0.6f)) {
+                Surface(shape = ZcShape.Sm, color = EdLine.copy(alpha = 0.6f)) {
                     BasicTextField(
                         value = fileName,
                         onValueChange = { fileName = it },
@@ -82,7 +83,7 @@ fun InventFileEditorDialog(
                 }
                 Spacer(Modifier.height(8.dp))
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
+                    shape = ZcShape.Sm,
                     color = Color(0xFF0A0B0F),
                     modifier = Modifier.weight(1f)
                 ) {
@@ -98,13 +99,13 @@ fun InventFileEditorDialog(
                 }
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                    TextButton(shape = RoundedCornerShape(50), onClick = onDismiss) {
+                    TextButton(shape = ZcShape.Pill, onClick = onDismiss) {
                         Text("Cancel", fontSize = 12.sp, color = Color(0xFF8A93A8), fontFamily = FontFamily.Monospace)
                     }
                     Spacer(Modifier.width(8.dp))
                     Surface(
                         onClick = { onSave(fileName, text); onDismiss() },
-                        shape = RoundedCornerShape(8.dp),
+                        shape = ZcShape.Sm,
                         color = EdAccent.copy(alpha = 0.15f),
                         border = BorderStroke(0.2.dp, EdAccent)
                     ) {

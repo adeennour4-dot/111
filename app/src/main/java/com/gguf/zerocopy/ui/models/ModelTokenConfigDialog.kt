@@ -1,4 +1,5 @@
 package com.gguf.zerocopy.ui.models
+import com.gguf.zerocopy.ui.theme.ZcShape
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -144,7 +145,7 @@ fun ModelTokenConfigDialog(
         confirmButton = {
             Button(
                 onClick = { onSave(buildConfig()) },
-                shape = RoundedCornerShape(50),
+                shape = ZcShape.Pill,
                 enabled = ramOk,
                 colors = ButtonDefaults.buttonColors(containerColor = colors.Accent)
             ) { Text("Save", fontFamily = FontFamily.Monospace,
@@ -153,7 +154,7 @@ fun ModelTokenConfigDialog(
         dismissButton = {
             OutlinedButton(
                 onClick = onDismiss,
-                shape = RoundedCornerShape(50),
+                shape = ZcShape.Pill,
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Text2)
             ) { Text("Cancel", fontFamily = FontFamily.Monospace) }
         },
@@ -210,7 +211,7 @@ fun ModelTokenConfigDialog(
                                 cursorColor = colors.Accent,
                                 focusedTextColor = colors.Text, unfocusedTextColor = colors.Text
                             ),
-                            shape = RoundedCornerShape(8.dp)
+                            shape = ZcShape.Sm
                         )
                     }
                     Slider(
@@ -266,7 +267,7 @@ fun ModelTokenConfigDialog(
                                 cursorColor = colors.Accent2,
                                 focusedTextColor = colors.Text, unfocusedTextColor = colors.Text
                             ),
-                            shape = RoundedCornerShape(8.dp)
+                            shape = ZcShape.Sm
                         )
                     }
                     Slider(
@@ -296,7 +297,7 @@ fun ModelTokenConfigDialog(
                         }
                     }
                 } else {
-                    Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), color = colors.Border.copy(0.1f)) {
+                    Surface(Modifier.fillMaxWidth(), shape = ZcShape.Sm, color = colors.Border.copy(0.1f)) {
                         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Filled.Info, null, tint = colors.Text3, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(6.dp))
@@ -359,7 +360,7 @@ fun ModelTokenConfigDialog(
                 // ── RAM estimate ──
                 Surface(
                     Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(50),
+                    shape = ZcShape.Pill,
                     color = if (ramOk) colors.Surface else colors.Red.copy(alpha = 0.08f),
                     border = if (!ramOk) androidx.compose.foundation.BorderStroke(0.2.dp, colors.Red.copy(0.5f)) else null
                 ) {
@@ -401,14 +402,14 @@ fun ModelTokenConfigDialog(
                             backendSel = SettingsManager.backend
                         },
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(50),
+                        shape = ZcShape.Pill,
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Text3)
                     ) { Text("Reset", fontSize = 11.sp, fontFamily = FontFamily.Monospace) }
                     if (onRemove != null) {
                         Button(
                             onClick = onRemove,
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(50),
+                            shape = ZcShape.Pill,
                             colors = ButtonDefaults.buttonColors(containerColor = colors.Red)
                         ) { Text("Remove", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text, fontWeight = FontWeight.Bold) }
                     }
@@ -509,7 +510,7 @@ private fun SamplingField(
                 focusedTextColor = colors.Text, unfocusedTextColor = colors.Text,
                 cursorColor = colors.Accent
             ),
-            shape = RoundedCornerShape(8.dp)
+            shape = ZcShape.Sm
         )
     }
 }

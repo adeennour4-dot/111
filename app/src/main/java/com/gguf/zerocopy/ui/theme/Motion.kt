@@ -20,55 +20,64 @@ import androidx.compose.ui.graphics.graphicsLayer
 import kotlin.math.min
 
 /**
- * Single motion language for ZeroCopy — durations (ms) + signature easings.
- * Part of the one-theme system: every transition reads from here so motion
- * feels coherent across the whole app.
+ * ZeroCopy motion language — precise, symmetric, purposeful.
+ * Durations on a 120ms base (×1, ×1.5, ×2, ×3, ×4) for rhythmic consistency.
+ * Easings are Material-standard so motion feels native but polished.
  */
 object ZcMotion {
-    val xxs = 130
-    val xs = 190
-    val sm = 250
-    val md = 330
-    val lg = 460
-    val enter = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)   // expressive deceleration
-    val standard = CubicBezierEasing(0.4f, 0f, 0.2f, 1f) // Android standard
-    val emphasis = CubicBezierEasing(0.2f, 0f, 0f, 1f)   // snappy
+  val xs  = 120   // micro: ripple, press
+  val sm  = 180   // small: chip expand, tooltip
+  val md  = 240   // standard: dialog, sheet, navigation
+  val lg  = 360   // large: screen transition, modal
+  val xl  = 480   // hero: full-screen enter
+
+  val standard = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)  // Material standard — most transitions
+  val decelerate = CubicBezierEasing(0.0f, 0f, 0.2f, 1f) // expressive enter (decelerate)
+  val accelerate = CubicBezierEasing(0.4f, 0f, 1f, 1f)  // expressive exit (accelerate)
+  val emphasis = CubicBezierEasing(0.2f, 0f, 0f, 1f)   // snappy press response
 }
 
 /**
- * Mount entrance: gentle fade + slide, staggered by [index] for lists/grids.
- * Plays once when first composed.
+ * Staggered mount entrance — fade + slide, geometrically staggered by index.
+ * Uses the motion grid: 120ms base, 40ms stagger.
  */
 @Composable
 fun ZcEnter(
     index: Int = 0,
     vertical: Boolean = true,
-    staggerMs: Int = 55,
+    staggerMs: Int = 40,
     content: @Composable () -> Unit
 ) {
     val delayMs = min(index, 12) * staggerMs
     AnimatedVisibility(
         visible = true,
-        enter = fadeIn(tween(ZcMotion.sm, delayMillis = delayMs, easing = ZcMotion.enter)) +
-                if (vertical) expandVertically(tween(ZcMotion.sm, delayMillis = delayMs, easing = ZcMotion.enter))
-                else expandHorizontally(tween(ZcMotion.sm, delayMillis = delayMs, easing = ZcMotion.enter)),
+        enter = fadeIn(tween(ZcMotion.sm, delayMillis = delayMs, easing = ZcMotion.decelerate)) +
+                if (vertical) expandVertically(tween(ZcMotion.sm, delayMillis = delayMs, easing = ZcMotion.decelerate))
+                else expandHorizontally(tween(ZcMotion.sm, delayMillis = delayMs, easing = ZcMotion.decelerate)),
         content = { content() }
     )
 }
 
 /**
- * Animated brand gradient field — a slow-rotating cyan→purple wash used behind
- * headers / heroes. Oversized + clipped by the caller so rotation never exposes
- * edges. Reads the active palette, so it is correct in both themes.
+ * Animated brand gradient field — slow, geometric rotation (8s cycle).
+ * Oversized 1.5× + clipped so rotation never exposes edges.
+ * Use ONLY for active states (generating, loading) — no glow at rest.
  */
 @Composable
-fun ZcGradientField(modifier: Modifier = Modifier, alpha: Float = 0.16f) {
+fun ZcGradientField(
+    modifier: Modifier = Modifier,
+    alpha: Float = 0.12f
+) {
     val transition = rememberInfiniteTransition(label = "zcGradientField")
-    val angle by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(9000, easing = LinearEasing)))
+    val angle by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(8000, easing = LinearEasing))
+    )
     val palette = currentPalette()
     Box(
         modifier
-            .graphicsLayer { scaleX = 1.6f; scaleY = 1.6f; rotationZ = angle }
+            .graphicsLayer { scaleX = 1.5f; scaleY = 1.5f; rotationZ = angle }
             .background(
                 Brush.linearGradient(
                     listOf(palette.GradientStart.copy(alpha = alpha), palette.GradientEnd.copy(alpha = alpha))

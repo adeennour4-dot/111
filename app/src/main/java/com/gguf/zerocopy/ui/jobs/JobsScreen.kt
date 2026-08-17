@@ -1,4 +1,5 @@
 package com.gguf.zerocopy.ui.jobs
+import com.gguf.zerocopy.ui.theme.ZcShape
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -111,7 +112,7 @@ fun JobsScreen(onBack: () -> Unit) {
                 }
                 Spacer(Modifier.weight(1f))
                 TextButton(
-                    shape = RoundedCornerShape(50),
+                    shape = ZcShape.Pill,
                     onClick = { jobManager.cancelAll() },
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 ) {
@@ -129,7 +130,7 @@ private fun JobCard(job: JobManager.TrackedJob, onCancel: () -> Unit) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = ZcShape.Lg,
         colors = CardDefaults.cardColors(containerColor = colors.Card)
     ) {
         Row(
