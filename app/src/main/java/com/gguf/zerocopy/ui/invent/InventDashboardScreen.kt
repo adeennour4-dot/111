@@ -761,6 +761,7 @@ private fun ProjectCard(
         }
     }
 }
+@Composable
 private fun ProjectWindow(
     project: InventProject,
     knownPaths: Set<String>,
