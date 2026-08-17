@@ -1288,9 +1288,20 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
     // so clear the KV cache to avoid position collision with cached tokens.
     llama_memory_clear(get_mem(), true);
 
+    // HARD GUARD — root cause of the GGUF first-message SIGSEGV (insurance on
+    // top of the v1054 batch cap). llama_decode's batch buffer is sized to
+    // n_batch; handing it MORE tokens than n_batch writes past the buffer.
+    // truncate_prompt already capped to `limit` (= min(ctx-2, batch-2)), but
+    // re-cap here so the first-message prefill can never overflow the batch
+    // even after the BOS insert below, or if any state drifts.
+    if ((int)tokens.size() > limit) {
+        LOGW("Prefill %d tokens exceeds limit %d — re-truncating (head+tail)", (int)tokens.size(), limit);
+        truncate_prompt(tokens, limit);
+    }
+    LOGI("GGUF prefill: %d prompt tokens (n_batch=%d n_ctx=%d)", (int)tokens.size(), g_batch_actual, g_ctx_actual);
+
     // Manually prepend BOS on the first decode (add_special=false skips it).
-    // Never let the BOS push the batch past n_ctx — an over-long batch on the
-    // very first decode is a crash vector on some devices.
+    // Never let the BOS push the batch past the safe `limit`.
     llama_token bos = llama_vocab_bos(llama_model_get_vocab(g_model));
     if (bos != LLAMA_TOKEN_NULL && (int)tokens.size() < limit) tokens.insert(tokens.begin(), bos);
 
@@ -1461,6 +1472,20 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
 
     pin_to_all_cores();
     int n_text_toks = (int)tokens.size();
+
+    // HARD GUARD (same root cause as the text path): a multimodal prefill of
+    // n_image_tokens + text tokens can exceed the n_batch decode buffer too.
+    // If so, keep the most recent text tokens (the model reads them last).
+    if (g_batch_actual > 0) {
+        int room = (g_batch_actual - 2) - n_image_tokens;
+        if (room < 1) room = 1;
+        if (n_text_toks > room) {
+            std::vector<llama_token> t(tokens.end() - room, tokens.end());
+            tokens.swap(t);
+            n_text_toks = (int)tokens.size();
+            LOGW("Multimodal prefill truncated text to %d (image=%d n_batch=%d)", n_text_toks, n_image_tokens, g_batch_actual);
+        }
+    }
 
     // Inject image embeddings as a separate decode step before text tokens.
     if (!image_embeds.empty() && n_image_tokens > 0) {
