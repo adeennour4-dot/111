@@ -107,11 +107,13 @@ fun GradientBubbleBox(
             ) { content() }
         }
     } else {
-        // At rest: clean hairline ring in a subtle tone — no glow. The brand
-        // gradient ring appears only while a response is being generated.
+        // At rest: clean hairline ring in a subtle border tone — no glow. The
+        // brand gradient ring appears only while a response is being generated.
+        val restRing = (if (ThemeState.isDark) ZcColors.Border else ZcLightColors.Border)
+            .copy(alpha = 0.55f)
         Box(
             Modifier
-                .border(borderWidth, IdentityBorderBrush.copy(alpha = 0.45f), shape)
+                .border(borderWidth, restRing, shape)
                 .background(bubbleColor, shape)
                 .clip(shape)
         ) { content() }
