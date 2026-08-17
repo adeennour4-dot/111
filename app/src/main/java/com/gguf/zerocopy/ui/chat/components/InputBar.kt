@@ -59,6 +59,7 @@ fun InputBar(
   onSend: (String, List<Uri>, List<String>) -> Unit,
   onStop: () -> Unit,
   isInferring: Boolean,
+  enabled: Boolean,
   attachmentUris: List<Uri>,
   attachmentFileNames: List<String>,
   onRemoveAttachment: (Int) -> Unit
@@ -169,12 +170,12 @@ fun InputBar(
             modifier = Modifier.weight(1f),
             placeholder = {
               Text(
-                text = "Type a message...",
+                text = if (enabled) "Type a message..." else "No model loaded",
                 color = colors.Text3,
                 fontSize = 14.sp
               )
             },
-            enabled = !isInferring,
+            enabled = enabled && !isInferring,
             minLines = 1,
             maxLines = 4,
             shape = ZcShape.Xl,
@@ -184,7 +185,7 @@ fun InputBar(
             ),
             keyboardActions = KeyboardActions(
               onSend = {
-                if (prompt.isNotBlank() && !isInferring) {
+                if (prompt.isNotBlank() && !isInferring && enabled) {
                   val text = prompt
                   prompt = ""
                   onSend(text, attachmentUris, attachmentFileNames)
@@ -216,7 +217,7 @@ fun InputBar(
             }
           } else {
             // Send orb — identity gradient
-            val canSend = prompt.isNotBlank()
+            val canSend = enabled && prompt.isNotBlank()
             val sendGradient = remember {
               Brush.horizontalGradient(listOf(colors.GradientStart, colors.GradientEnd))
             }

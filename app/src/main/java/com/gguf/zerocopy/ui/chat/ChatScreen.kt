@@ -760,16 +760,55 @@ fun ChatScreen(
             .padding(horizontal = 10.dp, vertical = 4.dp),
           verticalAlignment = Alignment.CenterVertically
         ) {
-          // Live status dot: teal = model ready, amber = generating, red = none loaded
-          Box(
-            Modifier.size(7.dp).clip(CircleShape).background(
+          // Model status chip: explicit loaded/generating/none state
+          Surface(
+            shape = ZcShape.Pill,
+            color = when {
+              isInferring -> colors.Amber.copy(alpha = 0.14f)
+              engine?.isModelLoaded == true -> colors.Accent2.copy(alpha = 0.12f)
+              else -> colors.Red.copy(alpha = 0.12f)
+            },
+            border = BorderStroke(
+              0.2.dp,
               when {
-                isInferring -> colors.Amber
-                engine?.isModelLoaded == true -> colors.Accent2
-                else -> colors.Red
+                isInferring -> colors.Amber.copy(alpha = 0.45f)
+                engine?.isModelLoaded == true -> colors.Accent2.copy(alpha = 0.35f)
+                else -> colors.Red.copy(alpha = 0.35f)
               }
-            )
-          )
+            ),
+            modifier = Modifier.padding(end = 8.dp)
+          ) {
+            Row(
+              Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Box(
+                Modifier.size(6.dp).clip(CircleShape).background(
+                  when {
+                    isInferring -> colors.Amber
+                    engine?.isModelLoaded == true -> colors.Accent2
+                    else -> colors.Red
+                  }
+                )
+              )
+              Spacer(Modifier.width(4.dp))
+              Text(
+                text = when {
+                  isInferring -> "GENERATING"
+                  engine?.isModelLoaded == true -> "LOADED"
+                  else -> "NO MODEL"
+                },
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                color = when {
+                  isInferring -> colors.Amber
+                  engine?.isModelLoaded == true -> colors.Accent2
+                  else -> colors.Red
+                },
+                fontFamily = FontFamily.SansSerif
+              )
+            }
+          }
           Spacer(Modifier.width(8.dp))
           // Session name — the same gradient bubble as the input bubble
           Box(Modifier.weight(1f)) {
@@ -935,6 +974,7 @@ fun ChatScreen(
           onSend = { text, uris, names -> sendMessage(text, uris, names) },
           onStop = { stopInference() },
           isInferring = isInferring,
+          enabled = engine?.isModelLoaded == true,
           attachmentUris = attachmentUris,
           attachmentFileNames = attachmentFileNames,
           onRemoveAttachment = { idx ->
