@@ -303,7 +303,7 @@ fun InventScreen(
                             active = showFilePanel
                         ) { showFilePanel = !showFilePanel }
                     }
-                    ActionChip(Icons.Filled.Settings, "Settings", colors.Text2) { showSettings = true }
+                    ActionChip(Icons.Filled.Settings, "Settings", colors.Text2) { onModelsClick() }
                     ActionChip(Icons.Filled.Refresh, "Restart", Color.White) {
                         vm.restartConversation()
                         onNewSession?.invoke()
