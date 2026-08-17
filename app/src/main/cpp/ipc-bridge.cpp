@@ -120,7 +120,7 @@ static llama_sampler*       g_sampler = nullptr;
 static std::vector<Message> g_history;
 static std::string          g_model_path = "";
 static int                  g_ctx_actual = 0;
-    g_batch_actual = 0;   // real n_batch after retry ladder
+static int                  g_batch_actual = 0;
 static bool                 g_flash_attn_effective = false;
 static bool                 g_backend_initialized = false;
 
