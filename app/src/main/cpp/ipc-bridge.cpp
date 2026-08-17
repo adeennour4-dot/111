@@ -50,6 +50,11 @@
 #include <android/log.h>
 #include <fstream>
 #include <algorithm>
+#include <signal.h>
+#include <execinfo.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <string.h>
 
 #ifdef __aarch64__
 #include <sched.h>
@@ -79,8 +84,64 @@
 
 static JavaVM* g_jvm = nullptr;
 
+// ── Native crash backtrace capture ─────────────────────────────────────────
+// A SIGSEGV/SIGABRT/etc. inside llama.cpp cannot be caught by Java try/catch,
+// so the app just dies with no in-app trace. This handler writes the stack
+// backtrace to a file the Diagnostics screen can read, then re-raises so the
+// OS still produces its tombstone. Keep the handler minimal + async-signal-safe
+// (only backtrace(), write(), and re-raise).
+static char g_crash_path[1024] = {0};
+
+static void zc_crash_handler(int sig) {
+    if (g_crash_path[0]) {
+        int fd = open(g_crash_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+        if (fd >= 0) {
+            const char* hdr = "==========================================\n"
+                "ZeroCopy native crash (signal)\n";
+            write(fd, hdr, (unsigned)strlen(hdr));
+            char sigbuf[64];
+            int n = snprintf(sigbuf, sizeof(sigbuf), "signal: %d\n", sig);
+            write(fd, sigbuf, (unsigned)n);
+            void* frames[48];
+            int nframes = backtrace(frames, 48);
+            char** syms = backtrace_symbols(frames, nframes);
+            if (syms) {
+                for (int i = 0; i < nframes; i++) {
+                    const char* line = syms[i];
+                    size_t len = line ? strlen(line) : 0;
+                    write(fd, "  #", 3);
+                    char idx[16];
+                    int ni = snprintf(idx, sizeof(idx), "%02d ", i);
+                    write(fd, idx, (unsigned)ni);
+                    if (line) write(fd, line, (unsigned)len);
+                    write(fd, "\n", 1);
+                }
+                free(syms);
+            }
+            const char* tail = "==========================================\n";
+            write(fd, tail, (unsigned)strlen(tail));
+            close(fd);
+        }
+    }
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = SIG_DFL;
+    sigaction(sig, &sa, nullptr);
+    raise(sig);
+}
+
 extern "C" jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     g_jvm = vm;
+    // Capture native crashes to a file readable by the in-app Diagnostics
+    // screen. We re-raise afterwards so the OS tombstone is still produced.
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = zc_crash_handler;
+    sigaction(SIGSEGV, &sa, nullptr);
+    sigaction(SIGABRT, &sa, nullptr);
+    sigaction(SIGBUS,  &sa, nullptr);
+    sigaction(SIGFPE,  &sa, nullptr);
+    sigaction(SIGILL,  &sa, nullptr);
     return JNI_VERSION_1_6;
 }
 
@@ -660,6 +721,18 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_setEngineConfigNative(
          nCtx, nBatch, nGpuLayers, nThreads, (int)lowRamMode, (int)flashAttention, topK);
     // Sampler changes take effect immediately, not only after a reload.
     rebuild_sampler();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_gguf_zerocopy_domain_inference_NativeBridge_setCrashLogPathNative(
+        JNIEnv* env, jobject, jstring jpath) {
+    const char* p = env->GetStringUTFChars(jpath, nullptr);
+    if (p) {
+        strncpy(g_crash_path, p, sizeof(g_crash_path) - 1);
+        g_crash_path[sizeof(g_crash_path) - 1] = '\0';
+        env->ReleaseStringUTFChars(jpath, p);
+        LOGI("Crash log path set: %s", g_crash_path);
+    }
 }
 
 extern "C" JNIEXPORT void JNICALL

@@ -116,6 +116,7 @@ class MainActivity : ComponentActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    com.gguf.zerocopy.domain.inference.NativeBridge.initCrashCapture(this)
     enableEdgeToEdge()
     requestNotificationPermission()
     setContent {

@@ -76,4 +76,20 @@ object NativeBridge {
   external fun unloadModelNative()
 
   external fun getNativeDiagnosticsNative(): String
+
+  /** Path where the native crash backtrace handler writes its trace file. */
+  external fun setCrashLogPathNative(path: String)
+
+  /** Point the native crash handler at <filesDir>/native_crash.txt. Call once
+   *  at startup so Diagnostics can surface native crashes (e.g. GGUF SIGSEGV). */
+  fun initCrashCapture(context: android.content.Context) {
+    if (!nativeLibLoaded) return
+    try {
+      val dir = context.filesDir
+      val file = java.io.File(dir, "native_crash.txt")
+      setCrashLogPathNative(file.absolutePath)
+    } catch (_: Exception) {
+      android.util.Log.w(TAG, "initCrashCapture failed")
+    }
+  }
 }

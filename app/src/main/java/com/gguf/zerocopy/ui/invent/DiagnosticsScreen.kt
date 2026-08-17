@@ -142,12 +142,26 @@ private fun buildDiagnostics(context: Context, models: List<LocalModel>): String
     }
     if (models.size > 12) sb.appendLine("  … +${models.size - 12} more")
     sb.appendLine()
+    // Native crash backtrace (written by the signal handler on SIGSEGV etc.).
+    try {
+        val crashFile = java.io.File(context.filesDir, "native_crash.txt")
+        if (crashFile.exists() && crashFile.length() > 0) {
+            sb.appendLine("── native crash trace ──")
+            sb.appendLine(crashFile.readText())
+        } else {
+            sb.appendLine("── native crash trace ── (no crash recorded)")
+        }
+    } catch (_: Exception) {
+        sb.appendLine("── native crash trace ── (unavailable)")
+    }
+    sb.appendLine()
     // Logcat tail filtered to this process (works without extra permissions).
     try {
-        val proc = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-t", "500"))
+        val proc = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-t", "2000", "-b", "all"))
         val lines = proc.inputStream.bufferedReader().use { it.readLines() }
-        val own = lines.filter { it.contains(context.packageName) }.takeLast(140)
-        sb.appendLine("── logcat tail (own package) ──")
+        val own = lines.filter { it.contains(context.packageName) || it.contains("ipc-bridge") || it.contains("libc") || it.contains("crash") }
+            .takeLast(220)
+        sb.appendLine("── logcat tail (own package + native) ──")
         if (own.isEmpty()) sb.appendLine("(no matching lines)")
         own.forEach { sb.appendLine(it) }
     } catch (_: Exception) {
