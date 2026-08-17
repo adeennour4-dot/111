@@ -88,7 +88,7 @@ extern "C" jint JNI_OnLoad(JavaVM* vm, void* reserved) {
 
 struct EngineConfig {
     int      n_ctx          = 4096;
-    int      n_batch        = 512;
+    int      n_batch        = 2048;
     int      n_threads      = 0;
     int      n_gpu_layers   = 0;
     int      max_new_tokens = 2048;
@@ -119,7 +119,8 @@ static llama_context*       g_ctx     = nullptr;
 static llama_sampler*       g_sampler = nullptr;
 static std::vector<Message> g_history;
 static std::string          g_model_path = "";
-static int                  g_ctx_actual = 0;   // real n_ctx after retry ladder
+static int                  g_ctx_actual = 0;
+    g_batch_actual = 0;   // real n_batch after retry ladder
 static bool                 g_flash_attn_effective = false;
 static bool                 g_backend_initialized = false;
 
@@ -715,6 +716,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_unloadModelNative(
     if (g_ctx)     { llama_free(g_ctx);              g_ctx     = nullptr; }
     if (g_model)   { llama_model_free(g_model);      g_model   = nullptr; }
     g_ctx_actual = 0;
+    g_batch_actual = 0;
     g_flash_attn_effective = false;
     g_model_path = "";
     g_cfg.mmproj_path = "";
@@ -754,6 +756,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
     if (g_model)   { llama_model_free(g_model);      g_model   = nullptr; }
     g_history.clear();
     g_ctx_actual = 0;
+    g_batch_actual = 0;
     g_flash_attn_effective = false;
     g_model_path = "";
 
@@ -813,6 +816,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_loadGgufModelNative(
         chosen = fallback;
     }
     g_ctx_actual = g_ctx ? chosen : 0;
+    g_batch_actual = g_ctx ? cparams.n_batch : 0;
     g_flash_attn_effective = g_ctx ? use_flash_attn : false;
 
     if (!g_ctx) {
@@ -919,7 +923,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_benchmarkNative(
     std::lock_guard<std::mutex> lock(g_mtx);
     if (!g_model || !g_ctx) return env->NewStringUTF("{\"error\":\"no model\"}");
 
-    int pp_n = std::min(ppTokens, 4096);
+    int pp_n = std::min(ppTokens, g_batch_actual > 0 ? g_batch_actual : 4096);
     int tg_n = std::min(tgTokens, 2048);
     const char* test_str = "The quick brown fox jumps over the lazy dog. ";
     std::vector<llama_token> pp_toks(pp_n);
@@ -1156,6 +1160,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
     // Fit into the ACTUAL context (post retry ladder), keeping the system
     // prompt + recent turns instead of blindly keeping the last tokens.
     int limit = std::max(64, g_ctx_actual - 2);
+    if (g_batch_actual > 0) limit = std::min(limit, std::max(64, g_batch_actual - 2));
     truncate_prompt(tokens, limit);
     if (tokens.empty()) {
         LOGE("Prompt empty after truncation");
@@ -1256,6 +1261,7 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
     tokens.resize(n_toks);
 
     int limit = std::max(64, g_ctx_actual - 2);
+    if (g_batch_actual > 0) limit = std::min(limit, std::max(64, g_batch_actual - 2));
     truncate_prompt(tokens, limit);
     if (tokens.empty()) {
         LOGE("Image prompt empty after truncation");

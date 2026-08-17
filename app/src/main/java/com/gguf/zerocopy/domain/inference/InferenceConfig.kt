@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class InferenceConfig(
   val nCtx: Int = 4096,
-  val nBatch: Int = 512,
+  val nBatch: Int = 2048,
   val maxNewTokens: Int = 2048,
   val temperature: Float = 0.5f,
   val topP: Float = 0.9f,
