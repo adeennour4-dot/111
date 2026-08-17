@@ -39,7 +39,7 @@ fun PromptSuggestions(
         Text(
           text = suggestion,
           fontSize = 11.sp,
-          fontFamily = FontFamily.Monospace,
+          fontFamily = FontFamily.SansSerif,
           color = colors.Text2,
           maxLines = 1,
           modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)

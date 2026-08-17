@@ -255,7 +255,7 @@ fun InventDashboardScreen(
             }
             Column(Modifier.weight(1f)) {
                 Text("INVENT", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FuturisticFont)
-                Text("⤢ maximize · hold a square for menu · RAM ${freeRamMb(context)} MB", fontSize = 8.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                Text("⤢ maximize · hold a square for menu · RAM ${freeRamMb(context)} MB", fontSize = 8.sp, color = Gy, fontFamily = FontFamily.SansSerif)
             }
             Surface(
                 onClick = { onDiagnostics() },
@@ -266,7 +266,7 @@ fun InventDashboardScreen(
                 Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.BugReport, null, tint = Cy, modifier = Modifier.size(13.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Diag", fontSize = 10.sp, color = Txt2, fontFamily = FontFamily.Monospace)
+                    Text("Diag", fontSize = 10.sp, color = Txt2, fontFamily = FontFamily.SansSerif)
                 }
             }
             Spacer(Modifier.width(6.dp))
@@ -279,7 +279,7 @@ fun InventDashboardScreen(
                 Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.QuestionMark, null, tint = Bulb, modifier = Modifier.size(13.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Help", fontSize = 10.sp, color = Txt2, fontFamily = FontFamily.Monospace)
+                    Text("Help", fontSize = 10.sp, color = Txt2, fontFamily = FontFamily.SansSerif)
                 }
             }
         }
@@ -389,7 +389,7 @@ fun InventDashboardScreen(
                                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                                     Icon(Icons.Filled.Add, null, tint = Am.copy(alpha = 0.7f), modifier = Modifier.size(24.dp))
                                                     Spacer(Modifier.height(4.dp))
-                                                    Text("New project", fontSize = 7.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                                                    Text("New project", fontSize = 7.sp, color = Gy, fontFamily = FontFamily.SansSerif)
                                                 }
                                             }
                                         }
@@ -410,15 +410,15 @@ fun InventDashboardScreen(
                 ) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("INVENT TOUR", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace)
+                        Text("INVENT TOUR", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.SansSerif)
                         Spacer(Modifier.height(12.dp))
-                        Text("• Tap a square (or ⤢ top-right) to maximize it into a full window", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
+                        Text("• Tap a square (or ⤢ top-right) to maximize it into a full window", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.SansSerif, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(6.dp))
-                        Text("• ROLES · SESSIONS · FILES sections live inside the window", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
+                        Text("• ROLES · SESSIONS · FILES sections live inside the window", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.SansSerif, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(6.dp))
-                        Text("• — minimizes · ✕ clears · hold a square for rename / export", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
+                        Text("• — minimizes · ✕ clears · hold a square for rename / export", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.SansSerif, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(6.dp))
-                        Text("• Tap + on an empty slot to create a project from a template", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
+                        Text("• Tap + on an empty slot to create a project from a template", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.SansSerif, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(16.dp))
                         Surface(
                             onClick = { dismissTour() },
@@ -426,7 +426,7 @@ fun InventDashboardScreen(
                             color = Cy.copy(alpha = 0.18f),
                             border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.6f))
                         ) {
-                            Text("Got it — start building", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.Monospace,
+                            Text("Got it — start building", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.SansSerif,
                                 modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp))
                         }
                     }
@@ -445,8 +445,8 @@ fun InventDashboardScreen(
         AlertDialog(
             onDismissRequest = { deleteProjectFor = null },
             containerColor = Card,
-            title = { Text("Delete project?", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace) },
-            text = { Text("'${p?.name ?: ""}' and all its sessions + files will be permanently removed. This cannot be undone.", fontSize = 11.sp, color = Txt2, fontFamily = FontFamily.Monospace) },
+            title = { Text("Delete project?", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.SansSerif) },
+            text = { Text("'${p?.name ?: ""}' and all its sessions + files will be permanently removed. This cannot be undone.", fontSize = 11.sp, color = Txt2, fontFamily = FontFamily.SansSerif) },
             confirmButton = {
                 TextButton(shape = ZcShape.Pill, onClick = {
                     onDeleteProject(pid)
@@ -455,10 +455,10 @@ fun InventDashboardScreen(
                     maximized = null
                     squarePanels.remove(pid)
                     deleteProjectFor = null
-                }) { Text("Delete", color = Rd, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) }
+                }) { Text("Delete", color = Rd, fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
-                TextButton(shape = ZcShape.Pill, onClick = { deleteProjectFor = null }) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
+                TextButton(shape = ZcShape.Pill, onClick = { deleteProjectFor = null }) { Text("Cancel", color = Gy, fontFamily = FontFamily.SansSerif) }
             }
         )
     }
@@ -771,7 +771,7 @@ fun InventDashboardScreen(
         AlertDialog(
             onDismissRequest = { showZipInfo = false },
             containerColor = Card,
-            title = { Text("Invent dashboard", color = Bulb, fontFamily = FontFamily.Monospace, fontSize = 15.sp) },
+            title = { Text("Invent dashboard", color = Bulb, fontFamily = FontFamily.SansSerif, fontSize = 15.sp) },
             text = {
                 Text(
                     "• 4 equal squares: tap a square (or its ⤢ button) to maximize it into a window.\n" +
@@ -781,12 +781,12 @@ fun InventDashboardScreen(
                     "• SESSIONS: tap + to start a session, hold a session for open/reset/delete.\n" +
                     "• FILES: file manager — up, new folder, new file, share .zip. Tap a file to open/copy/delete.\n" +
                     "• X clears the square's contents (the square stays).",
-                    color = Color(0xFFB9C1D0), fontSize = 12.sp, fontFamily = FontFamily.Monospace
+                    color = Color(0xFFB9C1D0), fontSize = 12.sp, fontFamily = FontFamily.SansSerif
                 )
             },
             confirmButton = {
                 TextButton(shape = ZcShape.Pill, onClick = { showZipInfo = false }) {
-                    Text("Got it", color = Cy, fontFamily = FontFamily.Monospace)
+                    Text("Got it", color = Cy, fontFamily = FontFamily.SansSerif)
                 }
             }
         )
@@ -861,10 +861,10 @@ private fun ProjectSquare(
         // Count pills (top-left) — small, tucked into the corner
         Row(Modifier.align(Alignment.TopStart), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             Surface(shape = ZcShape.Sm, color = Pr.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.4f))) {
-                Text("${project.sessionIds.size}S", fontSize = 6.sp, color = Pr, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
+                Text("${project.sessionIds.size}S", fontSize = 6.sp, color = Pr, fontFamily = FontFamily.SansSerif, modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
             }
             Surface(shape = ZcShape.Sm, color = Cy.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.4f))) {
-                Text("${fileCount}F", fontSize = 6.sp, color = Cy, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
+                Text("${fileCount}F", fontSize = 6.sp, color = Cy, fontFamily = FontFamily.SansSerif, modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
             }
         }
         // Name pill — horizontal expanded circle connected to the top (inside)
@@ -914,7 +914,7 @@ private fun ProjectSquare(
                     if (coderRunning) "CODING…" else "READY",
                     fontSize = 6.sp, fontWeight = FontWeight.Bold,
                     color = if (coderRunning) Rd else Cy,
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = FontFamily.SansSerif
                 )
             }
         }
@@ -1024,7 +1024,7 @@ private fun ProjectWindow(
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text(project.name.uppercase(), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FuturisticFont, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("ROLES · SESSIONS · FILES", fontSize = 8.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                    Text("ROLES · SESSIONS · FILES", fontSize = 8.sp, color = Gy, fontFamily = FontFamily.SansSerif)
                 }
                 // 🗑 trash → delete the project (asks for confirmation)
                 Surface(
@@ -1054,7 +1054,7 @@ private fun ProjectWindow(
                     ) {
                         Box(Modifier.fillMaxWidth().padding(vertical = 7.dp), contentAlignment = Alignment.Center) {
                             Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                                color = if (active) sectorColor(key) else Color(0xFF8A93A8), fontFamily = FontFamily.Monospace)
+                                color = if (active) sectorColor(key) else Color(0xFF8A93A8), fontFamily = FontFamily.SansSerif)
                         }
                     }
                 }
@@ -1081,7 +1081,7 @@ private fun ProjectWindow(
                                     Spacer(Modifier.width(8.dp))
                                     Column(Modifier.weight(1f)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(role.role.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = roleColor(role.role), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(role.role.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = roleColor(role.role), fontFamily = FontFamily.SansSerif, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                             if (role.isCoder) { Spacer(Modifier.width(4.dp)); Text("🔒", fontSize = 8.sp) }
                                         }
                                         Text(
@@ -1090,7 +1090,7 @@ private fun ProjectWindow(
                                                 missing -> "Unknown"
                                                 else -> role.modelName
                                             },
-                                            fontSize = 9.5.sp, color = if (missing) Rd else Txt2, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis
+                                            fontSize = 9.5.sp, color = if (missing) Rd else Txt2, fontFamily = FontFamily.SansSerif, maxLines = 1, overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
@@ -1107,7 +1107,7 @@ private fun ProjectWindow(
                                 Row(Modifier.padding(vertical = 7.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Filled.Add, null, tint = Am, modifier = Modifier.size(13.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text("add role", fontSize = 10.sp, color = Am, fontFamily = FontFamily.Monospace)
+                                    Text("add role", fontSize = 10.sp, color = Am, fontFamily = FontFamily.SansSerif)
                                 }
                             }
                         }
@@ -1123,7 +1123,7 @@ private fun ProjectWindow(
                         }
                     }
                     Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("${project.sessionIds.size} sessions", fontSize = 9.5.sp, color = Pr, fontFamily = FontFamily.Monospace)
+                        Text("${project.sessionIds.size} sessions", fontSize = 9.5.sp, color = Pr, fontFamily = FontFamily.SansSerif)
                         Spacer(Modifier.weight(1f))
                         Surface(
                             onClick = { if (canStart) onStartSession() },
@@ -1134,14 +1134,14 @@ private fun ProjectWindow(
                             Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.Add, null, tint = if (canStart) Pr else Gy, modifier = Modifier.size(12.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text(if (canStart) "new session" else "pick models first", fontSize = 9.5.sp, color = if (canStart) Pr else Gy, fontFamily = FontFamily.Monospace)
+                                Text(if (canStart) "new session" else "pick models first", fontSize = 9.5.sp, color = if (canStart) Pr else Gy, fontFamily = FontFamily.SansSerif)
                             }
                         }
                     }
                     if (sessionInfos.isEmpty()) {
                         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                             Text(if (canStart) "no sessions yet — tap + new session" else "assign models in MODELS first",
-                                fontSize = 10.sp, color = Gy, fontFamily = FontFamily.Monospace, textAlign = TextAlign.Center)
+                                fontSize = 10.sp, color = Gy, fontFamily = FontFamily.SansSerif, textAlign = TextAlign.Center)
                         }
                     } else {
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
@@ -1166,12 +1166,12 @@ private fun ProjectWindow(
                                 ) {
                                     Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("S#${i + 1}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
+                                            Text("S#${i + 1}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.SansSerif)
                                             Spacer(Modifier.width(6.dp))
-                                            Text(phase.name, fontSize = 8.sp, fontWeight = FontWeight.Bold, color = phaseColor, fontFamily = FontFamily.Monospace)
+                                            Text(phase.name, fontSize = 8.sp, fontWeight = FontWeight.Bold, color = phaseColor, fontFamily = FontFamily.SansSerif)
                                             if (s.totalFiles > 0) {
                                                 Spacer(Modifier.width(5.dp))
-                                                Text("file ${s.currentFileIndex}/${s.totalFiles}", fontSize = 8.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                                                Text("file ${s.currentFileIndex}/${s.totalFiles}", fontSize = 8.sp, color = Gy, fontFamily = FontFamily.SansSerif)
                                             }
                                             Spacer(Modifier.weight(1f))
                                             if (active) {
@@ -1187,15 +1187,15 @@ private fun ProjectWindow(
                                                     Row(Modifier.padding(horizontal = 7.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                                                         Icon(Icons.Filled.Stop, null, tint = Rd, modifier = Modifier.size(9.dp))
                                                         Spacer(Modifier.width(3.dp))
-                                                        Text("stop", fontSize = 8.sp, color = Rd, fontFamily = FontFamily.Monospace)
+                                                        Text("stop", fontSize = 8.sp, color = Rd, fontFamily = FontFamily.SansSerif)
                                                     }
                                                 }
                                             } else {
-                                                Text("hold: menu", fontSize = 8.sp, color = Line, fontFamily = FontFamily.Monospace)
+                                                Text("hold: menu", fontSize = 8.sp, color = Line, fontFamily = FontFamily.SansSerif)
                                             }
                                         }
                                         if (names.isNotEmpty()) {
-                                            Text(names, fontSize = 9.5.sp, color = Txt2, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(names, fontSize = 9.5.sp, color = Txt2, fontFamily = FontFamily.SansSerif, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         }
                                     }
                                 }
@@ -1215,7 +1215,7 @@ private fun ProjectWindow(
                                 Row(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Filled.ArrowUpward, null, tint = Cy, modifier = Modifier.size(12.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text("up", fontSize = 9.sp, color = Cy, fontFamily = FontFamily.Monospace)
+                                    Text("up", fontSize = 9.sp, color = Cy, fontFamily = FontFamily.SansSerif)
                                 }
                             }
                         } else {
@@ -1228,7 +1228,7 @@ private fun ProjectWindow(
                                 Row(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Filled.Share, null, tint = Cy, modifier = Modifier.size(12.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text("zip", fontSize = 9.sp, color = Cy, fontFamily = FontFamily.Monospace)
+                                    Text("zip", fontSize = 9.sp, color = Cy, fontFamily = FontFamily.SansSerif)
                                 }
                             }
                         }
@@ -1242,7 +1242,7 @@ private fun ProjectWindow(
                             Row(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.CreateNewFolder, null, tint = Bulb, modifier = Modifier.size(12.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("folder", fontSize = 9.sp, color = Bulb, fontFamily = FontFamily.Monospace)
+                                Text("folder", fontSize = 9.sp, color = Bulb, fontFamily = FontFamily.SansSerif)
                             }
                         }
                         Spacer(Modifier.width(6.dp))
@@ -1255,16 +1255,16 @@ private fun ProjectWindow(
                             Row(Modifier.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.Add, null, tint = Cy, modifier = Modifier.size(12.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("file", fontSize = 9.sp, color = Cy, fontFamily = FontFamily.Monospace)
+                                Text("file", fontSize = 9.sp, color = Cy, fontFamily = FontFamily.SansSerif)
                             }
                         }
                     }
                     Text(if (dir == root) project.name else dir.name,
-                        fontSize = 9.sp, color = Gy, fontFamily = FontFamily.Monospace,
+                        fontSize = 9.sp, color = Gy, fontFamily = FontFamily.SansSerif,
                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp))
                     if (files.isEmpty()) {
                         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                            Text("empty — add a file or folder", fontSize = 10.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                            Text("empty — add a file or folder", fontSize = 10.sp, color = Gy, fontFamily = FontFamily.SansSerif)
                         }
                     } else {
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
@@ -1286,10 +1286,10 @@ private fun ProjectWindow(
                                             modifier = Modifier.size(14.dp)
                                         )
                                         Spacer(Modifier.width(6.dp))
-                                        Text(row.name, fontSize = 10.sp, color = Color(0xFFB9C1D0), fontFamily = FontFamily.Monospace,
+                                        Text(row.name, fontSize = 10.sp, color = Color(0xFFB9C1D0), fontFamily = FontFamily.SansSerif,
                                             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                         if (!row.isDir && row.sizeBytes > 0) {
-                                            Text(formatSize(row.sizeBytes), fontSize = 8.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                                            Text(formatSize(row.sizeBytes), fontSize = 8.5.sp, color = Gy, fontFamily = FontFamily.SansSerif)
                                         }
                                     }
                                 }
@@ -1334,13 +1334,13 @@ private fun ModelPickerDialog(
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("⚙ ${role.role.uppercase()}", fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                            color = roleColor(role.role), fontFamily = FontFamily.Monospace)
+                            color = roleColor(role.role), fontFamily = FontFamily.SansSerif)
                         Spacer(Modifier.weight(1f))
-                        Text("Free RAM: ${freeRamMb} MB", fontSize = 10.sp, color = if (freeRamMb > 1500) Cy else Am, fontFamily = FontFamily.Monospace)
+                        Text("Free RAM: ${freeRamMb} MB", fontSize = 10.sp, color = if (freeRamMb > 1500) Cy else Am, fontFamily = FontFamily.SansSerif)
                     }
                 }
                 item {
-                    Text("Model", fontSize = 10.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                    Text("Model", fontSize = 10.sp, color = Gy, fontFamily = FontFamily.SansSerif)
                 }
                 item {
                     OutlinedTextField(
@@ -1348,8 +1348,8 @@ private fun ModelPickerDialog(
                         onValueChange = { search = it },
                         modifier = Modifier.fillMaxWidth().heightIn(min = 38.dp),
                         singleLine = true,
-                        placeholder = { Text("🔍  search ${models.size} models…", fontSize = 11.sp, color = Gy, fontFamily = FontFamily.Monospace) },
-                        textStyle = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = Txt),
+                        placeholder = { Text("🔍  search ${models.size} models…", fontSize = 11.sp, color = Gy, fontFamily = FontFamily.SansSerif) },
+                        textStyle = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.SansSerif, color = Txt),
                         shape = RoundedCornerShape(10.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = roleColor(role.role),
@@ -1360,7 +1360,7 @@ private fun ModelPickerDialog(
                 }
                 if (filteredModels.isEmpty()) {
                     item {
-                        Text("no models match '${search.trim()}'", fontSize = 10.sp, color = Gy, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(4.dp))
+                        Text("no models match '${search.trim()}'", fontSize = 10.sp, color = Gy, fontFamily = FontFamily.SansSerif, modifier = Modifier.padding(4.dp))
                     }
                 }
                 itemsIndexed(filteredModels) { _, m ->
@@ -1374,8 +1374,8 @@ private fun ModelPickerDialog(
                     ) {
                         Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text(m.name, fontSize = 12.sp, color = Txt, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("${m.sizeFormatted} · ${m.format}", fontSize = 9.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                                Text(m.name, fontSize = 12.sp, color = Txt, fontFamily = FontFamily.SansSerif, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("${m.sizeFormatted} · ${m.format}", fontSize = 9.sp, color = Gy, fontFamily = FontFamily.SansSerif)
                             }
                             if (isSel) {
                                 Icon(Icons.Filled.Check, null, tint = roleColor(role.role), modifier = Modifier.size(16.dp))
@@ -1385,7 +1385,7 @@ private fun ModelPickerDialog(
                 }
                 item {
                     Spacer(Modifier.height(2.dp))
-                    Text("Context window: $ctx", fontSize = 10.sp, color = Color(0xFFB9C1D0), fontFamily = FontFamily.Monospace)
+                    Text("Context window: $ctx", fontSize = 10.sp, color = Color(0xFFB9C1D0), fontFamily = FontFamily.SansSerif)
                     Slider(
                         value = ctx.toFloat(),
                         onValueChange = { ctx = it.toInt() },
@@ -1395,7 +1395,7 @@ private fun ModelPickerDialog(
                     )
                 }
                 item {
-                    Text("Max tokens: $maxNew", fontSize = 10.sp, color = Color(0xFFB9C1D0), fontFamily = FontFamily.Monospace)
+                    Text("Max tokens: $maxNew", fontSize = 10.sp, color = Color(0xFFB9C1D0), fontFamily = FontFamily.SansSerif)
                     Slider(
                         value = maxNew.toFloat(),
                         onValueChange = { maxNew = it.toInt() },
@@ -1408,8 +1408,8 @@ private fun ModelPickerDialog(
                     item {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("Work in background", fontSize = 11.sp, color = Color(0xFFB9C1D0), fontFamily = FontFamily.Monospace)
-                                Text("coder keeps generating while you use another app", fontSize = 8.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                                Text("Work in background", fontSize = 11.sp, color = Color(0xFFB9C1D0), fontFamily = FontFamily.SansSerif)
+                                Text("coder keeps generating while you use another app", fontSize = 8.5.sp, color = Gy, fontFamily = FontFamily.SansSerif)
                             }
                             Switch(
                                 checked = background,
@@ -1445,7 +1445,7 @@ private fun ModelPickerDialog(
                                     else -> "Done · ${sel?.name ?: selectedName}"
                                 },
                                 fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                                color = if (selectedPath.isNotEmpty()) roleColor(role.role) else Gy, fontFamily = FontFamily.Monospace
+                                color = if (selectedPath.isNotEmpty()) roleColor(role.role) else Gy, fontFamily = FontFamily.SansSerif
                             )
                         }
                     }
@@ -1467,24 +1467,24 @@ private fun AddRoleDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Card,
-        title = { Text("New role", color = Bulb, fontFamily = FontFamily.Monospace, fontSize = 14.sp) },
+        title = { Text("New role", color = Bulb, fontFamily = FontFamily.SansSerif, fontSize = 14.sp) },
         text = {
             Column {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Role name", fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
+                    label = { Text("Role name", fontFamily = FontFamily.SansSerif, fontSize = 12.sp) },
                     singleLine = true,
-                    textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.Monospace, fontSize = 13.sp),
+                    textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.SansSerif, fontSize = 13.sp),
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     value = desc,
                     onValueChange = { desc = it },
-                    label = { Text("Description / command (who he is, what he does)", fontFamily = FontFamily.Monospace, fontSize = 11.sp) },
+                    label = { Text("Description / command (who he is, what he does)", fontFamily = FontFamily.SansSerif, fontSize = 11.sp) },
                     minLines = 3,
-                    textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.Monospace, fontSize = 12.sp),
+                    textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.SansSerif, fontSize = 12.sp),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -1495,11 +1495,11 @@ private fun AddRoleDialog(
                 onClick = { if (name.isNotBlank()) { onAdd(name.trim(), desc.trim()); onDismiss() } },
                 enabled = name.isNotBlank()
             ) {
-                Text("Add", color = Cy, fontFamily = FontFamily.Monospace)
+                Text("Add", color = Cy, fontFamily = FontFamily.SansSerif)
             }
         },
         dismissButton = {
-            TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
+            TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.SansSerif) }
         }
     )
 }
@@ -1514,14 +1514,14 @@ private fun NewFolderDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Card,
-        title = { Text("New folder", color = Bulb, fontFamily = FontFamily.Monospace, fontSize = 14.sp) },
+        title = { Text("New folder", color = Bulb, fontFamily = FontFamily.SansSerif, fontSize = 14.sp) },
         text = {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Folder name", fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
+                label = { Text("Folder name", fontFamily = FontFamily.SansSerif, fontSize = 12.sp) },
                 singleLine = true,
-                textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.Monospace, fontSize = 13.sp),
+                textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.SansSerif, fontSize = 13.sp),
                 modifier = Modifier.fillMaxWidth()
             )
         },
@@ -1531,11 +1531,11 @@ private fun NewFolderDialog(
                 onClick = { if (name.isNotBlank()) { onAdd(name.trim()); onDismiss() } },
                 enabled = name.isNotBlank()
             ) {
-                Text("Create", color = Cy, fontFamily = FontFamily.Monospace)
+                Text("Create", color = Cy, fontFamily = FontFamily.SansSerif)
             }
         },
         dismissButton = {
-            TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
+            TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.SansSerif) }
         }
     )
 }
@@ -1554,44 +1554,44 @@ private fun RoleActionsDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Card,
-        title = { Text(role.role.uppercase(), color = roleColor(role.role), fontFamily = FontFamily.Monospace, fontSize = 14.sp) },
+        title = { Text(role.role.uppercase(), color = roleColor(role.role), fontFamily = FontFamily.SansSerif, fontSize = 14.sp) },
         text = {
             if (editing) {
                 Column {
                     OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") },
-                        singleLine = true, textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.Monospace, fontSize = 13.sp), modifier = Modifier.fillMaxWidth())
+                        singleLine = true, textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.SansSerif, fontSize = 13.sp), modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(value = desc, onValueChange = { desc = it }, label = { Text("Description") },
-                        minLines = 3, textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.Monospace, fontSize = 12.sp), modifier = Modifier.fillMaxWidth())
+                        minLines = 3, textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.SansSerif, fontSize = 12.sp), modifier = Modifier.fillMaxWidth())
                 }
             } else {
                 Column {
                     if (role.description.isNotEmpty()) {
-                        Text(role.description, color = Color(0xFFB9C1D0), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                        Text(role.description, color = Color(0xFFB9C1D0), fontSize = 11.sp, fontFamily = FontFamily.SansSerif)
                         Spacer(Modifier.height(6.dp))
                     }
-                    Text("Model: ${role.modelName.ifEmpty { "none" }}", color = Gy, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    Text("Model: ${role.modelName.ifEmpty { "none" }}", color = Gy, fontSize = 11.sp, fontFamily = FontFamily.SansSerif)
                 }
             }
         },
         confirmButton = {
             if (editing) {
                 TextButton(shape = ZcShape.Pill, onClick = { onEdit(name.trim(), desc.trim()); onDismiss() }, enabled = name.isNotBlank()) {
-                    Text("Save", color = Cy, fontFamily = FontFamily.Monospace)
+                    Text("Save", color = Cy, fontFamily = FontFamily.SansSerif)
                 }
             } else {
                 TextButton(shape = ZcShape.Pill, onClick = { editing = true }) {
-                    Text("Change name/description", color = Am, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                    Text("Change name/description", color = Am, fontFamily = FontFamily.SansSerif, fontSize = 11.sp)
                 }
             }
         },
         dismissButton = {
             if (editing) {
-                TextButton(shape = ZcShape.Pill, onClick = { editing = false }) { Text("Back", color = Gy, fontFamily = FontFamily.Monospace) }
+                TextButton(shape = ZcShape.Pill, onClick = { editing = false }) { Text("Back", color = Gy, fontFamily = FontFamily.SansSerif) }
             } else if (!role.isCoder) {
-                TextButton(shape = ZcShape.Pill, onClick = { onDelete(); onDismiss() }) { Text("Delete role", color = Rd, fontFamily = FontFamily.Monospace) }
+                TextButton(shape = ZcShape.Pill, onClick = { onDelete(); onDismiss() }) { Text("Delete role", color = Rd, fontFamily = FontFamily.SansSerif) }
             } else {
-                TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Close", color = Gy, fontFamily = FontFamily.Monospace) }
+                TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Close", color = Gy, fontFamily = FontFamily.SansSerif) }
             }
         }
     )
@@ -1610,17 +1610,17 @@ private fun SessionActionsDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Card,
-        title = { Text("Session", color = Pr, fontFamily = FontFamily.Monospace, fontSize = 14.sp) },
-        text = { Text(sessionName, color = Color(0xFFB9C1D0), fontSize = 12.sp, fontFamily = FontFamily.Monospace) },
+        title = { Text("Session", color = Pr, fontFamily = FontFamily.SansSerif, fontSize = 14.sp) },
+        text = { Text(sessionName, color = Color(0xFFB9C1D0), fontSize = 12.sp, fontFamily = FontFamily.SansSerif) },
         confirmButton = {
-            TextButton(shape = ZcShape.Pill, onClick = { onOpen(); onDismiss() }) { Text("Open session", color = Cy, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
+            TextButton(shape = ZcShape.Pill, onClick = { onOpen(); onDismiss() }) { Text("Open session", color = Cy, fontFamily = FontFamily.SansSerif, fontSize = 12.sp) }
         },
         dismissButton = {
             Row {
-                TextButton(shape = ZcShape.Pill, onClick = { onExport(); onDismiss() }) { Text("Export transcript", color = Am, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
-                TextButton(shape = ZcShape.Pill, onClick = { onReset(); onDismiss() }) { Text("Reset", color = Am, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
-                TextButton(shape = ZcShape.Pill, onClick = { onDelete(); onDismiss() }) { Text("Delete project", color = Rd, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
-                TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
+                TextButton(shape = ZcShape.Pill, onClick = { onExport(); onDismiss() }) { Text("Export transcript", color = Am, fontFamily = FontFamily.SansSerif, fontSize = 10.sp) }
+                TextButton(shape = ZcShape.Pill, onClick = { onReset(); onDismiss() }) { Text("Reset", color = Am, fontFamily = FontFamily.SansSerif, fontSize = 11.sp) }
+                TextButton(shape = ZcShape.Pill, onClick = { onDelete(); onDismiss() }) { Text("Delete project", color = Rd, fontFamily = FontFamily.SansSerif, fontSize = 11.sp) }
+                TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.SansSerif, fontSize = 11.sp) }
             }
         }
     )
@@ -1639,17 +1639,17 @@ private fun FileActionsDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Card,
-        title = { Text("📄 $fileName", color = Cy, fontFamily = FontFamily.Monospace, fontSize = 13.sp) },
+        title = { Text("📄 $fileName", color = Cy, fontFamily = FontFamily.SansSerif, fontSize = 13.sp) },
         text = { },
         confirmButton = {
-            TextButton(shape = ZcShape.Pill, onClick = { onOpen(); onDismiss() }) { Text("Open", color = Cy, fontFamily = FontFamily.Monospace) }
+            TextButton(shape = ZcShape.Pill, onClick = { onOpen(); onDismiss() }) { Text("Open", color = Cy, fontFamily = FontFamily.SansSerif) }
         },
         dismissButton = {
             Row {
-                TextButton(shape = ZcShape.Pill, onClick = { onCopy(); onDismiss() }) { Text("Copy code", color = Am, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
-                TextButton(shape = ZcShape.Pill, onClick = { onHistory(); onDismiss() }) { Text("History", color = Bulb, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
-                TextButton(shape = ZcShape.Pill, onClick = { onDelete(); onDismiss() }) { Text("Delete", color = Rd, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
-                TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
+                TextButton(shape = ZcShape.Pill, onClick = { onCopy(); onDismiss() }) { Text("Copy code", color = Am, fontFamily = FontFamily.SansSerif, fontSize = 10.sp) }
+                TextButton(shape = ZcShape.Pill, onClick = { onHistory(); onDismiss() }) { Text("History", color = Bulb, fontFamily = FontFamily.SansSerif, fontSize = 10.sp) }
+                TextButton(shape = ZcShape.Pill, onClick = { onDelete(); onDismiss() }) { Text("Delete", color = Rd, fontFamily = FontFamily.SansSerif, fontSize = 10.sp) }
+                TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.SansSerif, fontSize = 10.sp) }
             }
         }
     )
@@ -1667,18 +1667,18 @@ private fun ProjectMenuDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Card,
-        title = { Text(project.name, color = Bulb, fontFamily = FontFamily.Monospace, fontSize = 14.sp) },
+        title = { Text(project.name, color = Bulb, fontFamily = FontFamily.SansSerif, fontSize = 14.sp) },
         text = {
-            Text("${project.roles.size} roles · ${project.sessionIds.size} sessions", color = Txt2, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            Text("${project.roles.size} roles · ${project.sessionIds.size} sessions", color = Txt2, fontSize = 11.sp, fontFamily = FontFamily.SansSerif)
         },
         confirmButton = {
-            TextButton(shape = ZcShape.Pill, onClick = { onRename(); onDismiss() }) { Text("Rename", color = Am, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
+            TextButton(shape = ZcShape.Pill, onClick = { onRename(); onDismiss() }) { Text("Rename", color = Am, fontFamily = FontFamily.SansSerif, fontSize = 11.sp) }
         },
         dismissButton = {
             Row {
-                TextButton(shape = ZcShape.Pill, onClick = { onExportZip(); onDismiss() }) { Text("Export .zip", color = Cy, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
-                TextButton(shape = ZcShape.Pill, onClick = { onClear(); onDismiss() }) { Text("Clear", color = Rd, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
-                TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace, fontSize = 11.sp) }
+                TextButton(shape = ZcShape.Pill, onClick = { onExportZip(); onDismiss() }) { Text("Export .zip", color = Cy, fontFamily = FontFamily.SansSerif, fontSize = 11.sp) }
+                TextButton(shape = ZcShape.Pill, onClick = { onClear(); onDismiss() }) { Text("Clear", color = Rd, fontFamily = FontFamily.SansSerif, fontSize = 11.sp) }
+                TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.SansSerif, fontSize = 11.sp) }
             }
         }
     )
@@ -1695,24 +1695,24 @@ private fun RenameDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Card,
-        title = { Text("Rename project", color = Bulb, fontFamily = FontFamily.Monospace, fontSize = 14.sp) },
+        title = { Text("Rename project", color = Bulb, fontFamily = FontFamily.SansSerif, fontSize = 14.sp) },
         text = {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Project name", fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
+                label = { Text("Project name", fontFamily = FontFamily.SansSerif, fontSize = 12.sp) },
                 singleLine = true,
-                textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.Monospace, fontSize = 13.sp),
+                textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.SansSerif, fontSize = 13.sp),
                 modifier = Modifier.fillMaxWidth()
             )
         },
         confirmButton = {
             TextButton(shape = ZcShape.Pill, onClick = { if (name.isNotBlank()) { onRename(name.trim()); onDismiss() } }, enabled = name.isNotBlank()) {
-                Text("Save", color = Cy, fontFamily = FontFamily.Monospace)
+                Text("Save", color = Cy, fontFamily = FontFamily.SansSerif)
             }
         },
         dismissButton = {
-            TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
+            TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.SansSerif) }
         }
     )
 }
@@ -1728,19 +1728,19 @@ private fun NewProjectDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Card,
-        title = { Text("New project", color = Bulb, fontFamily = FontFamily.Monospace, fontSize = 14.sp) },
+        title = { Text("New project", color = Bulb, fontFamily = FontFamily.SansSerif, fontSize = 14.sp) },
         text = {
             Column {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Project name", fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
+                    label = { Text("Project name", fontFamily = FontFamily.SansSerif, fontSize = 12.sp) },
                     singleLine = true,
-                    textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.Monospace, fontSize = 13.sp),
+                    textStyle = LocalTextStyle.current.copy(color = Txt, fontFamily = FontFamily.SansSerif, fontSize = 13.sp),
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(10.dp))
-                Text("Template", fontSize = 10.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                Text("Template", fontSize = 10.sp, color = Gy, fontFamily = FontFamily.SansSerif)
                 Spacer(Modifier.height(5.dp))
                 InventTemplates.ALL.forEach { t ->
                     val active = selected == t.id
@@ -1753,8 +1753,8 @@ private fun NewProjectDialog(
                     ) {
                         Row(Modifier.padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("${t.label} — ${t.tagline}", fontSize = 11.sp, color = Txt, fontFamily = FontFamily.Monospace)
-                                Text(t.description, fontSize = 8.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                                Text("${t.label} — ${t.tagline}", fontSize = 11.sp, color = Txt, fontFamily = FontFamily.SansSerif)
+                                Text(t.description, fontSize = 8.5.sp, color = Gy, fontFamily = FontFamily.SansSerif)
                             }
                             if (active) Icon(Icons.Filled.Check, null, tint = Cy, modifier = Modifier.size(14.dp))
                         }
@@ -1767,10 +1767,10 @@ private fun NewProjectDialog(
                 shape = ZcShape.Pill,
                 onClick = { onCreate(name.trim().ifEmpty { "Project" }, selected); onDismiss() },
                 enabled = true
-            ) { Text("Create", color = Cy, fontFamily = FontFamily.Monospace) }
+            ) { Text("Create", color = Cy, fontFamily = FontFamily.SansSerif) }
         },
         dismissButton = {
-            TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.Monospace) }
+            TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Cancel", color = Gy, fontFamily = FontFamily.SansSerif) }
         }
     )
 }
@@ -1786,11 +1786,11 @@ private fun HistoryDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Card,
-        title = { Text("History", color = Bulb, fontFamily = FontFamily.Monospace, fontSize = 14.sp) },
+        title = { Text("History", color = Bulb, fontFamily = FontFamily.SansSerif, fontSize = 14.sp) },
         text = {
             if (versions.isEmpty()) {
                 Text("No saved versions yet — edit the file once and it will be kept here.",
-                    color = Txt2, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    color = Txt2, fontSize = 11.sp, fontFamily = FontFamily.SansSerif)
             } else {
                 LazyColumn(Modifier.heightIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     itemsIndexed(versions) { i, v ->
@@ -1803,12 +1803,12 @@ private fun HistoryDialog(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("v${versions.size - i}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
+                                Text("v${versions.size - i}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.SansSerif)
                                 Spacer(Modifier.width(8.dp))
-                                Text(stamp, fontSize = 9.sp, color = Txt2, fontFamily = FontFamily.Monospace)
+                                Text(stamp, fontSize = 9.sp, color = Txt2, fontFamily = FontFamily.SansSerif)
                                 Spacer(Modifier.weight(1f))
-                                TextButton(shape = ZcShape.Pill, onClick = { onView(v); onDismiss() }) { Text("View", fontSize = 9.sp, color = Cy, fontFamily = FontFamily.Monospace) }
-                                TextButton(shape = ZcShape.Pill, onClick = { onRestore(v); onDismiss() }) { Text("Restore", fontSize = 9.sp, color = Am, fontFamily = FontFamily.Monospace) }
+                                TextButton(shape = ZcShape.Pill, onClick = { onView(v); onDismiss() }) { Text("View", fontSize = 9.sp, color = Cy, fontFamily = FontFamily.SansSerif) }
+                                TextButton(shape = ZcShape.Pill, onClick = { onRestore(v); onDismiss() }) { Text("Restore", fontSize = 9.sp, color = Am, fontFamily = FontFamily.SansSerif) }
                             }
                         }
                     }
@@ -1816,7 +1816,7 @@ private fun HistoryDialog(
             }
         },
         confirmButton = {
-            TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Close", color = Gy, fontFamily = FontFamily.Monospace) }
+            TextButton(shape = ZcShape.Pill, onClick = onDismiss) { Text("Close", color = Gy, fontFamily = FontFamily.SansSerif) }
         }
     )
 }
@@ -1856,7 +1856,7 @@ private fun SquarePanel(
                 Spacer(Modifier.width(5.dp))
                 Column(Modifier.weight(1f)) {
                     Text(project.name.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FuturisticFont, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("RAM ${freeRamMb(context)} MB free", fontSize = 6.5.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                    Text("RAM ${freeRamMb(context)} MB free", fontSize = 6.5.sp, color = Gy, fontFamily = FontFamily.SansSerif)
                 }
                 Surface(onClick = onMaximize, shape = ZcShape.Sm, color = Cy.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.5f)), modifier = Modifier.size(20.dp)) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.OpenInFull, null, tint = Cy, modifier = Modifier.size(10.dp)) }
@@ -1906,7 +1906,7 @@ private fun SquarePanel(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Box(Modifier.size(6.dp).clip(CircleShape).background(if (missing) Rd else roleColor(role.role)))
                                     Spacer(Modifier.width(5.dp))
-                                    Text(role.role.uppercase(), fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = roleColor(role.role), fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                    Text(role.role.uppercase(), fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = roleColor(role.role), fontFamily = FontFamily.SansSerif, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                     if (role.isCoder) { Spacer(Modifier.width(3.dp)); Text("🔒", fontSize = 7.sp) }
                                 }
                                 Spacer(Modifier.height(3.dp))
@@ -1917,7 +1917,7 @@ private fun SquarePanel(
                                             missing -> "Unknown file — tap to pick"
                                             else -> role.modelName.ifEmpty { model?.name ?: "model" }
                                         },
-                                        fontSize = 8.sp, color = Txt2, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                        fontSize = 8.sp, color = Txt2, fontFamily = FontFamily.SansSerif, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f)
                                     )
                                     if (role.isCoder) {
@@ -1939,7 +1939,7 @@ private fun SquarePanel(
                             Row(Modifier.padding(vertical = 5.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.Add, null, tint = Pr, modifier = Modifier.size(10.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("add role", fontSize = 7.5.sp, color = Pr, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                Text("add role", fontSize = 7.5.sp, color = Pr, fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -1951,7 +1951,7 @@ private fun SquarePanel(
                         if (project.sessionIds.isEmpty()) {
                             item {
                                 Box(Modifier.fillMaxWidth().padding(vertical = 14.dp), contentAlignment = Alignment.Center) {
-                                    Text("no sessions yet", fontSize = 9.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                                    Text("no sessions yet", fontSize = 9.sp, color = Gy, fontFamily = FontFamily.SansSerif)
                                 }
                             }
                         }
@@ -1969,12 +1969,12 @@ private fun SquarePanel(
                             ) {
                                 Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Box(Modifier.size(16.dp).clip(ZcShape.Sm).background(Pr.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-                                        Text("S#${i + 1}", fontSize = 7.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
+                                        Text("S#${i + 1}", fontSize = 7.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.SansSerif)
                                     }
                                     Spacer(Modifier.width(6.dp))
                                     Column(Modifier.weight(1f)) {
-                                        Text(title, fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text("phase: ${s?.phase?.name ?: "?"}", fontSize = 7.sp, color = Gy, fontFamily = FontFamily.Monospace)
+                                        Text(title, fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.SansSerif, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text("phase: ${s?.phase?.name ?: "?"}", fontSize = 7.sp, color = Gy, fontFamily = FontFamily.SansSerif)
                                     }
                                 }
                             }
@@ -1991,7 +1991,7 @@ private fun SquarePanel(
                         Row(Modifier.padding(vertical = 6.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Filled.Add, null, tint = Pr, modifier = Modifier.size(12.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("new session", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
+                            Text("new session", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.SansSerif)
                         }
                     }
                 }
@@ -2011,7 +2011,7 @@ private fun MiniToggle(checked: Boolean, onToggle: () -> Unit) {
         border = BorderStroke(0.2.dp, col.copy(alpha = 0.55f))
     ) {
         Row(Modifier.padding(horizontal = 7.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(if (checked) "on" else "off", fontSize = 7.sp, color = col, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+            Text(if (checked) "on" else "off", fontSize = 7.sp, color = col, fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -2041,7 +2041,7 @@ private fun ModelInfoDialog(
             modifier = Modifier.widthIn(max = 320.dp).fillMaxWidth(0.85f)
         ) {
             Column(Modifier.padding(14.dp)) {
-                Text("MODEL INFO", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.Monospace)
+                Text("MODEL INFO", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.SansSerif)
                 Spacer(Modifier.height(8.dp))
                 InfoRow("model", model.name)
                 InfoRow("size", model.sizeFormatted)
@@ -2052,7 +2052,7 @@ private fun ModelInfoDialog(
                 Spacer(Modifier.height(8.dp))
                 HorizontalDivider(color = Line, thickness = 0.5.dp)
                 Spacer(Modifier.height(6.dp))
-                Text("CONVERSATION RAM (estimate)", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.Monospace)
+                Text("CONVERSATION RAM (estimate)", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.SansSerif)
                 Spacer(Modifier.height(5.dp))
                 InfoRow("weights", "%.0f MB".format(modelMb))
                 InfoRow("kv cache (${role.contextWindow} ctx)", "%.0f MB".format(kvMb))
@@ -2060,9 +2060,9 @@ private fun ModelInfoDialog(
                 InfoRow("app overhead", "280 MB")
                 Spacer(Modifier.height(5.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("≈ total %.0f MB".format(totalMb), fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = if (fits) Cy else Rd, fontFamily = FontFamily.Monospace)
+                    Text("≈ total %.0f MB".format(totalMb), fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = if (fits) Cy else Rd, fontFamily = FontFamily.SansSerif)
                     Spacer(Modifier.weight(1f))
-                    Text("free: $freeRamMb MB", fontSize = 8.5.sp, color = if (fits) Gy else Rd, fontFamily = FontFamily.Monospace)
+                    Text("free: $freeRamMb MB", fontSize = 8.5.sp, color = if (fits) Gy else Rd, fontFamily = FontFamily.SansSerif)
                 }
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2074,7 +2074,7 @@ private fun ModelInfoDialog(
                         modifier = Modifier.weight(1f)
                     ) {
                         Box(Modifier.fillMaxWidth().padding(vertical = 7.dp), contentAlignment = Alignment.Center) {
-                            Text("Change model", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.Monospace)
+                            Text("Change model", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.SansSerif)
                         }
                     }
                     Surface(
@@ -2085,7 +2085,7 @@ private fun ModelInfoDialog(
                         modifier = Modifier.weight(1f)
                     ) {
                         Box(Modifier.fillMaxWidth().padding(vertical = 7.dp), contentAlignment = Alignment.Center) {
-                            Text("Close", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.Monospace)
+                            Text("Close", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.SansSerif)
                         }
                     }
                 }
@@ -2097,8 +2097,8 @@ private fun ModelInfoDialog(
 @Composable
 private fun InfoRow(label: String, value: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-        Text(label, fontSize = 9.sp, color = Gy, fontFamily = FontFamily.Monospace, modifier = Modifier.width(96.dp))
-        Text(value, fontSize = 9.sp, color = Txt, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+        Text(label, fontSize = 9.sp, color = Gy, fontFamily = FontFamily.SansSerif, modifier = Modifier.width(96.dp))
+        Text(value, fontSize = 9.sp, color = Txt, fontFamily = FontFamily.SansSerif, modifier = Modifier.weight(1f))
     }
 }
 

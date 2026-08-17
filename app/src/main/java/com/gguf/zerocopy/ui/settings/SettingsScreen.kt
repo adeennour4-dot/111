@@ -296,7 +296,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             Icon(Icons.Filled.Settings, null, tint = colors.Accent, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
             Text("Sampling", fontWeight = FontWeight.SemiBold, fontSize = 12.sp,
-              color = colors.Accent, fontFamily = FontFamily.Monospace)
+              color = colors.Accent, fontFamily = FontFamily.SansSerif)
           }
           Spacer(Modifier.height(8.dp))
           InlineField("Temperature", "0–2", temp, { temp = it }, focusManager)
@@ -317,12 +317,12 @@ fun SettingsScreen(onBack: () -> Unit) {
             Icon(Icons.Filled.Refresh, null, tint = colors.Accent2, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
             Text("Generation", fontWeight = FontWeight.SemiBold, fontSize = 12.sp,
-              color = colors.Accent2, fontFamily = FontFamily.Monospace)
+              color = colors.Accent2, fontFamily = FontFamily.SansSerif)
           }
           Spacer(Modifier.height(8.dp))
           // ── Compute backend ──
           Text("Compute Backend", fontSize = 11.sp, color = colors.Text2,
-            fontFamily = FontFamily.Monospace)
+            fontFamily = FontFamily.SansSerif)
           Row(Modifier.fillMaxWidth().padding(top = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             BackendPill("Auto", "auto", backend, { backend = it }, colors, modifier = Modifier.weight(1f))
@@ -335,7 +335,7 @@ fun SettingsScreen(onBack: () -> Unit) {
               "gpu" -> "Offload all layers to GPU / Vulkan"
               else -> "Auto — honors the GPU Layers slider"
             },
-            fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace,
+            fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif,
             modifier = Modifier.padding(top = 2.dp)
           )
           Spacer(Modifier.height(6.dp))
@@ -353,7 +353,7 @@ fun SettingsScreen(onBack: () -> Unit) {
               Spacer(Modifier.width(4.dp))
               Text("Memory pressure ${"%.0f".format(memPressurePct)}%" +
                 if (memAvailableMb > 0) " (${memAvailableMb}MB free)" else "",
-                fontSize = 9.sp, color = colors.Amber, fontFamily = FontFamily.Monospace)
+                fontSize = 9.sp, color = colors.Amber, fontFamily = FontFamily.SansSerif)
             }
           }
         }
@@ -365,7 +365,7 @@ fun SettingsScreen(onBack: () -> Unit) {
           Icon(Icons.Filled.Settings, null, tint = colors.Accent, modifier = Modifier.size(14.dp))
           Spacer(Modifier.width(8.dp))
           Text("Context & max tokens: set per model via Models → ⚙",
-            fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+            fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.SansSerif)
         }
       }
 
@@ -374,7 +374,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Text("Chat Template", fontWeight = FontWeight.SemiBold, fontSize = 12.sp,
-            color = colors.Accent, fontFamily = FontFamily.Monospace)
+            color = colors.Accent, fontFamily = FontFamily.SansSerif)
           Spacer(Modifier.height(6.dp))
           ChatTemplateSelector(current = chatTemplate, onChange = { chatTemplate = it }, colors = colors)
         }
@@ -414,7 +414,7 @@ fun SettingsScreen(onBack: () -> Unit) {
               focusedTextColor = colors.Text, unfocusedTextColor = colors.Text,
               cursorColor = colors.Accent
             ),
-            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.SansSerif)
           )
         }
       }
@@ -431,7 +431,7 @@ fun SettingsScreen(onBack: () -> Unit) {
           }
           if (mmprojPath.isNotEmpty()) {
             Text("  " + mmprojPath.substringAfterLast('/'), fontSize = 10.sp,
-              color = colors.Accent2, fontFamily = FontFamily.Monospace,
+              color = colors.Accent2, fontFamily = FontFamily.SansSerif,
               modifier = Modifier.padding(start = 4.dp, top = 2.dp))
           }
           Spacer(Modifier.height(6.dp))
@@ -491,7 +491,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
             Spacer(Modifier.height(6.dp))
             Text("Index Stats", fontSize = 10.sp, color = colors.Accent,
-              fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+              fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(4.dp))
             RagStatRow("Documents", "${ragStats.documentCount}", colors)
             RagStatRow("Chunks", "${ragStats.chunkCount}", colors)
@@ -512,14 +512,14 @@ fun SettingsScreen(onBack: () -> Unit) {
           } else {
             Spacer(Modifier.height(4.dp))
             Text("No docs loaded — attach files in chat to build context",
-              fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+              fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
           }
 
           Spacer(Modifier.height(8.dp))
           HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
           Spacer(Modifier.height(6.dp))
           Text("Settings", fontSize = 10.sp, color = colors.Accent,
-            fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+            fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold)
           Spacer(Modifier.height(4.dp))
           InlineField("Max chunks", "1–20", ragMaxChunksText, { ragMaxChunksText = it }, focusManager)
           InlineField("Max chars/query", "500–10000", ragMaxCharsText, { ragMaxCharsText = it }, focusManager)
@@ -550,7 +550,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Box(Modifier.padding(vertical = 9.dp), contentAlignment = Alignment.Center) {
                   Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
                     color = if (themeMode == key) colors.Accent else colors.Text2,
-                    fontFamily = FontFamily.Monospace)
+                    fontFamily = FontFamily.SansSerif)
                 }
               }
             }
@@ -586,7 +586,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
           if (app.modelServer.isRunning) {
             Text(app.modelServer.getServerUrl(), fontSize = 10.sp,
-              color = colors.Accent2, fontFamily = FontFamily.Monospace)
+              color = colors.Accent2, fontFamily = FontFamily.SansSerif)
           }
 
           Spacer(Modifier.height(6.dp))
@@ -615,7 +615,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 cursorColor = colors.Accent
               ),
               textStyle = LocalTextStyle.current.copy(fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+                fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold)
             )
           }
           ToggleRow("WiFi only", null, serverWifiOnly, { serverWifiOnly = it }, colors)
@@ -654,21 +654,21 @@ fun SettingsScreen(onBack: () -> Unit) {
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
           Text("adeennour4-dot", fontSize = 12.sp, color = colors.Text2,
-            fontFamily = FontFamily.Monospace)
+            fontFamily = FontFamily.SansSerif)
           Text("github.com/adeennour4-dot/111", fontSize = 11.sp, color = colors.Accent,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = FontFamily.SansSerif,
             modifier = Modifier.clickable {
               try { context.startActivity(Intent(Intent.ACTION_VIEW,
                 android.net.Uri.parse("https://github.com/adeennour4-dot/111"))) }
               catch (_: Exception) {}
             })
           Spacer(Modifier.height(6.dp))
-          Text("v1.0.2", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+          Text("v1.0.2", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
           Text("${Build.MODEL} · ${Build.VERSION.RELEASE}", fontSize = 10.sp,
-            color = colors.Text3, fontFamily = FontFamily.Monospace)
+            color = colors.Text3, fontFamily = FontFamily.SansSerif)
           val deviceInfo = remember { app.deviceUtils.detect() }
           Text("RAM: ${deviceInfo.totalRamMB / 1024} GB", fontSize = 10.sp,
-            color = colors.Text3, fontFamily = FontFamily.Monospace)
+            color = colors.Text3, fontFamily = FontFamily.SansSerif)
           Spacer(Modifier.height(6.dp))
           ActionButton("Send Logs", colors.Accent2, colors) { sendLogs(context) }
         }
@@ -711,7 +711,7 @@ private fun BackendPill(
 @Composable
 private fun SectionHeader(title: String, colors: ZcPalette) {
   Text(title.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold,
-    color = colors.Accent.copy(alpha = 0.7f), fontFamily = FontFamily.Monospace,
+    color = colors.Accent.copy(alpha = 0.7f), fontFamily = FontFamily.SansSerif,
     letterSpacing = 2.sp)
   Spacer(Modifier.height(3.dp))
   Box(
@@ -735,7 +735,7 @@ private fun InlineField(
   ) {
     Column(Modifier.weight(1f)) {
       Text(label, fontSize = 12.sp, color = colors.Text2)
-      Text(hint, fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+      Text(hint, fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
     }
     Spacer(Modifier.width(8.dp))
     OutlinedTextField(
@@ -763,7 +763,7 @@ private fun InlineField(
         focusedTextColor = colors.Text, unfocusedTextColor = colors.Text,
         cursorColor = colors.Accent
       ),
-      textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = colors.Text)
+      textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.SansSerif, color = colors.Text)
     )
   }
 }
@@ -782,7 +782,7 @@ private fun ToggleRow(
     Column(Modifier.weight(1f)) {
       Text(label, fontSize = 13.sp, color = colors.Text2)
       if (subtitle != null) {
-        Text(subtitle, fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+        Text(subtitle, fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
       }
     }
     Switch(
@@ -846,7 +846,7 @@ fun SettingField(label: String, hint: String, value: String, onChange: (String) 
         focusedTextColor = colors.Accent, unfocusedTextColor = colors.Accent.copy(alpha = 0.7f),
         cursorColor = colors.Accent
       ),
-      textStyle = LocalTextStyle.current.copy(fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+      textStyle = LocalTextStyle.current.copy(fontSize = 14.sp, fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold)
     )
   }
 }
@@ -872,7 +872,7 @@ private fun ChatTemplateSelector(
       shape = ZcShape.Pill,
       colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent)
     ) {
-      Text(selectedLabel, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+      Text(selectedLabel, fontSize = 12.sp, fontFamily = FontFamily.SansSerif,
         modifier = Modifier.weight(1f))
       Text("▾", fontSize = 11.sp, color = colors.Text3)
     }
@@ -885,11 +885,11 @@ private fun ChatTemplateSelector(
           text = {
             Row(verticalAlignment = Alignment.CenterVertically) {
               if (value == current) {
-                Text("✓ ", fontSize = 12.sp, color = colors.Accent, fontFamily = FontFamily.Monospace)
+                Text("✓ ", fontSize = 12.sp, color = colors.Accent, fontFamily = FontFamily.SansSerif)
               } else Spacer(Modifier.width(14.dp))
               Text(label, fontSize = 12.sp,
                 color = if (value == current) colors.Accent else colors.Text,
-                fontFamily = FontFamily.Monospace)
+                fontFamily = FontFamily.SansSerif)
             }
           },
           onClick = { onChange(value); expanded.value = false }
@@ -902,8 +902,8 @@ private fun ChatTemplateSelector(
 @Composable
 private fun RagStatRow(label: String, value: String, colors: ZcPalette) {
   Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-    Text(label, fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-    Text(value, fontSize = 9.sp, color = colors.Text2, fontFamily = FontFamily.Monospace,
+    Text(label, fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
+    Text(value, fontSize = 9.sp, color = colors.Text2, fontFamily = FontFamily.SansSerif,
       fontWeight = FontWeight.SemiBold)
   }
 }

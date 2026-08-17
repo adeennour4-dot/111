@@ -120,7 +120,7 @@ fun FilePanel(
                 Text(
                     if (currentDir.isEmpty()) "Files" else currentDir,
                     fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                    color = colors.Text, fontFamily = FontFamily.Monospace,
+                    color = colors.Text, fontFamily = FontFamily.SansSerif,
                     modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
                 IconButton(onClick = onClose, modifier = Modifier.size(24.dp)) {
@@ -146,7 +146,7 @@ fun FilePanel(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(selectedNode!!.path, fontSize = 10.5.sp, color = Cy,
-                            fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         IconButton(onClick = { selectedNode = null }, modifier = Modifier.size(20.dp)) {
                             Icon(Icons.Filled.ArrowBack, "Back", tint = colors.Text3, modifier = Modifier.size(12.dp))
@@ -165,7 +165,7 @@ fun FilePanel(
                             Row(Modifier.padding(horizontal = 7.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Outlined.ContentCopy, null, tint = Cy, modifier = Modifier.size(11.dp))
                                 Spacer(Modifier.width(3.dp))
-                                Text("Copy", fontSize = 9.sp, color = Cy, fontFamily = FontFamily.Monospace)
+                                Text("Copy", fontSize = 9.sp, color = Cy, fontFamily = FontFamily.SansSerif)
                             }
                         }
                         if (selectedFileContent.isNotEmpty()) {
@@ -179,7 +179,7 @@ fun FilePanel(
                                 Row(Modifier.padding(horizontal = 7.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Filled.BugReport, null, tint = Am, modifier = Modifier.size(11.dp))
                                     Spacer(Modifier.width(3.dp))
-                                    Text("Debug", fontSize = 9.sp, color = Am, fontFamily = FontFamily.Monospace)
+                                    Text("Debug", fontSize = 9.sp, color = Am, fontFamily = FontFamily.SansSerif)
                                 }
                             }
                             // Chat with Coder button (post-workflow)
@@ -194,7 +194,7 @@ fun FilePanel(
                                     Row(Modifier.padding(horizontal = 7.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Icon(Icons.Filled.Chat, null, tint = Cy, modifier = Modifier.size(11.dp))
                                         Spacer(Modifier.width(3.dp))
-                                        Text("Ask Coder", fontSize = 9.sp, color = Cy, fontFamily = FontFamily.Monospace)
+                                        Text("Ask Coder", fontSize = 9.sp, color = Cy, fontFamily = FontFamily.SansSerif)
                                     }
                                 }
                             }
@@ -215,13 +215,13 @@ fun FilePanel(
                                 selectedFileContent,
                                 fontSize = 10.sp,
                                 color = colors.Text2,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = FontFamily.SansSerif,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
                     } else {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("Not generated yet", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                            Text("Not generated yet", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
                         }
                     }
                 }
@@ -269,7 +269,7 @@ fun FilePanel(
                                         node.path.substringAfterLast('/'),
                                         fontSize = 10.5.sp,
                                         color = if (isSelected) Cy else colors.Text,
-                                        fontFamily = FontFamily.Monospace,
+                                        fontFamily = FontFamily.SansSerif,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -278,7 +278,7 @@ fun FilePanel(
                                             node.description.take(40),
                                             fontSize = 8.5.sp,
                                             color = colors.Text3,
-                                            fontFamily = FontFamily.Monospace,
+                                            fontFamily = FontFamily.SansSerif,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )

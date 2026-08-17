@@ -107,9 +107,11 @@ fun GradientBubbleBox(
             ) { content() }
         }
     } else {
+        // At rest: clean hairline ring in a subtle tone — no glow. The brand
+        // gradient ring appears only while a response is being generated.
         Box(
             Modifier
-                .border(borderWidth, IdentityBorderBrush, shape)
+                .border(borderWidth, IdentityBorderBrush.copy(alpha = 0.45f), shape)
                 .background(bubbleColor, shape)
                 .clip(shape)
         ) { content() }

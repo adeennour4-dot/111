@@ -69,7 +69,7 @@ fun ThinkingContent(
           text = "Thought",
           fontSize = 11.sp,
           fontWeight = FontWeight.SemiBold,
-          fontFamily = FontFamily.Monospace,
+          fontFamily = FontFamily.SansSerif,
           color = colors.Purple,
           modifier = Modifier.weight(1f)
         )
@@ -97,7 +97,7 @@ fun ThinkingContent(
           Text(
             text = content,
             fontSize = 12.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = FontFamily.SansSerif,
             color = colors.Text2,
             modifier = Modifier
               .fillMaxWidth()

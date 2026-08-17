@@ -389,7 +389,7 @@ fun ModelListScreen(
               loadingStep.ifEmpty { "Loading…" },
               fontSize = 12.sp,
               color = colors.Text2,
-              fontFamily = FontFamily.Monospace
+              fontFamily = FontFamily.SansSerif
             )
             Spacer(Modifier.height(16.dp))
             TextButton(shape = ZcShape.Pill, onClick = {
@@ -416,7 +416,7 @@ fun ModelListScreen(
                 "Cancel",
                 fontSize = 12.sp,
                 color = colors.Red,
-                fontFamily = FontFamily.Monospace
+                fontFamily = FontFamily.SansSerif
               )
             }
           }
@@ -695,7 +695,7 @@ fun ModelListScreen(
                 "Possible causes:",
                 color = colors.Text3,
                 fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace
+                fontFamily = FontFamily.SansSerif
               )
               Spacer(Modifier.height(4.dp))
               Text(
@@ -704,7 +704,7 @@ fun ModelListScreen(
                 "• Context window may be too large for available memory",
                 color = colors.Text3,
                 fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace
+                fontFamily = FontFamily.SansSerif
               )
             }
           },
@@ -776,7 +776,7 @@ fun ModelListScreen(
               if (result.prefillTps > 0f) {
                 Spacer(Modifier.height(8.dp))
                 Text("Prefill", color = colors.Accent2, fontSize = 12.sp,
-                  fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
+                  fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.SansSerif)
                 DetailRow("  Time", "%.1f ms".format(result.prefillMs))
                 DetailRow("  Tokens", "%d tokens".format(result.prefillTokens))
                 DetailRow("  Speed", "%.1f t/s".format(result.prefillTps))
@@ -784,7 +784,7 @@ fun ModelListScreen(
               if (result.decodeTps > 0f) {
                 Spacer(Modifier.height(8.dp))
                 Text("Decode", color = colors.Accent, fontSize = 12.sp,
-                  fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
+                  fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.SansSerif)
                 DetailRow("  Time", "%.1f ms".format(result.decodeMs))
                 DetailRow("  Tokens", "%d tokens".format(result.decodeTokens))
                 DetailRow("  Speed", "%.1f t/s".format(result.decodeTps))
@@ -806,8 +806,8 @@ fun ModelListScreen(
 private fun DetailRow(label: String, value: String) {
   val colors = currentPalette()
   Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-    Text("$label: ", fontSize = 12.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
-    Text(value, fontSize = 12.sp, color = colors.Text, fontFamily = FontFamily.Monospace)
+    Text("$label: ", fontSize = 12.sp, color = colors.Text2, fontFamily = FontFamily.SansSerif)
+    Text(value, fontSize = 12.sp, color = colors.Text, fontFamily = FontFamily.SansSerif)
   }
 }
 
@@ -859,14 +859,14 @@ private fun ModelCard(
             model.format.uppercase(),
             fontSize = 10.sp,
             color = colors.Accent,
-            fontFamily = FontFamily.Monospace
+            fontFamily = FontFamily.SansSerif
           )
           Spacer(Modifier.width(8.dp))
           Text(
             model.sizeFormatted,
             fontSize = 10.sp,
             color = colors.Text3,
-            fontFamily = FontFamily.Monospace
+            fontFamily = FontFamily.SansSerif
           )
           // Estimated RAM needed (model file size × ~1.3x overhead)
           if (model.sizeBytes > 0) {
@@ -876,7 +876,7 @@ private fun ModelCard(
               "~${estRamMB}MB RAM",
               fontSize = 10.sp,
               color = colors.Text3,
-              fontFamily = FontFamily.Monospace
+              fontFamily = FontFamily.SansSerif
             )
           }
           // Vision-capable badge — per-format detection (GGUF mmproj, MNN
@@ -892,7 +892,7 @@ private fun ModelCard(
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
                 fontSize = 8.sp,
                 color = colors.Amber,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Bold
               )
             }
@@ -910,7 +910,7 @@ private fun ModelCard(
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
                 fontSize = 8.sp,
                 color = colors.Purple,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Bold
               )
             }
@@ -921,7 +921,7 @@ private fun ModelCard(
               dateFormat.format(Date(model.lastUsed)),
               fontSize = 10.sp,
               color = colors.Text3,
-              fontFamily = FontFamily.Monospace
+              fontFamily = FontFamily.SansSerif
             )
           }
         }
@@ -975,7 +975,7 @@ private fun EngineBadge(engine: EngineType) {
       modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
       fontSize = 9.sp,
       color = badgeColor,
-      fontFamily = FontFamily.Monospace,
+      fontFamily = FontFamily.SansSerif,
       fontWeight = FontWeight.Bold
     )
   }

@@ -210,14 +210,14 @@ fun ModelSelectDialog(
                     Text(
                       text = model.format.uppercase(),
                       fontSize = 10.sp,
-                      fontFamily = FontFamily.Monospace,
+                      fontFamily = FontFamily.SansSerif,
                       color = colors.Accent
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
                       text = model.sizeFormatted,
                       fontSize = 10.sp,
-                      fontFamily = FontFamily.Monospace,
+                      fontFamily = FontFamily.SansSerif,
                       color = colors.Text3
                     )
                   }
@@ -253,7 +253,7 @@ fun DeleteConfirmDialog(
         fontSize = 16.sp,
         fontWeight = FontWeight.Bold,
         color = colors.Text,
-        fontFamily = FontFamily.Monospace
+        fontFamily = FontFamily.SansSerif
       )
     },
     text = {
@@ -261,7 +261,7 @@ fun DeleteConfirmDialog(
         text = "This action cannot be undone. The message will be permanently removed.",
         fontSize = 14.sp,
         color = colors.Text2,
-        fontFamily = FontFamily.Monospace
+        fontFamily = FontFamily.SansSerif
       )
     },
     confirmButton = {
@@ -276,7 +276,7 @@ fun DeleteConfirmDialog(
           text = "Delete",
           color = Color.Black,
           fontSize = 12.sp,
-          fontFamily = FontFamily.Monospace,
+          fontFamily = FontFamily.SansSerif,
           fontWeight = FontWeight.Bold,
           modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
         )
@@ -284,7 +284,7 @@ fun DeleteConfirmDialog(
     },
     dismissButton = {
       TextButton(shape = ZcShape.Pill, onClick = onDismiss) {
-        Text(text = "Cancel", color = colors.Text2, fontSize = 14.sp, fontFamily = FontFamily.Monospace)
+        Text(text = "Cancel", color = colors.Text2, fontSize = 14.sp, fontFamily = FontFamily.SansSerif)
       }
     }
   )

@@ -32,10 +32,10 @@ object ThemeState {
  */
 object ZcShape {
   val Xs = RoundedCornerShape(4.dp)   // chips, badges, small overlays
-  val Sm = RoundedCornerShape(8.dp)   // inputs, list items, buttons (secondary)
-  val Md = RoundedCornerShape(12.dp)  // cards, sheets, dialogs
-  val Lg = RoundedCornerShape(16.dp)  // large surfaces, bottom sheets
-  val Xl = RoundedCornerShape(24.dp)  // hero sections, full-screen modals
+  val Sm = RoundedCornerShape(10.dp)  // inputs, list items, buttons (secondary)
+  val Md = RoundedCornerShape(16.dp)  // cards, sheets, dialogs
+  val Lg = RoundedCornerShape(20.dp)  // large surfaces, bottom sheets
+  val Xl = RoundedCornerShape(28.dp)  // hero sections, full-screen modals
   val Pill = RoundedCornerShape(50)   // fully rounded pills / FABs
   val Circle = RoundedCornerShape(50) // avatars, icon buttons (w/ square size)
 }

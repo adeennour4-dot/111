@@ -137,9 +137,9 @@ fun ModelTokenConfigDialog(
         title = {
             Column {
                 Text("⚙  Per-Model Config", fontWeight = FontWeight.Bold,
-                    color = colors.Text, fontFamily = FontFamily.Monospace, fontSize = 16.sp)
+                    color = colors.Text, fontFamily = FontFamily.SansSerif, fontSize = 16.sp)
                 Text(modelName, fontSize = 11.sp, color = colors.Text3,
-                    fontFamily = FontFamily.Monospace, maxLines = 2)
+                    fontFamily = FontFamily.SansSerif, maxLines = 2)
             }
         },
         confirmButton = {
@@ -148,7 +148,7 @@ fun ModelTokenConfigDialog(
                 shape = ZcShape.Pill,
                 enabled = ramOk,
                 colors = ButtonDefaults.buttonColors(containerColor = colors.Accent)
-            ) { Text("Save", fontFamily = FontFamily.Monospace,
+            ) { Text("Save", fontFamily = FontFamily.SansSerif,
                 color = colors.Bg, fontWeight = FontWeight.Bold) }
         },
         dismissButton = {
@@ -156,7 +156,7 @@ fun ModelTokenConfigDialog(
                 onClick = onDismiss,
                 shape = ZcShape.Pill,
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Text2)
-            ) { Text("Cancel", fontFamily = FontFamily.Monospace) }
+            ) { Text("Cancel", fontFamily = FontFamily.SansSerif) }
         },
         text = {
             Column(
@@ -170,8 +170,8 @@ fun ModelTokenConfigDialog(
                 // ── Context + Max New (slider + editable number) ──
                 Column {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Context window", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
-                        Text("max ${ctxMax}", fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                        Text("Context window", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.SansSerif, modifier = Modifier.weight(1f))
+                        Text("max ${ctxMax}", fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
                         // Editable number alongside the slider value.
                         // Track raw text so the user can clear and re-type without
                         // the field snapping back to the previous value.
@@ -203,7 +203,7 @@ fun ModelTokenConfigDialog(
                                 .onFocusChanged { ctxTextFieldFocused.value = it.isFocused },
                             singleLine = true,
                             textStyle = LocalTextStyle.current.copy(
-                                fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                                fontSize = 12.sp, fontFamily = FontFamily.SansSerif,
                                 color = colors.Text
                             ),
                             colors = OutlinedTextFieldDefaults.colors(
@@ -226,17 +226,17 @@ fun ModelTokenConfigDialog(
                         Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("512", fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-                        Text("8K", fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-                        Text("16K", fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-                        Text("24K", fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-                        Text("32K", fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                        Text("512", fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
+                        Text("8K", fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
+                        Text("16K", fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
+                        Text("24K", fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
+                        Text("32K", fontSize = 7.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
                     }
                 }
 
                 Column {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Max new tokens", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+                        Text("Max new tokens", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.SansSerif, modifier = Modifier.weight(1f))
                         var maxNewText by remember { mutableStateOf(maxNewSlider.toString()) }
                         val maxNewTextFieldFocused = remember { mutableStateOf(false) }
                         LaunchedEffect(maxNewSlider) {
@@ -259,7 +259,7 @@ fun ModelTokenConfigDialog(
                                 .onFocusChanged { maxNewTextFieldFocused.value = it.isFocused },
                             singleLine = true,
                             textStyle = LocalTextStyle.current.copy(
-                                fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                                fontSize = 12.sp, fontFamily = FontFamily.SansSerif,
                                 color = colors.Text
                             ),
                             colors = OutlinedTextFieldDefaults.colors(
@@ -292,8 +292,8 @@ fun ModelTokenConfigDialog(
                             )
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("0 = CPU", fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-                            Text("99 = all layers", fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                            Text("0 = CPU", fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
+                            Text("99 = all layers", fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
                         }
                     }
                 } else {
@@ -302,14 +302,14 @@ fun ModelTokenConfigDialog(
                             Icon(Icons.Filled.Info, null, tint = colors.Text3, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(6.dp))
                             Text("GPU offload only for GGUF (llama.cpp)",
-                                fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                                fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
                         }
                     }
                 }
 
                 // ── Compute backend (per-model) ──
                 Column {
-                  Text("Compute Backend", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+                  Text("Compute Backend", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.SansSerif)
                   Row(Modifier.fillMaxWidth().padding(top = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ZcPillButton(onClick = { backendSel = "auto" }, modifier = Modifier.weight(1f), label = "Auto", tint = colors.Accent, ghost = backendSel != "auto")
@@ -322,7 +322,7 @@ fun ModelTokenConfigDialog(
                       "gpu" -> "Offload all layers to GPU / Vulkan"
                       else -> "Auto — inherit global backend"
                     },
-                    fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace,
+                    fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif,
                     modifier = Modifier.padding(top = 2.dp)
                   )
                 }
@@ -354,7 +354,7 @@ fun ModelTokenConfigDialog(
 
                 SamplingField("Threads", "1-16", threadsText, { threadsText = it }, colors)
                 Text("Recommended: $recommendedThreads (big cores) for this device",
-                    fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                    fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
                 SamplingField("Batch", "512-8192", batchText, { batchText = it }, colors)
 
                 // ── RAM estimate ──
@@ -366,7 +366,7 @@ fun ModelTokenConfigDialog(
                 ) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("📊  RAM Estimate", fontSize = 10.sp, color = colors.Text3,
-                            fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+                            fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold)
                         RamRow("Model", "${String.format("%.1f", modelFileSizeMB)} MB", colors.Text2, colors)
                         RamRow("KV Cache", "${String.format("%.0f", kvCacheMB)} MB", colors.Text2, colors)
                         HorizontalDivider(color = colors.Border.copy(0.5f))
@@ -375,7 +375,7 @@ fun ModelTokenConfigDialog(
                         RamRow("Total", "${String.format("%.0f", totalEstMB)} MB / ${totalRamMB} MB",
                             if (ramOk) colors.Text2 else colors.Red, colors)
                         if (!ramOk) Text("⚠  Exceeds RAM — reduce ctx or max tokens",
-                            fontSize = 9.sp, color = colors.Red, fontFamily = FontFamily.Monospace)
+                            fontSize = 9.sp, color = colors.Red, fontFamily = FontFamily.SansSerif)
                     }
                 }
 
@@ -404,14 +404,14 @@ fun ModelTokenConfigDialog(
                         modifier = Modifier.weight(1f),
                         shape = ZcShape.Pill,
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Text3)
-                    ) { Text("Reset", fontSize = 11.sp, fontFamily = FontFamily.Monospace) }
+                    ) { Text("Reset", fontSize = 11.sp, fontFamily = FontFamily.SansSerif) }
                     if (onRemove != null) {
                         Button(
                             onClick = onRemove,
                             modifier = Modifier.weight(1f),
                             shape = ZcShape.Pill,
                             colors = ButtonDefaults.buttonColors(containerColor = colors.Red)
-                        ) { Text("Remove", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = colors.Text, fontWeight = FontWeight.Bold) }
+                        ) { Text("Remove", fontSize = 11.sp, fontFamily = FontFamily.SansSerif, color = colors.Text, fontWeight = FontWeight.Bold) }
                     }
                 }
             }
@@ -429,7 +429,7 @@ fun ModelTokenConfigDialog(
 @Composable
 private fun SectionHeader(label: String, colors: ZcPalette) {
     Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.Accent,
-        fontFamily = FontFamily.Monospace, letterSpacing = 1.sp)
+        fontFamily = FontFamily.SansSerif, letterSpacing = 1.sp)
 }
 
 @Composable
@@ -442,9 +442,9 @@ private fun SliderSection(
     Column {
         if (label.isNotEmpty()) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(label, fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+                Text(label, fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.SansSerif)
                 Text(valueText, fontSize = 13.sp, color = colors.Accent,
-                    fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold)
             }
         }
         slider(valueText)
@@ -469,7 +469,7 @@ private fun CheckOverride(
                 modifier = Modifier.height(24.dp)
             )
             Spacer(Modifier.width(8.dp))
-            Text(label, fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+            Text(label, fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.SansSerif)
         }
         if (checked) {
             Column(modifier = Modifier.padding(start = 26.dp)) {
@@ -488,7 +488,7 @@ private fun SamplingField(
     colors: ZcPalette
 ) {
     Column {
-        Text(label, fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace)
+        Text(label, fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.SansSerif)
         OutlinedTextField(
             value = value,
             onValueChange = { v ->
@@ -503,7 +503,7 @@ private fun SamplingField(
             },
             modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
             singleLine = true,
-            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = colors.Text),
+            textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, fontFamily = FontFamily.SansSerif, color = colors.Text),
             placeholder = { Text(hint, fontSize = 10.sp, color = colors.Text3) },
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border,
@@ -537,9 +537,9 @@ private fun SingleSwitch(
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
             Text(label, fontSize = 11.sp, color = if (enabled) colors.Text2 else colors.Text3,
-                fontFamily = FontFamily.Monospace)
+                fontFamily = FontFamily.SansSerif)
             if (hint.isNotEmpty()) {
-                Text(hint, fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                Text(hint, fontSize = 8.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
             }
         }
     }
@@ -557,8 +557,8 @@ private fun cpuSupportsFlashAttention(): Boolean {
 @Composable
 private fun RamRow(label: String, value: String, color: androidx.compose.ui.graphics.Color, colors: ZcPalette) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-        Text(value, fontSize = 10.sp, color = color, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+        Text(label, fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
+        Text(value, fontSize = 10.sp, color = color, fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold)
     }
 }
 

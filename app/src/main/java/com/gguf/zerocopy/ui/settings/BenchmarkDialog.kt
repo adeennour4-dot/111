@@ -52,7 +52,7 @@ fun BenchmarkDialog(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.Refresh, null, tint = colors.Accent2, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Benchmark", fontWeight = FontWeight.Bold, color = colors.Text, fontFamily = FontFamily.Monospace)
+                Text("Benchmark", fontWeight = FontWeight.Bold, color = colors.Text, fontFamily = FontFamily.SansSerif)
             }
         },
         text = {
@@ -64,12 +64,12 @@ fun BenchmarkDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (models.isEmpty()) {
-                    Text("No models downloaded yet.", color = colors.Text3, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+                    Text("No models downloaded yet.", color = colors.Text3, fontSize = 13.sp, fontFamily = FontFamily.SansSerif)
                     return@Column
                 }
 
                 // ── Model selector ──
-                Text("Select a model:", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+                Text("Select a model:", fontSize = 11.sp, color = colors.Text2, fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold)
                 models.forEach { model ->
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
@@ -79,8 +79,8 @@ fun BenchmarkDialog(
                             androidx.compose.foundation.BorderStroke(0.2.dp, colors.Accent.copy(0.5f)) else null
                     ) {
                         Column(Modifier.clickable { selectedModel = model }.padding(12.dp)) {
-                            Text(model.name, fontSize = 12.sp, color = colors.Text, fontFamily = FontFamily.Monospace)
-                            Text(model.sizeFormatted + " · " + model.format.uppercase(), fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                            Text(model.name, fontSize = 12.sp, color = colors.Text, fontFamily = FontFamily.SansSerif)
+                            Text(model.sizeFormatted + " · " + model.format.uppercase(), fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
                         }
                     }
                 }
@@ -142,16 +142,16 @@ fun BenchmarkDialog(
                             strokeWidth = 2.dp
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text("Benchmarking…", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                        Text("Benchmarking…", fontFamily = FontFamily.SansSerif, fontSize = 12.sp)
                     } else {
-                        Text("Run Benchmark", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        Text("Run Benchmark", fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold)
                     }
                 }
 
                 // ── Error ──
                 if (error != null) {
                     Surface(Modifier.fillMaxWidth(), shape = ZcShape.Sm, color = colors.Red.copy(0.08f)) {
-                        Text(error!!, color = colors.Red, fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(10.dp))
+                        Text(error!!, color = colors.Red, fontSize = 11.sp, fontFamily = FontFamily.SansSerif, modifier = Modifier.padding(10.dp))
                     }
                 }
 
@@ -159,7 +159,7 @@ fun BenchmarkDialog(
                 if (runCount >= 2) {
                     Text(
                         "⚠ Device may be warm — results may read lower than a cold run.",
-                        fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace
+                        fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif
                     )
                 }
 
@@ -172,14 +172,14 @@ fun BenchmarkDialog(
                     ) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text("Results", fontWeight = FontWeight.Bold, fontSize = 12.sp,
-                                color = colors.Accent2, fontFamily = FontFamily.Monospace)
+                                color = colors.Accent2, fontFamily = FontFamily.SansSerif)
                             ResultRow("Engine", r.engine, colors)
 
                             if (r.prefillTps > 0f) {
                                 // Prefill block — grouped, no per-row dividers
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text("Prefill", fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
-                                        color = colors.Accent2, fontFamily = FontFamily.Monospace)
+                                        color = colors.Accent2, fontFamily = FontFamily.SansSerif)
                                     ResultRow("Tokens", "${r.prefillTokens} ctx", colors)
                                     ResultRow("Time", "%.0f ms".format(r.prefillMs), colors)
                                     ResultRow("Speed", "%.1f t/s".format(r.prefillTps), colors)
@@ -190,19 +190,19 @@ fun BenchmarkDialog(
                                 // Decode block — the decode speed is the headline number
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text("Decode", fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
-                                        color = colors.Accent2, fontFamily = FontFamily.Monospace)
+                                        color = colors.Accent2, fontFamily = FontFamily.SansSerif)
                                     ResultRow("Tokens", "${r.decodeTokens} gen", colors)
                                     ResultRow("Time", "%.0f ms".format(r.decodeMs), colors)
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Speed", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                                        Text("Speed", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
                                         Text("%.1f t/s".format(r.decodeTps), fontSize = 14.sp,
-                                            color = colors.Accent, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                            color = colors.Accent, fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
 
                             if (r.prefillTps <= 0f && r.decodeTps <= 0f) {
-                                Text("No benchmark data returned.", fontSize = 11.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                                Text("No benchmark data returned.", fontSize = 11.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
                             }
                         }
                     }
@@ -211,7 +211,7 @@ fun BenchmarkDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss, enabled = !benchmarking) {
-                Text("Close", color = colors.Text2, fontFamily = FontFamily.Monospace)
+                Text("Close", color = colors.Text2, fontFamily = FontFamily.SansSerif)
             }
         }
     )
@@ -220,7 +220,7 @@ fun BenchmarkDialog(
 @Composable
 private fun ResultRow(label: String, value: String, colors: com.gguf.zerocopy.ui.theme.ZcPalette) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-        Text(value, fontSize = 10.sp, color = colors.Text, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+        Text(label, fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
+        Text(value, fontSize = 10.sp, color = colors.Text, fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold)
     }
 }

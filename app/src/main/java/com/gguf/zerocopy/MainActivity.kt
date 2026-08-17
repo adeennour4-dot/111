@@ -573,15 +573,15 @@ fun SplashScreen(onDone: () -> Unit) {
           contentAlignment = Alignment.Center
         ) {
           Text("ZC", fontSize = 36.sp, fontWeight = FontWeight.Black,
-            color = Color.White, fontFamily = FontFamily.Monospace)
+            color = Color.White, fontFamily = FontFamily.SansSerif)
         }
       }
       Spacer(Modifier.height(20.dp))
       Text("ZeroCopy", fontSize = 28.sp, fontWeight = FontWeight.Light,
-        color = colors.Text2, fontFamily = FontFamily.Monospace, letterSpacing = 4.sp)
+        color = colors.Text2, fontFamily = FontFamily.SansSerif, letterSpacing = 4.sp)
       Spacer(Modifier.height(8.dp))
       Text("by adeennour4-dot", fontSize = 12.sp, fontWeight = FontWeight.Normal,
-        color = colors.Text3, fontFamily = FontFamily.Monospace)
+        color = colors.Text3, fontFamily = FontFamily.SansSerif)
     }
   }
 }

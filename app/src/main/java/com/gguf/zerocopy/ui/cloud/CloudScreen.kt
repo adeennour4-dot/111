@@ -145,11 +145,11 @@ fun CloudScreen(onBack: () -> Unit) {
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
               Text("Server Status", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.Text)
-              Text(if (isRunning) "Running on $localIp" else "Stopped", fontSize = 11.sp, color = if (isRunning) colors.Accent2 else colors.Text3, fontFamily = FontFamily.Monospace)
+              Text(if (isRunning) "Running on $localIp" else "Stopped", fontSize = 11.sp, color = if (isRunning) colors.Accent2 else colors.Text3, fontFamily = FontFamily.SansSerif)
             }
           }
           if (isRunning) {
-            Text(serverUrl, fontSize = 11.sp, color = colors.Accent, fontFamily = FontFamily.Monospace)
+            Text(serverUrl, fontSize = 11.sp, color = colors.Accent, fontFamily = FontFamily.SansSerif)
           }
         }
       }
@@ -181,10 +181,10 @@ fun CloudScreen(onBack: () -> Unit) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
           Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Connected Clients", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.Text2, modifier = Modifier.weight(1f))
-            Text("${activeClients.size} active", fontSize = 11.sp, color = if (activeClients.isEmpty()) colors.Text3 else colors.Accent2, fontFamily = FontFamily.Monospace)
+            Text("${activeClients.size} active", fontSize = 11.sp, color = if (activeClients.isEmpty()) colors.Text3 else colors.Accent2, fontFamily = FontFamily.SansSerif)
           }
           if (activeClients.isEmpty()) {
-            Text("No active connections", fontSize = 11.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+            Text("No active connections", fontSize = 11.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
           } else {
             activeClients.forEach { (ip, connectedAt) ->
               Row(
@@ -195,8 +195,8 @@ fun CloudScreen(onBack: () -> Unit) {
                   modifier = Modifier.size(8.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(0xFF00E5A0))
                 )
                 Spacer(Modifier.width(8.dp))
-                Text(ip, fontSize = 12.sp, color = colors.Text, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
-                Text(formatElapsed(connectedAt), fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                Text(ip, fontSize = 12.sp, color = colors.Text, fontFamily = FontFamily.SansSerif, modifier = Modifier.weight(1f))
+                Text(formatElapsed(connectedAt), fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
               }
             }
           }
@@ -214,13 +214,13 @@ fun CloudScreen(onBack: () -> Unit) {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
             shape = RoundedCornerShape(10.dp),
             colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border, focusedTextColor = colors.Text, unfocusedTextColor = colors.Text, cursorColor = colors.Accent),
-            textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+            textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, fontFamily = FontFamily.SansSerif)
           )
 
           Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
               Text("Authentication", fontSize = 13.sp, color = colors.Text)
-              Text("Require API key from clients", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+              Text("Require API key from clients", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
             }
             Switch(
               checked = authEnabled,
@@ -242,14 +242,14 @@ fun CloudScreen(onBack: () -> Unit) {
               },
               shape = RoundedCornerShape(10.dp),
               colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = colors.Accent, unfocusedBorderColor = colors.Border, focusedTextColor = colors.Text, unfocusedTextColor = colors.Text, cursorColor = colors.Accent),
-              textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+              textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, fontFamily = FontFamily.SansSerif)
             )
           }
 
           Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
               Text("Wi-Fi Only", fontSize = 13.sp, color = colors.Text)
-              Text("Only serve on Wi-Fi networks", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+              Text("Only serve on Wi-Fi networks", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
             }
             Switch(
               checked = wifiOnly,
@@ -261,7 +261,7 @@ fun CloudScreen(onBack: () -> Unit) {
           Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
               Text("Auto-start on Boot", fontSize = 13.sp, color = colors.Text)
-              Text("Start server when app launches", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+              Text("Start server when app launches", fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
             }
             Switch(
               checked = autoStartBoot,
@@ -277,7 +277,7 @@ fun CloudScreen(onBack: () -> Unit) {
           Text("Server Model", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.Text2)
           Text(
             if (serverModelName.isNotEmpty()) serverModelName else if (SettingsManager.lastModelName.isNotEmpty()) SettingsManager.lastModelName else "Use current engine model",
-            fontSize = 12.sp, color = colors.Text, fontFamily = FontFamily.Monospace
+            fontSize = 12.sp, color = colors.Text, fontFamily = FontFamily.SansSerif
           )
           Button(
             onClick = { showModelDialog = true },

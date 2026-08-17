@@ -134,14 +134,14 @@ private fun ModelRow(
             model.sizeFormatted,
             fontSize = 11.sp,
             color = colors.Text3,
-            fontFamily = FontFamily.Monospace
+            fontFamily = FontFamily.SansSerif
           )
           Spacer(Modifier.width(8.dp))
           Text(
             model.format.uppercase(),
             fontSize = 11.sp,
             color = colors.Accent,
-            fontFamily = FontFamily.Monospace
+            fontFamily = FontFamily.SansSerif
           )
           if (isLoaded) {
             Spacer(Modifier.width(8.dp))
@@ -154,7 +154,7 @@ private fun ModelRow(
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
                 fontSize = 9.sp,
                 color = colors.Accent2,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Bold
               )
             }
@@ -182,7 +182,7 @@ private fun EngineBadge(engine: EngineType) {
       modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
       fontSize = 9.sp,
       color = badgeColor,
-      fontFamily = FontFamily.Monospace,
+      fontFamily = FontFamily.SansSerif,
       fontWeight = FontWeight.Bold
     )
   }

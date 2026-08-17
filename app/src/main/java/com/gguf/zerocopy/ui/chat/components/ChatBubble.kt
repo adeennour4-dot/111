@@ -116,7 +116,7 @@ fun ChatBubble(
           fontSize = 10.sp,
           color = colors.Bg,
           fontWeight = FontWeight.Black,
-          fontFamily = FontFamily.Monospace,
+          fontFamily = FontFamily.SansSerif,
           textAlign = TextAlign.Center
         )
       }
@@ -155,7 +155,7 @@ fun ChatBubble(
                 fontSize = 10.sp,
                 color = colors.Purple,
                 fontWeight = FontWeight.SemiBold,
-                fontFamily = FontFamily.Monospace
+                fontFamily = FontFamily.SansSerif
               )
             }
           }
@@ -169,12 +169,8 @@ fun ChatBubble(
           )
         }
 
-        val bubbleShape = RoundedCornerShape(
-          topStart = if (isUser) 12.dp else 18.dp,
-          topEnd = if (isUser) 18.dp else 12.dp,
-          bottomStart = if (isUser) 4.dp else 18.dp,
-          bottomEnd = if (isUser) 18.dp else 4.dp
-        )
+        // Symmetric modern bubble: uniform 20dp radius — no lopsided tail.
+        val bubbleShape = RoundedCornerShape(20.dp)
         GradientBubbleBox(
           circulating = isStreaming || isLoading,
           bubbleColor = colors.Card,
@@ -183,7 +179,7 @@ fun ChatBubble(
         ) {
           Column(
             modifier = Modifier
-              .padding(horizontal = 14.dp, vertical = 10.dp)
+              .padding(horizontal = 16.dp, vertical = 12.dp)
               .combinedClickable(
                 onClick = {},
                 onLongClick = { showMenu = true }
@@ -219,7 +215,7 @@ fun ChatBubble(
                   text = "thinking",
                   fontSize = 10.sp,
                   color = colors.Text3,
-                  fontFamily = FontFamily.Monospace
+                  fontFamily = FontFamily.SansSerif
                 )
               }
             } else {
@@ -256,7 +252,7 @@ fun ChatBubble(
                 text = "\uD83E\uDDD0 Thinking",
                 fontSize = 10.sp,
                 color = colors.Purple,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
               )
@@ -266,14 +262,14 @@ fun ChatBubble(
             text = timeStr,
             fontSize = 10.sp,
             color = colors.Text3,
-            fontFamily = FontFamily.Monospace
+            fontFamily = FontFamily.SansSerif
           )
           if (tps > 0f) {
             Text(
               text = " \u00b7 %.1f t/s \u00b7 %d tok".format(tps, tokens),
               fontSize = 10.sp,
               color = colors.Text3,
-              fontFamily = FontFamily.Monospace
+              fontFamily = FontFamily.SansSerif
             )
           }
         }
@@ -357,7 +353,7 @@ fun ChatBubble(
           fontSize = 12.sp,
           color = colors.Bg,
           fontWeight = FontWeight.Black,
-          fontFamily = FontFamily.Monospace,
+          fontFamily = FontFamily.SansSerif,
           textAlign = TextAlign.Center
         )
       }

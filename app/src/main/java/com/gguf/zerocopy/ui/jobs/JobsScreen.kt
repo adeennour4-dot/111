@@ -92,14 +92,14 @@ fun JobsScreen(onBack: () -> Unit) {
                         "No active jobs",
                         fontSize = 14.sp,
                         color = colors.Text2,
-                        fontFamily = FontFamily.Monospace
+                        fontFamily = FontFamily.SansSerif
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
                         "Background tasks (model load, inference, downloads)\nwill appear here.",
                         fontSize = 11.sp,
                         color = colors.Text3,
-                        fontFamily = FontFamily.Monospace
+                        fontFamily = FontFamily.SansSerif
                     )
                 }
             } else {
@@ -116,7 +116,7 @@ fun JobsScreen(onBack: () -> Unit) {
                     onClick = { jobManager.cancelAll() },
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 ) {
-                    Text("Cancel All", color = colors.Red, fontFamily = FontFamily.Monospace)
+                    Text("Cancel All", color = colors.Red, fontFamily = FontFamily.SansSerif)
                 }
             }
         }
@@ -149,7 +149,7 @@ private fun JobCard(job: JobManager.TrackedJob, onCancel: () -> Unit) {
                     job.label,
                     fontSize = 13.sp,
                     color = colors.Text,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FontFamily.SansSerif,
                     fontWeight = FontWeight.Medium
                 )
                 Spacer(Modifier.height(2.dp))
@@ -157,7 +157,7 @@ private fun JobCard(job: JobManager.TrackedJob, onCancel: () -> Unit) {
                     "Started ${timeFormat.format(Date(job.startTimeMs))}",
                     fontSize = 10.sp,
                     color = colors.Text3,
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = FontFamily.SansSerif
                 )
             }
             IconButton(onClick = onCancel, modifier = Modifier.size(32.dp)) {

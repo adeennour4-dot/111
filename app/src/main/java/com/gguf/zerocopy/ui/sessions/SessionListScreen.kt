@@ -240,13 +240,13 @@ private fun SessionCard(
           )
           Spacer(Modifier.height(4.dp))
           Row {
-            Text(dateStr, fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+            Text(dateStr, fontSize = 10.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
             Text(" · ", fontSize = 10.sp, color = colors.Text3)
             Text(
               "${session.messageCount} msg${if (session.messageCount != 1) "s" else ""}",
               fontSize = 10.sp,
               color = colors.Text3,
-              fontFamily = FontFamily.Monospace
+              fontFamily = FontFamily.SansSerif
             )
             if (session.modelName.isNotEmpty()) {
               Text(" · ", fontSize = 10.sp, color = colors.Text3)
@@ -254,7 +254,7 @@ private fun SessionCard(
                 session.modelName,
                 fontSize = 10.sp,
                 color = colors.Accent2,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 maxLines = 1
               )
             }

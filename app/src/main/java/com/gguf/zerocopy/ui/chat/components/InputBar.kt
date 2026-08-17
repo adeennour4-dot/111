@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -52,6 +51,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ui.components.GradientBubbleBox
+import com.gguf.zerocopy.ui.theme.ZcShape
 import com.gguf.zerocopy.ui.theme.currentPalette
 
 @Composable
@@ -105,7 +105,7 @@ fun InputBar(
                     contentDescription = null,
                     modifier = Modifier
                       .size(64.dp)
-                      .clip(RoundedCornerShape(10.dp)),
+                      .clip(ZcShape.Sm),
                     contentScale = ContentScale.Crop
                   )
                 }
@@ -116,7 +116,7 @@ fun InputBar(
                 Box(
                   modifier = Modifier
                     .size(64.dp)
-                    .clip(RoundedCornerShape(10.dp)),
+                    .clip(ZcShape.Sm),
                   contentAlignment = Alignment.Center
                 ) {
                   Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -156,11 +156,11 @@ fun InputBar(
       GradientBubbleBox(
         circulating = isInferring,
         bubbleColor = colors.Card,
-        shape = RoundedCornerShape(22.dp),
+        shape = ZcShape.Xl,
         borderWidth = 1.5.dp
       ) {
         Row(
-          modifier = Modifier.padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+          modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
           verticalAlignment = Alignment.CenterVertically
         ) {
           OutlinedTextField(
@@ -177,7 +177,7 @@ fun InputBar(
             enabled = !isInferring,
             minLines = 1,
             maxLines = 4,
-            shape = RoundedCornerShape(22.dp),
+            shape = ZcShape.Xl,
             keyboardOptions = KeyboardOptions(
               keyboardType = KeyboardType.Text,
               imeAction = ImeAction.Send
@@ -218,7 +218,7 @@ fun InputBar(
             // Send orb — identity gradient
             val canSend = prompt.isNotBlank()
             val sendGradient = remember {
-              Brush.horizontalGradient(listOf(Color(0xFF00E5A0), Color(0xFF7C5CFF)))
+              Brush.horizontalGradient(listOf(colors.GradientStart, colors.GradientEnd))
             }
             Box(
               modifier = Modifier

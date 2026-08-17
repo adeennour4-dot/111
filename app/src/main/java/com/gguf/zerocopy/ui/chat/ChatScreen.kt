@@ -801,7 +801,7 @@ fun ChatScreen(
                 text = modelName,
                 fontSize = 8.5.sp,
                 color = colors.Accent2,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FontFamily.SansSerif,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -986,9 +986,9 @@ fun ChatScreen(
             Spacer(Modifier.width(6.dp))
             Column(Modifier.weight(1f)) {
               Text("Context limit approaching", fontSize = 10.sp,
-                color = colors.Red, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+                color = colors.Red, fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.SemiBold)
               Text("Tap to increase context size in model settings",
-                fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
+                fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
             }
             Icon(Icons.Filled.Settings, null, tint = colors.Red.copy(0.6f),
               modifier = Modifier.size(14.dp))
@@ -1026,7 +1026,7 @@ fun ChatScreen(
             color = if (engine?.isModelLoaded == true) colors.Text else colors.Amber,
             fontSize = 17.sp,
             fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace
+            fontFamily = FontFamily.SansSerif
           )
           Spacer(Modifier.height(6.dp))
           Text(
@@ -1035,7 +1035,7 @@ fun ChatScreen(
             else "Tap the model name at the top to load one",
             color = colors.Text3,
             fontSize = 11.5.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = FontFamily.SansSerif,
             textAlign = TextAlign.Center
           )
         }
