@@ -108,7 +108,7 @@ static _Unwind_Reason_Code zc_unwind_cb(struct _Unwind_Context* ctx, void* arg) 
     if (pc != 0 && st->count < st->max) {
         st->frames[st->count++] = (void*)pc;
     }
-    return _Unwind_REASON_NO_REASON;
+    return _URC_NO_REASON;
 }
 
 static void zc_write_backtrace(int fd) {
