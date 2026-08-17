@@ -558,7 +558,7 @@ fun InventScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Surface(
                         onClick = { vm.approvePlan() },
-                        shape = RoundedCornerShape(10.dp),
+                        shape = ZcShape.Sm,
                         color = Cy.copy(alpha = 0.15f),
                         border = BorderStroke(0.2.dp, Cy),
                         modifier = Modifier.weight(1f)
@@ -571,7 +571,7 @@ fun InventScreen(
                     }
                     Surface(
                         onClick = { vm.regeneratePlan() },
-                        shape = RoundedCornerShape(10.dp),
+                        shape = ZcShape.Sm,
                         color = Am.copy(alpha = 0.12f),
                         border = BorderStroke(0.2.dp, Am.copy(alpha = 0.7f)),
                         modifier = Modifier.weight(1f)
@@ -584,7 +584,7 @@ fun InventScreen(
                     }
                     Surface(
                         onClick = { vm.cancelPlanReview() },
-                        shape = RoundedCornerShape(10.dp),
+                        shape = ZcShape.Sm,
                         color = Color.Transparent,
                         border = BorderStroke(0.2.dp, colors.Border),
                         modifier = Modifier.weight(0.7f)
@@ -834,7 +834,7 @@ private fun ModelPills(
             Surface(
                 modifier = Modifier
                     .padding(vertical = 4.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(ZcShape.Sm)
                     .clickable { onTap(pair.first) },
                 color = if (loaded) accent.copy(alpha = 0.10f) else colors.Surface,
                 border = BorderStroke(0.2.dp, if (loaded) accent.copy(0.4f) else colors.Border.copy(0.25f))
@@ -868,7 +868,7 @@ private fun ModelPills(
 private fun PhaseHint(phase: InventPhase, colors: ZcPalette) {
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
-        shape = RoundedCornerShape(10.dp),
+        shape = ZcShape.Sm,
         color = colors.Accent.copy(alpha = 0.06f),
         border = BorderStroke(0.2.dp, colors.Accent.copy(alpha = 0.14f))
     ) {
@@ -1056,7 +1056,7 @@ private fun ChatBubbleCard(bubble: ChatBubble, colors: ZcPalette) {
             GradientBubbleBox(
                 circulating = bubble.isStreaming,
                 bubbleColor = colors.Surface,
-                shape = RoundedCornerShape(10.dp)
+                shape = ZcShape.Sm
             ) {
                 Row(
                     Modifier.height(IntrinsicSize.Min),
@@ -1121,7 +1121,7 @@ private fun DoneStats(lines: Int, bytes: Long, debugCount: Int, colors: ZcPalett
 private fun StatTile(label: String, value: String, accent: Color, colors: ZcPalette, modifier: Modifier = Modifier) {
     Surface(
         modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
+        shape = ZcShape.Sm,
         color = accent.copy(alpha = 0.07f),
         border = BorderStroke(0.2.dp, accent.copy(0.22f))
     ) {
@@ -1284,7 +1284,7 @@ private fun ModelPickerSheet(
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center) {
         Surface(Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.74f).clickable {},
-            shape = RoundedCornerShape(22.dp), color = colors.Card,
+            shape = ZcShape.Xl, color = colors.Card,
             border = BorderStroke(0.2.dp, colors.Border.copy(alpha = 0.4f))) {
             Column(Modifier.padding(14.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
@@ -1435,7 +1435,7 @@ private fun SessionPopup(
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center) {
         Surface(Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.74f).clickable {},
-            shape = RoundedCornerShape(22.dp), color = colors.Card,
+            shape = ZcShape.Xl, color = colors.Card,
             border = BorderStroke(0.2.dp, colors.Border.copy(alpha = 0.4f))) {
             Column(Modifier.padding(14.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
@@ -1459,7 +1459,7 @@ private fun SessionPopup(
                     label = "sessionFiles"
                 ) { sess ->
                     if (sess != null) {
-                        Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp),
+                        Surface(Modifier.fillMaxWidth(), shape = ZcShape.Sm,
                             color = Cy.copy(alpha = 0.10f), border = BorderStroke(0.2.dp, Cy.copy(0.35f))) {
                             Row(Modifier.clickable { onSwitch(sess) }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.PlayArrow, null, tint = Cy, modifier = Modifier.size(18.dp))
@@ -1491,7 +1491,7 @@ private fun SessionPopup(
                             items(sessions) { s ->
                                 val isCurrent = s.id == sessionId
                                 Surface(Modifier.fillMaxWidth().clickable { selectedSession = s.id },
-                                    shape = RoundedCornerShape(10.dp),
+                                    shape = ZcShape.Sm,
                                     color = if (isCurrent) Cy.copy(alpha = 0.08f) else colors.Surface,
                                     border = if (isCurrent) BorderStroke(0.2.dp, Cy.copy(0.35f)) else BorderStroke(0.2.dp, colors.Border.copy(0.2f))) {
                                     Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1577,7 +1577,7 @@ private fun SettingsPopup2(
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable { onDismiss() },
         contentAlignment = Alignment.Center) {
         Surface(Modifier.fillMaxWidth(0.9f).fillMaxHeight(0.74f).clickable {},
-            shape = RoundedCornerShape(22.dp), color = colors.Card,
+            shape = ZcShape.Xl, color = colors.Card,
             border = BorderStroke(0.2.dp, colors.Border.copy(alpha = 0.4f))) {
             Column(Modifier.padding(14.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
@@ -1626,7 +1626,7 @@ private fun SettingsPopup2(
                 }
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = { onReload(); onDismiss() }, modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = ZcShape.Sm,
                     colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
                     contentPadding = PaddingValues(0.dp)
                 ) {
@@ -1784,7 +1784,7 @@ private fun CoderChatView(
                     )
                 ) {
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
+                        shape = ZcShape.Sm,
                         color = if (isUser) colors.Accent.copy(alpha = 0.12f) else colors.CardLight,
                         border = BorderStroke(0.2.dp, colors.Border.copy(alpha = 0.2f)),
                         modifier = Modifier.fillMaxWidth()

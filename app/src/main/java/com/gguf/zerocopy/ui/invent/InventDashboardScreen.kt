@@ -422,7 +422,7 @@ fun InventDashboardScreen(
                         Spacer(Modifier.height(16.dp))
                         Surface(
                             onClick = { dismissTour() },
-                            shape = RoundedCornerShape(10.dp),
+                            shape = ZcShape.Sm,
                             color = Cy.copy(alpha = 0.18f),
                             border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.6f))
                         ) {
@@ -819,10 +819,7 @@ private fun ProjectSquare(
     // Calm entrance: staggered fade + gentle rise + scale.
     val appear = remember { Animatable(0f) }
     LaunchedEffect(Unit) { appear.animateTo(1f, tween(320, delayMillis = (index * 70).coerceAtMost(420))) }
-    // Soft, slow breathing glow on the door (professional micro-motion).
-    val glowAlpha by rememberInfiniteTransition(label = "sqOrb").animateFloat(
-        0.14f, 0.26f, infiniteRepeatable(tween(1500), RepeatMode.Reverse)
-    )
+    // Door state ring: crisp static hairline + faint halo — no breathing glow.
 
     Box(
         Modifier.fillMaxSize()
@@ -851,20 +848,20 @@ private fun ProjectSquare(
         }
         // Maximize + X — rounded-square tabs touching the top line
         Row(Modifier.align(Alignment.TopEnd), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            Surface(onClick = onMaximize, shape = ZcShape.Sm, color = CardLight, border = BorderStroke(0.2.dp, Line), modifier = Modifier.size(15.dp)) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.OpenInFull, null, tint = Cy, modifier = Modifier.size(8.dp)) }
+            Surface(onClick = onMaximize, shape = ZcShape.Sm, color = CardLight, border = BorderStroke(0.2.dp, Line), modifier = Modifier.size(18.dp)) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.OpenInFull, null, tint = Cy, modifier = Modifier.size(10.dp)) }
             }
-            Surface(onClick = onClear, shape = ZcShape.Sm, color = CardLight, border = BorderStroke(0.2.dp, Rd.copy(alpha = 0.5f)), modifier = Modifier.size(15.dp)) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, null, tint = Rd, modifier = Modifier.size(8.dp)) }
+            Surface(onClick = onClear, shape = ZcShape.Sm, color = CardLight, border = BorderStroke(0.2.dp, Rd.copy(alpha = 0.5f)), modifier = Modifier.size(18.dp)) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, null, tint = Rd, modifier = Modifier.size(10.dp)) }
             }
         }
         // Count pills (top-left) — small, tucked into the corner
         Row(Modifier.align(Alignment.TopStart), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             Surface(shape = ZcShape.Sm, color = Pr.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.4f))) {
-                Text("${project.sessionIds.size}S", fontSize = 6.sp, color = Pr, fontFamily = FontFamily.SansSerif, modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
+                Text("${project.sessionIds.size}S", fontSize = 7.sp, color = Pr, fontFamily = FontFamily.SansSerif, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
             }
             Surface(shape = ZcShape.Sm, color = Cy.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.4f))) {
-                Text("${fileCount}F", fontSize = 6.sp, color = Cy, fontFamily = FontFamily.SansSerif, modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp))
+                Text("${fileCount}F", fontSize = 7.sp, color = Cy, fontFamily = FontFamily.SansSerif, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
             }
         }
         // Name pill — horizontal expanded circle connected to the top (inside)
@@ -883,8 +880,8 @@ private fun ProjectSquare(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Soft state glow behind the door
-            Box(Modifier.size(66.dp).background(Brush.radialGradient(listOf(doorColor.copy(alpha = glowAlpha), doorColor.copy(alpha = 0f))), CircleShape), contentAlignment = Alignment.Center) {
+            // Static faint halo behind the door (crisp, no breathing glow)
+            Box(Modifier.size(66.dp).background(doorColor.copy(alpha = 0.08f), CircleShape), contentAlignment = Alignment.Center) {
                 Surface(
                     onClick = onPanel,
                     shape = CircleShape,
@@ -912,7 +909,7 @@ private fun ProjectSquare(
                 Box(Modifier.size(4.dp).clip(CircleShape).background(doorColor))
                 Text(
                     if (coderRunning) "CODING…" else "READY",
-                    fontSize = 6.sp, fontWeight = FontWeight.Bold,
+                    fontSize = 7.sp, fontWeight = FontWeight.Bold,
                     color = if (coderRunning) Rd else Cy,
                     fontFamily = FontFamily.SansSerif
                 )
@@ -1001,7 +998,7 @@ private fun ProjectWindow(
     var sector by remember(project.id) { mutableStateOf("models") }
 
     Surface(
-        shape = RoundedCornerShape(22.dp),
+        shape = ZcShape.Xl,
         color = Card,
         border = BorderStroke(0.2.dp, Line),
         modifier = Modifier.fillMaxSize().padding(8.dp)
@@ -1350,7 +1347,7 @@ private fun ModelPickerDialog(
                         singleLine = true,
                         placeholder = { Text("🔍  search ${models.size} models…", fontSize = 11.sp, color = Gy, fontFamily = FontFamily.SansSerif) },
                         textStyle = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.SansSerif, color = Txt),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = ZcShape.Sm,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = roleColor(role.role),
                             unfocusedBorderColor = Line,
@@ -1433,7 +1430,7 @@ private fun ModelPickerDialog(
                                 )
                             }
                         },
-                        shape = RoundedCornerShape(10.dp),
+                        shape = ZcShape.Sm,
                         color = roleColor(role.role).copy(alpha = 0.15f),
                         border = BorderStroke(0.2.dp, if (selectedPath.isNotEmpty()) roleColor(role.role) else Line),
                         modifier = Modifier.fillMaxWidth()
@@ -1894,7 +1891,7 @@ private fun SquarePanel(
                         val missing = role.modelPath.isNotEmpty() && !knownPaths.contains(role.modelPath)
                         val model = models.find { it.path == role.modelPath }
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
+                            shape = ZcShape.Sm,
                             color = CardLight,
                             border = BorderStroke(0.2.dp, roleColor(role.role).copy(alpha = 0.4f)),
                             modifier = Modifier.fillMaxWidth().combinedClickable(
@@ -1931,7 +1928,7 @@ private fun SquarePanel(
                     item {
                         Surface(
                             onClick = onAddRole,
-                            shape = RoundedCornerShape(10.dp),
+                            shape = ZcShape.Sm,
                             color = Pr.copy(alpha = 0.10f),
                             border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.5f)),
                             modifier = Modifier.fillMaxWidth()
@@ -1959,7 +1956,7 @@ private fun SquarePanel(
                             val s = remember(sid, fileRefresh) { runCatching { InventStorage.loadSession(context, sid) }.getOrNull() }
                             val title = s?.model1Name?.takeIf { it.isNotBlank() } ?: "Session ${i + 1}"
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
+                                shape = ZcShape.Sm,
                                 color = CardLight,
                                 border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.35f)),
                                 modifier = Modifier.fillMaxWidth().combinedClickable(
@@ -1983,7 +1980,7 @@ private fun SquarePanel(
                     Spacer(Modifier.height(8.dp))
                     Surface(
                         onClick = onStartSession,
-                        shape = RoundedCornerShape(10.dp),
+                        shape = ZcShape.Sm,
                         color = Pr.copy(alpha = 0.16f),
                         border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.65f)),
                         modifier = Modifier.fillMaxWidth()
@@ -2006,7 +2003,7 @@ private fun MiniToggle(checked: Boolean, onToggle: () -> Unit) {
     val col = if (checked) Cy else Gy
     Surface(
         onClick = onToggle,
-        shape = RoundedCornerShape(10.dp),
+        shape = ZcShape.Sm,
         color = col.copy(alpha = 0.18f),
         border = BorderStroke(0.2.dp, col.copy(alpha = 0.55f))
     ) {
@@ -2068,7 +2065,7 @@ private fun ModelInfoDialog(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Surface(
                         onClick = onChangeModel,
-                        shape = RoundedCornerShape(10.dp),
+                        shape = ZcShape.Sm,
                         color = Pr.copy(alpha = 0.15f),
                         border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.6f)),
                         modifier = Modifier.weight(1f)
@@ -2079,7 +2076,7 @@ private fun ModelInfoDialog(
                     }
                     Surface(
                         onClick = onClose,
-                        shape = RoundedCornerShape(10.dp),
+                        shape = ZcShape.Sm,
                         color = Cy.copy(alpha = 0.15f),
                         border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.6f)),
                         modifier = Modifier.weight(1f)
