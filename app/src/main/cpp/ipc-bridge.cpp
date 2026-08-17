@@ -578,6 +578,7 @@ static void truncate_prompt(std::vector<llama_token>& tokens, int limit) {
 // prompt; `cb` is initialized. Returns the number of tokens generated.
 static int generate_loop(JniCb& cb, Utf8Assembler& utf8, std::string& response) {
     pin_to_big_cores();
+    if (!g_ctx || !g_sampler || !g_model) { LOGE("generate_loop: engine not ready"); return 0; }
     int tokens_generated = 0;
     for (int i = 0; i < g_cfg.max_new_tokens; i++) {
         if (g_abort.load()) { LOGI("Aborted at token %d", i); break; }
@@ -1156,14 +1157,23 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithCallbackNative(
     // prompt + recent turns instead of blindly keeping the last tokens.
     int limit = std::max(64, g_ctx_actual - 2);
     truncate_prompt(tokens, limit);
+    if (tokens.empty()) {
+        LOGE("Prompt empty after truncation");
+        cb.error("Prompt empty after truncation — reduce the context size");
+        cb.destroy();
+        g_history.pop_back();
+        return;
+    }
 
     // The prompt contains the FULL conversation (already formatted by Kotlin),
     // so clear the KV cache to avoid position collision with cached tokens.
     llama_memory_clear(get_mem(), true);
 
     // Manually prepend BOS on the first decode (add_special=false skips it).
+    // Never let the BOS push the batch past n_ctx — an over-long batch on the
+    // very first decode is a crash vector on some devices.
     llama_token bos = llama_vocab_bos(llama_model_get_vocab(g_model));
-    if (bos != LLAMA_TOKEN_NULL) tokens.insert(tokens.begin(), bos);
+    if (bos != LLAMA_TOKEN_NULL && (int)tokens.size() < limit) tokens.insert(tokens.begin(), bos);
 
     pin_to_all_cores();
     llama_batch batch = llama_batch_get_one(tokens.data(), (int)tokens.size());
@@ -1247,11 +1257,18 @@ Java_com_gguf_zerocopy_domain_inference_NativeBridge_executeWithImageNative(
 
     int limit = std::max(64, g_ctx_actual - 2);
     truncate_prompt(tokens, limit);
+    if (tokens.empty()) {
+        LOGE("Image prompt empty after truncation");
+        cb.error("Prompt empty after truncation — reduce the context size");
+        cb.destroy();
+        g_history.pop_back();
+        return;
+    }
 
     llama_memory_clear(get_mem(), true);
 
     llama_token bos = llama_vocab_bos(llama_model_get_vocab(g_model));
-    if (bos != LLAMA_TOKEN_NULL) tokens.insert(tokens.begin(), bos);
+    if (bos != LLAMA_TOKEN_NULL && (int)tokens.size() < limit) tokens.insert(tokens.begin(), bos);
 
     // Process image through CLIP if available (b9581+ API).
     std::vector<float> image_embeds;

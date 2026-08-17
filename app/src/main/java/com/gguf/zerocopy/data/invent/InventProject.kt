@@ -20,8 +20,8 @@ data class InventRoleConfig(
     val description: String = "",     // system prompt / identity command
     val modelPath: String = "",
     val modelName: String = "",       // empty → UI shows "Unknown" if file missing
-    val contextWindow: Int = 2048,
-    val maxTokens: Int = 512,
+    val contextWindow: Int = 4096,
+    val maxTokens: Int = 1024,
     val thinkingEnabled: Boolean = true,
     val backgroundWork: Boolean = false, // coder only: keep generating in background
     val isBuiltin: Boolean = false,
@@ -50,8 +50,8 @@ data class InventRoleConfig(
             description = o.optString("description"),
             modelPath = o.optString("modelPath"),
             modelName = o.optString("modelName"),
-            contextWindow = o.optInt("contextWindow", 2048),
-            maxTokens = o.optInt("maxTokens", 512),
+            contextWindow = o.optInt("contextWindow", 4096),
+            maxTokens = o.optInt("maxTokens", 1024),
             thinkingEnabled = o.optBoolean("thinkingEnabled", true),
             backgroundWork = o.optBoolean("backgroundWork", false),
             isBuiltin = o.optBoolean("isBuiltin", false),

@@ -470,9 +470,8 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
 
             clearToolManagerOnEngines()
 
-            val m1Ctx = GgufMetaReader.readContextLength(m1p).let { if (it == null || it <= 0) 2048 else it }
-            val m2Ctx = if (sameModelMode) m1Ctx
-                        else GgufMetaReader.readContextLength(m2p).let { if (it == null || it <= 0) 2048 else it }
+            val m1Ctx = detectRoleContext(m1p, 2048)
+            val m2Ctx = if (sameModelMode) m1Ctx else detectRoleContext(m2p, 2048)
 
             val userCtx = SettingsManager.nCtx
             val effectiveCtx = if (userCtx <= 0) m1Ctx else userCtx.coerceAtMost(m1Ctx)
@@ -514,6 +513,48 @@ class InventViewModel(app: Application) : AndroidViewModel(app) {
             recordTelemetry(JSONObject().apply { put("outcome", "session_start") })
             startModel1Questioning()
         }
+    }
+
+    // ── Context-size detection (per model format) ────────────────────────────
+
+    /**
+     * Real context length for a role's model, format-aware. GGUF reads GGUF
+     * metadata; LiteRT-LM/TFLite context is baked into the bundle — try the
+     * bundle's JSON metadata, else default to 4096 (Gemma-3 E2B class). The
+     * old code only read GGUF metadata, so TFLite always fell back to 2048,
+     * which under-sized the budget and made the planner split files too
+     * aggressively — generating more prompts and hitting the context limit
+     * sooner.
+     */
+    private fun detectRoleContext(path: String, fallback: Int): Int {
+        if (path.isEmpty()) return fallback
+        if (path.endsWith(".gguf", true)) {
+            return GgufMetaReader.readContextLength(path)?.takeIf { it > 0 } ?: fallback
+        }
+        if (path.endsWith(".litertlm", true) || path.endsWith(".tflite", true)) {
+            return readLiteRtContextLength(path) ?: 4096
+        }
+        return fallback
+    }
+
+    private fun readLiteRtContextLength(path: String): Int? {
+        val f = File(path)
+        val files = if (f.isDirectory)
+            (f.listFiles() ?: emptyArray()).filter { it.isFile }.map { it.absolutePath }
+        else listOf(path)
+        for (c in files) {
+            if (!c.endsWith(".json", true)) continue
+            val file = File(c)
+            if (file.length() > 2_000_000L) continue
+            val v = runCatching {
+                val j = JSONObject(file.readText())
+                j.optInt("context_window", 0).takeIf { it > 0 }
+                    ?: j.optInt("contextLength", 0).takeIf { it > 0 }
+                    ?: j.optInt("max_context_length", 0).takeIf { it > 0 }
+            }.getOrNull()
+            if (v != null && v > 0) return v
+        }
+        return null
     }
 
     // ── Phase 1: Questioning ───────────────────────────────────────────────

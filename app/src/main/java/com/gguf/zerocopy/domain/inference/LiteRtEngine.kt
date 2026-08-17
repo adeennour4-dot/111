@@ -39,6 +39,44 @@ class LiteRtEngine : InferenceEngine {
   private val fullResponse = StringBuilder()
   private var _toolManager: ToolManager? = null
 
+  // LiteRT-LM's Conversation has NO native context compaction — every
+  // sendMessage() appends to a transcript bounded by the model's baked-in
+  // context window. Long multi-turn runs (Invent questioning, web-search
+  // rounds) would otherwise end in "context limit" errors. We keep a local
+  // transcript and, when it approaches the budget, close + recreate the
+  // conversation, re-seeding the system prompt with a compact summary of the
+  // recent exchanges — the same head+tail strategy llama.cpp's truncate_prompt
+  // applies natively.
+  private val conversationLog = mutableListOf<Pair<String, String>>()
+
+  private fun estTokens(text: String): Int = (text.length / 3) + 1
+
+  private fun compactConversationIfNeeded() {
+    synchronized(conversationLog) {
+      val budget = ((config.nCtx.takeIf { it >= 512 } ?: 4096) * 0.7f).toInt().coerceAtLeast(1024)
+      val used = conversationLog.sumOf { estTokens(it.first) + estTokens(it.second) }
+      if (used <= budget) return
+      val recent = conversationLog.takeLast(4)
+      val summary = buildString {
+        append("[Earlier conversation compacted — recent exchanges retained:]\n")
+        recent.forEach { (role, content) -> append("$role: ${content.take(180)}\n") }
+      }
+      try { conversation?.close() } catch (_: Exception) {}
+      conversation = null
+      conversationLog.clear()
+      conversationLog.addAll(recent)
+      try {
+        conversation = engine?.createConversation()
+        val sys = if (summary.isNotBlank()) "$systemPrompt\n\n$summary" else systemPrompt
+        if (sys.isNotBlank()) conversation?.sendMessage(Message.system(Contents.of(sys)), emptyMap())
+      } catch (_: Exception) {}
+    }
+  }
+
+  private fun logConversationTurn(role: String, content: String) {
+    synchronized(conversationLog) { conversationLog.add(role to content) }
+  }
+
   override fun getToolManager() = _toolManager
   override fun setToolManager(tm: ToolManager?) { _toolManager = tm }
 
@@ -76,6 +114,7 @@ class LiteRtEngine : InferenceEngine {
     try { engine?.close() } catch (_: Exception) {}
     engine = null
     conversation = null
+    synchronized(conversationLog) { conversationLog.clear() }
     isModelLoaded = false
     modelInfo = null
     currentModelPath = ""
@@ -122,6 +161,8 @@ class LiteRtEngine : InferenceEngine {
           },
           runInference = { p, tokenSink, doneSignal ->
             try {
+              logConversationTurn("user", p)
+              compactConversationIfNeeded()
               if (conversation == null) {
                 conversation = engine?.createConversation()
               }
@@ -164,6 +205,8 @@ class LiteRtEngine : InferenceEngine {
       val latch = CountDownLatch(1)
 
       try {
+        logConversationTurn("user", prompt)
+        compactConversationIfNeeded()
         if (conversation == null) {
           conversation = engine?.createConversation()
           if (systemPrompt.isNotEmpty()) {
@@ -187,6 +230,7 @@ class LiteRtEngine : InferenceEngine {
 
           override fun onDone() {
             inferenceDone.set(true)
+            logConversationTurn("assistant", synchronized(partialStream) { fullResponse.toString() })
             callback.onDone()
             latch.countDown()
           }
@@ -222,6 +266,7 @@ class LiteRtEngine : InferenceEngine {
   override fun resetContext() {
     try { conversation?.close() } catch (_: Exception) {}
     conversation = null
+    synchronized(conversationLog) { conversationLog.clear() }
     synchronized(partialStream) {
       partialStream.clear()
       fullResponse.clear()
