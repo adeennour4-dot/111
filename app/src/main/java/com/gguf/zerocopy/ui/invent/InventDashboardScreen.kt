@@ -12,6 +12,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -87,8 +89,6 @@ private val Txt: Color
     @Composable get() = currentPalette().Text
 private val Txt2: Color
     @Composable get() = currentPalette().Text2
-// First-run tour rides an opaque dark scrim → keeps its own light text.
-private val TourText = Color(0xFFE4E9F5)
 // True when the app is in dark mode (used for black-pill orbs).
 private val DarkMode: Boolean
     @Composable get() = currentPalette().Bg.luminance() < 0.5f
@@ -232,61 +232,46 @@ fun InventDashboardScreen(
     var renameFor by remember { mutableStateOf<String?>(null) }
     var newProjectDialog by remember { mutableStateOf(false) } // empty slot → new project
     var historyFor by remember { mutableStateOf<Pair<String, File>?>(null) } // projectId, file
-    var showZipInfo by remember { mutableStateOf(false) }
-    val squarePanels = remember { mutableStateListOf<String>() } // tap squares → in-place panels; MULTIPLE squares can be active at once
     var modelInfoFor by remember { mutableStateOf<Triple<String, InventRoleConfig, com.gguf.zerocopy.data.repository.LocalModel>?>(null) } // pid, role, model → info + RAM window
     var deleteProjectFor by remember { mutableStateOf<String?>(null) } // delete-project confirm (window ✕)
-    // First-run tour (dismissed permanently)
-    val prefs = remember { context.getSharedPreferences("invent", Context.MODE_PRIVATE) }
-    var showTour by remember { mutableStateOf(!prefs.getBoolean("tour_done_v1", false)) }
-    fun dismissTour() {
-        prefs.edit().putBoolean("tour_done_v1", true).apply()
-        showTour = false
-    }
 
     Column(Modifier.fillMaxSize().background(Bg)) {
-        // ── Title bar ──
+// ── Header ──
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Filled.ArrowBack, "Back", tint = Txt2, modifier = Modifier.size(18.dp))
-            }
             Column(Modifier.weight(1f)) {
-                Text("INVENT", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FuturisticFont)
-                Text("⤢ maximize · hold a square for menu · RAM ${freeRamMb(context)} MB", fontSize = 8.sp, color = Gy, fontFamily = FontFamily.SansSerif)
+                Text("INVENT", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FuturisticFont)
+                Text("Multi-agent project generator", fontSize = 12.sp, color = Gy, fontFamily = FontFamily.SansSerif)
             }
-            Surface(
-                onClick = { onDiagnostics() },
-                shape = ZcShape.Sm,
-                color = CardLight,
-                border = BorderStroke(0.2.dp, Line)
-            ) {
-                Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.BugReport, null, tint = Cy, modifier = Modifier.size(13.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Diag", fontSize = 10.sp, color = Txt2, fontFamily = FontFamily.SansSerif)
-                }
+            Surface(onClick = onBack, shape = ZcShape.Sm, color = CardLight, border = BorderStroke(0.2.dp, Line), modifier = Modifier.size(40.dp)) {
+                Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.ArrowBack, "Back", tint = Txt2, modifier = Modifier.size(18.dp)) }
             }
-            Spacer(Modifier.width(6.dp))
-            Surface(
-                onClick = { showZipInfo = true },
-                shape = ZcShape.Sm,
-                color = CardLight,
-                border = BorderStroke(0.2.dp, Line)
-            ) {
-                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.QuestionMark, null, tint = Bulb, modifier = Modifier.size(13.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Help", fontSize = 10.sp, color = Txt2, fontFamily = FontFamily.SansSerif)
-                }
+            Spacer(Modifier.width(8.dp))
+            Surface(onClick = onDiagnostics, shape = ZcShape.Sm, color = CardLight, border = BorderStroke(0.2.dp, Line), modifier = Modifier.size(40.dp)) {
+                Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.BugReport, "Diagnostics", tint = Cy, modifier = Modifier.size(18.dp)) }
+            }
+        }
+
+        // ── New project CTA ──
+        Surface(
+            onClick = { newProjectDialog = true },
+            shape = ZcShape.Lg,
+            color = Pr.copy(alpha = 0.12f),
+            border = BorderStroke(0.5.dp, Pr.copy(alpha = 0.45f)),
+            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 4.dp)
+        ) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Add, null, tint = Pr, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("New project", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Txt, fontFamily = FontFamily.SansSerif)
             }
         }
 
         val active = projects.find { it.id == maximized }
         if (active != null) {
-            // ── Maximized project window ──
+            // ── Maximized project window (workspace) ──
             ProjectWindow(
                 project = active,
                 knownPaths = knownPaths,
@@ -295,9 +280,7 @@ fun InventDashboardScreen(
                 fileRefresh = fileRefresh,
                 onMinimize = {
                     maximized = null
-                    // Belt-and-suspenders: minimize NEVER deletes — it also
-                    // clears any pending delete flag so the confirm dialog can
-                    // never appear after minimizing.
+                    // Minimize NEVER deletes — clears any pending delete flag too.
                     deleteProjectFor = null
                 },
                 onPickModel = { role -> modelPickerFor = active.id to role },
@@ -310,134 +293,69 @@ fun InventDashboardScreen(
                 onAddFile = { newFileFor = active.id },
                 onAddFolder = { newFolderFor = active.id },
                 onShareZip = { shareProjectZip(context, active) },
-                onDelete = {
-                    deleteProjectFor = active.id
-                }
+                onDelete = { deleteProjectFor = active.id }
             )
         } else {
-            // ── 2×2 grid — the squares FILL the whole screen below the title bar ──
-            Box(Modifier.fillMaxSize()) {
-            BoxWithConstraints(Modifier.fillMaxSize()) {
-                Column(
-                    Modifier.fillMaxSize().padding(10.dp),
+            if (projects.isEmpty()) {
+                // ── Empty state ──
+                Box(
+                    Modifier.weight(1f).fillMaxWidth().padding(horizontal = 40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            Modifier.size(88.dp).clip(CircleShape)
+                                .background(Pr.copy(alpha = 0.10f))
+                                .border(0.5.dp, Pr.copy(alpha = 0.35f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.Add, null, tint = Pr, modifier = Modifier.size(34.dp))
+                        }
+                        Spacer(Modifier.height(18.dp))
+                        Text("No projects yet", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Txt, fontFamily = FuturisticFont)
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Planner, Researcher and Coder agents generate a complete codebase from a template.",
+                            fontSize = 12.sp, color = Gy, fontFamily = FontFamily.SansSerif, textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(20.dp))
+                        Surface(
+                            onClick = { newProjectDialog = true },
+                            shape = ZcShape.Pill,
+                            color = Pr,
+                            border = BorderStroke(0.5.dp, Pr.copy(alpha = 0.6f))
+                        ) {
+                            Text(
+                                "Create your first project",
+                                fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Bg,
+                                fontFamily = FontFamily.SansSerif,
+                                modifier = Modifier.padding(horizontal = 22.dp, vertical = 11.dp)
+                            )
+                        }
+                    }
+                }
+            } else {
+                // ── Project list ──
+                LazyColumn(
+                    Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 28.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    for (row in 0..1) {
-                        Row(
-                            Modifier.weight(1f).fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            for (col in 0..1) {
-                                val idx = row * 2 + col
-                                val project = projects.getOrNull(idx)
-                                Box(Modifier.weight(1f).fillMaxHeight()) {
-                                    if (project != null) {
-                                        if (project.id in squarePanels) {
-                                            // The minimized square (panel) lives INSIDE the square.
-                                            SquarePanel(
-                                                project = project,
-                                                knownPaths = knownPaths,
-                                                models = models,
-                                                fileRefresh = fileRefresh,
-                                                onMaximize = { squarePanels.remove(project.id); maximized = project.id },
-                                                onClose = { squarePanels.remove(project.id) },
-                                                onPickModel = { role -> modelPickerFor = project.id to role },
-                                                onModelInfo = { role, model -> modelInfoFor = Triple(project.id, role, model) },
-                                                onAddRole = { addRoleFor = project.id },
-                                                onRoleMenu = { role -> roleMenuFor = Triple(project.id, role, true) },
-                                                onStartSession = { onStartSession(project) },
-                                                onOpenSession = { sid -> onOpenSession(project, sid) },
-                                                onSessionMenu = { sid -> sessionMenuFor = project.id to sid },
-                                                onToggleBackground = { role ->
-                                                    val p = projects.find { it.id == project.id }
-                                                    if (p != null) {
-                                                        onSaveProject(p.withRoles(p.roles.map {
-                                                            if (it.role == role.role) it.copy(backgroundWork = !it.backgroundWork) else it
-                                                        }))
-                                                    }
-                                                }
-                                            )
-                                        } else {
-                                            ZcEnter(index = idx) {
-                                                ProjectSquare(
-                                                index = idx,
-                                                project = project,
-                                                knownPaths = knownPaths,
-                                                fileRefresh = fileRefresh,
-                                                onPanel = { if (!squarePanels.remove(project.id)) squarePanels.add(project.id) },
-                                                onMaximize = { maximized = project.id },
-                                                onMenu = { projectMenuFor = project.id },
-                                                onClear = {
-                                                    onClearProject(project.id)
-                                                    currentDir.remove(project.id)
-                                                    fileRefresh++
-                                                }
-                                            )
-                                            }
-                                        }
-                                    } else {
-                                        ZcEnter(index = idx) {
-                                        // Empty slot → new project
-                                        Surface(
-                                            onClick = { newProjectDialog = true },
-                                            shape = ZcShape.Lg,
-                                            color = Card.copy(alpha = 0.5f),
-                                            border = BorderStroke(0.5.dp, Line),
-                                            modifier = Modifier.fillMaxSize()
-                                        ) {
-                                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                    Icon(Icons.Filled.Add, null, tint = Am.copy(alpha = 0.7f), modifier = Modifier.size(24.dp))
-                                                    Spacer(Modifier.height(4.dp))
-                                                    Text("New project", fontSize = 7.sp, color = Gy, fontFamily = FontFamily.SansSerif)
-                                                }
-                                            }
-                                        }
-                                        }
-                                    }
-                                }
-                            }
+                    itemsIndexed(projects) { idx, project ->
+                        ZcEnter(index = idx) {
+                            ProjectCard(
+                                project = project,
+                                knownPaths = knownPaths,
+                                fileRefresh = fileRefresh,
+                                onOpen = { maximized = project.id },
+                                onMenu = { projectMenuFor = project.id }
+                            )
                         }
                     }
                 }
             }
-            // ── First-run tour overlay ──
-            if (showTour) {
-                Surface(
-                    onClick = { dismissTour() },
-                    color = Color(0xFF0B0D12),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("INVENT TOUR", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FontFamily.SansSerif)
-                        Spacer(Modifier.height(12.dp))
-                        Text("• Tap a square (or ⤢ top-right) to maximize it into a full window", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.SansSerif, textAlign = TextAlign.Center)
-                        Spacer(Modifier.height(6.dp))
-                        Text("• ROLES · SESSIONS · FILES sections live inside the window", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.SansSerif, textAlign = TextAlign.Center)
-                        Spacer(Modifier.height(6.dp))
-                        Text("• — minimizes · ✕ clears · hold a square for rename / export", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.SansSerif, textAlign = TextAlign.Center)
-                        Spacer(Modifier.height(6.dp))
-                        Text("• Tap + on an empty slot to create a project from a template", fontSize = 11.sp, color = TourText, fontFamily = FontFamily.SansSerif, textAlign = TextAlign.Center)
-                        Spacer(Modifier.height(16.dp))
-                        Surface(
-                            onClick = { dismissTour() },
-                            shape = ZcShape.Sm,
-                            color = Cy.copy(alpha = 0.18f),
-                            border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.6f))
-                        ) {
-                            Text("Got it — start building", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Cy, fontFamily = FontFamily.SansSerif,
-                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp))
-                        }
-                    }
-                    }
-                }
-            }
-
         }
-            }
     }
-
     // ── Delete-project confirm (window title bar 🗑) — composed OUTSIDE the
     // grid/maximized branch so it works while a project window is maximized ──
     deleteProjectFor?.let { pid ->
@@ -453,7 +371,6 @@ fun InventDashboardScreen(
                     currentDir.remove(pid)
                     fileRefresh++
                     maximized = null
-                    squarePanels.remove(pid)
                     deleteProjectFor = null
                 }) { Text("Delete", color = Rd, fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold) }
             },
@@ -766,186 +683,84 @@ fun InventDashboardScreen(
         )
     }
 
-    // ── Help dialog ──
-    if (showZipInfo) {
-        AlertDialog(
-            onDismissRequest = { showZipInfo = false },
-            containerColor = Card,
-            title = { Text("Invent dashboard", color = Bulb, fontFamily = FontFamily.SansSerif, fontSize = 15.sp) },
-            text = {
-                Text(
-                    "• 4 equal squares: tap a square (or its ⤢ button) to maximize it into a window.\n" +
-                    "• In the window: — minimizes back to the grid; ✕ clears the project's contents.\n" +
-                    "• MODELS: tap a role to pick its model (sliders). Hold a role for rename/delete.\n" +
-                    "• MODELS: tap a role to pick its model (sliders: context, max tokens, RAM). Hold for rename/delete.\n" +
-                    "• SESSIONS: tap + to start a session, hold a session for open/reset/delete.\n" +
-                    "• FILES: file manager — up, new folder, new file, share .zip. Tap a file to open/copy/delete.\n" +
-                    "• X clears the square's contents (the square stays).",
-                    color = Color(0xFFB9C1D0), fontSize = 12.sp, fontFamily = FontFamily.SansSerif
-                )
-            },
-            confirmButton = {
-                TextButton(shape = ZcShape.Pill, onClick = { showZipInfo = false }) {
-                    Text("Got it", color = Cy, fontFamily = FontFamily.SansSerif)
-                }
-            }
-        )
-    }
 }
 
-// ═══ Grid square (compact) ══════════════════════════════════════════════════
-
-@OptIn(ExperimentalFoundationApi::class)
+/** Clean modern card for one Invent project in the hub. */
 @Composable
-private fun ProjectSquare(
-    index: Int,
+private fun ProjectCard(
     project: InventProject,
     knownPaths: Set<String>,
     fileRefresh: Int,
-    onPanel: () -> Unit,
-    onMaximize: () -> Unit,
-    onMenu: () -> Unit,
-    onClear: () -> Unit
+    onOpen: () -> Unit,
+    onMenu: () -> Unit
 ) {
     val context = LocalContext.current
     val fileCount = remember(project.id, fileRefresh) {
         InventProjectStore.filesDir(context, project.id).listFiles()?.size ?: 0
     }
-    val previewRoles = project.roles.filter { it.isPlanner || it.isDebugger || it.isCoder }
-    // The door: RED while a coder runs in the background, CYAN when idle.
+    // RED while a coder runs in the background, CYAN when idle.
     val coderRunning = project.roles.any { it.isCoder && it.backgroundWork }
-    val doorColor = if (coderRunning) Rd else Cy
+    val stateColor = if (coderRunning) Rd else Cy
 
-    // Calm entrance: staggered fade + gentle rise + scale.
-    val appear = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { appear.animateTo(1f, tween(320, delayMillis = (index * 70).coerceAtMost(420))) }
-    // Door state ring: crisp static hairline + faint halo — no breathing glow.
-
-    Box(
-        Modifier.fillMaxSize()
-            .graphicsLayer {
-                alpha = appear.value
-                val s = 0.95f + 0.05f * appear.value
-                scaleX = s; scaleY = s
-            }
-            .clip(ZcShape.Lg)
-            .background(Brush.verticalGradient(listOf(CardLight.copy(alpha = 0.7f), Card)))
-            .border(0.2.dp, Line, ZcShape.Lg)
-            .combinedClickable(onClick = onPanel, onLongClick = onMenu)
+    Surface(
+        onClick = onOpen,
+        shape = ZcShape.Lg,
+        color = Card,
+        border = BorderStroke(0.5.dp, Line),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        // Folded-corner paper-note effect (bottom-right)
-        val foldColor = CardLight.copy(alpha = 0.9f)
-        Canvas(
-            Modifier.align(Alignment.BottomEnd).size(16.dp)
-        ) {
-            val w = size.width; val h = size.height
-            val fold = Path().apply { moveTo(0f, h); lineTo(w, 0f); lineTo(w, h); close() }
-            drawPath(fold, foldColor)
-            drawLine(
-                IdentityBorderBrush,
-                Offset(0f, h), Offset(w, 0f), strokeWidth = 0.2.dp.toPx()
-            )
-        }
-        // Maximize + X — rounded-square tabs touching the top line
-        Row(Modifier.align(Alignment.TopEnd), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            Surface(onClick = onMaximize, shape = ZcShape.Sm, color = CardLight, border = BorderStroke(0.2.dp, Line), modifier = Modifier.size(18.dp)) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.OpenInFull, null, tint = Cy, modifier = Modifier.size(10.dp)) }
-            }
-            Surface(onClick = onClear, shape = ZcShape.Sm, color = CardLight, border = BorderStroke(0.2.dp, Rd.copy(alpha = 0.5f)), modifier = Modifier.size(18.dp)) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, null, tint = Rd, modifier = Modifier.size(10.dp)) }
-            }
-        }
-        // Count pills (top-left) — small, tucked into the corner
-        Row(Modifier.align(Alignment.TopStart), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            Surface(shape = ZcShape.Sm, color = Pr.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.4f))) {
-                Text("${project.sessionIds.size}S", fontSize = 7.sp, color = Pr, fontFamily = FontFamily.SansSerif, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
-            }
-            Surface(shape = ZcShape.Sm, color = Cy.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.4f))) {
-                Text("${fileCount}F", fontSize = 7.sp, color = Cy, fontFamily = FontFamily.SansSerif, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
-            }
-        }
-        // Name pill — horizontal expanded circle connected to the top (inside)
-        Box(
-            Modifier.align(Alignment.TopCenter).padding(top = 3.dp)
-                .clip(ZcShape.Pill)
-                .background(Card)
-                .border(0.2.dp, Line, ZcShape.Pill)
-        ) {
-            Text(project.name.uppercase(), fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Txt, fontFamily = FuturisticFont,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp))
-        }
-        // ── Center stage: the DOOR (state orb) + status ──
-        Column(
-            Modifier.fillMaxSize().padding(bottom = 18.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Static faint halo behind the door (crisp, no breathing glow)
-            Box(Modifier.size(66.dp).background(doorColor.copy(alpha = 0.08f), CircleShape), contentAlignment = Alignment.Center) {
-                Surface(
-                    onClick = onPanel,
-                    shape = CircleShape,
-                    color = if (DarkMode) Color.Black else Card,
-                    border = BorderStroke(0.2.dp, doorColor),
-                    modifier = Modifier.size(38.dp)
-                ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Add, null, tint = doorColor, modifier = Modifier.size(18.dp))
-                    }
-                }
-            }
-            if (previewRoles.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
-                    previewRoles.forEach { role ->
-                        val missing = role.modelPath.isNotEmpty() && !knownPaths.contains(role.modelPath)
-                        Box(Modifier.size(5.dp).clip(CircleShape).background(if (missing) Rd else roleColor(role.role)))
-                    }
-                }
-            }
-            // Status chip: ● READY (cyan) or ● CODING… (red) while a coder runs
-            Spacer(Modifier.height(5.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                Box(Modifier.size(4.dp).clip(CircleShape).background(doorColor))
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(9.dp).clip(CircleShape).background(stateColor))
+                Spacer(Modifier.width(9.dp))
                 Text(
-                    if (coderRunning) "CODING…" else "READY",
-                    fontSize = 7.sp, fontWeight = FontWeight.Bold,
-                    color = if (coderRunning) Rd else Cy,
-                    fontFamily = FontFamily.SansSerif
+                    project.name.uppercase(), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Txt,
+                    fontFamily = FuturisticFont, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
+                Surface(onClick = onMenu, shape = ZcShape.Sm, color = CardLight, border = BorderStroke(0.2.dp, Line), modifier = Modifier.size(32.dp)) {
+                    Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.MoreVert, "Project menu", tint = Txt2, modifier = Modifier.size(16.dp)) }
+                }
             }
-        }
-        // ── Footer: gradient hairline + action bar (OPEN / menu) — the square is a tiny app UI ──
-        Box(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(1.dp)
-                .background(Brush.horizontalGradient(listOf(IdentityCyan, IdentityPurple)))
-        )
-        Row(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ZcPillButton(
-                onClick = onPanel,
-                tint = Cy,
-                modifier = Modifier.weight(1f).height(26.dp),
-                label = "OPEN"
-            )
-            ZcPillButton(
-                onClick = onMenu,
-                tint = Pr,
-                ghost = true,
-                modifier = Modifier.height(26.dp),
-                label = "⋯"
-            )
+            if (project.roles.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    project.roles.forEach { role ->
+                        val rc = roleColor(role.role)
+                        val missing = role.modelPath.isNotEmpty() && !knownPaths.contains(role.modelPath)
+                        val chip = if (missing) Rd else rc
+                        Surface(shape = ZcShape.Pill, color = chip.copy(alpha = 0.10f), border = BorderStroke(0.2.dp, chip.copy(alpha = 0.45f))) {
+                            Row(Modifier.padding(horizontal = 9.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(5.dp).clip(CircleShape).background(chip))
+                                Spacer(Modifier.width(5.dp))
+                                Text(role.role, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = chip, fontFamily = FontFamily.SansSerif)
+                                if (role.modelName.isNotEmpty()) {
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(role.modelName, fontSize = 9.sp, color = Txt2, fontFamily = FontFamily.SansSerif, maxLines = 1)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("${project.sessionIds.size} sessions  ·  $fileCount files", fontSize = 11.sp, color = Gy, fontFamily = FontFamily.SansSerif)
+                Spacer(Modifier.weight(1f))
+                Surface(onClick = onOpen, shape = ZcShape.Pill, color = Pr) {
+                    Text(
+                        "Open", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Bg,
+                        fontFamily = FontFamily.SansSerif,
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 7.dp)
+                    )
+                }
+            }
         }
     }
 }
-
-// ═══ Maximized project window (like a desktop window) ════════════════════════
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
 private fun ProjectWindow(
     project: InventProject,
     knownPaths: Set<String>,
@@ -1821,183 +1636,6 @@ private fun HistoryDialog(
 // ═══ In-square panel: models + sessions + roles (the "minimized square" view) ═══
 
 @OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun SquarePanel(
-    project: InventProject,
-    knownPaths: Set<String>,
-    models: List<com.gguf.zerocopy.data.repository.LocalModel>,
-    fileRefresh: Int,
-    onMaximize: () -> Unit,
-    onClose: () -> Unit,
-    onPickModel: (InventRoleConfig) -> Unit,
-    onModelInfo: (InventRoleConfig, com.gguf.zerocopy.data.repository.LocalModel) -> Unit,
-    onAddRole: () -> Unit,
-    onRoleMenu: (InventRoleConfig) -> Unit,
-    onStartSession: () -> Unit,
-    onOpenSession: (String) -> Unit,
-    onSessionMenu: (String) -> Unit,
-    onToggleBackground: (InventRoleConfig) -> Unit
-) {
-    val context = LocalContext.current
-    var tab by remember { mutableIntStateOf(0) } // 0 = MODELS, 1 = SESSIONS
-    Surface(
-        shape = ZcShape.Lg,
-        color = Card,
-        border = BorderStroke(0.2.dp, Line),
-        modifier = Modifier.fillMaxSize()
-    ) {
-        Column(Modifier.fillMaxSize().padding(8.dp)) {
-            // ── Title bar (slim — more room for the notebook below) ──
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(6.dp).clip(CircleShape).background(Cy))
-                Spacer(Modifier.width(5.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(project.name.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Bulb, fontFamily = FuturisticFont, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("RAM ${freeRamMb(context)} MB free", fontSize = 6.5.sp, color = Gy, fontFamily = FontFamily.SansSerif)
-                }
-                Surface(onClick = onMaximize, shape = ZcShape.Sm, color = Cy.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Cy.copy(alpha = 0.5f)), modifier = Modifier.size(20.dp)) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.OpenInFull, null, tint = Cy, modifier = Modifier.size(10.dp)) }
-                }
-                Spacer(Modifier.width(5.dp))
-                Surface(onClick = onClose, shape = ZcShape.Sm, color = Rd.copy(alpha = 0.12f), border = BorderStroke(0.2.dp, Rd.copy(alpha = 0.5f)), modifier = Modifier.size(20.dp)) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Filled.Close, null, tint = Rd, modifier = Modifier.size(10.dp)) }
-                }
-            }
-            Spacer(Modifier.height(6.dp))
-            // ── Notebook pages: ROLES | SESSIONS (click flips to the next page) ──
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.Bottom) {
-                listOf(0 to "ROLES", 1 to "SESSIONS").forEach { (t, label) ->
-                    val active = tab == t
-                    Surface(
-                        onClick = { tab = t },
-                        shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 4.dp, bottomEnd = 4.dp),
-                        color = if (active) CardLight else Card.copy(alpha = 0.6f),
-                        border = BorderStroke(0.2.dp, if (active) Line else Line.copy(alpha = 0.35f)),
-                        modifier = Modifier.weight(1f).then(if (active) Modifier else Modifier.offset(y = 2.dp))
-                    ) {
-                        Box(Modifier.padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
-                            Text(label, fontSize = 8.sp, fontWeight = FontWeight.Bold,
-                                color = if (active) Pr else Gy, fontFamily = FuturisticFont, letterSpacing = 1.sp)
-                        }
-                    }
-                }
-            }
-            Spacer(Modifier.height(5.dp))
-            // ── Tab content ──
-            if (tab == 0) {
-                // MODELS
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxSize()) {
-                    itemsIndexed(project.roles) { _, role ->
-                        val missing = role.modelPath.isNotEmpty() && !knownPaths.contains(role.modelPath)
-                        val model = models.find { it.path == role.modelPath }
-                        Surface(
-                            shape = ZcShape.Sm,
-                            color = CardLight,
-                            border = BorderStroke(0.2.dp, roleColor(role.role).copy(alpha = 0.4f)),
-                            modifier = Modifier.fillMaxWidth().combinedClickable(
-                                onClick = { if (model != null) onModelInfo(role, model) else onPickModel(role) },
-                                onLongClick = { onRoleMenu(role) }
-                            )
-                        ) {
-                            Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(6.dp).clip(CircleShape).background(if (missing) Rd else roleColor(role.role)))
-                                    Spacer(Modifier.width(5.dp))
-                                    Text(role.role.uppercase(), fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = roleColor(role.role), fontFamily = FontFamily.SansSerif, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                    if (role.isCoder) { Spacer(Modifier.width(3.dp)); Text("🔒", fontSize = 7.sp) }
-                                }
-                                Spacer(Modifier.height(3.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        when {
-                                            role.modelPath.isEmpty() -> "no model — tap to pick"
-                                            missing -> "Unknown file — tap to pick"
-                                            else -> role.modelName.ifEmpty { model?.name ?: "model" }
-                                        },
-                                        fontSize = 8.sp, color = Txt2, fontFamily = FontFamily.SansSerif, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    if (role.isCoder) {
-                                        Spacer(Modifier.width(4.dp))
-                                        MiniToggle(checked = role.backgroundWork, onToggle = { onToggleBackground(role) })
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    item {
-                        Surface(
-                            onClick = onAddRole,
-                            shape = ZcShape.Sm,
-                            color = Pr.copy(alpha = 0.10f),
-                            border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.5f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(Modifier.padding(vertical = 5.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.Add, null, tint = Pr, modifier = Modifier.size(10.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("add role", fontSize = 7.5.sp, color = Pr, fontFamily = FontFamily.SansSerif, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-            } else {
-                // SESSIONS
-                Column(Modifier.fillMaxSize()) {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
-                        if (project.sessionIds.isEmpty()) {
-                            item {
-                                Box(Modifier.fillMaxWidth().padding(vertical = 14.dp), contentAlignment = Alignment.Center) {
-                                    Text("no sessions yet", fontSize = 9.sp, color = Gy, fontFamily = FontFamily.SansSerif)
-                                }
-                            }
-                        }
-                        itemsIndexed(project.sessionIds) { i, sid ->
-                            val s = remember(sid, fileRefresh) { runCatching { InventStorage.loadSession(context, sid) }.getOrNull() }
-                            val title = s?.model1Name?.takeIf { it.isNotBlank() } ?: "Session ${i + 1}"
-                            Surface(
-                                shape = ZcShape.Sm,
-                                color = CardLight,
-                                border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.35f)),
-                                modifier = Modifier.fillMaxWidth().combinedClickable(
-                                    onClick = { onOpenSession(sid) },
-                                    onLongClick = { onSessionMenu(sid) }
-                                )
-                            ) {
-                                Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(16.dp).clip(ZcShape.Sm).background(Pr.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-                                        Text("S#${i + 1}", fontSize = 7.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.SansSerif)
-                                    }
-                                    Spacer(Modifier.width(6.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(title, fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.SansSerif, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text("phase: ${s?.phase?.name ?: "?"}", fontSize = 7.sp, color = Gy, fontFamily = FontFamily.SansSerif)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Surface(
-                        onClick = onStartSession,
-                        shape = ZcShape.Sm,
-                        color = Pr.copy(alpha = 0.16f),
-                        border = BorderStroke(0.2.dp, Pr.copy(alpha = 0.65f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(Modifier.padding(vertical = 6.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Add, null, tint = Pr, modifier = Modifier.size(12.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("new session", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Pr, fontFamily = FontFamily.SansSerif)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ── Compact on/off pill (thinking / background toggles) ──
 @Composable
 private fun MiniToggle(checked: Boolean, onToggle: () -> Unit) {
     val col = if (checked) Cy else Gy
