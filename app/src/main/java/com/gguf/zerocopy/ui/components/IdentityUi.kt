@@ -47,14 +47,15 @@ import com.gguf.zerocopy.ui.theme.ZcLightColors
 import com.gguf.zerocopy.ui.theme.ZcMotion
 import com.gguf.zerocopy.ui.theme.ZcShape
 import com.gguf.zerocopy.ui.theme.ZcSpace
+import com.gguf.zerocopy.ui.theme.currentPalette
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 
-/** Identity colors — the launcher-icon palette (purple + green) plus cyan. */
-val IdentityCyan = Color(0xFF00E5F0)
-val IdentityGreen = Color(0xFF00E5A0)
-val IdentityPurple = Color(0xFF7C5CFF)
+/** Identity accents — resolved from the active theme palette (dark or light). */
+val IdentityCyan: Color get() = if (ThemeState.isDark) ZcColors.Cyan else ZcLightColors.Cyan
+val IdentityGreen: Color get() = if (ThemeState.isDark) ZcColors.Accent2 else ZcLightColors.Accent2
+val IdentityPurple: Color get() = if (ThemeState.isDark) ZcColors.Accent else ZcLightColors.Accent
 
 /** Brand gradient stops, resolved from the active theme palette (dark or light). */
 private fun identityStops(): List<Color> =
@@ -236,7 +237,7 @@ fun GradientSearchingCircle(size: Dp = 26.dp) {
 fun ClipCircleIcon(
     onClick: () -> Unit,
     size: Dp = ZcIconButtonSize,
-    fill: Color = Color(0xFF0B0E13),
+    fill: Color = currentPalette().Surface,
     active: Boolean = false
 ) {
     Box(
@@ -293,7 +294,8 @@ fun ZcPillButton(
                 color = tint,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
-                fontFamily = FuturisticFont,
+                letterSpacing = 0.2.sp,
+                fontFamily = FontFamily.SansSerif,
                 modifier = Modifier.padding(horizontal = ZcSpace.Lg, vertical = ZcSpace.Md)
             )
         }

@@ -23,6 +23,7 @@ import kotlin.math.min
  * ZeroCopy motion language — precise, symmetric, purposeful.
  * Durations on a 120ms base (×1, ×1.5, ×2, ×3, ×4) for rhythmic consistency.
  * Easings are Material-standard so motion feels native but polished.
+ * Aurora v2: slightly softer decelerate for a calmer enter feel.
  */
 object ZcMotion {
   val xs  = 120   // micro: ripple, press
@@ -31,10 +32,10 @@ object ZcMotion {
   val lg  = 360   // large: screen transition, modal
   val xl  = 480   // hero: full-screen enter
 
-  val standard = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)  // Material standard — most transitions
-  val decelerate = CubicBezierEasing(0.0f, 0f, 0.2f, 1f) // expressive enter (decelerate)
-  val accelerate = CubicBezierEasing(0.4f, 0f, 1f, 1f)  // expressive exit (accelerate)
-  val emphasis = CubicBezierEasing(0.2f, 0f, 0f, 1f)   // snappy press response
+  val standard = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)    // Material standard
+  val decelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f) // soft expressive enter
+  val accelerate = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f) // crisp expressive exit
+  val emphasis = CubicBezierEasing(0.2f, 0f, 0f, 1f)      // snappy press response
 }
 
 /**

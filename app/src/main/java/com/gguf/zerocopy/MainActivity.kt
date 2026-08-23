@@ -448,7 +448,7 @@ fun AppRoot() {
 private fun NavSprite(item: NavItem, isSelected: Boolean, colors: ZcPalette) {
   // Every icon has its own color — dim when idle, full + glow when active
   val tabColor = navTabColor(item.label, colors)
-  val idleTint = if (isSelected) tabColor else Color(0xFF8B83FF).copy(alpha = 0.55f)
+  val idleTint = if (isSelected) tabColor else colors.Accent.copy(alpha = 0.55f)
   val halo = remember { Animatable(if (isSelected) 1f else 0f) }
   // Icon flip progress: 0 = idle icon, 1 = active icon (3D switching effect)
   val flip by animateFloatAsState(
@@ -468,7 +468,7 @@ private fun NavSprite(item: NavItem, isSelected: Boolean, colors: ZcPalette) {
     if (isSelected) {
       Box(
         Modifier.size(30.dp).clip(RoundedCornerShape(10.dp))
-          .background(navGradient(item.label))
+          .background(navGradient(item.label, colors))
       )
     } else {
       Box(
@@ -520,16 +520,17 @@ private fun navTabColor(label: String, colors: ZcPalette): Color = when (label) 
   "Models" -> colors.Accent
   "Server" -> colors.Amber
   "Settings" -> colors.Purple
-  else -> Color(0xFF00E5F0) // Invent bulb cyan
+  else -> colors.Cyan // Invent bulb cyan
 }
 
-/** Per-tab gradient for the selected bottom-nav pill — each tab its own pair. */
-private fun navGradient(label: String): Brush = when (label) {
-  "Chat" -> Brush.linearGradient(listOf(IdentityCyan, IdentityPurple))
-  "Models" -> Brush.linearGradient(listOf(IdentityCyan, IdentityPurple))
-  "Server" -> Brush.linearGradient(listOf(Color(0xFFFFB44D), Color(0xFFFF7A3D)))
-  "Settings" -> Brush.linearGradient(listOf(IdentityCyan, IdentityPurple))
-  else -> Brush.linearGradient(listOf(IdentityCyan, IdentityPurple)) // Invent
+/** Per-tab gradient for the selected bottom-nav pill — each tab its own pair.
+ *  Aurora v2: gradients derive from the active palette (no off-brand hues). */
+private fun navGradient(label: String, colors: ZcPalette): Brush = when (label) {
+  "Chat" -> Brush.linearGradient(listOf(colors.Cyan, colors.Accent))
+  "Models" -> Brush.linearGradient(listOf(colors.Accent2, colors.Accent))
+  "Server" -> Brush.linearGradient(listOf(colors.Cyan, colors.Purple))
+  "Settings" -> Brush.linearGradient(listOf(colors.Purple, colors.Accent))
+  else -> Brush.linearGradient(listOf(colors.GradientStart, colors.GradientEnd)) // Invent
 }
 
 @Composable

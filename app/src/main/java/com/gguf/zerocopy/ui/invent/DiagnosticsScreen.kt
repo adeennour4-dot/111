@@ -28,11 +28,11 @@ import com.gguf.zerocopy.data.repository.LocalModel
 import java.io.File
 import org.json.JSONObject
 
-private val DbgBg = Color(0xFF0B0D12)
-private val DbgCard = Color(0xFF14171F)
-private val DbgLine = Color(0xFF262B38)
-private val DbgAccent = Color(0xFF00E5F0)  // cyan
-private val DbgText = Color(0xFFB9C1D0)
+private val DbgBg = Color(0xFF090B12)
+private val DbgCard = Color(0xFF141826)
+private val DbgLine = Color(0xFF252C42)
+private val DbgAccent = Color(0xFF46D6FF)  // sky cyan
+private val DbgText = Color(0xFF9FA6C4)
 
 /** In-app diagnostics: version, device, RAM/storage, native libs, model list, logcat tail. */
 @Composable

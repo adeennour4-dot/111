@@ -24,18 +24,19 @@ object ThemeState {
   var themeMode by mutableStateOf(SettingsManager.themeMode)
 }
 
-// ── Shape system (calculated, geometric) ────────────────────────────────────
+// ── Shape system (soft, continuous-feeling geometry) ────────────────────────
 
 /**
  * Symmetric radius scale — every component draws from these tokens so
  * the whole app shares one geometric language. No ad-hoc radius values.
+ * Aurora v2: one step rounder than v1 for a softer, friendlier feel.
  */
 object ZcShape {
-  val Xs = RoundedCornerShape(4.dp)   // chips, badges, small overlays
-  val Sm = RoundedCornerShape(10.dp)  // inputs, list items, buttons (secondary)
-  val Md = RoundedCornerShape(16.dp)  // cards, sheets, dialogs
-  val Lg = RoundedCornerShape(20.dp)  // large surfaces, bottom sheets
-  val Xl = RoundedCornerShape(28.dp)  // hero sections, full-screen modals
+  val Xs = RoundedCornerShape(6.dp)   // chips, badges, small overlays
+  val Sm = RoundedCornerShape(12.dp)  // inputs, list items, buttons (secondary)
+  val Md = RoundedCornerShape(18.dp)  // cards, sheets, dialogs
+  val Lg = RoundedCornerShape(24.dp)  // large surfaces, bottom sheets
+  val Xl = RoundedCornerShape(32.dp)  // hero sections, full-screen modals
   val Pill = RoundedCornerShape(50)   // fully rounded pills / FABs
   val Circle = RoundedCornerShape(50) // avatars, icon buttons (w/ square size)
 }
@@ -101,84 +102,85 @@ private val LightScheme =
     onErrorContainer = ZcLightColors.Red,
   )
 
-// ── Typography (sans-serif body, Orbitron display — one accent hierarchy) ──
+// ── Typography (sans-serif everywhere — weight + tracking hierarchy) ───────
 
 /**
- * ZeroCopy typography — single visual hierarchy.
- *  • Display/Headline: Orbitron (brand) — geometric, distinctive
- *  • Body/Label: System sans-serif — readable, neutral, modern
+ * ZeroCopy "Aurora" typography — a single clean sans-serif hierarchy.
+ *  • Headlines: heavy weights with tight negative tracking (editorial feel)
+ *  • Body: regular sans at comfortable line heights (1.4–1.5×)
  *  • ONE accent weight (SemiBold) for emphasis; Regular for body.
- *  • Line heights tuned for comfortable reading (1.4–1.5×).
+ *  The v1 monospace/terminal look is retired; Orbitron survives only as the
+ *  optional brand wordmark font in IdentityUi.
  */
 val ZcTypography = Typography(
-  // Brand moments — large, geometric, Orbitron
+  // Display — big, tight, confident
   displayLarge = TextStyle(
-    fontFamily = FontFamily.Monospace, // Orbitron not bundled; Monospace proxy
-    fontSize = 48.sp, fontWeight = FontWeight.Black, letterSpacing = -0.5.sp
+    fontFamily = FontFamily.SansSerif,
+    fontSize = 46.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp
   ),
   displayMedium = TextStyle(
-    fontFamily = FontFamily.Monospace,
-    fontSize = 36.sp, fontWeight = FontWeight.Bold, letterSpacing = -0.25.sp
+    fontFamily = FontFamily.SansSerif,
+    fontSize = 36.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp
   ),
   displaySmall = TextStyle(
-    fontFamily = FontFamily.Monospace,
-    fontSize = 28.sp, fontWeight = FontWeight.Bold
+    fontFamily = FontFamily.SansSerif,
+    fontSize = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.25).sp
   ),
 
-  // Section headers — Orbitron, SemiBold
+  // Section headers
   headlineLarge = TextStyle(
-    fontFamily = FontFamily.Monospace,
-    fontSize = 24.sp, fontWeight = FontWeight.Bold
+    fontFamily = FontFamily.SansSerif,
+    fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.25).sp
   ),
   headlineMedium = TextStyle(
-    fontFamily = FontFamily.Monospace,
-    fontSize = 20.sp, fontWeight = FontWeight.SemiBold
+    fontFamily = FontFamily.SansSerif,
+    fontSize = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp
   ),
   headlineSmall = TextStyle(
-    fontFamily = FontFamily.Monospace,
-    fontSize = 18.sp, fontWeight = FontWeight.SemiBold
+    fontFamily = FontFamily.SansSerif,
+    fontSize = 18.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp
   ),
 
-  // Titles — Orbitron for UI chrome
+  // Titles — UI chrome
   titleLarge = TextStyle(
-    fontFamily = FontFamily.Monospace,
-    fontSize = 16.sp, fontWeight = FontWeight.SemiBold
+    fontFamily = FontFamily.SansSerif,
+    fontSize = 16.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp
   ),
   titleMedium = TextStyle(
-    fontFamily = FontFamily.Monospace,
-    fontSize = 14.sp, fontWeight = FontWeight.SemiBold
+    fontFamily = FontFamily.SansSerif,
+    fontSize = 14.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.1.sp
   ),
   titleSmall = TextStyle(
-    fontFamily = FontFamily.Monospace,
-    fontSize = 12.sp, fontWeight = FontWeight.Medium
+    fontFamily = FontFamily.SansSerif,
+    fontSize = 12.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.2.sp
   ),
 
-  // Body — SYSTEM SANS-SERIF (not monospace). Readable, neutral.
+  // Body — comfortable reading rhythm
   bodyLarge = TextStyle(
     fontFamily = FontFamily.SansSerif,
-    fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal
+    fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.2.sp
   ),
   bodyMedium = TextStyle(
     fontFamily = FontFamily.SansSerif,
-    fontSize = 14.sp, lineHeight = 21.sp, fontWeight = FontWeight.Normal
+    fontSize = 14.sp, lineHeight = 21.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.15.sp
   ),
   bodySmall = TextStyle(
     fontFamily = FontFamily.SansSerif,
-    fontSize = 12.sp, lineHeight = 18.sp, fontWeight = FontWeight.Normal
+    fontSize = 12.sp, lineHeight = 18.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.1.sp
   ),
 
-  // Labels — SansSerif, SemiBold for actionable text
+  // Labels — actionable text
   labelLarge = TextStyle(
     fontFamily = FontFamily.SansSerif,
-    fontSize = 14.sp, fontWeight = FontWeight.SemiBold
+    fontSize = 14.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.1.sp
   ),
   labelMedium = TextStyle(
     fontFamily = FontFamily.SansSerif,
-    fontSize = 12.sp, fontWeight = FontWeight.Medium
+    fontSize = 12.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.3.sp
   ),
   labelSmall = TextStyle(
     fontFamily = FontFamily.SansSerif,
-    fontSize = 10.sp, fontWeight = FontWeight.Medium
+    fontSize = 10.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.4.sp
   )
 )
 

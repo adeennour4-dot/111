@@ -54,13 +54,20 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 // ─── Accent palette (local to this screen, mirrors theme) ─────────────────────
-private val Cy = Color(0xFF00E5A0)
-private val CyGlow = Color(0x6000E5A0)
-private val Pr = Color(0xFF8B83FF)
-private val Am = Color(0xFF00E5F0)   // cyan
-private val Rd = Color(0xFFC44DFF)   // hot purple
-private val Gy = Color(0xFF6A6A7A)
-private val Bulb = Color(0xFF00E5F0)  // cyan
+private val Cy: Color
+    @Composable get() = currentPalette().Accent2
+private val CyGlow: Color
+    @Composable get() = currentPalette().Accent2.copy(alpha = 0.38f)
+private val Pr: Color
+    @Composable get() = currentPalette().Accent
+private val Am: Color
+    @Composable get() = currentPalette().Cyan
+private val Rd: Color
+    @Composable get() = currentPalette().Red
+private val Gy: Color
+    @Composable get() = currentPalette().Text3
+private val Bulb: Color
+    @Composable get() = currentPalette().Cyan
 
 // ─── Animation specs ──────────────────────────────────────────────────────────
 private val tweenFast = tween<Float>(300, easing = FastOutSlowInEasing)
@@ -119,6 +126,7 @@ private fun pipelineIndex(phase: InventPhase): Int = when (phase) {
     InventPhase.DONE, InventPhase.DEBUGGING -> 6
 }
 
+@Composable
 private fun phaseColor(phase: InventPhase): Color = when (phase) {
     InventPhase.QUESTIONING -> Cy
     InventPhase.SEARCHING -> Pr
@@ -1632,7 +1640,7 @@ private fun SettingsPopup2(
                 ) {
                     Box(
                         Modifier.fillMaxWidth().background(
-                            Brush.linearGradient(listOf(Cy, Pr, Color(0xFF00E5F0)))
+                            Brush.linearGradient(listOf(Cy, Pr, Am))
                         ),
                         contentAlignment = Alignment.Center
                     ) {
@@ -1898,35 +1906,36 @@ private fun SessionSuccessCard(ui: InventUiState, colors: ZcPalette) {
                 fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.SansSerif)
             Spacer(Modifier.height(4.dp))
             Text("${ui.totalFiles} files · ${ui.totalLines} lines · ${ui.totalTokensUsed} tokens · debug rounds ${ui.debugSessionCount}",
-                fontSize = 8.5.sp, color = Color(0xFF9AA3B5), fontFamily = FontFamily.SansSerif)
+                fontSize = 8.5.sp, color = colors.Text2, fontFamily = FontFamily.SansSerif)
         }
     }
 }
 
-// ── Blue researching overlay: rotating square + orbiting circle + "researching" ──
+// ── Researching overlay: rotating square + orbiting circle + "researching" ──
 @Composable
 private fun ResearchingOverlay(onCancel: () -> Unit) {
+    val p = currentPalette()
     Box(
         Modifier.fillMaxSize()
-            .background(Brush.linearGradient(listOf(Color(0xFF0A2A55), Color(0xFF0E3F7A)))),
+            .background(Brush.linearGradient(listOf(p.Bg.copy(alpha = 0.97f), p.Card))),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             // Circular searching indicator — the gradient ring sweeps around the search glyph.
             GradientSearchingCircle(size = 88.dp)
             Spacer(Modifier.height(26.dp))
-            Text("researching", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB9E2FF), fontFamily = FontFamily.SansSerif)
+            Text("researching", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = p.Cyan, fontFamily = FontFamily.SansSerif)
             Spacer(Modifier.height(6.dp))
             Text("searching official docs · latest versions · changelogs",
-                fontSize = 9.sp, color = Color(0xFF7FB8E8), fontFamily = FontFamily.SansSerif, textAlign = TextAlign.Center)
+                fontSize = 9.sp, color = p.Text2, fontFamily = FontFamily.SansSerif, textAlign = TextAlign.Center)
             Spacer(Modifier.height(18.dp))
             Surface(
                 onClick = onCancel,
                 shape = ZcShape.Sm,
-                color = Color(0x22FFFFFF),
-                border = BorderStroke(0.2.dp, Color(0x66FFFFFF))
+                color = p.CardLight,
+                border = BorderStroke(0.2.dp, p.Border)
             ) {
-                Text("✕ cancel", fontSize = 9.sp, color = Color(0xFFCFE8FF), fontFamily = FontFamily.SansSerif,
+                Text("✕ cancel", fontSize = 9.sp, color = p.Cyan, fontFamily = FontFamily.SansSerif,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
             }
         }

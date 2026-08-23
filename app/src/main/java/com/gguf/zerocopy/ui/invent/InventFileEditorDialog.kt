@@ -25,10 +25,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 
-private val EdBg = Color(0xFF0E0F14)
-private val EdLine = Color(0xFF1E2230)
-private val EdText = Color(0xFFDDE2F0)
-private val EdAccent = Color(0xFF00E5A0)
+// Editor chrome — always-dark terminal aesthetic, harmonized with the
+// Aurora dark palette so it reads as native in both themes.
+private val EdBg = Color(0xFF0B0E15)
+private val EdLine = Color(0xFF252C42)
+private val EdText = Color(0xFFE2E6F2)
+private val EdAccent = Color(0xFF2BE4A4)
 
 /**
  * In-app file editor — a small code/text editor used to open project files
@@ -84,7 +86,7 @@ fun InventFileEditorDialog(
                 Spacer(Modifier.height(8.dp))
                 Surface(
                     shape = ZcShape.Sm,
-                    color = Color(0xFF0A0B0F),
+                    color = Color(0xFF090B12),
                     modifier = Modifier.weight(1f)
                 ) {
                     BasicTextField(
@@ -100,7 +102,7 @@ fun InventFileEditorDialog(
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                     TextButton(shape = ZcShape.Pill, onClick = onDismiss) {
-                        Text("Cancel", fontSize = 12.sp, color = Color(0xFF8A93A8), fontFamily = FontFamily.Monospace)
+                        Text("Cancel", fontSize = 12.sp, color = Color(0xFF9FA6C4), fontFamily = FontFamily.Monospace)
                     }
                     Spacer(Modifier.width(8.dp))
                     Surface(

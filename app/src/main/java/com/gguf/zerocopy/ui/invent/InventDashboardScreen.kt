@@ -67,10 +67,14 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 // ─── Palette (mirrors the app theme) ────────────────────────────────────────
-private val Cy = Color(0xFF00E5A0)
-private val Pr = Color(0xFF8B83FF)
-private val Am = Color(0xFF00E5F0)   // cyan
-private val Rd = Color(0xFFC44DFF)   // hot purple
+private val Cy: Color
+    @Composable get() = currentPalette().Accent2
+private val Pr: Color
+    @Composable get() = currentPalette().Accent
+private val Am: Color
+    @Composable get() = currentPalette().Cyan
+private val Rd: Color
+    @Composable get() = currentPalette().Red
 // Theme-aware surfaces/text — the Invent dashboard follows the app palette
 // (light in light mode, dark in dark mode) instead of hardcoding a dark lab.
 private val Gy: Color
@@ -89,6 +93,8 @@ private val Txt: Color
     @Composable get() = currentPalette().Text
 private val Txt2: Color
     @Composable get() = currentPalette().Text2
+private val Txt3: Color
+    @Composable get() = currentPalette().Text3
 // True when the app is in dark mode (used for black-pill orbs).
 private val DarkMode: Boolean
     @Composable get() = currentPalette().Bg.luminance() < 0.5f
@@ -867,7 +873,7 @@ private fun ProjectWindow(
                     ) {
                         Box(Modifier.fillMaxWidth().padding(vertical = 7.dp), contentAlignment = Alignment.Center) {
                             Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                                color = if (active) sectorColor(key) else Color(0xFF8A93A8), fontFamily = FontFamily.SansSerif)
+                                color = if (active) sectorColor(key) else Txt3, fontFamily = FontFamily.SansSerif)
                         }
                     }
                 }
@@ -1099,7 +1105,7 @@ private fun ProjectWindow(
                                             modifier = Modifier.size(14.dp)
                                         )
                                         Spacer(Modifier.width(6.dp))
-                                        Text(row.name, fontSize = 10.sp, color = Color(0xFFB9C1D0), fontFamily = FontFamily.SansSerif,
+                                        Text(row.name, fontSize = 10.sp, color = Txt2, fontFamily = FontFamily.SansSerif,
                                             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                         if (!row.isDir && row.sizeBytes > 0) {
                                             Text(formatSize(row.sizeBytes), fontSize = 8.5.sp, color = Gy, fontFamily = FontFamily.SansSerif)
@@ -1198,7 +1204,7 @@ private fun ModelPickerDialog(
                 }
                 item {
                     Spacer(Modifier.height(2.dp))
-                    Text("Context window: $ctx", fontSize = 10.sp, color = Color(0xFFB9C1D0), fontFamily = FontFamily.SansSerif)
+                    Text("Context window: $ctx", fontSize = 10.sp, color = Txt2, fontFamily = FontFamily.SansSerif)
                     Slider(
                         value = ctx.toFloat(),
                         onValueChange = { ctx = it.toInt() },
@@ -1208,7 +1214,7 @@ private fun ModelPickerDialog(
                     )
                 }
                 item {
-                    Text("Max tokens: $maxNew", fontSize = 10.sp, color = Color(0xFFB9C1D0), fontFamily = FontFamily.SansSerif)
+                    Text("Max tokens: $maxNew", fontSize = 10.sp, color = Txt2, fontFamily = FontFamily.SansSerif)
                     Slider(
                         value = maxNew.toFloat(),
                         onValueChange = { maxNew = it.toInt() },
@@ -1221,7 +1227,7 @@ private fun ModelPickerDialog(
                     item {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("Work in background", fontSize = 11.sp, color = Color(0xFFB9C1D0), fontFamily = FontFamily.SansSerif)
+                                Text("Work in background", fontSize = 11.sp, color = Txt2, fontFamily = FontFamily.SansSerif)
                                 Text("coder keeps generating while you use another app", fontSize = 8.5.sp, color = Gy, fontFamily = FontFamily.SansSerif)
                             }
                             Switch(
@@ -1380,7 +1386,7 @@ private fun RoleActionsDialog(
             } else {
                 Column {
                     if (role.description.isNotEmpty()) {
-                        Text(role.description, color = Color(0xFFB9C1D0), fontSize = 11.sp, fontFamily = FontFamily.SansSerif)
+                        Text(role.description, color = Txt2, fontSize = 11.sp, fontFamily = FontFamily.SansSerif)
                         Spacer(Modifier.height(6.dp))
                     }
                     Text("Model: ${role.modelName.ifEmpty { "none" }}", color = Gy, fontSize = 11.sp, fontFamily = FontFamily.SansSerif)
@@ -1424,7 +1430,7 @@ private fun SessionActionsDialog(
         onDismissRequest = onDismiss,
         containerColor = Card,
         title = { Text("Session", color = Pr, fontFamily = FontFamily.SansSerif, fontSize = 14.sp) },
-        text = { Text(sessionName, color = Color(0xFFB9C1D0), fontSize = 12.sp, fontFamily = FontFamily.SansSerif) },
+        text = { Text(sessionName, color = Txt2, fontSize = 12.sp, fontFamily = FontFamily.SansSerif) },
         confirmButton = {
             TextButton(shape = ZcShape.Pill, onClick = { onOpen(); onDismiss() }) { Text("Open session", color = Cy, fontFamily = FontFamily.SansSerif, fontSize = 12.sp) }
         },

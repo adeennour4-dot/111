@@ -30,10 +30,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.data.invent.FileNode
 import com.gguf.zerocopy.ui.theme.ZcPalette
+import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlinx.coroutines.launch
 
-private val Cy = Color(0xFF00E5A0)
-private val Am = Color(0xFF00E5F0)   // cyan
+private val Cy: Color
+    @Composable get() = currentPalette().Accent2
+private val Am: Color
+    @Composable get() = currentPalette().Cyan
 
 @Composable
 fun FilePanel(
