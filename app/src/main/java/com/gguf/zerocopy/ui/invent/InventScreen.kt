@@ -222,7 +222,7 @@ fun InventScreen(
         } else if (ui.sessionId.isEmpty() || startFresh) {
             vm.setupSession(model1Path, model1Name, model2Path, model2Name,
                 debuggerPath, debuggerName, offlineMode, sameModelMode,
-                reasoningEnabled = false)
+                reasoningEnabled = reasoningEnabled)
         }
     }
     // Register freshly-created sessions with the dashboard project
@@ -733,7 +733,12 @@ private fun PhaseOrb(color: Color) {
     val t = rememberInfiniteTransition(label = "orb")
     val ring by t.animateFloat(0.55f, 1f,
         infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "orbRing")
-    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(24.dp)) {
+    Box(
+      contentAlignment = Alignment.Center,
+      modifier = Modifier
+        .size(24.dp)
+        .semantics { contentDescription = "Current phase indicator" }
+    ) {
         Box(Modifier.size(20.dp * ring).clip(CircleShape).background(color.copy(alpha = 0.18f)))
         Box(Modifier.size(11.dp).clip(CircleShape).background(color))
     }
@@ -746,7 +751,15 @@ private fun ActionChip(
     active: Boolean = false, onClick: () -> Unit
 ) {
     Surface(
-        modifier = Modifier.height(24.dp).clip(ZcShape.Sm).clickable { onClick() },
+        modifier = Modifier
+          .height(24.dp)
+          .clip(ZcShape.Sm)
+          .clickable { onClick() }
+          .semantics {
+            contentDescription = label
+            role = androidx.compose.ui.semantics.Role.Button
+            stateDescription = if (active) "Activated" else "Not activated"
+          },
         color = if (active) tint.copy(alpha = 0.14f) else Color.Transparent,
         border = BorderStroke(0.2.dp, if (active) tint.copy(0.5f) else tint.copy(0.28f))
     ) {

@@ -739,16 +739,26 @@ private fun InlineField(
     }
     Spacer(Modifier.width(8.dp))
     OutlinedTextField(
-      value = value, onValueChange = { v ->
-        // Only accept valid decimal input: optional leading "-", digits, and
-        // at most one ".".  Reject bare separators so the field never shows
-        // just "." or "-" without digits.
-        if (v.isEmpty()) return@OutlinedTextField
-        if (v == "." || v == "-" || v == "-.") return@OutlinedTextField
-        if (v.count { it == '.' } > 1) return@OutlinedTextField
-        // Reject non-digit chars (allow digits, '.', and leading '-')
-        val clean = v.filterIndexed { i, c -> c.isDigit() || c == '.' || (c == '-' && i == 0) }
-        if (clean != v) return@OutlinedTextField
+      value = value,
+      onValueChange = { v ->
+        // Allow intermediate states while typing: "", ".", "0.", "-", "-.", "0.5", etc.
+        // Only reject clearly invalid input (multiple dots, non-digit chars in wrong places)
+        if (v.isEmpty()) {
+          onChange(v)
+          return@OutlinedTextField
+        }
+        // Allow single leading minus, single dot, digits
+        val dotCount = v.count { it == '.' }
+        val minusCount = v.count { it == '-' }
+        val hasInvalidChars = v.any { c -> !c.isDigit() && c != '.' && c != '-' }
+        val minusNotLeading = v.indexOf('-') > 0
+        val multipleDots = dotCount > 1
+        val multipleMinus = minusCount > 1
+        
+        if (hasInvalidChars || minusNotLeading || multipleDots || multipleMinus) {
+          return@OutlinedTextField
+        }
+        // Allow: "", "-", ".", "0.", "-.", "0.5", "-.5", "123", "123.45", etc.
         onChange(v)
       },
       modifier = Modifier.width(90.dp),

@@ -128,6 +128,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import com.gguf.zerocopy.ui.chat.InferenceController
+import com.gguf.zerocopy.ui.chat.InferenceState
+import kotlinx.coroutines.flow.collectAsStateWithLifecycle
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -152,26 +155,29 @@ fun ChatScreen(
   val hasVision = engine?.hasVisionCapability == true
 
   var chatId by remember { mutableStateOf(sessionId) }
-  var inferenceActive by remember { mutableStateOf(false) }
-  var isInferring by remember { mutableStateOf(false) }
-  var streamedContent by remember { mutableStateOf("") }
-  var streamedTokens by remember { mutableIntStateOf(0) }
-  var streamedTps by remember { mutableFloatStateOf(0f) }
 
-  var kvUsagePercent by remember { mutableIntStateOf(0) }
-  var showStreamingThinking by remember { mutableStateOf(false) }
-  var reasoningPhaseActive by remember { mutableStateOf(false) }
+  val inferenceController = remember {
+    InferenceController(
+      scope = scope,
+      engine = engine!!,
+      ragEngine = app.ragEngine,
+      chatRepository = app.chatRepository,
+      context = context,
+      settingsManager = SettingsManager,
+      modelPath = modelPath,
+      modelName = modelName,
+      modelReasoningOk = engine.modelInfo?.supportsReasoning ?: true,
+      onMessageSent = { _ -> },
+      onError = { error ->
+        scope.launch { snackbarHostState.showSnackbar("Inference error: $error") }
+      }
+    )
+  }
+  val inferenceState by inferenceController.state.collectAsStateWithLifecycle()
 
   fun startNewChat() {
     chatId = null
-    inferenceActive = false
-    isInferring = false
-    streamedContent = ""
-    streamedTokens = 0
-    streamedTps = 0f
-    kvUsagePercent = 0
-    showStreamingThinking = false
-    reasoningPhaseActive = false
+    inferenceController.stopInference()
     // Actually create a new session in the repository
     app.chatRepository.createSession(modelPath = modelPath, modelName = modelName)
     chatId = app.chatRepository.currentSessionId
@@ -377,222 +383,15 @@ fun ChatScreen(
   }
 
   fun sendMessage(text: String, uris: List<Uri>, names: List<String>) {
-    android.util.Log.d("ChatScreen", "sendMessage called with chatId: $chatId")
-    val id = chatId ?: run {
-      val s = app.chatRepository.createSession(modelPath = modelPath, modelName = modelName)
-      SettingsManager.currentSessionId = s.id
-      chatId = s.id
-      s.id
-    }
-
-    val activeEngine = engine
-    if (activeEngine?.isModelLoaded != true) {
-      scope.launch { snackbarHostState.showSnackbar("No model loaded") }
-      return
-    }
-
-    // Use AtomicBoolean to safely coordinate flushJob vs onDone/onError
-    val runningFlag = AtomicBoolean(true)
-    inferenceActive = true
-    isInferring = true
-    streamedContent = ""
-    streamedTokens = 0
-    streamedTps = 0f
-    reasoningPhaseActive = reasoningEnabled && modelReasoningOk
-    if (reasoningEnabled) {
-      showStreamingThinking = true
-    } else {
-      showStreamingThinking = false
-    }
-
-    val tokenBuffer = AtomicReference("")
-    val startTime   = System.currentTimeMillis()
-    val rawResponse = StringBuilder()
-
-    val flushJob = scope.launch {
-      // Use the local runningFlag (set by onDone/onError) OR the global
-      // inferenceActive (set by stopInference) as exit conditions.
-      while ((runningFlag.get() && inferenceActive) || tokenBuffer.get().isNotEmpty()) {
-        val buffered = tokenBuffer.getAndSet("")
-        if (buffered.isNotEmpty()) {
-          streamedContent += buffered
-          val elapsed = (System.currentTimeMillis() - startTime) / 1000f
-          if (elapsed > 0) streamedTps = streamedTokens / elapsed
-        }
-        delay(16L)
-      }
-    }
-
-    scope.launch {
-      val savedPaths   = mutableListOf<String>()
-      var attachType: AttachmentType? = null
-      val ragEngine    = app.ragEngine
-      var ragContext   = ""
-
-      if (uris.isNotEmpty()) {
-        try {
-          withContext(Dispatchers.IO) {
-            uris.forEach { uri ->
-              val mime = context.contentResolver.getType(uri) ?: ""
-              when {
-                mime.startsWith("image/") -> {
-                  saveAttachmentToStorage(uri)?.let { path ->
-                    savedPaths.add(path)
-                    if (attachType == null) attachType = AttachmentType.IMAGE
-                  }
-                  try { ragEngine.ingest(uri, context) } catch (_: OutOfMemoryError) {
-                    withContext(Dispatchers.Main) {
-                      snackbarHostState.showSnackbar("Document too large — only first portion indexed")
-                    }
-                  }
-                }
-                mime == "application/pdf" -> {
-                  if (attachType == null) attachType = AttachmentType.DOCUMENT
-                  try {
-                    ragEngine.ingest(uri, context)
-                  } catch (_: OutOfMemoryError) {
-                    withContext(Dispatchers.Main) {
-                      snackbarHostState.showSnackbar("PDF too large — only first portion indexed")
-                    }
-                  }
-                }
-                mime.startsWith("text/") -> {
-                  if (attachType == null) attachType = AttachmentType.DOCUMENT
-                  try { ragEngine.ingest(uri, context) } catch (_: OutOfMemoryError) {
-                    withContext(Dispatchers.Main) {
-                      snackbarHostState.showSnackbar("File too large — only first portion indexed")
-                    }
-                  }
-                }
-                mime.startsWith("audio/") -> {
-                  if (attachType == null) attachType = AttachmentType.AUDIO
-                }
-                else -> {
-                  if (attachType == null) attachType = AttachmentType.DOCUMENT
-                }
-              }
-            }
-          }
-        } catch (oom: OutOfMemoryError) {
-          // Top-level OOM guard — clears chunks added so far and shows error
-          ragEngine.clear()
-          withContext(Dispatchers.Main) {
-            snackbarHostState.showSnackbar("Not enough memory to process this document")
-            inferenceActive = false
-            isInferring = false
-          }
-          return@launch
-        }
-      }
-
-      if (ragEngine.hasDocuments && ragEnabled) {
-        withContext(Dispatchers.IO) {
-          try {
-            ragContext = ragEngine.retrieve(
-              text,
-              maxChunks = com.gguf.zerocopy.data.local.SettingsManager.ragMaxChunks,
-              maxChars = com.gguf.zerocopy.data.local.SettingsManager.ragMaxChars,
-              minScore = com.gguf.zerocopy.data.local.SettingsManager.ragMinScore
-            )
-          } catch (_: OutOfMemoryError) {
-            ragContext = ""
-          }
-        }
-      }
-
-      val finalPrompt = buildString {
-        append(text)
-        if (ragContext.isNotEmpty()) {
-          appendLine()
-          appendLine()
-          append(ragContext)
-        }
-      }
-
-      val userMsg = ChatMessage(
-        role           = MessageRole.USER,
-        content        = text,
-        attachmentPath = savedPaths.firstOrNull(),
-        attachmentType = attachType
-      )
-      app.chatRepository.addMessage(id, userMsg)
-
-      val currentChatId = id
-
-      val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
-      val callback = object : TokenCallback {
-        override fun onToken(token: String) {
-          if (!runningFlag.get()) return
-          rawResponse.append(token)
-          tokenBuffer.getAndUpdate { it + token }
-          streamedTokens++
-        }
-        override fun onDone() {
-          // Signal flushJob to stop BEFORE manipulating state (atomic, no main thread delay)
-          runningFlag.set(false)
-          val elapsed = (System.currentTimeMillis() - startTime) / 1000f
-          val tpsVal  = if (elapsed > 0) streamedTokens / elapsed else 0f
-          val raw = rawResponse.toString()
-          mainHandler.post {
-            // Always save partial response, even if inference was aborted
-            if (raw.isNotEmpty()) {
-              app.chatRepository.addMessage(
-                currentChatId,
-                ChatMessage(role = MessageRole.ASSISTANT, content = raw, tps = tpsVal, tokens = streamedTokens)
-              )
-            }
-            inferenceActive  = false
-            isInferring      = false
-            kvUsagePercent   = 0
-            reasoningPhaseActive = false
-            streamedContent  = ""
-          }
-        }
-        override fun onError(error: String) {
-          runningFlag.set(false)
-          mainHandler.post {
-            inferenceActive = false
-            isInferring     = false
-            reasoningPhaseActive = false
-            streamedContent = ""
-            scope.launch { snackbarHostState.showSnackbar("Inference error: $error") }
-          }
-        }
-        override fun onKvUsage(percent: Int) { mainHandler.post { kvUsagePercent = percent } }
-        override fun onTokensGenerated(count: Int) { streamedTokens = count }
-      }
-
-      try {
-        withContext(Dispatchers.IO) {
-          val allHistory = app.chatRepository.getMessages(currentChatId)
-          val historyPairs = allHistory.dropLast(1).map { msg ->
-            msg.role.name.lowercase() to msg.content
-          }
-          activeEngine.restoreHistory(historyPairs)
-          val prompt = buildConversationPrompt(
-            finalPrompt,
-            reasoningEnabled && modelReasoningOk,
-            ragContext.isNotEmpty(),
-            webSearchEnabled && modelReasoningOk
-          )
-          // Pass original user text as searchQuery so ToolAwareInference uses
-          // the clean query (without reasoning/RAG instructions) for web search.
-          if (savedPaths.isNotEmpty() && activeEngine.hasVisionCapability) {
-            activeEngine.executeInferenceWithImage(prompt, savedPaths.first(), callback)
-          } else {
-            activeEngine.executeInference(prompt, callback, searchQuery = text)
-          }
-        }
-      } catch (e: Exception) {
-        android.util.Log.e("ChatScreen", "Exception during inference: ${e.message}")
-        runningFlag.set(false)
-        if (inferenceActive) {
-          inferenceActive = false
-          isInferring     = false
-          streamedContent = ""
-        }
-      }
-    }
+    inferenceController.sendMessage(
+      text = text,
+      uris = uris,
+      names = names,
+      chatId = chatId,
+      reasoningEnabled = reasoningEnabled,
+      ragEnabled = ragEnabled,
+      webSearchEnabled = webSearchEnabled
+    )
   }
 
   val speechLauncher = rememberLauncherForActivityResult(
@@ -608,11 +407,7 @@ fun ChatScreen(
   }
 
   fun stopInference() {
-    inferenceActive = false
-    isInferring = false
-    engine?.abortInference()
-    // streamedContent is left intact until onDone() fires, then saved
-    // to the repository and cleared. This preserves the partial response.
+    inferenceController.stopInference()
   }
 
   fun copyToClipboard(text: String) {
@@ -712,31 +507,24 @@ fun ChatScreen(
     }
   }
 
-  LaunchedEffect(streamedContent) {
-    if (isInferring && streamedContent.isNotEmpty()) {
+  LaunchedEffect(inferenceState) {
+    if (inferenceState is InferenceState.Streaming && inferenceState.content.isNotEmpty()) {
       listState.animateScrollToItem(messages.size)
     }
   }
 
   // Accessibility announcement for inference state
-  if (isInferring) {
+  if (inferenceState is InferenceState.Streaming) {
     com.gguf.zerocopy.ui.common.AccessibilityAnnouncement("Generating response")
   }
 
   // Auto-end reasoning phase after a timeout (shows model's initial output as
   // thinking, then reveals as answer moving forward).
-  LaunchedEffect(reasoningPhaseActive) {
-    if (reasoningPhaseActive) {
-      delay(reasoningPhaseDurationMs)
-      reasoningPhaseActive = false
-      // Keep showStreamingThinking true so the ThinkingContent remains visible
-      // (collapsed by default) for the user to expand and inspect.
-    }
-  }
+  // This is now handled in InferenceController
 
   // Scroll to the latest message when inference finishes (streaming item removed)
-  LaunchedEffect(isInferring) {
-    if (!isInferring && messages.isNotEmpty()) {
+  LaunchedEffect(inferenceState) {
+    if (inferenceState is InferenceState.Idle && messages.isNotEmpty()) {
       delay(50) // brief delay to let the list recompose after the streaming item is removed
       listState.animateScrollToItem(messages.size - 1)
     }
@@ -761,17 +549,18 @@ fun ChatScreen(
           verticalAlignment = Alignment.CenterVertically
         ) {
           // Model status chip: explicit loaded/generating/none state
+          val isGenerating = inferenceState is InferenceState.Streaming
           Surface(
             shape = ZcShape.Pill,
             color = when {
-              isInferring -> colors.Amber.copy(alpha = 0.14f)
+              isGenerating -> colors.Amber.copy(alpha = 0.14f)
               engine?.isModelLoaded == true -> colors.Accent2.copy(alpha = 0.12f)
               else -> colors.Red.copy(alpha = 0.12f)
             },
             border = BorderStroke(
               0.2.dp,
               when {
-                isInferring -> colors.Amber.copy(alpha = 0.45f)
+                isGenerating -> colors.Amber.copy(alpha = 0.45f)
                 engine?.isModelLoaded == true -> colors.Accent2.copy(alpha = 0.35f)
                 else -> colors.Red.copy(alpha = 0.35f)
               }
@@ -785,7 +574,7 @@ fun ChatScreen(
               Box(
                 Modifier.size(6.dp).clip(CircleShape).background(
                   when {
-                    isInferring -> colors.Amber
+                    isGenerating -> colors.Amber
                     engine?.isModelLoaded == true -> colors.Accent2
                     else -> colors.Red
                   }
@@ -794,14 +583,14 @@ fun ChatScreen(
               Spacer(Modifier.width(4.dp))
               Text(
                 text = when {
-                  isInferring -> "GENERATING"
+                  isGenerating -> "GENERATING"
                   engine?.isModelLoaded == true -> "LOADED"
                   else -> "NO MODEL"
                 },
                 fontSize = 8.sp,
                 fontWeight = FontWeight.Bold,
                 color = when {
-                  isInferring -> colors.Amber
+                  isGenerating -> colors.Amber
                   engine?.isModelLoaded == true -> colors.Accent2
                   else -> colors.Red
                 },
@@ -813,7 +602,7 @@ fun ChatScreen(
           // Session name — the same gradient bubble as the input bubble
           Box(Modifier.weight(1f)) {
             GradientBubbleBox(
-              circulating = isInferring,
+              circulating = isGenerating,
               bubbleColor = colors.Card,
               shape = RoundedCornerShape(22.dp)
             ) {
@@ -973,7 +762,7 @@ fun ChatScreen(
         InputBar(
           onSend = { text, uris, names -> sendMessage(text, uris, names) },
           onStop = { stopInference() },
-          isInferring = isInferring,
+          isInferring = inferenceState is InferenceState.Streaming,
           enabled = engine?.isModelLoaded == true,
           attachmentUris = attachmentUris,
           attachmentFileNames = attachmentFileNames,
@@ -992,6 +781,10 @@ fun ChatScreen(
         .padding(pad)
         .fillMaxSize()
     ) {
+      val kvUsagePercent = when (val s = inferenceState) {
+        is InferenceState.Streaming -> s.kvUsagePercent
+        else -> 0
+      }
       if (kvUsagePercent > 50) {
         LinearProgressIndicator(
           progress = { kvUsagePercent / 100f },
@@ -1035,7 +828,7 @@ fun ChatScreen(
           }
         }
       }
-      if (messages.isEmpty() && !isInferring) {
+      if (messages.isEmpty() && inferenceState is InferenceState.Idle) {
         Column(
           modifier = Modifier
             .fillMaxSize()
@@ -1104,7 +897,7 @@ fun ChatScreen(
             items = messages,
             key = { idx, msg -> "${msg.role.name}_${msg.timestamp}_$idx" }
           ) { idx, msg ->
-            val isLastAssistant = !isInferring &&
+            val isLastAssistant = inferenceState is InferenceState.Idle &&
               msg.role == MessageRole.ASSISTANT &&
               idx == messages.size - 1
             val canRegenerate = isLastAssistant && idx > 0 &&
@@ -1132,31 +925,28 @@ fun ChatScreen(
             }
           }
 
-          if (isInferring) {
+if (inferenceState is InferenceState.Streaming) {
             item(key = "streaming") {
-              val thinking = extractThinking(streamedContent)
-              val display = removeThinking(streamedContent)
-              // When reasoning is enabled and in the initial thinking phase,
-              // show the live stream in the thinking section too — works with
-              // ALL models, not just those that output <think> tags.
-              val reasoningLive = if (reasoningEnabled && reasoningPhaseActive) {
-                streamedContent
-              } else null
+              val state = inferenceState as InferenceState.Streaming
+              val thinking = state.thinkingContent
+              val display = state.content
               Box(Modifier.fillMaxWidth().messageEnter()) {
               ChatBubble(
                 content = display,
                 role = MessageRole.ASSISTANT,
                 timestamp = System.currentTimeMillis(),
-                tps = streamedTps,
-                tokens = streamedTokens,
-                isLoading = streamedContent.isEmpty(),
-                isStreaming = streamedContent.isNotEmpty(),
-                thinkingContent = thinking ?: reasoningLive,
-                showThinking = showStreamingThinking || reasoningPhaseActive,
+                tps = state.tps,
+                tokens = state.tokens,
+                isLoading = state.content.isEmpty(),
+                isStreaming = state.content.isNotEmpty(),
+                thinkingContent = thinking,
+                showThinking = state.showThinking,
                 reasoningBadge = reasoningEnabled,
-                onToggleThinking = { showStreamingThinking = !showStreamingThinking }
+                onToggleThinking = { }
               )
               }
+            }
+          }
             }
           }
         }
@@ -1199,7 +989,13 @@ private fun ChatToolCircle(
         shape = CircleShape,
         color = if (active) accent.copy(alpha = 0.14f) else colors.Card,
         border = BorderStroke(0.2.dp, borderBrush),
-        modifier = Modifier.size(30.dp)
+        modifier = Modifier
+            .size(30.dp)
+            .semantics { 
+              contentDescription = label
+              role = androidx.compose.ui.semantics.Role.Button
+              stateDescription = if (active) "Activated" else "Not activated"
+            }
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(icon, label, tint = if (active) accent else colors.Text3, modifier = Modifier.size(15.dp))

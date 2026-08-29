@@ -140,3 +140,123 @@ object ZcLightSemantic {
 fun ZcPalette.gradient(vertical: Boolean = false): Brush =
   if (vertical) Brush.verticalGradient(listOf(GradientStart, GradientEnd))
   else Brush.linearGradient(listOf(GradientStart, GradientEnd))
+
+/** Semantic colors resolved for the current theme (dark or light). */
+@Composable
+fun currentSemantic(): ZcSemanticColors =
+  if (ThemeState.isDark) ZcSemantic else ZcLightSemantic
+
+interface ZcSemanticColors {
+  // Primary actions, selection, focus — THE ONE ACCENT (violet)
+  val Primary: Color
+  val PrimaryContainer: Color
+  val OnPrimary: Color
+
+  // Success states only — green
+  val Success: Color
+  val SuccessContainer: Color
+  val OnSuccess: Color
+
+  // Destructive / error — hot violet
+  val Error: Color
+  val ErrorContainer: Color
+  val OnError: Color
+
+  // AI/tech indicator — sky cyan
+  val AiAccent: Color
+  val AiAccentContainer: Color
+
+  // Surfaces
+  val Surface: Color
+  val SurfaceVariant: Color
+  val SurfaceBright: Color
+  val Border: Color
+  val BorderSubtle: Color
+
+  // Text hierarchy
+  val OnSurface: Color
+  val OnSurfaceVariant: Color
+  val OnSurfaceMuted: Color
+
+  // Chat-specific
+  val UserBubble: Color
+  val ThinkBubble: Color
+
+  // Brand gradient (cyan → violet) — active states only
+  val GradientStart: Color
+  val GradientEnd: Color
+}
+
+object ZcSemantic : ZcSemanticColors {
+  // Primary actions, selection, focus — THE ONE ACCENT (violet)
+  override val Primary = ZcColors.Accent
+  override val PrimaryContainer = ZcColors.Accent.copy(alpha = 0.14f)
+  override val OnPrimary = ZcColors.Bg
+
+  // Success states only — green
+  override val Success = ZcColors.Accent2
+  override val SuccessContainer = ZcColors.Accent2.copy(alpha = 0.14f)
+  override val OnSuccess = ZcColors.Bg
+
+  // Destructive / error — hot violet
+  override val Error = ZcColors.Red
+  override val ErrorContainer = ZcColors.Red.copy(alpha = 0.14f)
+  override val OnError = ZcColors.Bg
+
+  // AI/tech indicator — sky cyan
+  override val AiAccent = ZcColors.Cyan
+  override val AiAccentContainer = ZcColors.Cyan.copy(alpha = 0.14f)
+
+  // Surfaces
+  override val Surface = ZcColors.Surface
+  override val SurfaceVariant = ZcColors.Card
+  override val SurfaceBright = ZcColors.CardLight
+  override val Border = ZcColors.Border
+  override val BorderSubtle = ZcColors.Border.copy(alpha = 0.5f)
+
+  // Text hierarchy
+  override val OnSurface = ZcColors.Text
+  override val OnSurfaceVariant = ZcColors.Text2
+  override val OnSurfaceMuted = ZcColors.Text3
+
+  // Chat-specific
+  override val UserBubble = ZcColors.UserBg
+  override val ThinkBubble = ZcColors.ThinkBg
+
+  // Brand gradient (cyan → violet) — active states only
+  override val GradientStart = ZcColors.GradientStart
+  override val GradientEnd = ZcColors.GradientEnd
+}
+
+object ZcLightSemantic : ZcSemanticColors {
+  override val Primary = ZcLightColors.Accent
+  override val PrimaryContainer = ZcLightColors.Accent.copy(alpha = 0.14f)
+  override val OnPrimary = ZcLightColors.Bg
+
+  override val Success = ZcLightColors.Accent2
+  override val SuccessContainer = ZcLightColors.Accent2.copy(alpha = 0.14f)
+  override val OnSuccess = ZcLightColors.Bg
+
+  override val Error = ZcLightColors.Red
+  override val ErrorContainer = ZcLightColors.Red.copy(alpha = 0.14f)
+  override val OnError = ZcLightColors.Bg
+
+  override val AiAccent = ZcLightColors.Cyan
+  override val AiAccentContainer = ZcLightColors.Cyan.copy(alpha = 0.14f)
+
+  override val Surface = ZcLightColors.Surface
+  override val SurfaceVariant = ZcLightColors.Card
+  override val SurfaceBright = ZcLightColors.CardLight
+  override val Border = ZcLightColors.Border
+  override val BorderSubtle = ZcLightColors.Border.copy(alpha = 0.5f)
+
+  override val OnSurface = ZcLightColors.Text
+  override val OnSurfaceVariant = ZcLightColors.Text2
+  override val OnSurfaceMuted = ZcLightColors.Text3
+
+  override val UserBubble = ZcLightColors.UserBg
+  override val ThinkBubble = ZcLightColors.ThinkBg
+
+  override val GradientStart = ZcLightColors.GradientStart
+  override val GradientEnd = ZcLightColors.GradientEnd
+}

@@ -10,6 +10,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -18,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.gguf.zerocopy.data.local.SettingsManager
+
+val LocalZcSemantic = staticCompositionLocalOf<ZcSemanticColors> { ZcSemantic }
 
 object ThemeState {
   var isDark by mutableStateOf(SettingsManager.isDarkTheme)
@@ -188,17 +191,25 @@ val ZcTypography = Typography(
 fun ZeroCopyTheme(darkTheme: Boolean = ThemeState.isDark, content: @Composable () -> Unit) {
   SideEffect { ThemeState.isDark = darkTheme }
   val colorScheme = if (darkTheme) DarkScheme else LightScheme
+  val semantic = if (darkTheme) ZcSemantic else ZcLightSemantic
   MaterialTheme(colorScheme = colorScheme, typography = ZcTypography, shapes = Shapes(
     extraSmall = ZcShape.Xs,
     small = ZcShape.Sm,
     medium = ZcShape.Md,
     large = ZcShape.Lg,
     extraLarge = ZcShape.Xl
-  )) { content() }
+  )) {
+    CompositionLocalProvider(LocalZcSemantic provides semantic) {
+      content()
+    }
+  }
 }
 
 @Composable
 fun currentPalette(): ZcPalette = if (ThemeState.isDark) ZcColors else ZcLightColors
+
+@Composable
+fun currentSemantic(): ZcSemanticColors = LocalZcSemantic.current
 
 interface ZcPalette {
   val Bg: Color

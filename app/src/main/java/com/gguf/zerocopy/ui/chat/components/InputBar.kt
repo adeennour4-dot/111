@@ -1,5 +1,6 @@
 package com.gguf.zerocopy.ui.chat.components
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -34,6 +35,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import com.gguf.zerocopy.ui.components.GradientBubbleBox
 import com.gguf.zerocopy.ui.theme.ZcShape
 import com.gguf.zerocopy.ui.theme.currentPalette
+import java.util.LinkedHashMap
 
 @Composable
 fun InputBar(
@@ -68,6 +71,21 @@ fun InputBar(
   val context = LocalContext.current
   var prompt by remember { mutableStateOf("") }
   val hasAttachments = attachmentUris.isNotEmpty()
+
+  // Bitmap cache with LRU eviction and cleanup on attachment changes
+  val bitmapCache = remember { mutableStateOf(LinkedHashMap<Uri, Bitmap>()) }
+  val currentUris = remember(attachmentUris) { attachmentUris.toSet() }
+  
+  // Clean up cache entries for removed attachments
+  DisposableEffect(currentUris) {
+    onDispose {
+      val toRemove = bitmapCache.value.keys.filter { it !in currentUris }
+      toRemove.forEach { uri ->
+        bitmapCache.value[uri]?.recycle()
+        bitmapCache.value.remove(uri)
+      }
+    }
+  }
 
   Surface(
     color = colors.Surface,
@@ -92,12 +110,14 @@ fun InputBar(
               val mime = context.contentResolver.getType(uri) ?: ""
               if (mime.startsWith("image/")) {
                 val bitmap = remember(uri) {
-                  try {
-                    context.contentResolver.openInputStream(uri)?.use { stream ->
-                      BitmapFactory.decodeStream(stream)
+                  bitmapCache.value.getOrPut(uri) {
+                    try {
+                      context.contentResolver.openInputStream(uri)?.use { stream ->
+                        BitmapFactory.decodeStream(stream)
+                      }
+                    } catch (_: Exception) {
+                      null
                     }
-                  } catch (_: Exception) {
-                    null
                   }
                 }
                 bitmap?.let { bmp ->
@@ -210,7 +230,11 @@ fun InputBar(
               modifier = Modifier.size(40.dp).clip(CircleShape)
                 .background(colors.Red.copy(alpha = 0.16f))
                 .border(0.2.dp, colors.Red.copy(alpha = 0.45f), CircleShape)
-                .clickable { onStop() },
+                .clickable { onStop() }
+                .semantics {
+                  contentDescription = "Stop generation"
+                  role = androidx.compose.ui.semantics.Role.Button
+                },
               contentAlignment = Alignment.Center
             ) {
               Icon(Icons.Filled.Stop, "Stop", tint = colors.Red, modifier = Modifier.size(18.dp))
@@ -233,6 +257,11 @@ fun InputBar(
                   val text = prompt
                   prompt = ""
                   onSend(text, attachmentUris, attachmentFileNames)
+                }
+                .semantics {
+                  contentDescription = if (canSend) "Send message" : "Cannot send"
+                  role = androidx.compose.ui.semantics.Role.Button
+                  stateDescription = if (canSend) "Ready to send" : "Input required"
                 },
               contentAlignment = Alignment.Center
             ) {

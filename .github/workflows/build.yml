@@ -77,6 +77,44 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew && chmod +x rust_core/build_android.sh
 
+      - name: Bump Version on Push to Master
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          # Extract current versionCode and versionName
+          CURRENT_CODE=$(grep -oP 'versionCode\s*=\s*\K\d+' app/build.gradle.kts)
+          CURRENT_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)
+          
+          if [ -z "$CURRENT_CODE" ] || [ -z "$CURRENT_NAME" ]; then
+            echo "Could not extract version from build.gradle.kts"
+            exit 1
+          fi
+          
+          NEW_CODE=$((CURRENT_CODE + 1))
+          NEW_NAME=$NEW_CODE
+          
+          echo "Current version: $CURRENT_NAME ($CURRENT_CODE)"
+          echo "New version: $NEW_NAME ($NEW_CODE)"
+          
+          # Update versionCode
+          sed -i "s/versionCode\s*=\s*$CURRENT_CODE/versionCode = $NEW_CODE/" app/build.gradle.kts
+          # Update versionName
+          sed -i "s/versionName\s*=\s*\"$CURRENT_NAME\"/versionName = \"$NEW_NAME\"/" app/build.gradle.kts
+          # Update buildConfigField VERSION_CODE
+          sed -i "s/buildConfigField(\"int\", \"VERSION_CODE\", \"$CURRENT_CODE\")/buildConfigField(\"int\", \"VERSION_CODE\", \"$NEW_CODE\")/" app/build.gradle.kts
+          # Update buildConfigField VERSION_NAME
+          sed -i "s/buildConfigField(\"String\", \"VERSION_NAME\", \"$CURRENT_NAME\")/buildConfigField(\"String\", \"VERSION_NAME\", \"$NEW_NAME\")/" app/build.gradle.kts
+          
+          # Verify changes
+          echo "Updated build.gradle.kts:"
+          grep -E 'versionCode|versionName|VERSION_CODE|VERSION_NAME' app/build.gradle.kts
+          
+          # Commit with [skip ci] to avoid infinite loop
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle.kts
+          git commit -m "chore: bump version to $NEW_NAME [skip ci]"
+          git push
+
       - name: Build Rust core for Android
         run: |
           cd rust_core

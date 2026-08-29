@@ -88,6 +88,11 @@ import kotlinx.coroutines.withContext
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 
+sealed interface ModelLoadingState {
+  data class Loading(val step: String = "Loading…") : ModelLoadingState
+  object Idle : ModelLoadingState
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ModelListScreen(
@@ -99,8 +104,7 @@ fun ModelListScreen(
   val scope = rememberCoroutineScope()
   val colors = currentPalette()
   val models by app.modelRepository.models.collectAsState(initial = emptyList())
-  var loading by remember { mutableStateOf(false) }
-  var isLoading by remember { mutableStateOf(false) }
+  var loadingState by remember { mutableStateOf<ModelLoadingState>(ModelLoadingState.Idle) }
   var modelToDelete by remember { mutableStateOf<LocalModel?>(null) }
   var modelToDetail by remember { mutableStateOf<LocalModel?>(null) }
   var engineSwitchWarningModel by remember { mutableStateOf<LocalModel?>(null) }
@@ -108,15 +112,21 @@ fun ModelListScreen(
   var benchmarkResult by remember { mutableStateOf<BenchmarkResult?>(null) }
   var benchmarking by remember { mutableStateOf(false) }
   var tokenConfigModel by remember { mutableStateOf<LocalModel?>(null) }
-  var reloading by remember { mutableStateOf(false) }
   var loadingJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
   var loadCancelRequested by remember { mutableStateOf(false) }
-  var loadingStep by remember { mutableStateOf("") }
   var pendingImport by remember { mutableStateOf(false) }
   var importWarning by remember { mutableStateOf<String?>(null) }
   var loadError by remember { mutableStateOf<String?>(null) }
   var loadErrorModel by remember { mutableStateOf<LocalModel?>(null) }
   val snackbarHostState = remember { SnackbarHostState() }
+
+  val isLoading: Boolean
+    get() = loadingState is ModelLoadingState.Loading
+  val loadingStep: String
+    get() = when (val s = loadingState) {
+      is ModelLoadingState.Loading -> s.step
+      else -> ""
+    }
 
   /** Validate an imported model and set importWarning if issues found. */
   fun validateImportedModel(model: com.gguf.zerocopy.data.repository.LocalModel) {
@@ -174,11 +184,11 @@ fun ModelListScreen(
     if (result.resultCode == Activity.RESULT_OK) {
       result.data?.data?.let { uri ->
         val name = getFileName(context, uri)
-        loading = true
+        loadingState = ModelLoadingState.Loading("Importing model…")
         scope.launch {
           app.modelRepository.importUri(uri, name)
             .onSuccess { model ->
-              loading = false
+              loadingState = ModelLoadingState.Idle
               // Validate imported model
               validateImportedModel(model)
               // Show settings dialog before loading
@@ -186,7 +196,7 @@ fun ModelListScreen(
               pendingImport = true
             }
             .onFailure { error ->
-              loading = false
+              loadingState = ModelLoadingState.Idle
               scope.launch {
                 snackbarHostState.showSnackbar("Import failed: ${error.message?.take(100) ?: "Unknown error"}")
               }
@@ -222,9 +232,8 @@ fun ModelListScreen(
       pendingImport = true
       return
     }
-    isLoading = true
+    loadingState = ModelLoadingState.Loading("Loading model…")
     loadCancelRequested = false
-    loadingStep = "Loading model…"
     val jobId = app.jobManager.register(
       label = "Load ${model.name}",
       category = com.gguf.zerocopy.domain.inference.JobManager.JobCategory.MODEL_LOAD
@@ -240,9 +249,8 @@ fun ModelListScreen(
         }
       }
       val err = loadModel(model, onModelSelected)
-      isLoading = false
+      loadingState = ModelLoadingState.Idle
       loadingJob = null
-      loadingStep = ""
       app.jobManager.unregister(jobId)
       if (err != null) { loadError = err; loadErrorModel = model }
     }
@@ -250,9 +258,8 @@ fun ModelListScreen(
 
   fun confirmEngineSwitch(model: LocalModel) {
     engineSwitchWarningModel = null
-    isLoading = true
+    loadingState = ModelLoadingState.Loading("Switching engine…")
     loadCancelRequested = false
-    loadingStep = "Switching engine…"
     val jobId = app.jobManager.register(
       label = "Switch to ${model.name}",
       category = com.gguf.zerocopy.domain.inference.JobManager.JobCategory.MODEL_LOAD
@@ -270,9 +277,8 @@ fun ModelListScreen(
       }
       app.engineManager.unloadAll()
       val err = loadModel(model, onModelSelected)
-      isLoading = false
+      loadingState = ModelLoadingState.Idle
       loadingJob = null
-      loadingStep = ""
       app.jobManager.unregister(jobId)
       if (err != null) { loadError = err; loadErrorModel = model }
     }
@@ -362,14 +368,14 @@ fun ModelListScreen(
       }
 
       // ── Accessibility announcement for loading state ──
-      if (loading || isLoading || reloading) {
+      if (isLoading) {
         com.gguf.zerocopy.ui.common.AccessibilityAnnouncement(
           if (loadingStep.isNotEmpty()) loadingStep else "Loading model"
         )
       }
 
       // ── Loading overlay with progress and cancel ──
-      if (loading || isLoading || reloading) {
+      if (isLoading) {
         Box(
           modifier = Modifier
             .fillMaxSize()
@@ -396,9 +402,7 @@ fun ModelListScreen(
               loadCancelRequested = true
               loadingJob?.cancel()
               loadingJob = null
-              isLoading = false
-              reloading = false
-              loadingStep = ""
+              loadingState = ModelLoadingState.Idle
               // If model was partially loaded, unload it
               val engine = app.engineManager.getActiveEngine()
               if (engine?.loadedModelPath != null) {
@@ -451,11 +455,11 @@ fun ModelListScreen(
             // Load model after config (fresh import or reload)
             if (isFreshImport || loadedModelPath == model.path) {
               if (!isFreshImport || com.gguf.zerocopy.data.local.SettingsManager.autoLoadAfterImport) {
-                reloading = true
+                loadingState = ModelLoadingState.Loading("Applying settings…")
                 scope.launch {
                   if (loadedModelPath == model.path) app.engineManager.unloadAll()
                   val err = loadModel(model, onModelSelected)
-                  reloading = false
+                  loadingState = ModelLoadingState.Idle
                   if (err != null) { loadError = err; loadErrorModel = model }
                 }
               }
@@ -525,11 +529,11 @@ fun ModelListScreen(
             text = { Text("Reload", color = colors.Accent2, fontSize = 14.sp) },
             onClick = {
               longPressModel = null
-              reloading = true
+              loadingState = ModelLoadingState.Loading("Reloading model…")
               scope.launch {
                 app.engineManager.unloadAll()
                 val err = loadModel(model, onModelSelected)
-                reloading = false
+                loadingState = ModelLoadingState.Idle
                 if (err != null) { loadError = err; loadErrorModel = model }
               }
             },
