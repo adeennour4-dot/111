@@ -1,12 +1,23 @@
 package com.gguf.zerocopy.ui.chat.components
 import com.gguf.zerocopy.ui.theme.ZcShape
+import com.gguf.zerocopy.ui.theme.ThemeManagerInstance
 
 import android.graphics.BitmapFactory
+import androidx.compose.animation.animateFloatAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.enterTransition
+import androidx.compose.animation.exitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -59,6 +70,7 @@ import com.gguf.zerocopy.data.repository.MessageRole
 import com.gguf.zerocopy.ui.components.GradientBubbleBox
 import com.gguf.zerocopy.ui.components.GradientThinkingCircle
 import com.gguf.zerocopy.ui.components.IdentityBorderBrush
+import com.gguf.zerocopy.ui.theme.AnimationIntensity
 import com.gguf.zerocopy.ui.theme.currentPalette
 import java.io.File
 import java.text.SimpleDateFormat
@@ -93,7 +105,30 @@ fun ChatBubble(
     SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp))
   }
 
-  Row(
+  // Get animation intensity from ThemeManager
+  val animationIntensity by ThemeManagerInstance.instance.config.collectAsState()
+    .map { it.animationIntensity }
+
+  val entranceDuration = when (animationIntensity) {
+    AnimationIntensity.NONE -> 0
+    AnimationIntensity.SUBTLE -> 150
+    AnimationIntensity.NORMAL -> 300
+    AnimationIntensity.PLAYFUL -> 500
+  }
+
+  val springSpec = spring<Float>(
+    dampingRatio = Spring.DampingRatioMediumBouncy,
+    stiffness = Spring.StiffnessMedium
+  )
+
+  val (slideIn, slideOut) = if (animationIntensity == AnimationIntensity.NONE) {
+    Pair(0, 0)
+  } else {
+    val spec = tween(entranceDuration, easing = { t -> 1 - (1 - t).pow(3) })
+    Pair(slideInVertically(spec, initialOffsetY = { it / 3 }), slideOutVertically(spec, targetOffsetY = { -it / 3 }))
+  }
+
+Row(
     modifier = Modifier
       .fillMaxWidth()
       .padding(vertical = 3.dp),
@@ -123,12 +158,19 @@ fun ChatBubble(
       Spacer(Modifier.width(8.dp))
     }
 
-    Box {
-      Column(
-        modifier = Modifier
-          .widthIn(max = 320.dp)
-          .animateContentSize()
-      ) {
+    AnimatedVisibility(
+      modifier = Modifier
+        .fillMaxWidth()
+        .weight(1f),
+      enter = fadeIn(tween(entranceDuration)) + slideIn,
+      exit = fadeOut(tween(entranceDuration)) + slideOut
+    ) {
+      Box {
+        Column(
+          modifier = Modifier
+            .widthIn(max = 320.dp)
+            .animateContentSize()
+        ) {
         if (thinkingContent != null && !showThinking) {
           Surface(
             onClick = onToggleThinking,
@@ -358,6 +400,7 @@ fun ChatBubble(
         )
       }
     }
+  }
   }
 }
 

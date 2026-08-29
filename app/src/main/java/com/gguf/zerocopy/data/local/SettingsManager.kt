@@ -19,6 +19,34 @@ object SettingsManager {
     applyCompatBuildDefaultsIfFirstRun(context)
   }
 
+  private fun getString(key: String, defaultValue: String): String =
+    prefs?.getString(key, defaultValue) ?: defaultValue
+
+  private fun getInt(key: String, defaultValue: Int): Int =
+    prefs?.getInt(key, defaultValue) ?: defaultValue
+
+  private fun getFloat(key: String, defaultValue: Float): Float =
+    prefs?.getFloat(key, defaultValue) ?: defaultValue
+
+  private fun getBoolean(key: String, defaultValue: Boolean): Boolean =
+    prefs?.getBoolean(key, defaultValue) ?: defaultValue
+
+  private fun putString(key: String, value: String) {
+    prefs?.edit()?.putString(key, value)?.apply()
+  }
+
+  private fun putInt(key: String, value: Int) {
+    prefs?.edit()?.putInt(key, value)?.apply()
+  }
+
+  private fun putFloat(key: String, value: Float) {
+    prefs?.edit()?.putFloat(key, value)?.apply()
+  }
+
+  private fun putBoolean(key: String, value: Boolean) {
+    prefs?.edit()?.putBoolean(key, value)?.apply()
+  }
+
   /**
    * On first launch, seed the thread count from the device's actual CPU
    * topology (number of high-frequency "big" cores) instead of the static
@@ -535,5 +563,46 @@ object SettingsManager {
     freqPenalty = rp.freqPenalty
     presPenalty = rp.presPenalty
   }
+
+  // ── Theme settings ──────────────────────────────────────────────────────────
+  var density: String
+    get() = getString("density", "COMFORTABLE")
+    set(v) { putString("density", v) }
+
+  var animationIntensity: String
+    get() = getString("animationIntensity", "NORMAL")
+    set(v) { putString("animationIntensity", v) }
+
+  var shapeStyle: String
+    get() = getString("shapeStyle", "ROUNDED")
+    set(v) { putString("shapeStyle", v) }
+
+  var typographyScale: Float
+    get() = getFloat("typographyScale", 1.0f)
+    set(v) { putFloat("typographyScale", v) }
+
+  var reducedMotion: Boolean
+    get() = getBoolean("reducedMotion", false)
+    set(v) { putBoolean("reducedMotion", v) }
+
+  var highContrast: Boolean
+    get() = getBoolean("highContrast", false)
+    set(v) { putBoolean("highContrast", v) }
+
+  var dynamicColor: Boolean
+    get() = getBoolean("dynamicColor", false)
+    set(v) { putBoolean("dynamicColor", v) }
+
+  var accentColorIndex: Int
+    get() = getInt("accentColorIndex", 0)
+    set(v) { putInt("accentColorIndex", v) }
+
+  var themePresetIndex: Int
+    get() = getInt("themePresetIndex", 0)
+    set(v) { putInt("themePresetIndex", v) }
+
+  var useCustomColors: Boolean
+    get() = getBoolean("useCustomColors", false)
+    set(v) { putBoolean("useCustomColors", v) }
 }
 

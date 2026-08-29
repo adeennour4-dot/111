@@ -95,6 +95,7 @@ import com.gguf.zerocopy.domain.inference.InferenceConfig
 import com.gguf.zerocopy.domain.inference.RepeatPenaltyConfig
 import com.gguf.zerocopy.ui.jobs.JobsScreen
 import com.gguf.zerocopy.ui.settings.BenchmarkDialog
+import com.gguf.zerocopy.ui.settings.ThemeSettingsScreen
 import kotlinx.coroutines.Dispatchers
 import com.gguf.zerocopy.ui.chat.components.getFileName
 import com.gguf.zerocopy.ui.components.IdentityCyan
@@ -145,6 +146,7 @@ fun SettingsScreen(onBack: () -> Unit) {
   var serverWifiOnly by remember { mutableStateOf(SettingsManager.serverWifiOnly) }
   var showToken by remember { mutableStateOf(false) }
   var showJobs by remember { mutableStateOf(false) }
+  var showThemeSettings by remember { mutableStateOf(false) }
   var flashAttn by remember { mutableStateOf(SettingsManager.flashAttention) }
   var chatTemplate by remember { mutableStateOf(SettingsManager.chatTemplate) }
   var ragMaxChunksText by remember { mutableStateOf(SettingsManager.ragMaxChunks.toString()) }
@@ -553,8 +555,132 @@ fun SettingsScreen(onBack: () -> Unit) {
                     fontFamily = FontFamily.SansSerif)
                 }
               }
-            }
           }
+        }
+      }
+      Spacer(Modifier.height(16.dp))
+      HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
+      Spacer(Modifier.height(12.dp))
+      Surface(
+        onClick = { showThemeSettings = true },
+        shape = ZcShape.Sm,
+        color = colors.Accent.copy(alpha = 0.1f),
+        border = BorderStroke(0.5.dp, colors.Accent.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth().height(48.dp)
+      ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Filled.Palette, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Theme Settings", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.Text)
+                Text("Colors, shapes, animations, density, typography             } more", fontSize = 11.sp, color = colors.Text3)
+            }
+            Icon(Icons.Filled.ArrowForward, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
+        }
+      }
+          }
+        }
+      }
+      Spacer(Modifier.height(16.dp))
+      HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
+      Spacer(Modifier.height(12.dp))
+      Surface(
+        onClick = { showThemeSettings = true },
+        shape = ZcShape.Sm,
+        color = colors.Accent.copy(alpha = 0.1f),
+        border = BorderStroke(0.5.dp, colors.Accent.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth().height(48.dp)
+      ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Filled.Palette, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Theme Settings", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.Text)
+                Text("Colors, shapes, animations, density, typography           } more", fontSize = 11.sp, color = colors.Text3)
+            }
+            Icon(Icons.Filled.ArrowForward, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
+        }
+      }
+          }
+        }
+      }
+      Spacer(Modifier.height(16.dp))
+      HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
+      Spacer(Modifier.height(12.dp))
+      Surface(
+        onClick = { showThemeSettings = true },
+        shape = ZcShape.Sm,
+        color = colors.Accent.copy(alpha = 0.1f),
+        border = BorderStroke(0.5.dp, colors.Accent.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth().height(48.dp)
+      ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Filled.Palette, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Theme Settings", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.Text)
+                Text("Colors, shapes, animations, density, typography         } more", fontSize = 11.sp, color = colors.Text3)
+            }
+            Icon(Icons.Filled.ArrowForward, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
+        }
+      }
+          }
+        }
+      }
+      Spacer(Modifier.height(16.dp))
+      HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
+      Spacer(Modifier.height(12.dp))
+      Surface(
+        onClick = { showThemeSettings = true },
+        shape = ZcShape.Sm,
+        color = colors.Accent.copy(alpha = 0.1f),
+        border = BorderStroke(0.5.dp, colors.Accent.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth().height(48.dp)
+      ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Filled.Palette, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Theme Settings", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.Text)
+                Text("Colors, shapes, animations, density, typography       } more", fontSize = 11.sp, color = colors.Text3)
+            }
+            Icon(Icons.Filled.ArrowForward, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
+        }
+      }
+      Spacer(Modifier.height(16.dp))
+      HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
+      Spacer(Modifier.height(12.dp))
+      // Full theme settings button
+      Surface(
+        onClick = { showThemeSettings = true },
+        shape = ZcShape.Sm,
+        color = colors.Accent.copy(alpha = 0.1f),
+        border = BorderStroke(0.5.dp, colors.Accent.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth().height(48.dp)
+      ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Filled.Palette, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Theme Settings", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.Text)
+                Text("Colors, shapes, animations, density, typography & more", fontSize = 11.sp, color = colors.Text3)
+            }
+            Icon(Icons.Filled.ArrowForward, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
         }
       }
 
@@ -684,6 +810,9 @@ fun SettingsScreen(onBack: () -> Unit) {
     BenchmarkDialog(engineManager, app.modelRepository.models.value, onDismiss = { showBenchmark = false })
   }
   if (showJobs) { JobsScreen(onBack = { showJobs = false }) }
+  if (showThemeSettings) {
+    ThemeSettingsScreen(onBack = { showThemeSettings = false })
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -87,9 +87,11 @@ import com.gguf.zerocopy.ui.cloud.CloudScreen
 import com.gguf.zerocopy.ui.models.ModelListScreen
 import com.gguf.zerocopy.ui.sessions.SessionListScreen
 import com.gguf.zerocopy.ui.settings.SettingsScreen
+import com.gguf.zerocopy.ui.settings.ThemeSettingsScreen
 import com.gguf.zerocopy.ui.components.IdentityCyan
 import com.gguf.zerocopy.ui.components.IdentityGreen
 import com.gguf.zerocopy.ui.components.IdentityPurple
+import com.gguf.zerocopy.ui.theme.ThemeManagerInstance
 import com.gguf.zerocopy.ui.theme.ZeroCopyTheme
 import com.gguf.zerocopy.ui.theme.ZcPalette
 import com.gguf.zerocopy.ui.theme.currentPalette
@@ -97,6 +99,7 @@ import com.gguf.zerocopy.data.invent.InventProjectStore
 import com.gguf.zerocopy.ui.invent.DiagnosticsScreen
 import com.gguf.zerocopy.ui.invent.InventDashboardScreen
 import com.gguf.zerocopy.ui.invent.InventScreen
+import com.gguf.zerocopy.ui.invent.InventViewModel
 import kotlinx.coroutines.delay
 
 data class NavItem(val label: String, val icon: ImageVector, val activeIcon: ImageVector)
@@ -119,14 +122,27 @@ class MainActivity : ComponentActivity() {
     com.gguf.zerocopy.domain.inference.NativeBridge.initCrashCapture(this)
     enableEdgeToEdge()
     requestNotificationPermission()
+    
+    // Initialize ThemeManager with SettingsManager values
+    ThemeManagerInstance.instance.updateConfig {
+      this.copy(
+        isDark = SettingsManager.isDarkTheme,
+        density = com.gguf.zerocopy.ui.theme.DensityLevel.values().firstOrNull { it.name == SettingsManager.getString("density", "COMFORTABLE") } ?: com.gguf.zerocopy.ui.theme.DensityLevel.COMFORTABLE,
+        animationIntensity = com.gguf.zerocopy.ui.theme.AnimationIntensity.values().firstOrNull { it.name == SettingsManager.getString("animationIntensity", "NORMAL") } ?: com.gguf.zerocopy.ui.theme.AnimationIntensity.NORMAL,
+        shapeStyle = com.gguf.zerocopy.ui.theme.ShapeStyle.values().firstOrNull { it.name == SettingsManager.getString("shapeStyle", "ROUNDED") } ?: com.gguf.zerocopy.ui.theme.ShapeStyle.ROUNDED,
+        typographyScale = SettingsManager.getFloat("typographyScale", 1.0f),
+        reducedMotion = SettingsManager.getBoolean("reducedMotion", false),
+        highContrast = SettingsManager.getBoolean("highContrast", false),
+        dynamicColor = SettingsManager.getBoolean("dynamicColor", false),
+        accentColorIndex = SettingsManager.getInt("accentColorIndex", 0),
+        presetIndex = SettingsManager.getInt("themePresetIndex", 0),
+        useCustomColors = SettingsManager.getBoolean("useCustomColors", false),
+      )
+    }
+    
     setContent {
-      val themeMode = com.gguf.zerocopy.ui.theme.ThemeState.themeMode
-      val systemDark = isSystemInDarkTheme()
-      val darkTheme = when (themeMode) {
-        "light" -> false
-        "dark" -> true
-        else -> systemDark
-      }
+      val themeConfig by ThemeManagerInstance.instance.config.collectAsState()
+      val darkTheme = themeConfig.isDark
       ZeroCopyTheme(darkTheme = darkTheme) { AppRoot() }
     }
   }
