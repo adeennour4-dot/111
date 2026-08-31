@@ -58,137 +58,8 @@ object ZcLightColors : ZcPalette {
 }
 
 /** Semantic color aliases — use these in components, NOT raw palette values. */
-object ZcSemantic {
-  // Primary actions, selection, focus — THE ONE ACCENT (violet)
-  val Primary = ZcColors.Accent
-  val PrimaryContainer = ZcColors.Accent.copy(alpha = 0.14f)
-  val OnPrimary = ZcColors.Bg
-
-  // Success states only — green
-  val Success = ZcColors.Accent2
-  val SuccessContainer = ZcColors.Accent2.copy(alpha = 0.14f)
-  val OnSuccess = ZcColors.Bg
-
-  // Destructive / error — hot violet
-  val Error = ZcColors.Red
-  val ErrorContainer = ZcColors.Red.copy(alpha = 0.14f)
-  val OnError = ZcColors.Bg
-
-  // AI/tech indicator — sky cyan
-  val AiAccent = ZcColors.Cyan
-  val AiAccentContainer = ZcColors.Cyan.copy(alpha = 0.14f)
-
-  // Surfaces
-  val Surface = ZcColors.Surface
-  val SurfaceVariant = ZcColors.Card
-  val SurfaceBright = ZcColors.CardLight
-  val Border = ZcColors.Border
-  val BorderSubtle = ZcColors.Border.copy(alpha = 0.5f)
-
-  // Text hierarchy
-  val OnSurface = ZcColors.Text
-  val OnSurfaceVariant = ZcColors.Text2
-  val OnSurfaceMuted = ZcColors.Text3
-
-  // Chat-specific
-  val UserBubble = ZcColors.UserBg
-  val ThinkBubble = ZcColors.ThinkBg
-
-  // Brand gradient (cyan → violet) — active states only
-  val GradientStart = ZcColors.GradientStart
-  val GradientEnd = ZcColors.GradientEnd
-}
-
-object ZcLightSemantic {
-  val Primary = ZcLightColors.Accent
-  val PrimaryContainer = ZcLightColors.Accent.copy(alpha = 0.14f)
-  val OnPrimary = ZcLightColors.Bg
-
-  val Success = ZcLightColors.Accent2
-  val SuccessContainer = ZcLightColors.Accent2.copy(alpha = 0.14f)
-  val OnSuccess = ZcLightColors.Bg
-
-  val Error = ZcLightColors.Red
-  val ErrorContainer = ZcLightColors.Red.copy(alpha = 0.14f)
-  val OnError = ZcLightColors.Bg
-
-  val AiAccent = ZcLightColors.Cyan
-  val AiAccentContainer = ZcLightColors.Cyan.copy(alpha = 0.14f)
-
-  val Surface = ZcLightColors.Surface
-  val SurfaceVariant = ZcLightColors.Card
-  val SurfaceBright = ZcLightColors.CardLight
-  val Border = ZcLightColors.Border
-  val BorderSubtle = ZcLightColors.Border.copy(alpha = 0.5f)
-
-  val OnSurface = ZcLightColors.Text
-  val OnSurfaceVariant = ZcLightColors.Text2
-  val OnSurfaceMuted = ZcLightColors.Text3
-
-  val UserBubble = ZcLightColors.UserBg
-  val ThinkBubble = ZcLightColors.ThinkBg
-
-  val GradientStart = ZcLightColors.GradientStart
-  val GradientEnd = ZcLightColors.GradientEnd
-}
-
-/**
- * Single brand gradient for the whole app (sky → violet), derived from the
- * active palette so dark and light themes stay coherent. Use for ACTIVE states
- * only (generating, loading, focus) — no glow at rest.
- */
-fun ZcPalette.gradient(vertical: Boolean = false): Brush =
-  if (vertical) Brush.verticalGradient(listOf(GradientStart, GradientEnd))
-  else Brush.linearGradient(listOf(GradientStart, GradientEnd))
-
-/** Semantic colors resolved for the current theme (dark or light). */
-@Composable
-fun currentSemantic(): ZcSemanticColors =
-  if (ThemeState.isDark) ZcSemantic else ZcLightSemantic
-
-interface ZcSemanticColors {
-  // Primary actions, selection, focus — THE ONE ACCENT (violet)
-  val Primary: Color
-  val PrimaryContainer: Color
-  val OnPrimary: Color
-
-  // Success states only — green
-  val Success: Color
-  val SuccessContainer: Color
-  val OnSuccess: Color
-
-  // Destructive / error — hot violet
-  val Error: Color
-  val ErrorContainer: Color
-  val OnError: Color
-
-  // AI/tech indicator — sky cyan
-  val AiAccent: Color
-  val AiAccentContainer: Color
-
-  // Surfaces
-  val Surface: Color
-  val SurfaceVariant: Color
-  val SurfaceBright: Color
-  val Border: Color
-  val BorderSubtle: Color
-
-  // Text hierarchy
-  val OnSurface: Color
-  val OnSurfaceVariant: Color
-  val OnSurfaceMuted: Color
-
-  // Chat-specific
-  val UserBubble: Color
-  val ThinkBubble: Color
-
-  // Brand gradient (cyan → violet) — active states only
-  val GradientStart: Color
-  val GradientEnd: Color
-}
-
 object ZcSemantic : ZcSemanticColors {
-  // Primary actions, selection, focus — THE ONE ACCENT (violet)
+  // Primary actions, selection, focus �� THE ONE ACCENT (violet)
   override val Primary = ZcColors.Accent
   override val PrimaryContainer = ZcColors.Accent.copy(alpha = 0.14f)
   override val OnPrimary = ZcColors.Bg
@@ -259,4 +130,59 @@ object ZcLightSemantic : ZcSemanticColors {
 
   override val GradientStart = ZcLightColors.GradientStart
   override val GradientEnd = ZcLightColors.GradientEnd
+}
+
+/**
+ * Single brand gradient for the whole app (sky → violet), derived from the
+ * active palette so dark and light themes stay coherent. Use for ACTIVE states
+ * only (generating, loading, focus) — no glow at rest.
+ */
+fun ZcPalette.gradient(vertical: Boolean = false): Brush =
+  if (vertical) Brush.verticalGradient(listOf(GradientStart, GradientEnd))
+  else Brush.linearGradient(listOf(GradientStart, GradientEnd))
+
+/** Semantic colors resolved for the current theme (dark or light). */
+@Composable
+fun currentSemantic(): ZcSemanticColors =
+  if (ThemeState.isDark) ZcSemantic else ZcLightSemantic
+
+interface ZcSemanticColors {
+  // Primary actions, selection, focus — THE ONE ACCENT (violet)
+  val Primary: Color
+  val PrimaryContainer: Color
+  val OnPrimary: Color
+
+  // Success states only — green
+  val Success: Color
+  val SuccessContainer: Color
+  val OnSuccess: Color
+
+  // Destructive / error — hot violet
+  val Error: Color
+  val ErrorContainer: Color
+  val OnError: Color
+
+  // AI/tech indicator — sky cyan
+  val AiAccent: Color
+  val AiAccentContainer: Color
+
+  // Surfaces
+  val Surface: Color
+  val SurfaceVariant: Color
+  val SurfaceBright: Color
+  val Border: Color
+  val BorderSubtle: Color
+
+  // Text hierarchy
+  val OnSurface: Color
+  val OnSurfaceVariant: Color
+  val OnSurfaceMuted: Color
+
+  // Chat-specific
+  val UserBubble: Color
+  val ThinkBubble: Color
+
+  // Brand gradient (cyan → violet) — active states only
+  val GradientStart: Color
+  val GradientEnd: Color
 }
