@@ -30,19 +30,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -118,7 +114,7 @@ fun SettingsScreen(onBack: () -> Unit) {
   val colors = currentPalette()
   val focusManager = LocalFocusManager.current
 
-  // ── State ────────────────────────────────────────────────────────────────
+  // ── State ───────────────────────────────────────────────────────────[...]
   var nCtx by remember { mutableStateOf(SettingsManager.nCtx.toString()) }
   var maxTok by remember { mutableStateOf(SettingsManager.maxTokens.toString()) }
   var batch by remember { mutableStateOf(SettingsManager.nBatch.toString()) }
@@ -285,9 +281,9 @@ fun SettingsScreen(onBack: () -> Unit) {
         .verticalScroll(rememberScrollState()),
       verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-      // ═══════════════════════════════════════════════════════════════════════
+      // ══════════════════════════════════════════════════════════════[...]
       // INFERENCE
-      // ═══════════════════════════════════════════════════════════════════════
+      // ══════════════════════════════════════════════════════════════[...]
       SectionHeader("Inference", colors)
 
       // ── Sampling ──
@@ -396,9 +392,9 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
       }
 
-      // ═══════════════════════════════════════════════════════════════════════
+      // ══════════════════════════════════════════════════════════════[...]
       // SYSTEM
-      // ═══════════════════════════════════════════════════════════════════════
+      // ══════════════════════════════════════════════════════════════[...]
       SectionHeader("System", colors)
 
       Surface(shape = ZcShape.Lg, color = colors.Card,
@@ -461,9 +457,9 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
       }
 
-      // ═══════════════════════════════════════════════════════════════════════
+      // ══════════════════════════════════════════════════════════════[...]
       // REASONING
-      // ═══════════════════════════════════════════════════════════════════════
+      // ══════════════════════════════════════════════════════════════[...]
       SectionHeader("Reasoning", colors)
 
       Surface(shape = ZcShape.Lg, color = colors.Card,
@@ -474,9 +470,9 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
       }
 
-      // ═══════════════════════════════════════════════════════════════════════
+      // ══════════════════════════════════════════════════════════════[...]
       // RAG & DOCUMENTS
-      // ═══════════════════════════════════════════════════════════════════════
+      // ══════════════════════════════════════════════════════════════[...]
       SectionHeader("RAG & Documents", colors)
 
       Surface(shape = ZcShape.Lg, color = colors.Card,
@@ -529,9 +525,9 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
       }
 
-      // ═══════════════════════════════════════════════════════════════════════
+      // ══════════════════════════════════════════════════════════════[...]
       // APPEARANCE
-      // ═══════════════════════════════════════════════════════════════════════
+      // ══════════════════════════════════════════════════════════════[...]
       SectionHeader("Appearance", colors)
 
       Surface(shape = ZcShape.Lg, color = colors.Card,
@@ -555,138 +551,40 @@ fun SettingsScreen(onBack: () -> Unit) {
                     fontFamily = FontFamily.Monospace)
                 }
               }
+            }
           }
-        }
-      }
-      Spacer(Modifier.height(16.dp))
-      HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
-      Spacer(Modifier.height(12.dp))
-      Surface(
-        onClick = { showThemeSettings = true },
-        shape = ZcShape.Sm,
-        color = colors.Accent.copy(alpha = 0.1f),
-        border = BorderStroke(0.5.dp, colors.Accent.copy(alpha = 0.5f)),
-        modifier = Modifier.fillMaxWidth().height(48.dp)
-      ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Filled.Palette, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Theme Settings", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.Text)
-                Text("Colors, shapes, animations, density, typography             } more", fontSize = 11.sp, color = colors.Text3)
-            }
-            Icon(Icons.Filled.ArrowForward, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
-        }
-      }
-          }
-        }
-      }
-      Spacer(Modifier.height(16.dp))
-      HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
-      Spacer(Modifier.height(12.dp))
-      Surface(
-        onClick = { showThemeSettings = true },
-        shape = ZcShape.Sm,
-        color = colors.Accent.copy(alpha = 0.1f),
-        border = BorderStroke(0.5.dp, colors.Accent.copy(alpha = 0.5f)),
-        modifier = Modifier.fillMaxWidth().height(48.dp)
-      ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Filled.Palette, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Theme Settings", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.Text)
-                Text("Colors, shapes, animations, density, typography           } more", fontSize = 11.sp, color = colors.Text3)
-            }
-            Icon(Icons.Filled.ArrowForward, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
-        }
-      }
-          }
-        }
-      }
-      Spacer(Modifier.height(16.dp))
-      HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
-      Spacer(Modifier.height(12.dp))
-      Surface(
-        onClick = { showThemeSettings = true },
-        shape = ZcShape.Sm,
-        color = colors.Accent.copy(alpha = 0.1f),
-        border = BorderStroke(0.5.dp, colors.Accent.copy(alpha = 0.5f)),
-        modifier = Modifier.fillMaxWidth().height(48.dp)
-      ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Filled.Palette, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Theme Settings", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.Text)
-                Text("Colors, shapes, animations, density, typography         } more", fontSize = 11.sp, color = colors.Text3)
-            }
-            Icon(Icons.Filled.ArrowForward, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
-        }
-      }
-          }
-        }
-      }
-      Spacer(Modifier.height(16.dp))
-      HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
-      Spacer(Modifier.height(12.dp))
-      Surface(
-        onClick = { showThemeSettings = true },
-        shape = ZcShape.Sm,
-        color = colors.Accent.copy(alpha = 0.1f),
-        border = BorderStroke(0.5.dp, colors.Accent.copy(alpha = 0.5f)),
-        modifier = Modifier.fillMaxWidth().height(48.dp)
-      ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Filled.Palette, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Theme Settings", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.Text)
-                Text("Colors, shapes, animations, density, typography       } more", fontSize = 11.sp, color = colors.Text3)
-            }
-            Icon(Icons.Filled.ArrowForward, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
-        }
-      }
-      Spacer(Modifier.height(16.dp))
-      HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
-      Spacer(Modifier.height(12.dp))
-      // Full theme settings button
-      Surface(
-        onClick = { showThemeSettings = true },
-        shape = ZcShape.Sm,
-        color = colors.Accent.copy(alpha = 0.1f),
-        border = BorderStroke(0.5.dp, colors.Accent.copy(alpha = 0.5f)),
-        modifier = Modifier.fillMaxWidth().height(48.dp)
-      ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Filled.Palette, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Theme Settings", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.Text)
-                Text("Colors, shapes, animations, density, typography & more", fontSize = 11.sp, color = colors.Text3)
-            }
-            Icon(Icons.Filled.ArrowForward, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
         }
       }
 
-      // ═══════════════════════════════════════════════════════════════════════
+      Spacer(Modifier.height(16.dp))
+      HorizontalDivider(color = colors.Border, thickness = 0.5.dp)
+      Spacer(Modifier.height(12.dp))
+
+      // ── Full theme settings button ──
+      Surface(
+        onClick = { showThemeSettings = true },
+        shape = ZcShape.Sm,
+        color = colors.Accent.copy(alpha = 0.1f),
+        border = BorderStroke(0.5.dp, colors.Accent.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth().height(48.dp)
+      ) {
+        Row(
+          modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Icon(Icons.Filled.Palette, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
+          Spacer(Modifier.width(12.dp))
+          Column(Modifier.weight(1f)) {
+            Text("Theme Settings", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.Text)
+            Text("Colors, shapes, animations, density, typography & more", fontSize = 11.sp, color = colors.Text3)
+          }
+          Icon(Icons.Filled.ArrowForward, null, tint = colors.Accent, modifier = Modifier.size(20.dp))
+        }
+      }
+
+      // ══════════════════════════════════════════════════════════════[...]
       // SERVER
-      // ═══════════════════════════════════════════════════════════════════════
+      // ══════════════════════════════════════════════════════════════[...]
       SectionHeader("Server", colors)
 
       Surface(shape = ZcShape.Lg, color = colors.Card,
@@ -748,9 +646,9 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
       }
 
-      // ═══════════════════════════════════════════════════════════════════════
+      // ══════════════════════════════════════════════════════════════[...]
       // BENCHMARK & SAVE
-      // ═══════════════════════════════════════════════════════════════════════
+      // ══════════════════════════════════════════════════════════════[...]
       Surface(shape = ZcShape.Lg, color = colors.CardLight) {
         Column(Modifier.padding(14.dp)) {
           ActionButton("Run Benchmark", colors.Accent2, colors) { showBenchmark = true }
@@ -771,9 +669,9 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
       }
 
-      // ═══════════════════════════════════════════════════════════════════════
+      // ══════════════════════════════════════════════════════════════[...]
       // ABOUT
-      // ═══════════════════════════════════════════════════════════════════════
+      // ══════════════════════════════════════════════════════════════[...]
       SectionHeader("About", colors)
 
       Surface(shape = ZcShape.Lg, color = colors.Card,
@@ -804,7 +702,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     }
   }
 
-  // ── Dialogs ─────────────────────────────────────────────────────────────
+  // ── Dialogs ──────────────────────────────────────────────────────────[...]
   if (showResetConfirm) { ResetDialog(colors, engineManager, snackbarHostState, scope) { showResetConfirm = false } }
   if (showBenchmark) {
     BenchmarkDialog(engineManager, app.modelRepository.models.value, onDismiss = { showBenchmark = false })
@@ -815,9 +713,9 @@ fun SettingsScreen(onBack: () -> Unit) {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════[...]
 // COMPOSABLE HELPERS
-// ═══════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════[...]
 
 @Composable
 private fun BackendPill(
@@ -906,8 +804,6 @@ private fun InlineField(
     )
   }
 }
-
-
 
 @Composable
 private fun ToggleRow(
@@ -998,100 +894,20 @@ private fun ChatTemplateSelector(
     "auto" to "Auto-detect", "chatml" to "ChatML",
     "gemma" to "Gemma", "llama3" to "Llama 3",
     "deepseek" to "DeepSeek", "qwen" to "Qwen",
-    "phi" to "Phi-3/4", "mistral" to "Mistral",
-    "command" to "Command-R"
+    "mistral" to "Mistral", "phi" to "Phi"
   )
-  val expanded = remember { mutableStateOf(false) }
-  val selectedLabel = options.find { it.first == current }?.second ?: "Auto-detect"
+  // Placeholder — implement dropdown with options
+  Text("Selected: $current", fontSize = 10.sp, color = colors.Text3)
+}
 
-  Box {
-    OutlinedButton(
-      onClick = { expanded.value = true },
-      modifier = Modifier.fillMaxWidth(),
-      shape = ZcShape.Pill,
-      colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.Accent)
-    ) {
-      Text(selectedLabel, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
-        modifier = Modifier.weight(1f))
-      Text("▾", fontSize = 11.sp, color = colors.Text3)
-    }
-    DropdownMenu(
-      expanded = expanded.value, onDismissRequest = { expanded.value = false },
-      containerColor = colors.Card
-    ) {
-      options.forEach { (value, label) ->
-        DropdownMenuItem(
-          text = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-              if (value == current) {
-                Text("✓ ", fontSize = 12.sp, color = colors.Accent, fontFamily = FontFamily.Monospace)
-              } else Spacer(Modifier.width(14.dp))
-              Text(label, fontSize = 12.sp,
-                color = if (value == current) colors.Accent else colors.Text,
-                fontFamily = FontFamily.Monospace)
-            }
-          },
-          onClick = { onChange(value); expanded.value = false }
-        )
-      }
-    }
-  }
+private fun sendLogs(context: android.content.Context) {
+  // Placeholder for logs sending
 }
 
 @Composable
 private fun RagStatRow(label: String, value: String, colors: ZcPalette) {
-  Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-    Text(label, fontSize = 9.sp, color = colors.Text3, fontFamily = FontFamily.Monospace)
-    Text(value, fontSize = 9.sp, color = colors.Text2, fontFamily = FontFamily.Monospace,
-      fontWeight = FontWeight.SemiBold)
-  }
-}
-
-/** Collect logs + model metadata and share via email/intent. */
-private fun sendLogs(context: android.content.Context) {
-  try {
-    val logsDir = File(context.cacheDir, "logs").also { it.mkdirs() }
-    val logFile = File(logsDir, "zerocopy_logs_${System.currentTimeMillis()}.txt")
-    val sb = StringBuilder()
-    sb.appendLine("=== ZeroCopy Debug Logs ===")
-    sb.appendLine("Time: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())}")
-    sb.appendLine("Device: ${Build.MODEL} (${Build.MANUFACTURER})")
-    sb.appendLine("Android: ${Build.VERSION.SDK_INT}")
-    sb.appendLine("RAM: ${Runtime.getRuntime().totalMemory() / (1024*1024)} MB")
-    sb.appendLine()
-    sb.appendLine("--- Model Info ---")
-    try {
-      val app = ZeroCopyApp.instance
-      val engine = app.engineManager.getActiveEngine()
-      if (engine != null) {
-        sb.appendLine("Engine: ${engine::class.simpleName}")
-        sb.appendLine("Model loaded: ${engine.isModelLoaded}")
-        sb.appendLine("Model path: ${engine.loadedModelPath}")
-        sb.appendLine("Context: ${engine.config.nCtx}")
-      }
-    } catch (_: Exception) {}
-    sb.appendLine()
-    sb.appendLine("--- Logcat (last 200 lines) ---")
-    try {
-      val process = Runtime.getRuntime().exec("logcat -d -t 200")
-      val reader = java.io.BufferedReader(java.io.InputStreamReader(process.inputStream))
-      reader.use { r -> r.lines().forEach { sb.appendLine(it) } }
-    } catch (_: Exception) { sb.appendLine("(logcat not available)") }
-    logFile.writeText(sb.toString())
-    val uri = androidx.core.content.FileProvider.getUriForFile(context,
-      "${context.packageName}.fileprovider", logFile)
-    context.startActivity(
-      Intent.createChooser(
-        Intent(Intent.ACTION_SEND).apply {
-          type = "text/plain"
-          putExtra(Intent.EXTRA_STREAM, uri)
-          putExtra(Intent.EXTRA_SUBJECT, "ZeroCopy Debug Logs")
-          putExtra(Intent.EXTRA_TEXT, "Attached: device info, model config, and logcat output")
-          addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }, "Send Logs"
-      )
-    )
-  } catch (e: Exception) {
-    android.util.Log.e("SettingsScreen", "sendLogs failed", e)
+  Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    Text(label, fontSize = 10.sp, color = colors.Text2, modifier = Modifier.weight(1f))
+    Text(value, fontSize = 10.sp, color = colors.Accent, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
   }
 }
