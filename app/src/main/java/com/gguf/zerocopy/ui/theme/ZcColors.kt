@@ -1,5 +1,6 @@
 package com.gguf.zerocopy.ui.theme
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
