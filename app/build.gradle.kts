@@ -14,8 +14,8 @@ android {
         applicationId = "com.gguf.zerocopy"
         minSdk        = 29
         targetSdk     = 36
-        versionCode = 1062
-        versionName = "1062"
+        versionCode = 1063
+        versionName = "1063"
 
         externalNativeBuild {
             cmake {
@@ -35,7 +35,7 @@ cFlags  ("-O3 -flto=thin -fstack-protector-strong")
         }
 
         buildConfigField("String", "VERSION_NAME", "\"1061\"")
-        buildConfigField("int", "VERSION_CODE", "1062")
+        buildConfigField("int", "VERSION_CODE", "1063")
     }
 
     compileOptions {
