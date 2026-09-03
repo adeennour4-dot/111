@@ -19,16 +19,16 @@ object SettingsManager {
     applyCompatBuildDefaultsIfFirstRun(context)
   }
 
-  private fun getString(key: String, defaultValue: String): String =
+  fun getString(key: String, defaultValue: String): String =
     prefs?.getString(key, defaultValue) ?: defaultValue
 
-  private fun getInt(key: String, defaultValue: Int): Int =
+  fun getInt(key: String, defaultValue: Int): Int =
     prefs?.getInt(key, defaultValue) ?: defaultValue
 
-  private fun getFloat(key: String, defaultValue: Float): Float =
+  fun getFloat(key: String, defaultValue: Float): Float =
     prefs?.getFloat(key, defaultValue) ?: defaultValue
 
-  private fun getBoolean(key: String, defaultValue: Boolean): Boolean =
+  fun getBoolean(key: String, defaultValue: Boolean): Boolean =
     prefs?.getBoolean(key, defaultValue) ?: defaultValue
 
   private fun putString(key: String, value: String) {
@@ -564,7 +564,7 @@ object SettingsManager {
     presPenalty = rp.presPenalty
   }
 
-  // ── Theme settings ──────────────────────────────────────────────────────────
+  // ── Theme settings ────────────────────────────��───────────────────────────
   var density: String
     get() = getString("density", "COMFORTABLE")
     set(v) { putString("density", v) }
@@ -605,4 +605,3 @@ object SettingsManager {
     get() = getBoolean("useCustomColors", false)
     set(v) { putBoolean("useCustomColors", v) }
 }
-
