@@ -149,7 +149,6 @@ fun ChatScreen(
   val colors = currentPalette()
   val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
   val snackbarHostState = remember { SnackbarHostState() }
-  @Suppress("UNUSED_PARAMETER")
 
   val engine = app.engineManager.getActiveEngine()
   val hasVision = engine?.hasVisionCapability == true
@@ -178,7 +177,6 @@ fun ChatScreen(
   fun startNewChat() {
     chatId = null
     inferenceController.stopInference()
-    // Actually create a new session in the repository
     app.chatRepository.createSession(modelPath = modelPath, modelName = modelName)
     chatId = app.chatRepository.currentSessionId
   }
@@ -191,10 +189,8 @@ fun ChatScreen(
       chatId = sessionId
       app.chatRepository.selectSession(sessionId)
       SettingsManager.currentSessionId = sessionId
-      // Clear any stale attachments from previous sessions
       attachmentUris = emptyList()
       attachmentFileNames = emptyList()
-      // Reset the engine's KV cache so the new session starts fresh
       withContext(kotlinx.coroutines.Dispatchers.IO) {
         app.engineManager.getActiveEngine()?.resetContext()
       }
@@ -207,11 +203,8 @@ fun ChatScreen(
   var ragEnabled by remember { mutableStateOf(SettingsManager.ragEnabled) }
   var webSearchEnabled by remember { mutableStateOf(SettingsManager.webSearchEnabled) }
 
-  // Whether the loaded model can follow the reasoning/tool protocols.
-  // Tiny non-tuned models (e.g. gemma-3-1b-it) are gated off with a warning.
   val modelReasoningOk = engine?.modelInfo?.supportsReasoning ?: true
 
-  // Set ToolManager on the active engine whenever search toggle OR engine changes
   LaunchedEffect(webSearchEnabled, engine) {
     val eng = engine ?: return@LaunchedEffect
     if (webSearchEnabled) {
@@ -220,9 +213,6 @@ fun ChatScreen(
       eng.setToolManager(null)
     }
     SettingsManager.webSearchEnabled = webSearchEnabled
-    // Force a full KV-cache reset + system-prompt rebuild so the tool-
-    // definition preamble is dropped/added cleanly instead of lingering in
-    // the cached context when the search toggle flips.
     if (eng.isModelLoaded) {
       withContext(kotlinx.coroutines.Dispatchers.IO) {
         eng.resetContext()
@@ -230,9 +220,10 @@ fun ChatScreen(
       }
     }
   }
-  var showExportDialog by remember { mutableStateOf(false) }
 
-  // ── Text-to-Speech ────────────────────────────────────────────────────────
+  var showExportDialog by remember { mutableStateOf(false) }
+  var deleteMsgIndex by remember { mutableIntStateOf(-1) }
+
   var tts by remember { mutableStateOf<TextToSpeech?>(null) }
   var isSpeaking by remember { mutableStateOf(false) }
   androidx.compose.runtime.DisposableEffect(Unit) {
@@ -261,8 +252,6 @@ fun ChatScreen(
     }
   }
 
-  var deleteMsgIndex by remember { mutableIntStateOf(-1) }
-
   val suggestions = remember {
     listOf(
       "What can you do?",
@@ -274,8 +263,6 @@ fun ChatScreen(
   }
 
   val thinkRegex = remember { Regex("<think>([\\s\\S]*?)</think>") }
-
-  // Duration of the initial reasoning phase (live stream shown in thinking section)
   val reasoningPhaseDurationMs = 3000L
 
   fun extractThinking(content: String): String? =
@@ -350,17 +337,11 @@ fun ChatScreen(
     }
     if (useReasoning) {
       if (useSearch) {
-        // Web search runs automatically (Kotlin-side, not model-emitted tool
-        // calls — tiny GGUF models never emit them). The model just needs to
-        // reason over the results it will be shown.
         prompt = "The web search for this question runs automatically before you answer. " +
                  "When you receive the search results, reason step by step and write your " +
                  "reasoning between <think> and </think> tags, then give your final answer " +
                  "using ONLY the search results for facts.\n\n$prompt"
       } else {
-        // Directive reasoning prompt — works with ANY model, and Gemma-style
-        // models (fine-tuned on <think> tags) reliably follow the explicit
-        // instruction to write reasoning between the tags.
         prompt = "Think step by step before answering. Write your reasoning between " +
                  "<think> and </think> tags, then give your final answer after the closing tag.\n\n$prompt"
       }
@@ -368,11 +349,6 @@ fun ChatScreen(
     return prompt
   }
 
-  /**
-   * Force a full KV-cache clear + system-prompt rebuild so a Thinking/Search
-   * toggle change takes effect immediately (drops any stray think/tool
-   * preamble from cached context) instead of only applying to future turns.
-   */
   fun resetContextForToggles() {
     val eng = engine ?: return
     if (!eng.isModelLoaded) return
@@ -513,19 +489,13 @@ fun ChatScreen(
     }
   }
 
-  // Accessibility announcement for inference state
   if (inferenceState is InferenceState.Streaming) {
     com.gguf.zerocopy.ui.common.AccessibilityAnnouncement("Generating response")
   }
 
-  // Auto-end reasoning phase after a timeout (shows model's initial output as
-  // thinking, then reveals as answer moving forward).
-  // This is now handled in InferenceController
-
-  // Scroll to the latest message when inference finishes (streaming item removed)
   LaunchedEffect(inferenceState) {
     if (inferenceState is InferenceState.Idle && messages.isNotEmpty()) {
-      delay(50) // brief delay to let the list recompose after the streaming item is removed
+      delay(50)
       listState.animateScrollToItem(messages.size - 1)
     }
   }
@@ -537,7 +507,6 @@ fun ChatScreen(
     } else "New Chat"
   }
 
-
   Scaffold(
     topBar = {
       Surface(color = colors.Bg) {
@@ -548,7 +517,6 @@ fun ChatScreen(
             .padding(horizontal = 10.dp, vertical = 4.dp),
           verticalAlignment = Alignment.CenterVertically
         ) {
-          // Model status chip: explicit loaded/generating/none state
           val isGenerating = inferenceState is InferenceState.Streaming
           Surface(
             shape = ZcShape.Pill,
@@ -599,7 +567,6 @@ fun ChatScreen(
             }
           }
           Spacer(Modifier.width(8.dp))
-          // Session name — the same gradient bubble as the input bubble
           Box(Modifier.weight(1f)) {
             GradientBubbleBox(
               circulating = isGenerating,
@@ -636,7 +603,6 @@ fun ChatScreen(
               )
             }
           }
-          // New session — black pill with the cyan→purple identity ring (app-icon style)
           Box(
             modifier = Modifier
               .size(30.dp)
@@ -649,7 +615,6 @@ fun ChatScreen(
             Icon(Icons.Filled.Add, "New conversation", tint = if (colors.Bg.luminance() < 0.5f) IdentityCyan else IdentityPurple, modifier = Modifier.size(16.dp))
           }
           Spacer(Modifier.width(6.dp))
-          // Sessions — circular
           ChatToolCircle(
             icon = Icons.Outlined.History,
             label = "Sessions",
@@ -658,7 +623,6 @@ fun ChatScreen(
             onClick = { app.chatRepository.refreshSessions(); onSessions() }
           )
           Spacer(Modifier.width(6.dp))
-          // Export — black pill + identity ring, matching the "+" orb
           Box(
             modifier = Modifier
               .size(30.dp)
@@ -677,7 +641,6 @@ fun ChatScreen(
             )
           }
           Spacer(Modifier.width(6.dp))
-          // Unload — circular
           if (engine?.isModelLoaded == true) {
             ChatToolCircle(
               icon = Icons.Outlined.Close,
@@ -693,12 +656,11 @@ fun ChatScreen(
             )
           }
         }
-      }
-      }
+       }
+       }
     },
     bottomBar = {
       Column(modifier = Modifier.fillMaxWidth().imePadding()) {
-        // Warn when the loaded model can't reliably do reasoning/tool use.
         if (!modelReasoningOk) {
           Surface(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
@@ -716,7 +678,6 @@ fun ChatScreen(
             }
           }
         }
-        // Small circles above the input bubble: think / search / clip
         Row(
           modifier = Modifier
             .fillMaxWidth()
@@ -800,7 +761,6 @@ fun ChatScreen(
           trackColor = colors.Border
         )
       }
-      // Context limit warning banner
       if (kvUsagePercent >= 85) {
         Surface(
           modifier = Modifier
@@ -836,7 +796,6 @@ fun ChatScreen(
           verticalArrangement = Arrangement.Center,
           horizontalAlignment = Alignment.CenterHorizontally
         ) {
-          // Glowing chat emblem
           Box(contentAlignment = Alignment.Center, modifier = Modifier.size(88.dp)) {
             Box(
               Modifier.size(88.dp).background(
@@ -873,7 +832,6 @@ fun ChatScreen(
           )
         }
       } else {
-        /** Calm entrance for each chat message: fade in + a slight rise. */
         @Composable
         fun Modifier.messageEnter(): Modifier {
             val alpha = remember { Animatable(0f) }
@@ -925,7 +883,7 @@ fun ChatScreen(
             }
           }
 
-if (inferenceState is InferenceState.Streaming) {
+          if (inferenceState is InferenceState.Streaming) {
             item(key = "streaming") {
               val state = inferenceState as InferenceState.Streaming
               val thinking = state.thinkingContent
@@ -945,8 +903,6 @@ if (inferenceState is InferenceState.Streaming) {
                 onToggleThinking = { }
               )
               }
-            }
-          }
             }
           }
         }
@@ -970,7 +926,6 @@ if (inferenceState is InferenceState.Streaming) {
   }
 }
 
-/** Small circular chat toolbar toggle (think / search / clip) above the bubbles. */
 @Composable
 private fun ChatToolCircle(
     icon: ImageVector,
@@ -989,16 +944,15 @@ private fun ChatToolCircle(
         shape = CircleShape,
         color = if (active) accent.copy(alpha = 0.14f) else colors.Card,
         border = BorderStroke(0.2.dp, borderBrush),
-        modifier = Modifier
-            .size(30.dp)
-            .semantics { 
-              contentDescription = label
-              role = androidx.compose.ui.semantics.Role.Button
-              stateDescription = if (active) "Activated" else "Not activated"
-            }
+        modifier = Modifier.size(30.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Icon(icon, label, tint = if (active) accent else colors.Text3, modifier = Modifier.size(15.dp))
+            Icon(
+                if (active) icon else icon,
+                label,
+                tint = if (active) accent else colors.Accent.copy(alpha = 0.55f),
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 }
