@@ -10,6 +10,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.launchIn
 
 data class CustomColors(
     val primary: Color = Color(0xFF6750A4),
@@ -470,7 +472,7 @@ class ThemeManager {
     }
 
     fun updateConfig(block: ThemeConfig.() -> ThemeConfig) {
-        val newConfig = _config.value.copy().apply(block)
+        val newConfig = _config.value.block()
         _config.value = newConfig
         onConfigChange?.invoke(newConfig)
     }
