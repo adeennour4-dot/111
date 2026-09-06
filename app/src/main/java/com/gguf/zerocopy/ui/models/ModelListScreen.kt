@@ -120,13 +120,11 @@ fun ModelListScreen(
   var loadErrorModel by remember { mutableStateOf<LocalModel?>(null) }
   val snackbarHostState = remember { SnackbarHostState() }
 
-  val isLoading: Boolean
-    get() = loadingState is ModelLoadingState.Loading
-  val loadingStep: String
-    get() = when (val s = loadingState) {
-      is ModelLoadingState.Loading -> s.step
-      else -> ""
-    }
+  val isLoading = loadingState is ModelLoadingState.Loading
+  val loadingStep = when (val s = loadingState) {
+    is ModelLoadingState.Loading -> s.step
+    else -> ""
+  }
 
   /** Validate an imported model and set importWarning if issues found. */
   fun validateImportedModel(model: com.gguf.zerocopy.data.repository.LocalModel) {
@@ -333,7 +331,7 @@ fun ModelListScreen(
     containerColor = colors.Bg
   ) { pad ->
     Box(modifier = Modifier.padding(pad).fillMaxSize()) {
-      if (models.isEmpty() && !loading) {
+      if (models.isEmpty() && !isLoading) {
         Column(
           modifier = Modifier.fillMaxSize().padding(32.dp),
           verticalArrangement = Arrangement.Center,
@@ -726,12 +724,11 @@ fun ModelListScreen(
                   lowRamMode = true
                 )
                 SettingsManager.setModelTokenConfig(m.path, safeCfg)
-                isLoading = true
                 loadCancelRequested = false
-                loadingStep = "Retrying with safe settings…"
+                loadingState = ModelLoadingState.Loading("Retrying with safe settings…")
                 loadingJob = scope.launch {
                   loadModel(m, onModelSelected)
-                  isLoading = false; loadingJob = null; loadingStep = ""
+                  loadingState = ModelLoadingState.Idle; loadingJob = null
                 }
               }
             }) {

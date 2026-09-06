@@ -341,8 +341,8 @@ fun SettingsScreen(onBack: () -> Unit) {
           InlineField("GPU Layers", "99=GPU, 0=CPU", gpu, { gpu = it }, focusManager)
           InlineField("Threads", "0=auto, 1–16", threads, { threads = it }, focusManager)
           Spacer(Modifier.height(4.dp))
-          ToggleRow("Low RAM Mode", "Reduce memory usage", lowRam, { lowRam = it }, colors)
-          ToggleRow("Flash Attention", "ARMv8.2+ (SD 888+)", flashAttn, { flashAttn = it }, colors)
+          SettingsToggleRow("Low RAM Mode", "Reduce memory usage", lowRam, { lowRam = it }, colors)
+          SettingsToggleRow("Flash Attention", "ARMv8.2+ (SD 888+)", flashAttn, { flashAttn = it }, colors)
           // ── Memory pressure indicator ──
           if (memUnderPressure || memPressurePct > 50.0) {
             Spacer(Modifier.height(4.dp))
@@ -382,7 +382,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       Surface(shape = ZcShape.Lg, color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
-          ToggleRow(
+          SettingsToggleRow(
             "Auto-load after import",
             "When enabled, newly imported models are loaded immediately",
             SettingsManager.autoLoadAfterImport,
@@ -465,7 +465,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       Surface(shape = ZcShape.Lg, color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
-          ToggleRow("Chain-of-Thought", "Let's work step-by-step before answering",
+          SettingsToggleRow("Chain-of-Thought", "Let's work step-by-step before answering",
             reasoningEnabled, { reasoningEnabled = it }, colors)
         }
       }
@@ -478,7 +478,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       Surface(shape = ZcShape.Lg, color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
-          ToggleRow("Retrieval-Augmented Gen", "Inject document context into prompts",
+          SettingsToggleRow("Retrieval-Augmented Gen", "Inject document context into prompts",
             ragEnabled, { ragEnabled = it }, colors)
 
           val ragEngine = app.ragEngine
@@ -590,7 +590,7 @@ fun SettingsScreen(onBack: () -> Unit) {
       Surface(shape = ZcShape.Lg, color = colors.Card,
         border = BorderStroke(0.2.dp, colors.Border)) {
         Column(Modifier.padding(14.dp)) {
-          ToggleRow("Model Server", "Anyone on WiFi can access the web UI",
+          SettingsToggleRow("Model Server", "Anyone on WiFi can access the web UI",
             app.modelServer.isRunning, {
               if (it) {
                 val engine = app.engineManager.getActiveEngine()
@@ -615,7 +615,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
           Spacer(Modifier.height(6.dp))
           InlineField("Port", "1024–65535", serverPort, { serverPort = it }, focusManager)
-          ToggleRow("Auth enabled", null, serverAuthEnabled, { serverAuthEnabled = it }, colors)
+          SettingsToggleRow("Auth enabled", null, serverAuthEnabled, { serverAuthEnabled = it }, colors)
 
           if (serverAuthEnabled) {
             Spacer(Modifier.height(4.dp))
@@ -642,7 +642,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
             )
           }
-          ToggleRow("WiFi only", null, serverWifiOnly, { serverWifiOnly = it }, colors)
+          SettingsToggleRow("WiFi only", null, serverWifiOnly, { serverWifiOnly = it }, colors)
         }
       }
 
@@ -806,7 +806,7 @@ private fun InlineField(
 }
 
 @Composable
-private fun ToggleRow(
+private fun SettingsToggleRow(
   label: String, subtitle: String?, checked: Boolean,
   onCheckedChange: (Boolean) -> Unit, colors: ZcPalette
 ) {

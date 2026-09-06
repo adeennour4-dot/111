@@ -48,6 +48,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -73,7 +78,7 @@ fun InputBar(
   val hasAttachments = attachmentUris.isNotEmpty()
 
   // Bitmap cache with LRU eviction and cleanup on attachment changes
-  val bitmapCache = remember { mutableStateOf(LinkedHashMap<Uri, Bitmap>()) }
+  val bitmapCache = remember { mutableStateOf(LinkedHashMap<Uri, Bitmap?>()) }
   val currentUris = remember(attachmentUris) { attachmentUris.toSet() }
   
   // Clean up cache entries for removed attachments
@@ -259,9 +264,9 @@ fun InputBar(
                   onSend(text, attachmentUris, attachmentFileNames)
                 }
                 .semantics {
-                  contentDescription = if (canSend) "Send message" : "Cannot send"
-                  role = androidx.compose.ui.semantics.Role.Button
-                  stateDescription = if (canSend) "Ready to send" : "Input required"
+                  contentDescription = if (canSend) "Send message" else "Cannot send"
+                  role = Role.Button
+                  stateDescription = if (canSend) "Ready to send" else "Input required"
                 },
               contentAlignment = Alignment.Center
             ) {

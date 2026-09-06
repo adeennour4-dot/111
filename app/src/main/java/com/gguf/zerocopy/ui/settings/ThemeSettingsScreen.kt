@@ -15,15 +15,19 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -73,9 +77,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -91,6 +98,17 @@ import com.gguf.zerocopy.ui.theme.currentPalette
 import kotlinx.coroutines.launch
 import java.util.Locale
 
+private val Color.hsvArray: FloatArray
+  get() {
+    val hsv = FloatArray(3)
+    AndroidColor.RGBToHSV((red * 255).toInt(), (green * 255).toInt(), (blue * 255).toInt(), hsv)
+    return hsv
+  }
+
+val Color.hue: Float get() = hsvArray[0]
+val Color.saturation: Float get() = hsvArray[1]
+val Color.lightness: Float get() = hsvArray[2]
+
 // Placeholder enums and data classes for theme settings
 enum class AnimationIntensity(val label: String) {
   NONE("No Animations"),
@@ -103,6 +121,10 @@ enum class DensityLevel(val label: String, val factor: Float) {
   COMPACT("Compact", 0.9f),
   DEFAULT("Default", 1.0f),
   EXPANDED("Expanded", 1.1f)
+}
+
+enum class CustomColorTarget {
+  Primary, Secondary, Tertiary, Error, Background, Surface, Outline
 }
 
 enum class ShapeStyle(val label: String, val tokens: ShapeTokens) {
@@ -158,10 +180,6 @@ fun ThemeSettingsScreen(onBack: () -> Unit) {
   var showResetConfirm by remember { mutableStateOf(false) }
   var config by remember { mutableStateOf(ThemeConfig()) }
 
-  enum class CustomColorTarget {
-    Primary, Secondary, Tertiary, Error, Background, Surface, Outline
-  }
-
   @Composable
   fun SectionHeader(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
     Row(
@@ -181,7 +199,7 @@ fun ThemeSettingsScreen(onBack: () -> Unit) {
   ) {
     Card(
       modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-      elevation = 0.dp,
+      elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 0.dp),
       shape = ZcShape.Lg,
       border = androidx.compose.foundation.BorderStroke(0.5.dp, colors.Border.copy(alpha = 0.3f)),
       colors = androidx.compose.material3.CardDefaults.cardColors(
@@ -220,7 +238,6 @@ fun ThemeSettingsScreen(onBack: () -> Unit) {
         steps = steps,
         colors = androidx.compose.material3.SliderDefaults.colors(
           thumbColor = colors.Accent,
-          trackColor = colors.Accent.copy(alpha = 0.3f),
           activeTrackColor = colors.Accent,
           inactiveTrackColor = colors.Border
         )
@@ -328,7 +345,7 @@ fun ColorPicker(
         .fillMaxWidth()
         .height(120.dp)
         .clip(ZcShape.Lg)
-        .background(Brush.horizontalGradient(listOf(Color.hsv(0, 1f, 0.5f, 1f), Color.hsv(360, 1f, 0.5f, 1f))))
+        .background(Brush.horizontalGradient(listOf(Color.hsv(0f, 1f, 0.5f, 1f), Color.hsv(360f, 1f, 0.5f, 1f))))
     ) {
       Box(
         modifier = Modifier

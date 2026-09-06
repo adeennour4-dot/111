@@ -3,17 +3,17 @@ import com.gguf.zerocopy.ui.theme.ZcShape
 import com.gguf.zerocopy.ui.theme.ThemeManagerInstance
 
 import android.graphics.BitmapFactory
-import androidx.compose.animation.animateFloatAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.enterTransition
-import androidx.compose.animation.exitTransition
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
@@ -49,6 +50,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,6 +78,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.pow
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -106,8 +109,8 @@ fun ChatBubble(
   }
 
   // Get animation intensity from ThemeManager
-  val animationIntensity by ThemeManagerInstance.instance.config.collectAsState()
-    .map { it.animationIntensity }
+  val themeConfig by ThemeManagerInstance.instance.config.collectAsState()
+  val animationIntensity = themeConfig.animationIntensity
 
   val entranceDuration = when (animationIntensity) {
     AnimationIntensity.NONE -> 0
@@ -122,7 +125,7 @@ fun ChatBubble(
   )
 
   val (slideIn, slideOut) = if (animationIntensity == AnimationIntensity.NONE) {
-    Pair(0, 0)
+    Pair(EnterTransition.None, ExitTransition.None)
   } else {
     val spec = tween(entranceDuration, easing = { t -> 1 - (1 - t).pow(3) })
     Pair(slideInVertically(spec, initialOffsetY = { it / 3 }), slideOutVertically(spec, targetOffsetY = { -it / 3 }))
@@ -159,6 +162,7 @@ Row(
     }
 
     AnimatedVisibility(
+      visible = true,
       modifier = Modifier
         .fillMaxWidth()
         .weight(1f),

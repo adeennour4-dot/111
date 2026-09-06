@@ -10,16 +10,17 @@ import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.MutableStateFlow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 sealed interface InferenceState {
-  data class Idle() : InferenceState
+  data object Idle : InferenceState
   data class Preparing(val step: String = "Preparing…") : InferenceState
   data class Streaming(
     val content: String,
@@ -47,7 +48,7 @@ class InferenceController(
   private val onMessageSent: (String) -> Unit,
   private val onError: (String) -> Unit,
 ) {
-  private val _state = MutableStateFlow<InferenceState>(InferenceState.Idle())
+  private val _state = MutableStateFlow<InferenceState>(InferenceState.Idle)
   val state = _state.asStateFlow()
 
   private var currentJob: Job? = null
@@ -322,7 +323,8 @@ class InferenceController(
   }
 
   private fun removeThinking(content: String): String {
-    return content.replaceFirst(java.util.regex.Pattern.compile("\\u200b\\u200b[\\s\\S]*?\\u200b\\u200b"), "").trim()
+    val thinkRegex = Regex("\\u200b\\u200b[\\s\\S]*?\\u200b\\u200b")
+    return content.replaceFirst(thinkRegex, "").trim()
   }
 
   private fun saveAttachmentToStorage(uri: android.net.Uri): String? = try {
@@ -362,8 +364,8 @@ class InferenceController(
                  "reason tags, then give your final answer " +
                  "using ONLY the search results for facts.\n\n$prompt"
       } else {
-        prompt = "Think step by step before answering. Write your reasoning between " +
- tags, then give your final answer after the closing tag.\n\n$prompt"
+        prompt = "Think step by step before answering. Write your reasoning between <think> " +
+                 "tags, then give your final answer after the closing tag.\n\n$prompt"
       }
     }
     return prompt

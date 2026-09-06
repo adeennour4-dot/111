@@ -130,7 +130,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import com.gguf.zerocopy.ui.chat.InferenceController
 import com.gguf.zerocopy.ui.chat.InferenceState
-import kotlinx.coroutines.flow.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
